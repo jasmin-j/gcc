@@ -1,4 +1,4 @@
-// Build don't link: 
+// { dg-do assemble  }
 // GROUPS passed casts
 class VObject;
 
@@ -16,7 +16,7 @@ class VObject {
     boolean perform(method );
     boolean perform(method , long);
     void    affectMethod(method );
-    void    dummy(){};
+    void    dummy(){}
 };
 
 

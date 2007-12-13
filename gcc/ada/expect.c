@@ -6,8 +6,7 @@
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *                                                                          *
- *           Copyright (C) 2001-2002 Ada Core Technologies, Inc.            *
+ *                     Copyright (C) 2001-2007, AdaCore                     *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -17,8 +16,8 @@
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
  * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
+ * Boston, MA 02110-1301, USA.                                              *
  *                                                                          *
  * As a  special  exception,  if you  link  this file  with other  files to *
  * produce an executable,  this file does not by itself cause the resulting *
@@ -27,7 +26,7 @@
  * file might be covered by the  GNU Public License.                        *
  *                                                                          *
  * GNAT was originally developed  by the GNAT team at  New York University. *
- * It is now maintained by Ada Core Technologies Inc (http://www.gnat.com). *
+ * Extensive contributions were provided by Ada Core Technologies Inc.      *
  *                                                                          *
  ****************************************************************************/
 
@@ -44,14 +43,37 @@
 #include "system.h"
 #endif
 
+#include <sys/types.h>
+
+#ifdef __MINGW32__
+#if OLD_MINGW
+#include <sys/wait.h>
+#endif
+#elif defined (__vxworks) && defined (__RTP__)
+#include <wait.h>
+#elif defined (__Lynx__)
+/* ??? See comment in adaint.c.  */
+#define GCC_RESOURCE_H
+#include <sys/wait.h>
+#elif defined (__nucleus__)
+/* No wait.h available on Nucleus */
+#else
+#include <sys/wait.h>
+#endif
+
 /* This file provides the low level functionalities needed to implement Expect
    capabilities in GNAT.Expect.
    Implementations for unix and windows systems is provided.
    Dummy stubs are also provided for other systems. */
 
 #ifdef _AIX
-/* Work around the fact that gcc/cpp does not define "unix" under AiX.  */
-#define unix
+/* Work around the fact that gcc/cpp does not define "__unix__" under AiX.  */
+#define __unix__
+#endif
+
+#ifdef __APPLE__
+/* Work around the fact that gcc/cpp does not define "__unix__" on Darwin.  */
+#define __unix__
 #endif
 
 #ifdef _WIN32
@@ -59,48 +81,119 @@
 #include <windows.h>
 #include <process.h>
 
-/* ??? Provide a no-op for now */
-
 void
-kill ()
+__gnat_kill (int pid, int sig, int close)
 {
+  if (sig == 9)
+    {
+      if ((HANDLE)pid != NULL)
+	{
+	  TerminateProcess ((HANDLE)pid, 0);
+	  if (close)
+	    CloseHandle ((HANDLE)pid);
+	}
+    }
 }
 
 int
-__gnat_expect_fork ()
+__gnat_waitpid (int pid)
+{
+  DWORD exitcode = 1;
+  DWORD res;
+
+  if ((HANDLE)pid != NULL)
+    {
+      res = WaitForSingleObject ((HANDLE)pid, INFINITE);
+      GetExitCodeProcess ((HANDLE)pid, &exitcode);
+      CloseHandle ((HANDLE)pid);
+    }
+
+  return (int) exitcode;
+}
+
+int
+__gnat_expect_fork (void)
 {
   return 0;
 }
 
 void
-__gnat_expect_portable_execvp (pid, cmd, argv)
-     int *pid;
-     char *cmd;
-     char *argv[];
+__gnat_expect_portable_execvp (int *pid, char *cmd, char *argv[])
 {
-  *pid = (int) spawnve (_P_NOWAIT, cmd, argv, NULL);
+  BOOL result;
+  STARTUPINFO SI;
+  PROCESS_INFORMATION PI;
+  SECURITY_ATTRIBUTES SA;
+  int csize = 1;
+  char *full_command;
+  int k;
+
+  /* compute the total command line length.  */
+  k = 0;
+  while (argv[k])
+    {
+      csize += strlen (argv[k]) + 1;
+      k++;
+    }
+
+  full_command = (char *) malloc (csize);
+  full_command[0] = '\0';
+
+  /* Startup info. */
+  SI.cb          = sizeof (STARTUPINFO);
+  SI.lpReserved  = NULL;
+  SI.lpReserved2 = NULL;
+  SI.lpDesktop   = NULL;
+  SI.cbReserved2 = 0;
+  SI.lpTitle     = NULL;
+  SI.dwFlags     = 0;
+  SI.wShowWindow = SW_HIDE;
+
+  /* Security attributes. */
+  SA.nLength = sizeof (SECURITY_ATTRIBUTES);
+  SA.bInheritHandle = TRUE;
+  SA.lpSecurityDescriptor = NULL;
+
+  k = 0;
+  while (argv[k])
+    {
+      strcat (full_command, argv[k]);
+      strcat (full_command, " ");
+      k++;
+    }
+
+  result = CreateProcess
+	     (NULL, (char *) full_command, &SA, NULL, TRUE,
+              GetPriorityClass (GetCurrentProcess()), NULL, NULL, &SI, &PI);
+
+  free (full_command);
+
+  if (result == TRUE)
+    {
+      CloseHandle (PI.hThread);
+      *pid = (int) PI.hProcess;
+    }
+  else
+    *pid = -1;
 }
 
 int
-__gnat_pipe (fd)
-     int *fd;
+__gnat_pipe (int *fd)
 {
   HANDLE read, write;
 
   CreatePipe (&read, &write, NULL, 0);
-  fd[0]=_open_osfhandle (read, 0);
-  fd[1]=_open_osfhandle (write, 0);
+  fd[0]=_open_osfhandle ((long)read, 0);
+  fd[1]=_open_osfhandle ((long)write, 0);
   return 0;  /* always success */
 }
 
 int
-__gnat_expect_poll (fd, num_fd, timeout, is_set)
-     int *fd;
-     int num_fd;
-     int timeout;
-     int *is_set;
+__gnat_expect_poll (int *fd, int num_fd, int timeout, int *is_set)
 {
-  int i, num;
+#define MAX_DELAY 100
+
+  int i, delay, infinite = 0;
   DWORD avail;
   HANDLE handles[num_fd];
 
@@ -108,29 +201,37 @@ __gnat_expect_poll (fd, num_fd, timeout, is_set)
     is_set[i] = 0;
 
   for (i = 0; i < num_fd; i++)
-    handles[i] = (HANDLE) _get_osfhandle (fd[i]);
+    handles[i] = (HANDLE) _get_osfhandle (fd [i]);
 
-  num = timeout / 50;
+  /* Start with small delays, and then increase them, to avoid polling too
+     much when waiting a long time */
+  delay = 5;
+
+  if (timeout < 0)
+    infinite = 1;
 
   while (1)
     {
       for (i = 0; i < num_fd; i++)
-	{
-	  if (!PeekNamedPipe (handles[i], NULL, 0, NULL, &avail, NULL))
-	    return -1;
+        {
+          if (!PeekNamedPipe (handles [i], NULL, 0, NULL, &avail, NULL))
+            return -1;
 
-	  if (avail > 0)
-	    {
-	      is_set[i] = 1;
-	      return 1;
-	    }
-	}
+          if (avail > 0)
+            {
+              is_set[i] = 1;
+              return 1;
+            }
+        }
 
-      if (timeout >= 0 && num == 0)
-	return 0;
+      if (!infinite && timeout <= 0)
+        return 0;
 
-      Sleep (50);
-      num--;
+      Sleep (delay);
+      timeout -= delay;
+
+      if (delay < MAX_DELAY)
+        delay += 10;
     }
 }
 
@@ -140,41 +241,52 @@ __gnat_expect_poll (fd, num_fd, timeout, is_set)
 #include <unixio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <descrip.h>
+#include <vms/descrip.h>
 #include <stdio.h>
-#include <stsdef.h>
-#include <iodef.h>
+#include <vms/stsdef.h>
+#include <vms/iodef.h>
+#include <signal.h>
+
+void
+__gnat_kill (int pid, int sig, int close)
+{
+  kill (pid, sig);
+}
 
 int
-__gnat_pipe (fd)
-     int *fd;
+__gnat_waitpid (int pid)
+{
+  int status = 0;
+
+  waitpid (pid, &status, 0);
+  status = WEXITSTATUS (status);
+
+  return status;
+}
+
+int
+__gnat_pipe (int *fd)
 {
   return pipe (fd);
 }
 
 int
-__gnat_expect_fork ()
+__gnat_expect_fork (void)
 {
   return -1;
 }
 
 void
-__gnat_expect_portable_execvp (pid, cmd, argv) 
-     int *pid;
-     char *cmd;
-     char *argv[];
+__gnat_expect_portable_execvp (int *pid, char *cmd, char *argv[])
 {
-  *pid = (int) getpid();
-  /* Since cmd is fully qualified, it is incorrect to to call execvp */
+  *pid = (int) getpid ();
+  /* Since cmd is fully qualified, it is incorrect to call execvp */
   execv (cmd, argv);
+  _exit (1);
 }
 
 int
-__gnat_expect_poll (fd, num_fd, timeout, is_set)
-     int *fd;
-     int num_fd;
-     int timeout;
-     int *is_set;
+__gnat_expect_poll (int *fd, int num_fd, int timeout, int *is_set)
 {
   int i, num, ready = 0;
   unsigned int status;
@@ -205,6 +317,12 @@ __gnat_expect_poll (fd, num_fd, timeout, is_set)
 	  mbxname.dsc$a_pointer = buf;
 
 	  status = SYS$ASSIGN (&mbxname, &mbxchans[i], 0, 0, 0);
+
+	  if ((status & 1) != 1)
+	    {
+	      ready = -1;
+	      return ready;
+	    }
 	}
     }
 
@@ -222,6 +340,12 @@ __gnat_expect_poll (fd, num_fd, timeout, is_set)
 		(0, mbxchans[i], IO$_SENSEMODE|IO$M_READERCHECK,
 		 &iosb, 0, 0, 0, 0, 0, 0, 0, 0);
 
+	      if ((status & 1) != 1)
+		{
+		  ready = -1;
+		  goto deassign;
+		}
+
 	      if (iosb.count > 0)
 		{
 		  is_set[i] = 1;
@@ -231,7 +355,7 @@ __gnat_expect_poll (fd, num_fd, timeout, is_set)
 	    }
 	}
 
-      if (timeout >= 0 && num == 0)
+      if (timeout > 0 && num == 0)
 	{
 	  ready = 0;
 	  goto deassign;
@@ -252,8 +376,11 @@ __gnat_expect_poll (fd, num_fd, timeout, is_set)
 
   return ready;
 }
+#elif defined (__unix__) && !defined (__nucleus__)
 
-#elif defined (unix)
+#ifdef __hpux__
+#include <sys/ptyio.h>
+#endif
 
 #include <sys/time.h>
 
@@ -270,93 +397,156 @@ typedef long fd_mask;
 #endif /* !_IBMR2 */
 #endif /* !NO_FD_SET */
 
+void
+__gnat_kill (int pid, int sig, int close)
+{
+  kill (pid, sig);
+}
+
 int
-__gnat_pipe (fd)
-     int *fd;
+__gnat_waitpid (int pid)
+{
+  int status = 0;
+
+  waitpid (pid, &status, 0);
+  status = WEXITSTATUS (status);
+
+  return status;
+}
+
+int
+__gnat_pipe (int *fd)
 {
   return pipe (fd);
 }
 
 int
-__gnat_expect_fork ()
+__gnat_expect_fork (void)
 {
   return fork ();
 }
 
 void
-__gnat_expect_portable_execvp (pid, cmd, argv) 
-     int *pid;
-     char *cmd;
-     char *argv[];
+__gnat_expect_portable_execvp (int *pid, char *cmd, char *argv[])
 {
-  *pid = (int) getpid();
-  execvp (cmd, argv);
+  *pid = (int) getpid ();
+  /* Since cmd is fully qualified, it is incorrect to call execvp */
+  execv (cmd, argv);
+  _exit (1);
 }
 
 int
-__gnat_expect_poll (fd, num_fd, timeout, is_set)
-     int *fd;
-     int num_fd;
-     int timeout;
-     int *is_set;
+__gnat_expect_poll (int *fd, int num_fd, int timeout, int *is_set)
 {
   struct timeval tv;
   SELECT_MASK rset;
+  SELECT_MASK eset;
+
   int max_fd = 0;
   int ready;
   int i;
-
-  FD_ZERO (&rset);
-
-  for (i = 0; i < num_fd; i++)
-    {
-      FD_SET (fd[i], &rset);
-      if (fd[i] > max_fd)
-	max_fd = fd[i];
-    }
+  int received;
 
   tv.tv_sec  = timeout / 1000;
   tv.tv_usec = (timeout % 1000) * 1000;
 
-  ready = select (max_fd + 1, &rset, NULL, NULL, timeout == -1 ? NULL : &tv);
+  do {
+    FD_ZERO (&rset);
+    FD_ZERO (&eset);
 
-  if (ready > 0)
     for (i = 0; i < num_fd; i++)
-      is_set[i] = (FD_ISSET (fd[i], &rset)  ? 1 : 0);
+      {
+        FD_SET (fd[i], &rset);
+        FD_SET (fd[i], &eset);
+
+        if (fd[i] > max_fd)
+	  max_fd = fd[i];
+      }
+
+    ready =
+      select (max_fd + 1, &rset, NULL, &eset, timeout == -1 ? NULL : &tv);
+
+    if (ready > 0)
+      {
+	received = 0;
+
+        for (i = 0; i < num_fd; i++)
+	  {
+	    if (FD_ISSET (fd[i], &rset))
+	      {
+		is_set[i] = 1;
+		received = 1;
+	      }
+	    else
+	      is_set[i] = 0;
+	  }
+
+#ifdef __hpux__
+        for (i = 0; i < num_fd; i++)
+	  {
+	    if (FD_ISSET (fd[i], &eset))
+	      {
+	        struct request_info ei;
+
+	        /* Only query and reset error state if no file descriptor
+	           is ready to be read, otherwise we will be signalling a
+	           died process too early */
+
+	        if (!received)
+		  {
+	            ioctl (fd[i], TIOCREQCHECK, &ei);
+
+	            if (ei.request == TIOCCLOSE)
+		      {
+		        ioctl (fd[i], TIOCREQSET, &ei);
+		        return -1;
+		      }
+
+	            ioctl (fd[i], TIOCREQSET, &ei);
+		  }
+	        ready--;
+	      }
+	  }
+#endif
+      }
+  } while (timeout == -1 && ready == 0);
 
   return ready;
 }
 
 #else
 
+void
+__gnat_kill (int pid, int sig, int close)
+{
+}
+
 int
-__gnat_pipe (fd)
-     int *fd;
+__gnat_waitpid (int pid, int sig)
+{
+  return 0;
+}
+
+int
+__gnat_pipe (int *fd)
 {
   return -1;
 }
 
 int
-__gnat_expect_fork ()
+__gnat_expect_fork (void)
 {
   return -1;
 }
 
 void
-__gnat_expect_portable_execvp (pid, cmd, argv)
-     int *pid;
-     char *cmd;
-     char *argv[];
+__gnat_expect_portable_execvp (int *pid, char *cmd, char *argv[])
 {
   *pid = 0;
 }
 
 int
-__gnat_expect_poll (fd, num_fd, timeout, is_set)
-     int *fd;
-     int num_fd;
-     int timeout;
-     int *is_set;
+__gnat_expect_poll (int *fd, int num_fd, int timeout, int *is_set)
 {
   return -1;
 }

@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.6.2.1 money_put members
@@ -34,7 +34,7 @@ struct My_money_io_2 : public std::moneypunct<char,false>
 void test06()
 {
   using namespace std;
-  bool test = true;
+  bool test __attribute__((unused)) = true;
   typedef ostreambuf_iterator<char> OutIt;
 
   locale loc(locale::classic(), new My_money_io_2);

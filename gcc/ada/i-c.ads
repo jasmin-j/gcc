@@ -1,4 +1,4 @@
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 --                                                                          --
 --                         GNAT COMPILER COMPONENTS                         --
 --                                                                          --
@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
--- This specification is adapted from the Ada Reference Manual for use with --
+-- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT.  In accordance with the copyright of that document, you can freely --
 -- copy and modify this specification,  provided that if you redistribute a --
 -- modified version,  any changes that you have made are clearly indicated. --
@@ -17,7 +16,7 @@
 with System.Parameters;
 
 package Interfaces.C is
-pragma Pure (C);
+   pragma Pure;
 
    --  Declaration's based on C's <limits.h>
 
@@ -29,10 +28,14 @@ pragma Pure (C);
    --  Signed and Unsigned Integers. Note that in GNAT, we have ensured that
    --  the standard predefined Ada types correspond to the standard C types
 
+   --  Note: the Integer qualifications used in the declaration of type long
+   --  avoid ambiguities when compiling in the presence of s-auxdec.ads and
+   --  a non-private system.address type.
+
    type int   is new Integer;
    type short is new Short_Integer;
-   type long  is range -(2 ** (System.Parameters.long_bits - 1))
-     .. +(2 ** (System.Parameters.long_bits - 1)) - 1;
+   type long  is range -(2 ** (System.Parameters.long_bits - Integer'(1)))
+     .. +(2 ** (System.Parameters.long_bits - Integer'(1))) - 1;
 
    type signed_char is range SCHAR_MIN .. SCHAR_MAX;
    for signed_char'Size use CHAR_BIT;
@@ -46,9 +49,13 @@ pragma Pure (C);
 
    subtype plain_char is unsigned_char; -- ??? should be parametrized
 
+   --  Note: the Integer qualifications used in the declaration of ptrdiff_t
+   --  avoid ambiguities when compiling in the presence of s-auxdec.ads and
+   --  a non-private system.address type.
+
    type ptrdiff_t is
-     range -(2 ** (Standard'Address_Size - 1)) ..
-           +(2 ** (Standard'Address_Size - 1) - 1);
+     range -(2 ** (Standard'Address_Size - Integer'(1))) ..
+           +(2 ** (Standard'Address_Size - Integer'(1)) - 1);
 
    type size_t is mod 2 ** Standard'Address_Size;
 
@@ -72,29 +79,27 @@ pragma Pure (C);
    type char_array is array (size_t range <>) of aliased char;
    for char_array'Component_Size use CHAR_BIT;
 
-   function Is_Nul_Terminated (Item : in char_array) return Boolean;
+   function Is_Nul_Terminated (Item : char_array) return Boolean;
 
    function To_C
-     (Item       : in String;
-      Append_Nul : in Boolean := True)
-      return       char_array;
+     (Item       : String;
+      Append_Nul : Boolean := True) return char_array;
 
    function To_Ada
-     (Item     : in char_array;
-      Trim_Nul : in Boolean := True)
-      return     String;
+     (Item     : char_array;
+      Trim_Nul : Boolean := True) return String;
 
    procedure To_C
-     (Item       : in String;
+     (Item       : String;
       Target     : out char_array;
       Count      : out size_t;
-      Append_Nul : in Boolean := True);
+      Append_Nul : Boolean := True);
 
    procedure To_Ada
-     (Item     : in char_array;
+     (Item     : char_array;
       Target   : out String;
       Count    : out Natural;
-      Trim_Nul : in Boolean := True);
+      Trim_Nul : Boolean := True);
 
    ------------------------------------
    -- Wide Character and Wide String --
@@ -105,35 +110,121 @@ pragma Pure (C);
 
    wide_nul : constant wchar_t := wchar_t'First;
 
-   function To_C   (Item : in Wide_Character) return wchar_t;
-   function To_Ada (Item : in wchar_t)        return Wide_Character;
+   function To_C   (Item : Wide_Character) return wchar_t;
+   function To_Ada (Item : wchar_t)        return Wide_Character;
 
    type wchar_array is array (size_t range <>) of aliased wchar_t;
 
-   function Is_Nul_Terminated (Item : in wchar_array) return Boolean;
+   function Is_Nul_Terminated (Item : wchar_array) return Boolean;
 
    function To_C
-     (Item       : in Wide_String;
-      Append_Nul : in Boolean := True)
-      return       wchar_array;
+     (Item       : Wide_String;
+      Append_Nul : Boolean := True) return wchar_array;
 
    function To_Ada
-     (Item     : in wchar_array;
-      Trim_Nul : in Boolean := True)
-      return     Wide_String;
+     (Item     : wchar_array;
+      Trim_Nul : Boolean := True) return Wide_String;
 
    procedure To_C
-     (Item       : in Wide_String;
+     (Item       : Wide_String;
       Target     : out wchar_array;
       Count      : out size_t;
-      Append_Nul : in Boolean := True);
+      Append_Nul : Boolean := True);
 
    procedure To_Ada
-     (Item     : in wchar_array;
+     (Item     : wchar_array;
       Target   : out Wide_String;
       Count    : out Natural;
-      Trim_Nul : in Boolean := True);
+      Trim_Nul : Boolean := True);
 
    Terminator_Error : exception;
+
+   --  The remaining declarations are for Ada 2005 (AI-285)
+
+   --  ISO/IEC 10646:2003 compatible types defined by SC22/WG14 document N1010
+
+   type char16_t is new Wide_Character;
+   pragma Ada_05 (char16_t);
+
+   char16_nul : constant char16_t := char16_t'Val (0);
+   pragma Ada_05 (char16_nul);
+
+   function To_C (Item : Wide_Character) return char16_t;
+   pragma Ada_05 (To_C);
+
+   function To_Ada (Item : char16_t) return Wide_Character;
+   pragma Ada_05 (To_Ada);
+
+   type char16_array is array (size_t range <>) of aliased char16_t;
+   pragma Ada_05 (char16_array);
+
+   function Is_Nul_Terminated (Item : char16_array) return Boolean;
+   pragma Ada_05 (Is_Nul_Terminated);
+
+   function To_C
+     (Item       : Wide_String;
+      Append_Nul : Boolean := True) return char16_array;
+   pragma Ada_05 (To_C);
+
+   function To_Ada
+     (Item     : char16_array;
+      Trim_Nul : Boolean := True) return Wide_String;
+   pragma Ada_05 (To_Ada);
+
+   procedure To_C
+     (Item       : Wide_String;
+      Target     : out char16_array;
+      Count      : out size_t;
+      Append_Nul : Boolean := True);
+   pragma Ada_05 (To_C);
+
+   procedure To_Ada
+     (Item     : char16_array;
+      Target   : out Wide_String;
+      Count    : out Natural;
+      Trim_Nul : Boolean := True);
+   pragma Ada_05 (To_Ada);
+
+   type char32_t is new Wide_Wide_Character;
+   pragma Ada_05 (char32_t);
+
+   char32_nul : constant char32_t := char32_t'Val (0);
+   pragma Ada_05 (char32_nul);
+
+   function To_C (Item : Wide_Wide_Character) return char32_t;
+   pragma Ada_05 (To_C);
+
+   function To_Ada (Item : char32_t) return Wide_Wide_Character;
+   pragma Ada_05 (To_Ada);
+
+   type char32_array is array (size_t range <>) of aliased char32_t;
+   pragma Ada_05 (char32_array);
+
+   function Is_Nul_Terminated (Item : char32_array) return Boolean;
+   pragma Ada_05 (Is_Nul_Terminated);
+
+   function To_C
+     (Item       : Wide_Wide_String;
+      Append_Nul : Boolean := True) return char32_array;
+   pragma Ada_05 (To_C);
+
+   function To_Ada
+     (Item     : char32_array;
+      Trim_Nul : Boolean := True) return Wide_Wide_String;
+   pragma Ada_05 (To_Ada);
+
+   procedure To_C
+     (Item       : Wide_Wide_String;
+      Target     : out char32_array;
+      Count      : out size_t;
+      Append_Nul : Boolean := True);
+   pragma Ada_05 (To_C);
+
+   procedure To_Ada
+     (Item     : char32_array;
+      Target   : out Wide_Wide_String;
+      Count    : out Natural;
+      Trim_Nul : Boolean := True);
+   pragma Ada_05 (To_Ada);
 
 end Interfaces.C;

@@ -1,30 +1,28 @@
 /* Definitions of target machine for GNU compiler. NEC V850 series
-   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003
-   Free Software Foundation, Inc.
+   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+   2007 Free Software Foundation, Inc.
    Contributed by Jeff Law (law@cygnus.com).
 
-   This file is part of GNU CC.
+   This file is part of GCC.
 
-   GNU CC is free software; you can redistribute it and/or modify
+   GCC is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2, or (at your option)
+   the Free Software Foundation; either version 3, or (at your option)
    any later version.
 
-   GNU CC is distributed in the hope that it will be useful,
+   GCC is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GNU CC; see the file COPYING.  If not, write to
-   the Free Software Foundation, 59 Temple Place - Suite 330,
-   Boston, MA 02111-1307, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_V850_H
 #define GCC_V850_H
 
-/* These are defiend in svr4.h but we want to override them.  */
-#undef ASM_FINAL_SPEC
+/* These are defined in svr4.h but we want to override them.  */
 #undef LIB_SPEC
 #undef ENDFILE_SPEC
 #undef LINK_SPEC
@@ -33,6 +31,7 @@
 
 #define TARGET_CPU_generic 	1
 #define TARGET_CPU_v850e   	2
+#define TARGET_CPU_v850e1  	3
 
 #ifndef TARGET_CPU_DEFAULT
 #define TARGET_CPU_DEFAULT	TARGET_CPU_generic
@@ -57,6 +56,17 @@
 #define TARGET_VERSION 		fprintf (stderr, " (NEC V850E)");
 #endif
 
+#if TARGET_CPU_DEFAULT == TARGET_CPU_v850e1
+#undef  MASK_DEFAULT
+#define MASK_DEFAULT            MASK_V850E	/* No practical difference.  */
+#undef  SUBTARGET_ASM_SPEC
+#define SUBTARGET_ASM_SPEC 	"%{!mv*:-mv850e1}"
+#undef  SUBTARGET_CPP_SPEC
+#define SUBTARGET_CPP_SPEC 	"%{!mv*:-D__v850e1__} %{mv850e1:-D__v850e1__}"
+#undef  TARGET_VERSION
+#define TARGET_VERSION 		fprintf (stderr, " (NEC V850E1)");
+#endif
+
 #define ASM_SPEC "%{mv*:-mv%*}"
 #define CPP_SPEC		"%{mv850e:-D__v850e__} %{mv850:-D__v850__} %(subtarget_cpp_spec)"
 
@@ -65,137 +75,20 @@
  { "subtarget_cpp_spec", SUBTARGET_CPP_SPEC } 
 
 /* Names to predefine in the preprocessor for this target machine.  */
-#define CPP_PREDEFINES "-D__v851__ -D__v850"
+#define TARGET_CPU_CPP_BUILTINS() do {		\
+  builtin_define( "__v851__" );			\
+  builtin_define( "__v850" );			\
+  builtin_assert( "machine=v850" );		\
+  builtin_assert( "cpu=v850" );			\
+  if (TARGET_EP)				\
+    builtin_define ("__EP__");			\
+} while(0)
 
-/* Run-time compilation parameters selecting different hardware subsets.  */
-
-extern int target_flags;
-
-/* Target flags bits, see below for an explanation of the bits.  */
-#define MASK_GHS		0x00000001
-#define MASK_LONG_CALLS		0x00000002
-#define MASK_EP			0x00000004
-#define MASK_PROLOG_FUNCTION	0x00000008
-#define MASK_DEBUG		0x40000000
-
-#define MASK_CPU                0x00000030
-#define MASK_V850               0x00000010
-#define MASK_V850E              0x00000020
-#define MASK_SMALL_SLD          0x00000040
-
-#define MASK_BIG_SWITCH		0x00000100
-#define MASK_NO_APP_REGS        0x00000200
-#define MASK_DISABLE_CALLT      0x00000400
-#define MASK_STRICT_ALIGN       0x00000800
-
-#define MASK_US_BIT_SET         0x00001000
-#define MASK_US_MASK_SET        0x00002000
-
-/* Macros used in the machine description to test the flags.  */
-
-/* The GHS calling convention support doesn't really work,
-   mostly due to a lack of documentation.  Outstanding issues:
-
-     * How do varargs & stdarg really work.  How to they handle
-     passing structures (if at all).
-
-     * Doubles are normally 4 byte aligned, except in argument
-     lists where they are 8 byte aligned.  Is the alignment
-     in the argument list based on the first parameter,
-     first stack parameter, etc etc.
-
-     * Passing/returning of large structures probably isn't the same
-     as GHS.  We don't have enough documentation on their conventions
-     to be compatible.
-
-     * Tests of SETUP_INCOMING_VARARGS need to be made runtime checks
-     since it depends on TARGET_GHS.  */
-#define TARGET_GHS (target_flags & MASK_GHS)
- 
-/* Don't do PC-relative calls, instead load the address of the target
-   function into a register and perform a register indirect call.  */
-#define TARGET_LONG_CALLS (target_flags & MASK_LONG_CALLS)
-
-/* Whether to optimize space by using ep (r30) for pointers with small offsets
-   in basic blocks.  */
-#define TARGET_EP (target_flags & MASK_EP)
-
-/* Whether to call out-of-line functions to save registers or not.  */
-#define TARGET_PROLOG_FUNCTION (target_flags & MASK_PROLOG_FUNCTION)
-
-#define TARGET_V850    		((target_flags & MASK_CPU) == MASK_V850)
-
-/* Whether to emit 2 byte per entry or 4 byte per entry switch tables.  */
-#define TARGET_BIG_SWITCH (target_flags & MASK_BIG_SWITCH)
-
-/* General debug flag.  */
-#define TARGET_DEBUG 		(target_flags & MASK_DEBUG)
-#define TARGET_V850E   		((target_flags & MASK_V850E) == MASK_V850E)
-
-#define TARGET_US_BIT_SET	(target_flags & MASK_US_BIT_SET)
-
-/* Whether to assume that the SLD.B and SLD.H instructions only have small
-   displacement fields, thus allowing the generated code to run on any of
-   the V850 range of processors.  */
-#define TARGET_SMALL_SLD 	(target_flags & MASK_SMALL_SLD)
-
-/* True if callt will not be used for function prolog & epilog.  */
-#define TARGET_DISABLE_CALLT 	(target_flags & MASK_DISABLE_CALLT)
-
-/* False if r2 and r5 can be used by the compiler.  True if r2
-   and r5 are to be fixed registers (for compatibility with GHS).  */
-#define TARGET_NO_APP_REGS  	(target_flags & MASK_NO_APP_REGS)
-
-#define TARGET_STRICT_ALIGN 	(target_flags & MASK_STRICT_ALIGN)
-
-/* Macro to define tables used to set the flags.
-   This is a list in braces of pairs in braces,
-   each pair being { "NAME", VALUE }
-   where VALUE is the bits to set or minus the bits to clear.
-   An empty string NAME is used to identify the default VALUE.  */
-
-#define TARGET_SWITCHES							\
-  {{ "ghs",			 MASK_GHS, N_("Support Green Hills ABI") }, \
-   { "no-ghs",			-MASK_GHS, "" },			\
-   { "long-calls",		 MASK_LONG_CALLS, 			\
-       				N_("Prohibit PC relative function calls") },\
-   { "no-long-calls",		-MASK_LONG_CALLS, "" },			\
-   { "ep",			 MASK_EP,				\
-                                N_("Reuse r30 on a per function basis") }, \
-   { "no-ep",			-MASK_EP, "" },				\
-   { "prolog-function",		 MASK_PROLOG_FUNCTION, 			\
-       				N_("Use stubs for function prologues") }, \
-   { "no-prolog-function",	-MASK_PROLOG_FUNCTION, "" },		\
-   { "space",			 MASK_EP | MASK_PROLOG_FUNCTION, 	\
-       				N_("Same as: -mep -mprolog-function") }, \
-   { "debug",			 MASK_DEBUG, N_("Enable backend debugging") }, \
-   { "v850",		 	 MASK_V850,				\
-                                N_("Compile for the v850 processor") },	\
-   { "v850",		 	 -(MASK_V850 ^ MASK_CPU), "" },		\
-   { "v850e",			 MASK_V850E, N_("Compile for v850e processor") }, \
-   { "v850e",		        -(MASK_V850E ^ MASK_CPU), "" }, /* Make sure that the other bits are cleared.  */ \
-   { "small-sld",		 MASK_SMALL_SLD, N_("Enable the use of the short load instructions") },	\
-   { "no-small-sld",		-MASK_SMALL_SLD, "" },			\
-   { "disable-callt",            MASK_DISABLE_CALLT, 			\
-       				N_("Do not use the callt instruction") },   \
-   { "no-disable-callt",        -MASK_DISABLE_CALLT, "" },             	\
-   { "US-bit-set",		 (MASK_US_BIT_SET | MASK_US_MASK_SET), "" },	\
-   { "no-US-bit-set",		-MASK_US_BIT_SET, "" },			\
-   { "no-US-bit-set",		 MASK_US_MASK_SET, "" },		\
-   { "app-regs",                -MASK_NO_APP_REGS, ""  },               \
-   { "no-app-regs",              MASK_NO_APP_REGS, 			\
-       				N_("Do not use registers r2 and r5") }, \
-   { "strict-align",             MASK_STRICT_ALIGN,			\
-				N_("Enfore strict alignment") },        \
-   { "no-strict-align",         -MASK_STRICT_ALIGN, "" },		\
-   { "big-switch",		 MASK_BIG_SWITCH, 			\
-       				N_("Use 4 byte entries in switch tables") },\
-   { "",			 MASK_DEFAULT, ""}}
+#define MASK_CPU (MASK_V850 | MASK_V850E)
 
 /* Information about the various small memory areas.  */
 struct small_memory_info {
   const char *name;
-  const char *value;
   long max;
   long physical_max;
 };
@@ -211,30 +104,6 @@ enum small_memory_type {
 };
 
 extern struct small_memory_info small_memory[(int)SMALL_MEMORY_max];
-
-#define TARGET_OPTIONS							\
-{									\
-  { "tda=",	&small_memory[ (int)SMALL_MEMORY_TDA ].value,		\
-      N_("Set the max size of data eligible for the TDA area")  },	\
-  { "tda-",	&small_memory[ (int)SMALL_MEMORY_TDA ].value, "" },	\
-  { "sda=",	&small_memory[ (int)SMALL_MEMORY_SDA ].value, 		\
-      N_("Set the max size of data eligible for the SDA area")  },	\
-  { "sda-",	&small_memory[ (int)SMALL_MEMORY_SDA ].value, "" },	\
-  { "zda=",	&small_memory[ (int)SMALL_MEMORY_ZDA ].value, 		\
-      N_("Set the max size of data eligible for the ZDA area")  },	\
-  { "zda-",	&small_memory[ (int)SMALL_MEMORY_ZDA ].value, "" },	\
-}
-
-/* Sometimes certain combinations of command options do not make
-   sense on a particular target machine.  You can define a macro
-   `OVERRIDE_OPTIONS' to take account of this.  This macro, if
-   defined, is executed once just after all the command options have
-   been parsed.
-
-   Don't use this macro to turn on various extra optimizations for
-   `-O'.  That is what `OPTIMIZATION_OPTIONS' is for.  */
-#define OVERRIDE_OPTIONS override_options ()
-
 
 /* Show we can debug even without a frame pointer.  */
 #define CAN_DEBUG_WITHOUT_FP
@@ -257,13 +126,19 @@ extern struct small_memory_info small_memory[(int)SMALL_MEMORY_max];
    enable machine-specific optimizations.
 
    *Do not examine `write_symbols' in this macro!* The debugging
-   options are not supposed to alter the generated code. */
+   options are not supposed to alter the generated code.  */
 
 #define OPTIMIZATION_OPTIONS(LEVEL,SIZE)				\
 {									\
   target_flags |= MASK_STRICT_ALIGN;					\
   if (LEVEL)								\
-    target_flags |= (MASK_EP | MASK_PROLOG_FUNCTION);			\
+    /* Note - we no longer enable MASK_EP when optimizing.  This is	\
+       because of a hardware bug which stops the SLD and SST instructions\
+       from correctly detecting some hazards.  If the user is sure that \
+       their hardware is fixed or that their program will not encounter \
+       the conditions that trigger the bug then they can enable -mep by \
+       hand.  */							\
+    target_flags |= MASK_PROLOG_FUNCTION;				\
 }
 
 
@@ -303,7 +178,7 @@ extern struct small_memory_info small_memory[(int)SMALL_MEMORY_max];
 /* Allocation boundary (in *bits*) for storing arguments in argument list.  */
 #define PARM_BOUNDARY		32
 
-/* The stack goes in 32 bit lumps.  */
+/* The stack goes in 32-bit lumps.  */
 #define STACK_BOUNDARY 		32
 
 /* Allocation boundary (in *bits*) for the code of a function.
@@ -325,7 +200,7 @@ extern struct small_memory_info small_memory[(int)SMALL_MEMORY_max];
 
 /* Define this as 1 if `char' should by default be signed; else as 0.
 
-   On the NEC V850, loads do sign extension, so make this default. */
+   On the NEC V850, loads do sign extension, so make this default.  */
 #define DEFAULT_SIGNED_CHAR 1
 
 /* Standard register usage.  */
@@ -382,14 +257,14 @@ extern struct small_memory_info small_memory[(int)SMALL_MEMORY_max];
    0,  1,  3,  4,  5, 30, 32, 33	/* fixed registers */		\
 }
 
-/* If TARGET_NO_APP_REGS is not defined then add r2 and r5 to
-   the pool of fixed registers. See PR 14505. */
+/* If TARGET_APP_REGS is not defined then add r2 and r5 to
+   the pool of fixed registers. See PR 14505.  */
 #define CONDITIONAL_REGISTER_USAGE  \
 {                                                       \
-  if (TARGET_NO_APP_REGS)                               \
+  if (!TARGET_APP_REGS)                                 \
     {                                                   \
-     fixed_regs[2] = 1;  call_used_regs[2] = 1;         \
-     fixed_regs[5] = 1;  call_used_regs[5] = 1;         \
+      fixed_regs[2] = 1;  call_used_regs[2] = 1;        \
+      fixed_regs[5] = 1;  call_used_regs[5] = 1;        \
     }                                                   \
 }
 
@@ -443,7 +318,7 @@ enum reg_class
 
 #define N_REG_CLASSES (int) LIM_REG_CLASSES
 
-/* Give names of register classes as strings for dump file.   */
+/* Give names of register classes as strings for dump file.  */
 
 #define REG_CLASS_NAMES \
 { "NO_REGS", "GENERAL_REGS", "ALL_REGS", "LIM_REGS" }
@@ -511,19 +386,19 @@ enum reg_class
 #define INT_8_BITS(VALUE) ((unsigned) (VALUE) + 0x80 < 0x100)
 /* zero */
 #define CONST_OK_FOR_I(VALUE) ((VALUE) == 0)
-/* 5 bit signed immediate */
+/* 5-bit signed immediate */
 #define CONST_OK_FOR_J(VALUE) ((unsigned) (VALUE) + 0x10 < 0x20)
-/* 16 bit signed immediate */
+/* 16-bit signed immediate */
 #define CONST_OK_FOR_K(VALUE) ((unsigned) (VALUE) + 0x8000 < 0x10000)
 /* valid constant for movhi instruction.  */
 #define CONST_OK_FOR_L(VALUE) \
   (((unsigned) ((int) (VALUE) >> 16) + 0x8000 < 0x10000) \
    && CONST_OK_FOR_I ((VALUE & 0xffff)))
-/* 16 bit unsigned immediate */
+/* 16-bit unsigned immediate */
 #define CONST_OK_FOR_M(VALUE) ((unsigned)(VALUE) < 0x10000)
-/* 5 bit unsigned immediate in shift instructions */
+/* 5-bit unsigned immediate in shift instructions */
 #define CONST_OK_FOR_N(VALUE) ((unsigned) (VALUE) <= 31)
-/* 9 bit signed immediate for word multiply instruction.  */
+/* 9-bit signed immediate for word multiply instruction.  */
 #define CONST_OK_FOR_O(VALUE) ((unsigned) (VALUE) + 0x100 < 0x200)
 
 #define CONST_OK_FOR_P(VALUE) 0
@@ -566,12 +441,12 @@ enum reg_class
 
 #define STACK_GROWS_DOWNWARD
 
-/* Define this if the nominal address of the stack frame
+/* Define this to nonzero if the nominal address of the stack frame
    is at the high-address end of the local variables;
    that is, each additional local variable allocated
    goes at a more negative offset in the frame.  */
 
-#define FRAME_GROWS_DOWNWARD
+#define FRAME_GROWS_DOWNWARD 1
 
 /* Offset within stack frame to start allocating local variables at.
    If FRAME_GROWS_DOWNWARD, this is the offset to the END of the
@@ -616,7 +491,7 @@ enum reg_class
    `HARD_FRAME_POINTER_REGNUM' or `STACK_POINTER_REGNUM'.
 
    Do not define this macro if it would be the same as
-   `FRAME_POINTER_REGNUM'. */
+   `FRAME_POINTER_REGNUM'.  */
 #undef  HARD_FRAME_POINTER_REGNUM 
 #define HARD_FRAME_POINTER_REGNUM 29
 
@@ -656,7 +531,7 @@ enum reg_class
          {FRAME_POINTER_REGNUM, STACK_POINTER_REGNUM}}
 
    Note that the elimination of the argument pointer with the stack
-   pointer is specified first since that is the preferred elimination. */
+   pointer is specified first since that is the preferred elimination.  */
 
 #define ELIMINABLE_REGS							\
 {{ FRAME_POINTER_REGNUM, STACK_POINTER_REGNUM },			\
@@ -669,7 +544,7 @@ enum reg_class
    TO-REG.  This macro need only be defined if `ELIMINABLE_REGS' is
    defined, and will usually be the constant 1, since most of the
    cases preventing register elimination are things that the compiler
-   already knows about. */
+   already knows about.  */
 
 #define CAN_ELIMINATE(FROM, TO) \
  ((TO) == STACK_POINTER_REGNUM ? ! frame_pointer_needed : 1)
@@ -677,7 +552,7 @@ enum reg_class
 /* This macro is similar to `INITIAL_FRAME_POINTER_OFFSET'.  It
    specifies the initial difference between the specified pair of
    registers.  This macro must be defined if `ELIMINABLE_REGS' is
-   defined. */
+   defined.  */
 
 #define INITIAL_ELIMINATION_OFFSET(FROM, TO, OFFSET)			\
 {									\
@@ -686,11 +561,8 @@ enum reg_class
   else if ((FROM) == ARG_POINTER_REGNUM)				\
    (OFFSET) = compute_frame_size (get_frame_size (), (long *)0);	\
   else									\
-    abort ();								\
+    gcc_unreachable ();							\
 }
-
-/* A guess for the V850.  */
-#define PROMOTE_PROTOTYPES 1
 
 /* Keep the stack pointer constant throughout the function.  */
 #define ACCUMULATE_OUTGOING_ARGS 1
@@ -731,14 +603,11 @@ struct cum_arg { int nbytes; int anonymous_args; };
 #define FUNCTION_ARG(CUM, MODE, TYPE, NAMED) \
   function_arg (&CUM, MODE, TYPE, NAMED)
 
-#define FUNCTION_ARG_PARTIAL_NREGS(CUM, MODE, TYPE, NAMED) \
-  function_arg_partial_nregs (&CUM, MODE, TYPE, NAMED)
-
 /* Initialize a variable CUM of type CUMULATIVE_ARGS
    for a call to a function whose data type is FNTYPE.
    For a library call, FNTYPE is 0.  */
 
-#define INIT_CUMULATIVE_ARGS(CUM,FNTYPE,LIBNAME,INDIRECT)	\
+#define INIT_CUMULATIVE_ARGS(CUM, FNTYPE, LIBNAME, INDIRECT, N_NAMED_ARGS) \
  ((CUM).nbytes = 0, (CUM).anonymous_args = 0)
 
 /* Update the data in CUM to advance over an argument
@@ -756,21 +625,7 @@ struct cum_arg { int nbytes; int anonymous_args; };
 
 /* Define this if the above stack space is to be considered part of the
    space allocated by the caller.  */
-#define OUTGOING_REG_PARM_STACK_SPACE
-
-/* Do any setup necessary for varargs/stdargs functions.  */
-#define SETUP_INCOMING_VARARGS(CUM, MODE, TYPE, PAS, SECOND) \
-  (CUM).anonymous_args = (!TARGET_GHS ? 1 : 0);
-
-/* Implement `va_arg'.  */
-#define EXPAND_BUILTIN_VA_ARG(valist, type) \
-  v850_va_arg (valist, type)
-
-#define FUNCTION_ARG_PASS_BY_REFERENCE(CUM, MODE, TYPE, NAMED)		\
-  ((TYPE) && int_size_in_bytes (TYPE) > 8)
- 
-#define FUNCTION_ARG_CALLEE_COPIES(CUM, MODE, TYPE, NAMED) \
-  ((TYPE) && int_size_in_bytes (TYPE) > 8)
+#define OUTGOING_REG_PARM_STACK_SPACE 1
 
 /* 1 if N is a possible register number for function argument passing.  */
 
@@ -779,7 +634,7 @@ struct cum_arg { int nbytes; int anonymous_args; };
 /* Define how to find the value returned by a function.
    VALTYPE is the data type of the value (as a tree).
    If the precise function being called is known, FUNC is its FUNCTION_DECL;
-   otherwise, FUNC is 0.   */
+   otherwise, FUNC is 0.  */
    
 #define FUNCTION_VALUE(VALTYPE, FUNC) \
   gen_rtx_REG (TYPE_MODE (VALTYPE), 10)
@@ -794,16 +649,7 @@ struct cum_arg { int nbytes; int anonymous_args; };
 
 #define FUNCTION_VALUE_REGNO_P(N) ((N) == 10)
 
-/* Return values > 8 bytes in length in memory.  */
 #define DEFAULT_PCC_STRUCT_RETURN 0
-#define RETURN_IN_MEMORY(TYPE)  \
-  (int_size_in_bytes (TYPE) > 8 || TYPE_MODE (TYPE) == BLKmode)
-
-/* Register in which address to store a structure value
-   is passed to a function.  On the V850 it's passed as
-   the first parameter.  */
-
-#define STRUCT_VALUE 0
 
 /* EXIT_IGNORE_STACK should be nonzero if, when returning from a function,
    the stack pointer does not matter.  The value is tested only in
@@ -919,15 +765,17 @@ struct cum_arg { int nbytes; int anonymous_args; };
    register class that does not include r0 on the output.  */
 
 #define EXTRA_CONSTRAINT(OP, C)						\
- ((C) == 'Q'   ? ep_memory_operand (OP, GET_MODE (OP), 0)			\
+ ((C) == 'Q'   ? ep_memory_operand (OP, GET_MODE (OP), FALSE)		\
   : (C) == 'R' ? special_symbolref_operand (OP, VOIDmode)		\
-  : (C) == 'S' ? (GET_CODE (OP) == SYMBOL_REF && ! ZDA_NAME_P (XSTR (OP, 0))) \
-  : (C) == 'T' ? ep_memory_operand(OP,GET_MODE(OP),TRUE)			\
-  : (C) == 'U' ? ((GET_CODE (OP) == SYMBOL_REF && ZDA_NAME_P (XSTR (OP, 0))) \
+  : (C) == 'S' ? (GET_CODE (OP) == SYMBOL_REF				\
+		  && !SYMBOL_REF_ZDA_P (OP))				\
+  : (C) == 'T' ? ep_memory_operand (OP, GET_MODE (OP), TRUE)		\
+  : (C) == 'U' ? ((GET_CODE (OP) == SYMBOL_REF				\
+		   && SYMBOL_REF_ZDA_P (OP))				\
 		  || (GET_CODE (OP) == CONST				\
 		      && GET_CODE (XEXP (OP, 0)) == PLUS		\
 		      && GET_CODE (XEXP (XEXP (OP, 0), 0)) == SYMBOL_REF \
-		      && ZDA_NAME_P (XSTR (XEXP (XEXP (OP, 0), 0), 0)))) \
+		      && SYMBOL_REF_ZDA_P (XEXP (XEXP (OP, 0), 0))))	\
   : 0)
 
 /* GO_IF_LEGITIMATE_ADDRESS recognizes an RTL expression
@@ -948,13 +796,14 @@ struct cum_arg { int nbytes; int anonymous_args; };
 
 #define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)				\
 do {									\
-  if (RTX_OK_FOR_BASE_P (X)) goto ADDR;					\
+  if (RTX_OK_FOR_BASE_P (X)) 						\
+    goto ADDR;								\
   if (CONSTANT_ADDRESS_P (X)						\
       && (MODE == QImode || INTVAL (X) % 2 == 0)			\
       && (GET_MODE_SIZE (MODE) <= 4 || INTVAL (X) % 4 == 0))		\
     goto ADDR;								\
   if (GET_CODE (X) == LO_SUM						\
-      && GET_CODE (XEXP (X, 0)) == REG					\
+      && REG_P (XEXP (X, 0))						\
       && REG_OK_FOR_BASE_P (XEXP (X, 0))				\
       && CONSTANT_P (XEXP (X, 1))					\
       && (GET_CODE (XEXP (X, 1)) != CONST_INT				\
@@ -966,27 +815,15 @@ do {									\
       && (GET_MODE_SIZE (MODE) <= GET_MODE_SIZE (word_mode)))		\
      goto ADDR;								\
   if (GET_CODE (X) == PLUS						\
+      && RTX_OK_FOR_BASE_P (XEXP (X, 0)) 				\
       && CONSTANT_ADDRESS_P (XEXP (X, 1))				\
-      && (MODE == QImode || INTVAL (XEXP (X, 1)) % 2 == 0)		\
-      && RTX_OK_FOR_BASE_P (XEXP (X, 0))) goto ADDR;			\
+      && ((MODE == QImode || INTVAL (XEXP (X, 1)) % 2 == 0)		\
+	   && CONST_OK_FOR_K (INTVAL (XEXP (X, 1)) 			\
+                              + (GET_MODE_NUNITS (MODE) * UNITS_PER_WORD)))) \
+    goto ADDR;			\
 } while (0)
 
 
-/* Try machine-dependent ways of modifying an illegitimate address
-   to be legitimate.  If we find one, return the new, valid address.
-   This macro is used in only one place: `memory_address' in explow.c.
-
-   OLDX is the address as it was before break_out_memory_refs was called.
-   In some cases it is useful to look at this to decide what needs to be done.
-
-   MODE and WIN are passed so that this macro can use
-   GO_IF_LEGITIMATE_ADDRESS.
-
-   It is always safe for this macro to do nothing.  It exists to recognize
-   opportunities to optimize the output.   */
-
-#define LEGITIMIZE_ADDRESS(X,OLDX,MODE,WIN)  {}
-
 /* Go to LABEL if ADDR (a legitimate address expression)
    has an effect that depends on the machine mode it is used for.  */
 
@@ -1002,14 +839,6 @@ do {									\
 	&& GET_CODE (XEXP (XEXP (X, 0), 0)) == SYMBOL_REF		\
 	&& GET_CODE (XEXP (XEXP (X, 0), 1)) == CONST_INT		\
 	&& ! CONST_OK_FOR_K (INTVAL (XEXP (XEXP (X, 0), 1)))))
-
-/* In rare cases, correct code generation requires extra machine
-   dependent processing between the second jump optimization pass and
-   delayed branch scheduling.  On those machines, define this macro
-   as a C statement to act on the code starting at INSN.  */
-
-#define MACHINE_DEPENDENT_REORG(INSN) v850_reorg (INSN)
-
 
 /* Tell final.c how to eliminate redundant test instructions.  */
 
@@ -1024,67 +853,6 @@ do {									\
 #define CC_OVERFLOW_UNUSABLE 0x200
 #define CC_NO_CARRY CC_NO_OVERFLOW
 #define NOTICE_UPDATE_CC(EXP, INSN) notice_update_cc(EXP, INSN)
-
-/* A part of a C `switch' statement that describes the relative costs
-   of constant RTL expressions.  It must contain `case' labels for
-   expression codes `const_int', `const', `symbol_ref', `label_ref'
-   and `const_double'.  Each case must ultimately reach a `return'
-   statement to return the relative cost of the use of that kind of
-   constant value in an expression.  The cost may depend on the
-   precise value of the constant, which is available for examination
-   in X, and the rtx code of the expression in which it is contained,
-   found in OUTER_CODE.
-
-   CODE is the expression code--redundant, since it can be obtained
-   with `GET_CODE (X)'. */
-
-#define CONST_COSTS(RTX,CODE,OUTER_CODE)				\
-  case CONST_INT:							\
-  case CONST_DOUBLE:							\
-  case CONST:								\
-  case SYMBOL_REF:							\
-  case LABEL_REF:							\
-    {									\
-      int _zxy = const_costs(RTX, CODE);				\
-      return (_zxy) ? COSTS_N_INSNS (_zxy) : 0;				\
-    }
-
-/* A crude cut at RTX_COSTS for the V850.  */
-
-/* Provide the costs of a rtl expression.  This is in the body of a
-   switch on CODE. 
-
-   There aren't DImode MOD, DIV or MULT operations, so call them
-   very expensive.  Everything else is pretty much a constant cost.  */
-
-#define RTX_COSTS(RTX,CODE,OUTER_CODE)					\
-  case MOD:								\
-  case DIV:								\
-  case UMOD:								\
-  case UDIV:								\
-    if (TARGET_V850E && optimize_size)					\
-      return 6;								\
-    return 60;								\
-  case MULT:								\
-    if (TARGET_V850E							\
-	&& (   GET_MODE (RTX) == SImode					\
-	    || GET_MODE (RTX) == HImode					\
-	    || GET_MODE (RTX) == QImode))				\
-      {									\
-	if (GET_CODE (XEXP (RTX, 1)) == REG)				\
-	  return 4;							\
-	else if (GET_CODE (XEXP (RTX, 1)) == CONST_INT)			\
-	  {								\
-	    if (CONST_OK_FOR_O (INTVAL (XEXP (RTX, 1))))		\
-	      return 6;							\
-	    else if (CONST_OK_FOR_K (INTVAL (XEXP (RTX, 1))))		\
-	      return 10;						\
-	  }								\
-      }									\
-    return 20;
-
-/* All addressing modes have the same cost on the V850 series.  */
-#define ADDRESS_COST(ADDR) 1
 
 /* Nonzero if access to memory by bytes or half words is no faster
    than accessing full words.  */
@@ -1107,109 +875,15 @@ typedef enum
   DATA_AREA_ZDA
 } v850_data_area;
 
-/* A list of names for sections other than the standard two, which are
-   `in_text' and `in_data'.  You need not define this macro on a
-   system with no other sections (that GCC needs to use).  */
-#undef	EXTRA_SECTIONS
-#define EXTRA_SECTIONS in_tdata, in_sdata, in_zdata, \
- in_rozdata, in_rosdata, in_sbss, in_zbss, in_zcommon, in_scommon
-
-/* One or more functions to be defined in `varasm.c'.  These
-   functions should do jobs analogous to those of `text_section' and
-   `data_section', for your additional sections.  Do not define this
-   macro if you do not define `EXTRA_SECTIONS'. */
-#undef	EXTRA_SECTION_FUNCTIONS
-
-/* This could be done a lot more cleanly using ANSI C ... */
-#define EXTRA_SECTION_FUNCTIONS						\
-void									\
-sdata_section ()							\
-{									\
-  if (in_section != in_sdata)						\
-    {									\
-      fprintf (asm_out_file, "%s\n", SDATA_SECTION_ASM_OP);		\
-      in_section = in_sdata;						\
-    }									\
-}									\
-									\
-void									\
-rosdata_section ()							\
-{									\
-  if (in_section != in_rosdata)						\
-    {									\
-      fprintf (asm_out_file, "%s\n", ROSDATA_SECTION_ASM_OP);		\
-      in_section = in_sdata;						\
-    }									\
-}									\
-									\
-void									\
-sbss_section ()								\
-{									\
-  if (in_section != in_sbss)						\
-    {									\
-      fprintf (asm_out_file, "%s\n", SBSS_SECTION_ASM_OP);		\
-      in_section = in_sbss;						\
-    }									\
-}									\
-									\
-void									\
-tdata_section ()							\
-{									\
-  if (in_section != in_tdata)						\
-    {									\
-      fprintf (asm_out_file, "%s\n", TDATA_SECTION_ASM_OP);		\
-      in_section = in_tdata;						\
-    }									\
-}									\
-									\
-void									\
-zdata_section ()							\
-{									\
-  if (in_section != in_zdata)						\
-    {									\
-      fprintf (asm_out_file, "%s\n", ZDATA_SECTION_ASM_OP);		\
-      in_section = in_zdata;						\
-    }									\
-}									\
-									\
-void									\
-rozdata_section ()							\
-{									\
-  if (in_section != in_rozdata)						\
-    {									\
-      fprintf (asm_out_file, "%s\n", ROZDATA_SECTION_ASM_OP);		\
-      in_section = in_rozdata;						\
-    }									\
-}									\
-									\
-void									\
-zbss_section ()								\
-{									\
-  if (in_section != in_zbss)						\
-    {									\
-      fprintf (asm_out_file, "%s\n", ZBSS_SECTION_ASM_OP);		\
-      in_section = in_zbss;						\
-    }									\
-}
-
 #define TEXT_SECTION_ASM_OP  "\t.section .text"
 #define DATA_SECTION_ASM_OP  "\t.section .data"
 #define BSS_SECTION_ASM_OP   "\t.section .bss"
 #define SDATA_SECTION_ASM_OP "\t.section .sdata,\"aw\""
 #define SBSS_SECTION_ASM_OP  "\t.section .sbss,\"aw\""
-#define ZDATA_SECTION_ASM_OP "\t.section .zdata,\"aw\""
-#define ZBSS_SECTION_ASM_OP  "\t.section .zbss,\"aw\""
-#define TDATA_SECTION_ASM_OP "\t.section .tdata,\"aw\""
-#define ROSDATA_SECTION_ASM_OP "\t.section .rosdata,\"a\""
-#define ROZDATA_SECTION_ASM_OP "\t.section .rozdata,\"a\""
 
 #define SCOMMON_ASM_OP 	       "\t.scomm\t"
 #define ZCOMMON_ASM_OP 	       "\t.zcomm\t"
 #define TCOMMON_ASM_OP 	       "\t.tcomm\t"
-
-/* Output at beginning/end of assembler file.  */
-#undef ASM_FILE_START
-#define ASM_FILE_START(FILE) asm_file_start(FILE)
 
 #define ASM_COMMENT_START "#"
 
@@ -1241,14 +915,14 @@ zbss_section ()								\
   v850_output_aligned_bss (FILE, DECL, NAME, SIZE, ALIGN)
 
 /* This says how to output the assembler to define a global
-   uninitialized, common symbol. */
+   uninitialized, common symbol.  */
 #undef  ASM_OUTPUT_ALIGNED_COMMON
 #undef  ASM_OUTPUT_COMMON
 #define ASM_OUTPUT_ALIGNED_DECL_COMMON(FILE, DECL, NAME, SIZE, ALIGN) \
      v850_output_common (FILE, DECL, NAME, SIZE, ALIGN)
 
 /* This says how to output the assembler to define a local
-   uninitialized symbol. */
+   uninitialized symbol.  */
 #undef  ASM_OUTPUT_ALIGNED_LOCAL
 #undef  ASM_OUTPUT_LOCAL
 #define ASM_OUTPUT_ALIGNED_DECL_LOCAL(FILE, DECL, NAME, SIZE, ALIGN) \
@@ -1256,13 +930,6 @@ zbss_section ()								\
      
 /* Globalizing directive for a label.  */
 #define GLOBAL_ASM_OP "\t.global "
-
-/* This is how to output a reference to a user-level label named NAME.
-   `assemble_name' uses this.  */
-
-#undef ASM_OUTPUT_LABELREF
-#define ASM_OUTPUT_LABELREF(FILE, NAME) \
-  asm_fprintf (FILE, "%U%s", (*targetm.strip_name_encoding) (NAME))
 
 #define ASM_PN_FORMAT "%s___%lu"
 
@@ -1319,12 +986,14 @@ zbss_section ()								\
 
 /* This is how to output an element of a case-vector that is relative.  */
 
+/* Disable the shift, which is for the currently disabled "switch"
+   opcode.  Se casesi in v850.md.  */
 #define ASM_OUTPUT_ADDR_DIFF_ELT(FILE, BODY, VALUE, REL) 		\
   fprintf (FILE, "\t%s %s.L%d-.L%d%s\n",				\
 	   (TARGET_BIG_SWITCH ? ".long" : ".short"),			\
-	   (! TARGET_BIG_SWITCH && TARGET_V850E ? "(" : ""),		\
+	   (0 && ! TARGET_BIG_SWITCH && TARGET_V850E ? "(" : ""),		\
 	   VALUE, REL,							\
-	   (! TARGET_BIG_SWITCH && TARGET_V850E ? ")>>1" : ""))
+	   (0 && ! TARGET_BIG_SWITCH && TARGET_V850E ? ")>>1" : ""))
 
 #define ASM_OUTPUT_ALIGN(FILE, LOG)	\
   if ((LOG) != 0)			\
@@ -1341,19 +1010,14 @@ zbss_section ()								\
    for the index in the tablejump instruction.  */
 #define CASE_VECTOR_MODE (TARGET_BIG_SWITCH ? SImode : HImode)
 
-/* Define this if the case instruction drops through after the table
-   when the index is out of range.  Don't define it if the case insn
-   jumps to the default label instead.  */
-/* #define CASE_DROPS_THROUGH */
-
 /* Define as C expression which evaluates to nonzero if the tablejump
    instruction expects the table to contain offsets from the address of the
    table.
-   Do not define this if the table should contain absolute addresses. */
+   Do not define this if the table should contain absolute addresses.  */
 #define CASE_VECTOR_PC_RELATIVE 1
 
 /* The switch instruction requires that the jump table immediately follow
-   it. */
+   it.  */
 #define JUMP_TABLES_IN_TEXT_SECTION 1
 
 /* svr4.h defines this assuming that 4 byte alignment is required.  */
@@ -1383,25 +1047,6 @@ zbss_section ()								\
    is done just by pretending it is already truncated.  */
 #define TRULY_NOOP_TRUNCATION(OUTPREC, INPREC) 1
 
-#define STORE_FLAG_VALUE 1
-
-#define MULDI3_LIBCALL  "__muldi3"
-#define UCMPDI2_LIBCALL "__ucmpdi2"
-#define CMPDI2_LIBCALL  "__cmpdi2"
-#define NEGDI2_LIBCALL  "__negdi2"
-
-#define INIT_TARGET_OPTABS 				\
-  do							\
-    { 							\
-      cmp_optab->handlers[(int) DImode].libfunc		\
-	= init_one_libfunc (CMPDI2_LIBCALL);            \
-      ucmp_optab->handlers[(int) DImode].libfunc        \
-	= init_one_libfunc (UCMPDI2_LIBCALL);           \
-      neg_optab->handlers[(int) DImode].libfunc		\
-	= init_one_libfunc (NEGDI2_LIBCALL);		\
-    }							\
-  while (0)
-
 /* Specify the machine mode that pointers have.
    After generation of rtl, the compiler makes no further distinction
    between pointers and any other objects of this machine mode.  */
@@ -1428,7 +1073,7 @@ zbss_section ()								\
    can appear in the "ghs section" pragma.  These names are used to index
    into the GHS_default_section_names[] and GHS_current_section_names[]
    that are defined in v850.c, and so the ordering of each must remain
-   consistant. 
+   consistent. 
 
    These arrays give the default and current names for each kind of 
    section defined by the GHS pragmas.  The current names can be changed
@@ -1489,43 +1134,13 @@ extern union tree_node * GHS_current_section_names [(int) COUNT_OF_GHS_SECTION_K
 
 #define EP_REGNUM 30	/* ep register number */
 
-#define ZDA_NAME_FLAG_CHAR '@'
-#define TDA_NAME_FLAG_CHAR '%'
-#define SDA_NAME_FLAG_CHAR '&'
+#define SYMBOL_FLAG_ZDA		(SYMBOL_FLAG_MACH_DEP << 0)
+#define SYMBOL_FLAG_TDA		(SYMBOL_FLAG_MACH_DEP << 1)
+#define SYMBOL_FLAG_SDA		(SYMBOL_FLAG_MACH_DEP << 2)
+#define SYMBOL_REF_ZDA_P(X)	((SYMBOL_REF_FLAGS (X) & SYMBOL_FLAG_ZDA) != 0)
+#define SYMBOL_REF_TDA_P(X)	((SYMBOL_REF_FLAGS (X) & SYMBOL_FLAG_TDA) != 0)
+#define SYMBOL_REF_SDA_P(X)	((SYMBOL_REF_FLAGS (X) & SYMBOL_FLAG_SDA) != 0)
 
-#define ZDA_NAME_P(NAME) (*(NAME) == ZDA_NAME_FLAG_CHAR)
-#define TDA_NAME_P(NAME) (*(NAME) == TDA_NAME_FLAG_CHAR)
-#define SDA_NAME_P(NAME) (*(NAME) == SDA_NAME_FLAG_CHAR)
+#define TARGET_ASM_INIT_SECTIONS v850_asm_init_sections
 
-#define ENCODED_NAME_P(SYMBOL_NAME)    \
-  (   ZDA_NAME_P (SYMBOL_NAME)         \
-   || TDA_NAME_P (SYMBOL_NAME)         \
-   || SDA_NAME_P (SYMBOL_NAME))
-
-/* Define this if you have defined special-purpose predicates in the
-   file `MACHINE.c'.  This macro is called within an initializer of an
-   array of structures.  The first field in the structure is the name
-   of a predicate and the second field is an array of rtl codes.  For
-   each predicate, list all rtl codes that can be in expressions
-   matched by the predicate.  The list should have a trailing comma.  */
-
-#define PREDICATE_CODES							\
-{ "reg_or_0_operand",		{ REG, SUBREG, CONST_INT, CONST_DOUBLE }}, \
-{ "reg_or_int5_operand",	{ REG, SUBREG, CONST_INT }},		\
-{ "reg_or_int9_operand",	{ REG, SUBREG, CONST_INT }},		\
-{ "reg_or_const_operand",       { REG, CONST_INT }},			\
-{ "call_address_operand",	{ REG, SYMBOL_REF }},			\
-{ "movsi_source_operand",	{ LABEL_REF, SYMBOL_REF, CONST_INT,	\
-				  CONST_DOUBLE, CONST, HIGH, MEM,	\
-				  REG, SUBREG }},			\
-{ "special_symbolref_operand",	{ SYMBOL_REF }},			\
-{ "power_of_two_operand",	{ CONST_INT }},				\
-{ "pattern_is_ok_for_prologue",	{ PARALLEL }},				\
-{ "pattern_is_ok_for_epilogue",	{ PARALLEL }},				\
-{ "register_is_ok_for_epilogue",{ REG }},				\
-{ "pattern_is_ok_for_dispose",	{ PARALLEL }},				\
-{ "pattern_is_ok_for_prepare",	{ PARALLEL }},				\
-{ "register_is_ok_for_dispose",	{ REG }},				\
-{ "not_power_of_two_operand",	{ CONST_INT }},
-  
 #endif /* ! GCC_V850_H */

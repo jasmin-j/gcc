@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1995-2002 Free Software Foundation, Inc.          --
+--          Copyright (C) 1995-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,38 +34,17 @@
 --  This package is a thin binding to selected functions in the C
 --  library that provide a complete interface for handling C streams.
 
-with System.Parameters;
+with System.CRTL;
 
 package Interfaces.C_Streams is
    pragma Preelaborate;
 
-   --  Note: the reason we do not use the types that are in Interfaces.C is
-   --  that we want to avoid dragging in the code in this unit if possible.
-
-   subtype chars is System.Address;
-   --  Pointer to null-terminated array of characters
-
-   subtype FILEs is System.Address;
-   --  Corresponds to the C type FILE*
-
+   subtype chars is System.CRTL.chars;
+   subtype FILEs is System.CRTL.FILEs;
+   subtype int is System.CRTL.int;
+   subtype long is System.CRTL.long;
+   subtype size_t is System.CRTL.size_t;
    subtype voids is System.Address;
-   --  Corresponds to the C type void*
-
-   subtype int is Integer;
-   --  Note: the above type is a subtype deliberately, and it is part of
-   --  this spec that the above correspondence is guaranteed. This means
-   --  that it is legitimate to, for example, use Integer instead of int.
-   --  We provide this synonym for clarity, but in some cases it may be
-   --  convenient to use the underlying types (for example to avoid an
-   --  unnecessary dependency of a spec on the spec of this unit).
-
-   type long is range -(2 ** (System.Parameters.long_bits - 1))
-      .. +(2 ** (System.Parameters.long_bits - 1)) - 1;
-   --  Note: the above type also used to be a subtype, but the correspondence
-   --  was unused so it was made into a parameterized type to avoid having
-   --  multiple versions of this spec for systems where long /= Long_Integer.
-
-   type size_t is mod 2 ** Standard'Address_Size;
 
    NULL_Stream : constant FILEs;
    --  Value returned (NULL in C) to indicate an fdopen/fopen/tmpfile error
@@ -107,49 +85,56 @@ package Interfaces.C_Streams is
    --  Library Reference" (Microsoft Press, 1990, ISBN 1-55615-225-6),
    --  which includes useful information on system compatibility.
 
-   procedure clearerr (stream : FILEs);
+   procedure clearerr (stream : FILEs) renames System.CRTL.clearerr;
 
-   function fclose (stream : FILEs) return int;
+   function fclose (stream : FILEs) return int renames System.CRTL.fclose;
 
-   function fdopen (handle : int; mode : chars) return FILEs;
+   function fdopen (handle : int; mode : chars) return FILEs
+     renames System.CRTL.fdopen;
 
    function feof (stream : FILEs) return int;
 
    function ferror (stream : FILEs) return int;
 
-   function fflush (stream : FILEs) return int;
+   function fflush (stream : FILEs) return int renames System.CRTL.fflush;
 
-   function fgetc (stream : FILEs) return int;
+   function fgetc (stream : FILEs) return int renames System.CRTL.fgetc;
 
-   function fgets (strng : chars; n : int; stream : FILEs) return chars;
+   function fgets (strng : chars; n : int; stream : FILEs) return chars
+     renames System.CRTL.fgets;
 
    function fileno (stream : FILEs) return int;
 
-   function fopen (filename : chars; Mode : chars) return FILEs;
+   function fopen
+     (filename : chars;
+      mode     : chars;
+      encoding : System.CRTL.Filename_Encoding := System.CRTL.UTF8)
+      return FILEs
+     renames System.CRTL.fopen;
    --  Note: to maintain target independence, use text_translation_required,
-   --  a boolean variable defined in a-sysdep.c to deal with the target
+   --  a boolean variable defined in sysdep.c to deal with the target
    --  dependent text translation requirement. If this variable is set,
    --  then b/t should be appended to the standard mode argument to set
    --  the text translation mode off or on as required.
 
-   function fputc (C : int; stream : FILEs) return int;
+   function fputc (C : int; stream : FILEs) return int
+     renames System.CRTL.fputc;
 
-   function fputs (Strng : chars; Stream : FILEs) return int;
+   function fputs (Strng : chars; Stream : FILEs) return int
+     renames System.CRTL.fputs;
 
    function fread
      (buffer : voids;
       size   : size_t;
       count  : size_t;
-      stream : FILEs)
-      return   size_t;
+      stream : FILEs) return size_t;
 
    function fread
      (buffer : voids;
       index  : size_t;
       size   : size_t;
       count  : size_t;
-      stream : FILEs)
-      return   size_t;
+      stream : FILEs) return size_t;
    --  Same as normal fread, but has a parameter 'index' that indicates
    --  the starting index for the read within 'buffer' (which must be the
    --  address of the beginning of a whole array object with an assumed
@@ -159,48 +144,51 @@ package Interfaces.C_Streams is
    function freopen
      (filename : chars;
       mode     : chars;
-      stream   : FILEs)
-      return     FILEs;
+      stream   : FILEs;
+      encoding : System.CRTL.Filename_Encoding := System.CRTL.UTF8)
+      return FILEs
+     renames System.CRTL.freopen;
 
    function fseek
      (stream : FILEs;
       offset : long;
-      origin : int)
-      return   int;
+      origin : int) return int
+     renames System.CRTL.fseek;
 
-   function ftell (stream : FILEs) return long;
+   function ftell (stream : FILEs) return long
+     renames System.CRTL.ftell;
 
    function fwrite
      (buffer : voids;
       size   : size_t;
       count  : size_t;
-      stream : FILEs)
-      return   size_t;
+      stream : FILEs) return size_t;
 
-   function isatty (handle : int) return int;
+   function isatty (handle : int) return int renames System.CRTL.isatty;
 
-   procedure mktemp (template : chars);
+   procedure mktemp (template : chars) renames System.CRTL.mktemp;
    --  The return value (which is just a pointer to template) is discarded
 
-   procedure rewind (stream : FILEs);
+   procedure rewind (stream : FILEs) renames System.CRTL.rewind;
 
    function setvbuf
      (stream : FILEs;
       buffer : chars;
       mode   : int;
-      size   : size_t)
-      return   int;
+      size   : size_t) return int;
 
-   procedure tmpnam (string : chars);
+   procedure tmpnam (string : chars) renames System.CRTL.tmpnam;
    --  The parameter must be a pointer to a string buffer of at least L_tmpnam
    --  bytes (the call with a null parameter is not supported). The returned
    --  value, which is just a copy of the input argument, is discarded.
 
-   function tmpfile return FILEs;
+   function tmpfile return FILEs renames System.CRTL.tmpfile;
 
-   function ungetc (c : int; stream : FILEs) return int;
+   function ungetc (c : int; stream : FILEs) return int
+     renames System.CRTL.ungetc;
 
-   function unlink (filename : chars) return int;
+   function unlink (filename : chars) return int
+     renames System.CRTL.unlink;
 
    ---------------------
    -- Extra functions --
@@ -212,11 +200,11 @@ package Interfaces.C_Streams is
    --  functions.
 
    function file_exists (name : chars) return int;
-   --  Tests if given name corresponds to an existing file.
+   --  Tests if given name corresponds to an existing file
 
    function is_regular_file (handle : int) return int;
-   --  Tests if given handle is for a regular file (result 1) or for
-   --  a non-regular file (pipe or device, result 0).
+   --  Tests if given handle is for a regular file (result 1) or for a
+   --  non-regular file (pipe or device, result 0).
 
    ---------------------------------
    -- Control of Text/Binary Mode --
@@ -253,29 +241,6 @@ private
    pragma Inline (fread);
    pragma Inline (fwrite);
    pragma Inline (setvbuf);
-
-   --  The following routines are always functions in C, and thus can be
-   --  imported directly into Ada without any intermediate C needed
-
-   pragma Import (C, clearerr);
-   pragma Import (C, fclose);
-   pragma Import (C, fdopen);
-   pragma Import (C, fflush);
-   pragma Import (C, fgetc);
-   pragma Import (C, fgets);
-   pragma Import (C, fopen);
-   pragma Import (C, fputc);
-   pragma Import (C, fputs);
-   pragma Import (C, freopen);
-   pragma Import (C, fseek);
-   pragma Import (C, ftell);
-   pragma Import (C, isatty);
-   pragma Import (C, mktemp);
-   pragma Import (C, rewind);
-   pragma Import (C, tmpnam);
-   pragma Import (C, tmpfile);
-   pragma Import (C, ungetc);
-   pragma Import (C, unlink);
 
    pragma Import (C, file_exists, "__gnat_file_exists");
    pragma Import (C, is_regular_file, "__gnat_is_regular_file_fd");

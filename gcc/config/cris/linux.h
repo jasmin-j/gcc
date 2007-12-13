@@ -1,12 +1,12 @@
 /* Definitions for GCC.  Part of the machine description for CRIS.
-   Copyright (C) 2001, 2002 Free Software Foundation, Inc.
+   Copyright (C) 2001, 2002, 2003, 2005, 2006, 2007 Free Software Foundation, Inc.
    Contributed by Axis Communications.  Written by Hans-Peter Nilsson.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 /* After the first "Node:" comment comes all preprocessor directives and
@@ -47,13 +46,8 @@ Boston, MA 02111-1307, USA.  */
 
 #undef CRIS_CPP_SUBTARGET_SPEC
 #define CRIS_CPP_SUBTARGET_SPEC \
-  "-D__gnu_linux__ -D__linux__ -D__unix__  -D__ELF__\
-   %{pthread:-D_REENTRANT}\
-   %{fPIC|fpic: -D__PIC__ -D__pic__}\
-   %{!fleading-underscore:-fno-leading-underscore -D__NO_UNDERSCORES__}\
-   %{!march=*:%{!cpu=*:-D__arch_v10 -D__CRIS_arch_version=10}}\
-   %{!ansi:%{!std=*:%{!undef:-Dlinux -Dunix}\
-     -Asystem(unix) -Asystem(posix) -Acpu(cris) -Amachine(cris)}}"
+  "%{pthread:-D_REENTRANT}\
+   %{!march=*:%{!cpu=*:-D__arch_v10 -D__CRIS_arch_version=10}}"
 
 #undef CRIS_CC1_SUBTARGET_SPEC
 #define CRIS_CC1_SUBTARGET_SPEC \
@@ -63,29 +57,25 @@ Boston, MA 02111-1307, USA.  */
 #define CRIS_ASM_SUBTARGET_SPEC \
  "--em=criself\
   %{!fleading-underscore:--no-underscore}\
-  %{fPIC|fpic: --pic}"
+  %{fPIC|fpic|fPIE|fpie: --pic}"
 
-/* Provide a legacy -mlinux option.  */
-#undef CRIS_SUBTARGET_SWITCHES
-#define CRIS_SUBTARGET_SWITCHES						\
- {"linux",				 0, ""},			\
- {"gotplt",	 -TARGET_MASK_AVOID_GOTPLT, ""},			\
- {"no-gotplt",	  TARGET_MASK_AVOID_GOTPLT,				\
-  N_("Together with -fpic and -fPIC, do not use GOTPLT references")},
+/* Previously controlled by target_flags.  */
+#undef TARGET_LINUX
+#define TARGET_LINUX 1
 
 #undef CRIS_SUBTARGET_DEFAULT
 #define CRIS_SUBTARGET_DEFAULT			\
-  (TARGET_MASK_SVINTO				\
-   + TARGET_MASK_ETRAX4_ADD			\
-   + TARGET_MASK_ALIGN_BY_32			\
-   + TARGET_MASK_ELF				\
-   + TARGET_MASK_LINUX)
+  (MASK_SVINTO					\
+   + MASK_ETRAX4_ADD				\
+   + MASK_ALIGN_BY_32)
 
 #undef CRIS_DEFAULT_CPU_VERSION
 #define CRIS_DEFAULT_CPU_VERSION CRIS_CPU_NG
 
 #undef CRIS_SUBTARGET_VERSION
 #define CRIS_SUBTARGET_VERSION " - cris-axis-linux-gnu"
+
+#define GLIBC_DYNAMIC_LINKER "/lib/ld.so.1"
 
 /* We need an -rpath-link to ld.so.1, and presumably to each directory
    specified with -B.  */
@@ -95,9 +85,25 @@ Boston, MA 02111-1307, USA.  */
   -rpath-link include/asm/../..%s\
   %{shared} %{static}\
   %{symbolic:-Bdynamic} %{shlib:-Bdynamic} %{static:-Bstatic}\
-  %{!shared:%{!static:%{rdynamic:-export-dynamic}}}\
+  %{!shared:%{!static:\
+              %{rdynamic:-export-dynamic}\
+              %{!dynamic-linker:-dynamic-linker " LINUX_DYNAMIC_LINKER "}}}\
   %{!r:%{O2|O3: --gc-sections}}"
 
+
+/* Node: Run-time Target */
+
+/* For the cris-*-linux* subtarget.  */
+#undef TARGET_OS_CPP_BUILTINS
+#define TARGET_OS_CPP_BUILTINS()		\
+  do						\
+    {						\
+      LINUX_TARGET_OS_CPP_BUILTINS();		\
+      if (flag_leading_underscore <= 0)		\
+	builtin_define ("__NO_UNDERSCORES__");	\
+    }						\
+  while (0)
+     
 
 /* Node: Sections */
 

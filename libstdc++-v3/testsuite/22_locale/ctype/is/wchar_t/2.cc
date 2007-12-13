@@ -1,5 +1,8 @@
 // { dg-do run { xfail *-*-![linux]* } }
-// Copyright (C) 2000, 2001, 2002, 2003 Free Software Foundation, Inc.
+// { dg-require-namedlocale "" }
+
+// Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -14,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -41,7 +44,7 @@ void test02()
   typedef ctype_base::mask 	mask;
   typedef vector<mask> 		vector_type;
 
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   //  const int max = numeric_limits<char>::max();
   const int max = 255;
@@ -67,7 +70,7 @@ void test02()
     }   
 
   // "de_DE"
-  locale loc_de("de_DE");
+  locale loc_de = locale("de_DE");
   const ctype<wchar_t>& ctype_de = use_facet<ctype<wchar_t> >(loc_de); 
   for (int i = 0; i < max; ++i)
     {

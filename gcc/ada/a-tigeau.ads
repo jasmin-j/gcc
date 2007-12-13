@@ -1,13 +1,12 @@
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --              A D A . T E X T _ I O . G E N E R I C _ A U X               --
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -81,7 +80,7 @@ private package Ada.Text_IO.Generic_Aux is
 
    procedure Load_Width
      (File  : File_Type;
-      Width : in Field;
+      Width : Field;
       Buf   : out String;
       Ptr   : in out Integer);
    --  Loads exactly Width characters, unless a line mark is encountered first
@@ -165,11 +164,16 @@ private package Ada.Text_IO.Generic_Aux is
    procedure Store_Char
      (File : File_Type;
       ch   : Integer;
-      Buf  : out String;
+      Buf  : in out String;
       Ptr  : in out Integer);
    --  Store a single character in buffer, checking for overflow and
    --  adjusting the column number in the file to reflect the fact
-   --  that a character has been acquired from the input stream.
+   --  that a character has been acquired from the input stream. If
+   --  the character will not fit in the buffer it is stored in the
+   --  last character position of the buffer and Ptr is unchanged.
+   --  No exception is raised in this case, it is the caller's job
+   --  to raise Data_Error if the buffer fills up, so typically the
+   --  caller will make the buffer one character longer than needed.
 
    procedure String_Skip (Str : String; Ptr : out Integer);
    --  Used in the Get from string procedures to skip leading blanks in the

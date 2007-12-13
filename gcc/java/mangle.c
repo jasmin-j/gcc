@@ -1,13 +1,13 @@
 /* Functions related to mangling class names for the GNU compiler
    for the Java(TM) language.
-   Copyright (C) 1998, 1999, 2001, 2002, 2003
+   Copyright (C) 1998, 1999, 2001, 2002, 2003, 2006, 2007
    Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA. 
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>. 
 
 Java and all Java-based marks are trademarks or registered trademarks
 of Sun Microsystems, Inc. in the United States and other countries.
@@ -35,11 +34,14 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "java-tree.h"
 #include "obstack.h"
 #include "toplev.h"
-#include "obstack.h"
 #include "ggc.h"
+#include "langhooks-def.h"
 
+static void mangle_class_field (tree);
+static void mangle_vtable (tree);
 static void mangle_field_decl (tree);
 static void mangle_method_decl (tree);
+static void mangle_local_cni_method_decl (tree);
 
 static void mangle_type (tree);
 static void mangle_pointer_type (tree);
@@ -55,60 +57,260 @@ static void set_type_package_list (tree);
 static int  entry_match_pointer_p (tree, int);
 static void emit_compression_string (int);
 
-static void init_mangling (struct obstack *);
+static void init_mangling (void);
 static tree finish_mangling (void);
 static void compression_table_add (tree);
 
 static void mangle_member_name (tree);
 
-/* We use an incoming obstack, always to be provided to the interface
-   functions. */
+static struct obstack mangle_obstack_1;
 struct obstack *mangle_obstack;
+
 #define MANGLE_RAW_STRING(S) \
   obstack_grow (mangle_obstack, (S), sizeof (S)-1)
+
+/* atms: array template mangled string. */
+static GTY(()) tree atms;
+
+static int
+utf8_cmp (const unsigned char *str, int length, const char *name)
+{
+  const unsigned char *limit = str + length;
+  int i;
+
+  for (i = 0; name[i]; ++i)
+    {
+      int ch = UTF8_GET (str, limit);
+      if (ch != name[i])
+	return ch - name[i];
+    }
+
+  return str == limit ? 0 : 1;
+}
+
+/* A sorted list of all C++ keywords.  */
+static const char *const cxx_keywords[] =
+{
+  "_Complex",
+  "__alignof",
+  "__alignof__",
+  "__asm",
+  "__asm__",
+  "__attribute",
+  "__attribute__",
+  "__builtin_va_arg",
+  "__complex",
+  "__complex__",
+  "__const",
+  "__const__",
+  "__extension__",
+  "__imag",
+  "__imag__",
+  "__inline",
+  "__inline__",
+  "__label__",
+  "__null",
+  "__real",
+  "__real__",
+  "__restrict",
+  "__restrict__",
+  "__signed",
+  "__signed__",
+  "__typeof",
+  "__typeof__",
+  "__volatile",
+  "__volatile__",
+  "and",
+  "and_eq",
+  "asm",
+  "auto",
+  "bitand",
+  "bitor",
+  "bool",
+  "break",
+  "case",
+  "catch",
+  "char",
+  "class",
+  "compl",
+  "const",
+  "const_cast",
+  "continue",
+  "default",
+  "delete",
+  "do",
+  "double",
+  "dynamic_cast",
+  "else",
+  "enum",
+  "explicit",
+  "export",
+  "extern",
+  "false",
+  "float",
+  "for",
+  "friend",
+  "goto",
+  "if",
+  "inline",
+  "int",
+  "long",
+  "mutable",
+  "namespace",
+  "new",
+  "not",
+  "not_eq",
+  "operator",
+  "or",
+  "or_eq",
+  "private",
+  "protected",
+  "public",
+  "register",
+  "reinterpret_cast",
+  "return",
+  "short",
+  "signed",
+  "sizeof",
+  "static",
+  "static_cast",
+  "struct",
+  "switch",
+  "template",
+  "this",      
+  "throw",
+  "true",
+  "try",
+  "typedef",
+  "typeid",
+  "typename",
+  "typeof",
+  "union",
+  "unsigned",
+  "using",
+  "virtual",
+  "void",
+  "volatile",
+  "wchar_t",
+  "while",
+  "xor",
+  "xor_eq"
+};
+
+/* Return true if NAME is a C++ keyword.  */
+static int
+cxx_keyword_p (const char *name, int length)
+{
+  int last = ARRAY_SIZE (cxx_keywords);
+  int first = 0;
+  int mid = (last + first) / 2;
+  int old = -1;
+
+  for (mid = (last + first) / 2;
+       mid != old;
+       old = mid, mid = (last + first) / 2)
+    {
+      int kwl = strlen (cxx_keywords[mid]);
+      int min_length = kwl > length ? length : kwl;
+      int r = utf8_cmp ((const unsigned char *) name, min_length, cxx_keywords[mid]);
+
+      if (r == 0)
+	{
+	  int i;
+	  /* We've found a match if all the remaining characters are `$'.  */
+	  for (i = min_length; i < length && name[i] == '$'; ++i)
+	    ;
+	  if (i == length)
+	    return 1;
+	  r = 1;
+	}
+
+      if (r < 0)
+	last = mid;
+      else
+	first = mid;
+    }
+  return 0;
+}
 
 /* This is the mangling interface: a decl, a class field (.class) and
    the vtable. */
 
-tree
-java_mangle_decl (struct obstack *obstack, tree decl)
+void
+java_mangle_decl (tree decl)
 {
-  init_mangling (obstack);
-  switch (TREE_CODE (decl))
+  if (TREE_CODE (decl) == RECORD_TYPE)
+    mangle_type (decl);
+
+  /* A copy of the check from the beginning of lhd_set_decl_assembler_name.
+     Only FUNCTION_DECLs and VAR_DECLs for variables with static storage
+     duration need a real DECL_ASSEMBLER_NAME.  */
+  gcc_assert (TREE_CODE (decl) == FUNCTION_DECL
+	      || (TREE_CODE (decl) == VAR_DECL
+		  && (TREE_STATIC (decl)
+		      || DECL_EXTERNAL (decl)
+		      || TREE_PUBLIC (decl))));
+  
+  /* Mangling only applies to class members.  */
+  if (DECL_CONTEXT (decl) && TYPE_P (DECL_CONTEXT (decl)))
     {
-    case VAR_DECL:
-      mangle_field_decl (decl);
-      break;
-    case FUNCTION_DECL:
-      mangle_method_decl (decl);
-      break;
-    default:
-      internal_error ("can't mangle %s", tree_code_name [TREE_CODE (decl)]);
+      init_mangling ();
+      switch (TREE_CODE (decl))
+	{
+	case VAR_DECL:
+	  if (DECL_LANG_SPECIFIC (decl))
+	    {
+	      if (DECL_CLASS_FIELD_P (decl))
+		{
+		  mangle_class_field (decl);
+		  break;
+		}
+	      else if (DECL_VTABLE_P (decl))
+		{
+		  mangle_vtable (DECL_CONTEXT (decl));
+		  break;
+		}
+	    }
+	  mangle_field_decl (decl);
+	  break;
+
+	case FUNCTION_DECL:
+	  if (DECL_LANG_SPECIFIC (decl) && DECL_LOCAL_CNI_METHOD_P (decl))
+	    mangle_local_cni_method_decl (decl);
+	  else
+	    mangle_method_decl (decl);
+	  break;
+
+	default:
+	  gcc_unreachable ();
+	}
+      SET_DECL_ASSEMBLER_NAME (decl, finish_mangling ());
     }
-  return finish_mangling ();
-}
-
-tree 
-java_mangle_class_field (struct obstack *obstack, tree type)
-{
-  init_mangling (obstack);
-  mangle_record_type (type, /* for_pointer = */ 0);
-  MANGLE_RAW_STRING ("6class$");
-  obstack_1grow (mangle_obstack, 'E');
-  return finish_mangling ();
-}
-
-tree
-java_mangle_vtable (struct obstack *obstack, tree type)
-{
-  init_mangling (obstack);
-  MANGLE_RAW_STRING ("TV");
-  mangle_record_type (type, /* for_pointer = */ 0);
-  obstack_1grow (mangle_obstack, 'E');
-  return finish_mangling ();
+  else
+    lhd_set_decl_assembler_name (decl);
 }
 
 /* Beginning of the helper functions */
+
+static void
+mangle_class_field (tree decl)
+{
+  tree type = DECL_CONTEXT (decl);
+  mangle_record_type (type, /* for_pointer = */ 0);
+  if (TREE_CODE (TREE_TYPE (decl)) == RECORD_TYPE)
+    MANGLE_RAW_STRING ("6class$");
+  else
+    MANGLE_RAW_STRING ("7class$$");
+  obstack_1grow (mangle_obstack, 'E');
+}
+
+static void
+mangle_vtable (tree type)
+{
+  MANGLE_RAW_STRING ("TV");
+  mangle_record_type (type, /* for_pointer = */ 0);
+  obstack_1grow (mangle_obstack, 'E');
+}
 
 /* This mangles a field decl */
 
@@ -153,6 +355,14 @@ mangle_method_decl (tree mdecl)
   if (TREE_CODE (TREE_TYPE (mdecl)) == METHOD_TYPE)
     arglist = TREE_CHAIN (arglist);
   
+  /* Output literal 'J' and mangle the return type IF not a 
+     constructor.  */
+  if (!ID_INIT_P (method_name))
+    {
+      obstack_1grow (mangle_obstack, 'J');
+      mangle_type(TREE_TYPE(TREE_TYPE(mdecl)));
+    }
+  
   /* No arguments is easy. We shortcut it. */
   if (arglist == end_params_node)
     obstack_1grow (mangle_obstack, 'v');
@@ -162,6 +372,18 @@ mangle_method_decl (tree mdecl)
       for (arg = arglist; arg != end_params_node;  arg = TREE_CHAIN (arg))
 	mangle_type (TREE_VALUE (arg));
     }
+}
+
+/* This mangles a CNI method for a local class.  If the target supports
+   hidden aliases, then G++ will have generated one for us.  It is the
+   responsibility of java_mark_class_local to check target support, since
+   we need to set DECL_VISIBILITY (or not) much earlier.  */
+
+static void
+mangle_local_cni_method_decl (tree decl)
+{
+  MANGLE_RAW_STRING ("GA");
+  mangle_method_decl (decl);
 }
 
 /* This mangles a member name, like a function name or a field
@@ -174,7 +396,7 @@ mangle_member_name (tree name)
   append_gpp_mangled_name (IDENTIFIER_POINTER (name),
 			   IDENTIFIER_LENGTH (name));
 
-  /* If NAME happens to be a C++ keyword, add `$'. */
+  /* If NAME happens to be a C++ keyword, add `$'.  */
   if (cxx_keyword_p (IDENTIFIER_POINTER (name), IDENTIFIER_LENGTH (name)))
     obstack_1grow (mangle_obstack, '$');
 }
@@ -188,9 +410,13 @@ mangle_type (tree type)
     {
       char code;
     case BOOLEAN_TYPE: code = 'b';  goto primitive;
-    case CHAR_TYPE:    code = 'w';  goto primitive;
     case VOID_TYPE:    code = 'v';  goto primitive;
     case INTEGER_TYPE:
+      if (type == char_type_node || type == promoted_char_type_node)
+	{
+	  code = 'w';
+	  goto primitive;
+	}
       /* Get the original type instead of the arguments promoted type.
 	 Avoid symbol name clashes. Should call a function to do that.
 	 FIXME.  */
@@ -225,7 +451,7 @@ mangle_type (tree type)
       break;
     bad_type:
     default:
-      abort ();
+      gcc_unreachable ();
     }
 }
 
@@ -233,7 +459,7 @@ mangle_type (tree type)
    already seen, so they can be reused. For example, java.lang.Object
    would generate three entries: two package names and a type. If
    java.lang.String is presented next, the java.lang will be matched
-   against the first two entries (and kept for compression as S_0), and
+   against the first two entries (and kept for compression as S0_), and
    type String would be added to the table. See mangle_record_type.
    COMPRESSION_NEXT is the index to the location of the next insertion
    of an element.  */
@@ -284,34 +510,29 @@ find_compression_array_template_match (tree string)
 static int
 find_compression_record_match (tree type, tree *next_current)
 {
-  int i, match;
+  int i, match = -1;
   tree current, saved_current = NULL_TREE;
 
-  /* Search from the beginning for something that matches TYPE, even
-     partially. */
-  for (current = TYPE_PACKAGE_LIST (type), i = 0, match = -1; current;
-       current = TREE_CHAIN (current))
+  current = TYPE_PACKAGE_LIST (type);
+      
+  for (i = 0; i < compression_next; i++)
     {
-      int j;
-      for (j = i; j < compression_next; j++)
-	if (TREE_VEC_ELT (compression_table, j) == TREE_PURPOSE (current))
-	  {
-	    match = i = j;
-	    saved_current = current;
-	    i++;
-	    break;
-	  }
-	else
-	  {
-	    /* We don't want to match an element that appears in the middle
-	    of a package name, so skip forward to the next complete type name.
-	    IDENTIFIER_NODEs are partial package names while RECORD_TYPEs
-	    represent complete type names. */
-	    while (j < compression_next 
-		   && TREE_CODE (TREE_VEC_ELT (compression_table, j)) == 
-		      IDENTIFIER_NODE)
-	      j++;
-	  }
+      tree compression_entry = TREE_VEC_ELT (compression_table, i);
+      if (current && compression_entry == TREE_PURPOSE (current))
+        {
+	  match = i;
+	  saved_current = current;
+	  current = TREE_CHAIN (current);
+	}
+      else
+	/* We don't want to match an element that appears in the middle
+	   of a package name, so skip forward to the next complete type name.
+	   IDENTIFIER_NODEs (except for a "6JArray") are partial package
+	   names while RECORD_TYPEs represent complete type names. */
+	while (i < compression_next 
+	       && TREE_CODE (compression_entry) == IDENTIFIER_NODE
+	       && compression_entry != atms)
+	  compression_entry = TREE_VEC_ELT (compression_table, ++i);
     }
 
   if (!next_current)
@@ -347,8 +568,7 @@ mangle_record_type (tree type, int for_pointer)
 #define ADD_N() \
   do { obstack_1grow (mangle_obstack, 'N'); nadded_p = 1; } while (0)
 
-  if (TREE_CODE (type) != RECORD_TYPE)
-    abort ();
+  gcc_assert (TREE_CODE (type) == RECORD_TYPE);
 
   if (!TYPE_PACKAGE_LIST (type))
     set_type_package_list (type);
@@ -400,8 +620,7 @@ mangle_pointer_type (tree type)
   /* This didn't work. We start by mangling the pointed-to type */
   pointer_type = type;
   type = TREE_TYPE (type);
-  if (TREE_CODE (type) != RECORD_TYPE)
-    abort ();
+  gcc_assert (TREE_CODE (type) == RECORD_TYPE);
   
   obstack_1grow (mangle_obstack, 'P');
   if (mangle_record_type (type, /* for_pointer = */ 1))
@@ -413,11 +632,9 @@ mangle_pointer_type (tree type)
 
 /* Mangle an array type. Search for an easy solution first, then go
    through the process of finding out whether the bare array type or even
-   the template indicator where already used an compress appropriately.
+   the template indicator were already used and compressed appropriately.
    It handles pointers. */
 
-/* atms: array template mangled string. */
-static GTY(()) tree atms;
 static void
 mangle_array_type (tree p_type)
 {
@@ -425,8 +642,7 @@ mangle_array_type (tree p_type)
   int match;
 
   type = TREE_TYPE (p_type);
-  if (!type)
-    abort ();
+  gcc_assert (type);
 
   elt_type = TYPE_ARRAY_ELEMENT (type);
 
@@ -436,7 +652,7 @@ mangle_array_type (tree p_type)
       atms = get_identifier ("6JArray");
     }
 
-  /* Maybe we have what we're looking in the compression table. */
+  /* Maybe we have what we're looking for in the compression table. */
   if ((match = find_compression_array_match (p_type)) >= 0)
     {
       emit_compression_string (match);
@@ -475,7 +691,7 @@ mangle_array_type (tree p_type)
 }
 
 /* Write a substitution string for entry I. Substitution string starts a
-   -1 (encoded S_.) The base is 36, and the code shamlessly taken from
+   -1 (encoded S_.) The base is 36, and the code shamelessly taken from
    cp/mangle.c.  */
 
 static void
@@ -532,27 +748,21 @@ set_type_package_list (tree type)
 {
   int i;
   const char *type_string = IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (type)));
-  char *ptr;
+  const char *ptr;
   int qualifications;
   tree list = NULL_TREE, elt;
 
-  for (ptr = (char *)type_string, qualifications = 0; *ptr; ptr++)
+  for (ptr = type_string, qualifications = 0; *ptr; ptr++)
     if (*ptr == '.')
       qualifications += 1;
 
-  for (ptr = (char *)type_string, i = 0; i < qualifications; ptr++)
+  for (ptr = type_string, i = 0; i < qualifications; ptr++)
     {
       if (ptr [0] == '.')
 	{
-	  char c;
-	  tree identifier;
+	  tree const identifier
+	    = get_identifier_with_length (type_string, ptr - type_string);
 
-	  /* Can't use an obstack, we're already using it to
-	     accumulate the mangling. */
-	  c = ptr [0];
-	  ptr [0] = '\0';
-	  identifier = get_identifier (type_string);
-	  ptr [0] = c;
 	  elt = build_tree_list (identifier, identifier);
 	  TREE_CHAIN (elt) = list;
 	  list = elt;
@@ -589,17 +799,19 @@ compression_table_add (tree type)
 /* Mangling initialization routine.  */
 
 static void
-init_mangling (struct obstack *obstack)
+init_mangling (void)
 {
-  mangle_obstack = obstack;
-  if (!compression_table)
-    compression_table = make_tree_vec (10);
-  else
-    /* Mangling already in progress.  */
-    abort ();
+  if (!mangle_obstack)
+    {
+      mangle_obstack = &mangle_obstack_1;
+      gcc_obstack_init (mangle_obstack);
+    }
+
+  gcc_assert (compression_table == NULL);
+  compression_table = make_tree_vec (10);
 
   /* Mangled name are to be suffixed */
-  obstack_grow (mangle_obstack, "_Z", 2);
+  MANGLE_RAW_STRING ("_Z");
 }
 
 /* Mangling finalization routine. The mangled name is returned as a
@@ -610,18 +822,14 @@ finish_mangling (void)
 {
   tree result;
 
-  if (!compression_table)
-    /* Mangling already finished.  */
-    abort ();
+  gcc_assert (compression_table);
 
   compression_table = NULL_TREE;
   compression_next = 0;
   obstack_1grow (mangle_obstack, '\0');
   result = get_identifier (obstack_base (mangle_obstack));
   obstack_free (mangle_obstack, obstack_base (mangle_obstack));
-#if 0
-  printf ("// %s\n", IDENTIFIER_POINTER (result));
-#endif
+
   return result;
 }
 

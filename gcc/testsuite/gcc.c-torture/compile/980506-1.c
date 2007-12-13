@@ -1,3 +1,9 @@
+/* The arrays are too large for the xstormy16 - won't fit in 16 bits. */
+/* { dg-do assemble } */
+/* { dg-require-effective-target size32plus } */
+/* { dg-xfail-if "The array too big" { m6811-*-* m6812-*-* } { "*" } { "" } } /*
+/* { dg-xfail-if "The array too big" { h8300-*-* } { "-mno-h" "-mn" } { "" } } */
+
 unsigned char	TIFFFax2DMode[20][256];
 unsigned char	TIFFFax2DNextState[20][256];
 unsigned char	TIFFFaxUncompAction[20][256];

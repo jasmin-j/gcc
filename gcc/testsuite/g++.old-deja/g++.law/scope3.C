@@ -1,4 +1,4 @@
-// Build don't link: 
+// { dg-do assemble  }
 // GROUPS passed scoping
 // local-class file
 // From: dcb@us-es.sel.de
@@ -11,12 +11,12 @@ void f()
 {
         {
                 struct A {
-                        A() {};
+                        A() {}
                 } a;
         };
         {
                 struct A {
-                        A() {};
+                        A() {}
                 } a ;
         };
 }

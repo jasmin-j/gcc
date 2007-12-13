@@ -1,6 +1,8 @@
+// { dg-require-namedlocale "" }
+
 // 2001-08-15 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2005 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.4.1.1 collate members
@@ -28,27 +30,22 @@ void test02()
   using namespace std;
   typedef std::collate<char>::string_type string_type;
 
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   // basic construction
   locale loc_c = locale::classic();
-  locale loc_us("en_US");
-  locale loc_fr("fr_FR");
-  locale loc_de("de_DE");
+  locale loc_us = locale("en_US");
+  locale loc_fr = locale("fr_FR");
+  locale loc_de = locale("de_DE");
   VERIFY( loc_c != loc_de );
   VERIFY( loc_us != loc_fr );
   VERIFY( loc_us != loc_de );
   VERIFY( loc_de != loc_fr );
 
   // cache the collate facets
-  const collate<char>& coll_c = use_facet<collate<char> >(loc_c); 
-  const collate<char>& coll_us = use_facet<collate<char> >(loc_us); 
-  const collate<char>& coll_fr = use_facet<collate<char> >(loc_fr); 
   const collate<char>& coll_de = use_facet<collate<char> >(loc_de); 
 
   // long hash(const charT*, const charT*) cosnt
-  const char* strlit1 = "monkey picked tikuanyin oolong";
-  const char* strlit2 = "imperial tea court green oolong";
   const char* strlit3 = "Äuglein Augment"; // "C" == "Augment Äuglein"
   const char* strlit4 = "Base baß Baß Bast"; // "C" == "Base baß Baß Bast"
 

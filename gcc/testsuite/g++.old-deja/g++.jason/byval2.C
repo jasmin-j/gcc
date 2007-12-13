@@ -1,14 +1,14 @@
+// { dg-do assemble  }
 // From: panisset@cae.ca (Jean-Francois Panisset)
 // Subject: 2.6.0 pre-rel, internal error, regression, mips-sgi-irix4
 // Date: Thu, 14 Jul 94 23:34:21 EDT
-// Build don't link:
 
 class Char
 {
 protected:
   char          rep;
 public:
-  Char (const char ) {};
+  Char (const char ) {}
   operator char() const;
   void  operator -= (const Char   );
 };

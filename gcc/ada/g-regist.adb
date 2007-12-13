@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---              Copyright (C) 2001 Free Software Foundation, Inc.           --
+--           Copyright (C) 2001-2005, Free Software Foundation, Inc.        --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -27,13 +26,14 @@
 -- however invalidate  any other reasons why  the executable file  might be --
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
--- Extensive contributions were provided by Ada Core Technologies Inc.   --
+-- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
 with Ada.Exceptions;
 with Interfaces.C;
 with System;
+with GNAT.Directory_Operations;
 
 package body GNAT.Registry is
 
@@ -60,7 +60,8 @@ package body GNAT.Registry is
 
    ERROR_SUCCESS : constant Error_Code := 0;
 
-   REG_SZ : constant := 1;
+   REG_SZ        : constant := 1;
+   REG_EXPAND_SZ : constant := 2;
 
    function RegCloseKey (Key : HKEY) return LONG;
    pragma Import (Stdcall, RegCloseKey, "RegCloseKey");
@@ -80,14 +81,12 @@ package body GNAT.Registry is
 
    function RegDeleteKey
      (Key      : HKEY;
-      lpSubKey : Address)
-      return     LONG;
+      lpSubKey : Address) return LONG;
    pragma Import (Stdcall, RegDeleteKey, "RegDeleteKeyA");
 
    function RegDeleteValue
      (Key         : HKEY;
-      lpValueName : Address)
-      return        LONG;
+      lpValueName : Address) return LONG;
    pragma Import (Stdcall, RegDeleteValue, "RegDeleteValueA");
 
    function RegEnumValue
@@ -98,8 +97,7 @@ package body GNAT.Registry is
       lpReserved    : LPDWORD;
       lpType        : LPDWORD;
       lpData        : Address;
-      lpcbData      : LPDWORD)
-      return          LONG;
+      lpcbData      : LPDWORD) return LONG;
    pragma Import (Stdcall, RegEnumValue, "RegEnumValueA");
 
    function RegOpenKeyEx
@@ -107,8 +105,7 @@ package body GNAT.Registry is
       lpSubKey   : Address;
       ulOptions  : DWORD;
       samDesired : REGSAM;
-      phkResult  : PHKEY)
-      return       LONG;
+      phkResult  : PHKEY) return LONG;
    pragma Import (Stdcall, RegOpenKeyEx, "RegOpenKeyExA");
 
    function RegQueryValueEx
@@ -117,8 +114,7 @@ package body GNAT.Registry is
       lpReserved  : LPDWORD;
       lpType      : LPDWORD;
       lpData      : Address;
-      lpcbData    : LPDWORD)
-      return        LONG;
+      lpcbData    : LPDWORD) return LONG;
    pragma Import (Stdcall, RegQueryValueEx, "RegQueryValueExA");
 
    function RegSetValueEx
@@ -127,16 +123,25 @@ package body GNAT.Registry is
       Reserved    : DWORD;
       dwType      : DWORD;
       lpData      : Address;
-      cbData      : DWORD)
-      return        LONG;
+      cbData      : DWORD) return LONG;
    pragma Import (Stdcall, RegSetValueEx, "RegSetValueExA");
+
+   ---------------------
+   -- Local Constants --
+   ---------------------
+
+   Max_Key_Size : constant := 1_024;
+   --  Maximum number of characters for a registry key
+
+   Max_Value_Size : constant := 2_048;
+   --  Maximum number of characters for a key's value
 
    -----------------------
    -- Local Subprograms --
    -----------------------
 
    function To_C_Mode (Mode : Key_Mode) return REGSAM;
-   --  Returns the Win32 mode value for the Key_Mode value.
+   --  Returns the Win32 mode value for the Key_Mode value
 
    procedure Check_Result (Result : LONG; Message : String);
    --  Checks value Result and raise the exception Registry_Error if it is not
@@ -177,8 +182,7 @@ package body GNAT.Registry is
    function Create_Key
      (From_Key : HKEY;
       Sub_Key  : String;
-      Mode     : Key_Mode := Read_Write)
-      return     HKEY
+      Mode     : Key_Mode := Read_Write) return HKEY
    is
       use type REGSAM;
       use type DWORD;
@@ -239,17 +243,21 @@ package body GNAT.Registry is
    -- For_Every_Key_Value --
    -------------------------
 
-   procedure For_Every_Key_Value (From_Key : HKEY) is
+   procedure For_Every_Key_Value
+     (From_Key : HKEY;
+      Expand   : Boolean := False)
+   is
+      use GNAT.Directory_Operations;
       use type LONG;
       use type ULONG;
 
       Index  : ULONG := 0;
       Result : LONG;
 
-      Sub_Key : String (1 .. 100);
+      Sub_Key : String (1 .. Max_Key_Size);
       pragma Warnings (Off, Sub_Key);
 
-      Value : String (1 .. 100);
+      Value : String (1 .. Max_Value_Size);
       pragma Warnings (Off, Value);
 
       Size_Sub_Key : aliased ULONG;
@@ -274,19 +282,26 @@ package body GNAT.Registry is
 
          exit when not (Result = ERROR_SUCCESS);
 
-         if Type_Sub_Key = REG_SZ then
-            Quit := False;
+         Quit := False;
 
+         if Type_Sub_Key = REG_EXPAND_SZ and then Expand then
+               Action (Natural (Index) + 1,
+                       Sub_Key (1 .. Integer (Size_Sub_Key)),
+                       Directory_Operations.Expand_Path
+                         (Value (1 .. Integer (Size_Value) - 1),
+                          Directory_Operations.DOS),
+                       Quit);
+
+         elsif Type_Sub_Key = REG_SZ or else Type_Sub_Key = REG_EXPAND_SZ then
             Action (Natural (Index) + 1,
                     Sub_Key (1 .. Integer (Size_Sub_Key)),
                     Value (1 .. Integer (Size_Value) - 1),
                     Quit);
-
-            exit when Quit;
-
-            Index := Index + 1;
          end if;
 
+         exit when Quit;
+
+         Index := Index + 1;
       end loop;
    end For_Every_Key_Value;
 
@@ -296,8 +311,7 @@ package body GNAT.Registry is
 
    function Key_Exists
      (From_Key : HKEY;
-      Sub_Key  : String)
-      return     Boolean
+      Sub_Key  : String) return Boolean
    is
       New_Key : HKEY;
 
@@ -324,8 +338,7 @@ package body GNAT.Registry is
    function Open_Key
      (From_Key : HKEY;
       Sub_Key  : String;
-      Mode     : Key_Mode := Read_Only)
-      return     HKEY
+      Mode     : Key_Mode := Read_Only) return HKEY
    is
       use type REGSAM;
 
@@ -353,13 +366,14 @@ package body GNAT.Registry is
 
    function Query_Value
      (From_Key : HKEY;
-      Sub_Key  : String)
-      return     String
+      Sub_Key  : String;
+      Expand   : Boolean := False) return String
    is
+      use GNAT.Directory_Operations;
       use type LONG;
       use type ULONG;
 
-      Value : String (1 .. 100);
+      Value : String (1 .. Max_Value_Size);
       pragma Warnings (Off, Value);
 
       Size_Value : aliased ULONG;
@@ -381,7 +395,12 @@ package body GNAT.Registry is
 
       Check_Result (Result, "Query_Value " & Sub_Key & " key");
 
-      return Value (1 .. Integer (Size_Value - 1));
+      if Type_Value = REG_EXPAND_SZ and then Expand then
+         return Directory_Operations.Expand_Path
+           (Value (1 .. Integer (Size_Value - 1)), Directory_Operations.DOS);
+      else
+         return Value (1 .. Integer (Size_Value - 1));
+      end if;
    end Query_Value;
 
    ---------------

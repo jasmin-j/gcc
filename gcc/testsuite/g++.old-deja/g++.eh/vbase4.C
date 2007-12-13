@@ -1,3 +1,4 @@
+// { dg-do run  }
 
 // Copyright (C) 2000 Free Software Foundation, Inc.
 // Contributed by Nathan Sidwell 8 Mar 2000 <nathan@codesourcery.com>
@@ -12,8 +13,8 @@ static int ok = 0;
 
 struct A
 {
-  A (){};
-  virtual ~A () {};
+  A (){}
+  virtual ~A () {}
 };
 
 struct B : virtual A

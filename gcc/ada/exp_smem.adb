@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1998-2000 Free Software Foundation, Inc.          --
+--          Copyright (C) 1998-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -58,10 +56,8 @@ package body Exp_Smem is
    --  to the assignment statement) or Is_Out_Actual (where it points to
    --  the procedure call statement).
 
-   procedure Build_Full_Name
-     (E : in  Entity_Id;
-      N : out String_Id);
-   --  Build the fully qualified string name of a shared variable.
+   procedure Build_Full_Name (E : Entity_Id; N : out String_Id);
+   --  Build the fully qualified string name of a shared variable
 
    function On_Lhs_Of_Assignment (N : Node_Id) return Boolean;
    --  Determines if N is on the left hand of the assignment. This means
@@ -73,7 +69,7 @@ package body Exp_Smem is
    function Is_Out_Actual (N : Node_Id) return Boolean;
    --  In a similar manner, this function determines if N appears as an
    --  OUT or IN OUT parameter to a procedure call. If the result is
-   --  True, then Insert_Node is set to point to the assignment.
+   --  True, then Insert_Node is set to point to the call.
 
    ---------------------
    -- Add_Read_Before --
@@ -182,15 +178,15 @@ package body Exp_Smem is
    -- Build_Full_Name --
    ---------------------
 
-   procedure Build_Full_Name
-     (E : in  Entity_Id;
-      N : out String_Id)
-   is
+   procedure Build_Full_Name (E : Entity_Id; N : out String_Id) is
 
       procedure Build_Name (E : Entity_Id);
-      --  This is a recursive routine used to construct the fully
-      --  qualified string name of the package corresponding to the
-      --  shared variable.
+      --  This is a recursive routine used to construct the fully qualified
+      --  string name of the package corresponding to the shared variable.
+
+      ----------------
+      -- Build_Name --
+      ----------------
 
       procedure Build_Name (E : Entity_Id) is
       begin
@@ -202,6 +198,8 @@ package body Exp_Smem is
          Get_Decoded_Name_String (Chars (E));
          Store_String_Chars (Name_Buffer (1 .. Name_Len));
       end Build_Name;
+
+   --  Start of processing for Build_Full_Name
 
    begin
       Start_String;
@@ -247,62 +245,34 @@ package body Exp_Smem is
    -------------------
 
    function Is_Out_Actual (N : Node_Id) return Boolean is
-      Parnt  : constant Node_Id := Parent (N);
-      Formal : Entity_Id;
-      Call   : Node_Id;
-      Actual : Node_Id;
+      Kind : Entity_Kind;
+      Call : Node_Id;
 
    begin
-      if (Nkind (Parnt) = N_Indexed_Component
-            or else
-          Nkind (Parnt) = N_Selected_Component)
-        and then N = Prefix (Parnt)
-      then
-         return Is_Out_Actual (Parnt);
+      Find_Actual_Mode (N, Kind, Call);
 
-      elsif Nkind (Parnt) = N_Parameter_Association
-        and then N = Explicit_Actual_Parameter (Parnt)
-      then
-         Call := Parent (Parnt);
-
-      elsif Nkind (Parnt) = N_Procedure_Call_Statement then
-         Call := Parnt;
-
+      if Kind = E_Out_Parameter or else Kind = E_In_Out_Parameter then
+         Insert_Node := Call;
+         return True;
       else
          return False;
       end if;
-
-      --  Fall here if we are definitely a parameter
-
-      Actual := First_Actual (Call);
-      Formal := First_Formal (Entity (Name (Call)));
-
-      loop
-         if Actual = N then
-            if Ekind (Formal) /= E_In_Parameter then
-               Insert_Node := Call;
-               return True;
-            else
-               return False;
-            end if;
-
-         else
-            Actual := Next_Actual (Actual);
-            Formal := Next_Formal (Formal);
-         end if;
-      end loop;
    end Is_Out_Actual;
 
    ---------------------------
    -- Make_Shared_Var_Procs --
    ---------------------------
 
-   procedure Make_Shared_Var_Procs (N : Node_Id) is
+   function Make_Shared_Var_Procs (N : Node_Id) return Node_Id is
       Loc : constant Source_Ptr := Sloc (N);
       Ent : constant Entity_Id  := Defining_Identifier (N);
       Typ : constant Entity_Id  := Etype (Ent);
       Vnm : String_Id;
       Atr : Node_Id;
+
+      After : constant Node_Id := Next (N);
+      --  Node located right after N originally (after insertion of the SV
+      --  procs this node is right after the last inserted node).
 
       Assign_Proc : constant Entity_Id :=
                       Make_Defining_Identifier (Loc,
@@ -344,8 +314,6 @@ package body Exp_Smem is
           Expressions => New_List (
             New_Reference_To (S, Loc),
             New_Occurrence_Of (Ent, Loc)));
-
-      Set_OK_For_Stream (Atr, True);
 
       Insert_After_And_Analyze (N,
         Make_Subprogram_Body (Loc,
@@ -409,8 +377,6 @@ package body Exp_Smem is
             New_Reference_To (S, Loc),
             New_Occurrence_Of (Ent, Loc)));
 
-      Set_OK_For_Stream (Atr, True);
-
       Insert_After_And_Analyze (N,
         Make_Subprogram_Body (Loc,
           Specification =>
@@ -467,6 +433,19 @@ package body Exp_Smem is
       Set_Is_Shared_Passive      (Ent, True);
       Set_Shared_Var_Assign_Proc (Ent, Assign_Proc);
       Set_Shared_Var_Read_Proc   (Ent, Read_Proc);
+
+      --  Return last node before After
+
+      declare
+         Nod : Node_Id := Next (N);
+
+      begin
+         while Next (Nod) /= After loop
+            Nod := Next (Nod);
+         end loop;
+
+         return Nod;
+      end;
    end Make_Shared_Var_Procs;
 
    --------------------------
@@ -496,6 +475,5 @@ package body Exp_Smem is
          return False;
       end if;
    end On_Lhs_Of_Assignment;
-
 
 end Exp_Smem;

@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 2002 Free Software Foundation, Inc.               --
+--       Copyright (C) 2002-2007 Free Software Foundation, Inc.             --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -28,55 +27,55 @@
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
--- It is now maintained by Ada Core Technologies Inc (http://www.gnat.com). --
+-- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
 package body Gnatvsn is
 
-   --  Import the string constant defined in the (language-independent)
-   --  source file version.c.
+   ----------------------
+   -- Copyright_Holder --
+   ----------------------
 
-   --  The size is a lie; we have no way of writing the truth (the size
-   --  is variable and depends on the actual text of the constant).
+   function Copyright_Holder return String is
+   begin
+      return "Free Software Foundation, Inc.";
+   end Copyright_Holder;
 
-   --  FIXME: It should be possible to declare this to be a constant, but
-   --  that is rejected by the compiler ("invalid context for deferred
-   --  constant declaration").  Per Ada95 this constraint only applies to
-   --  deferred constants completed by a full constant declaration, not
-   --  deferred constants completed by a pragma Import.
+   ------------------------
+   -- Gnat_Free_Software --
+   ------------------------
 
-   Version_String : array (0 .. Ver_Len_Max) of aliased Character;
+   function Gnat_Free_Software return String is
+   begin
+      return
+        "This is free software; see the source for copying conditions." &
+        ASCII.LF &
+        "There is NO warranty; not even for MERCHANTABILITY or FITNESS" &
+        " FOR A PARTICULAR PURPOSE.";
+   end Gnat_Free_Software;
+
+   Version_String : String (1 .. Ver_Len_Max);
+   --  Import the C string defined in the (language-independent) source file
+   --  version.c.
+   --  The size is not the real one, which does not matter since we will
+   --  check for the nul character in Gnat_Version_String.
    pragma Import (C, Version_String, "version_string");
 
-   --  Convert that string constant to an Ada String and return it.
-   --  This is essentially the same as the To_Ada routine in
-   --  Interfaces.C; that package is not linked into gnat1 so
-   --  we cannot use it.
+   -------------------------
+   -- Gnat_Version_String --
+   -------------------------
 
-   function Gnat_Version_String return String
-   is
-      Count : Natural := 0;
-
+   function Gnat_Version_String return String is
+      NUL_Pos : Positive := 1;
    begin
       loop
-         if Version_String (Count) = Character'First then
-            exit;
-         else
-            Count := Count + 1;
-         end if;
+         exit when Version_String (NUL_Pos) = ASCII.NUL;
+
+         NUL_Pos := NUL_Pos + 1;
       end loop;
 
-      declare
-         R : String (1 .. Count);
-
-      begin
-         for J in R'Range loop
-            R (J) := Version_String (J - 1);
-         end loop;
-
-         return R;
-      end;
+      return Version_String (1 .. NUL_Pos - 1);
    end Gnat_Version_String;
 
 end Gnatvsn;

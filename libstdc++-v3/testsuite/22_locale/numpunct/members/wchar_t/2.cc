@@ -1,6 +1,8 @@
+// { dg-require-namedlocale "" }
+
 // 2001-01-17 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2005 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.3.1.1 nunpunct members
@@ -27,13 +29,13 @@ void test02()
 {
   using namespace std;
   
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   // basic construction
   locale loc_c = locale::classic();
-  locale loc_us("en_US");
-  locale loc_fr("fr_FR");
-  locale loc_de("de_DE");
+  locale loc_us = locale("en_US");
+  locale loc_fr = locale("fr_FR");
+  locale loc_de = locale("de_DE");
   VERIFY( loc_c != loc_de );
   VERIFY( loc_us != loc_fr );
   VERIFY( loc_us != loc_de );
@@ -46,8 +48,6 @@ void test02()
   const numpunct<wchar_t>& nump_de = use_facet<numpunct<wchar_t> >(loc_de); 
 
   // sanity check the data is correct.
-  wchar_t dp1 = nump_c.decimal_point();
-  wchar_t th1 = nump_c.thousands_sep();
   string g1 = nump_c.grouping();
   wstring t1 = nump_c.truename();
   wstring f1 = nump_c.falsename();

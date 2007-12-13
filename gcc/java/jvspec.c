@@ -1,13 +1,13 @@
 /* Specific flags and argument handling of the front-end of the 
    GNU compiler for the Java(TM) language.
-   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003
-   Free Software Foundation, Inc.
+   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
+   2005, 2006, 2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA. 
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>. 
 
 Java and all Java-based marks are trademarks or registered trademarks
 of Sun Microsystems, Inc. in the United States and other countries.
@@ -29,6 +28,7 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "coretypes.h"
 #include "tm.h"
 #include "gcc.h"
+#include "jcf.h"
 
 /* Name of spec file.  */
 #define SPEC_FILE "libgcj.spec"
@@ -48,8 +48,8 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 /* True if this arg is a resource file.  */
 #define RESOURCE_FILE_ARG (1<<7)
 
-static char *find_spec_file	PARAMS ((const char *));
-static int verify_class_name    PARAMS ((const char *));
+static char *find_spec_file (const char *);
+static int verify_class_name (const char *);
 
 static const char *main_class_name = NULL;
 int lang_specific_extra_outfiles = 0;
@@ -58,23 +58,23 @@ int lang_specific_extra_outfiles = 0;
 int shared_libgcc = 1;
 
 static const char jvgenmain_spec[] =
-  "jvgenmain %{D*} %b %m.i |\n\
+  "jvgenmain %{findirect-dispatch} %{D*} %b %m.i |\n\
    cc1 %m.i %1 \
 		   %{!Q:-quiet} -dumpbase %b.c %{d*} %{m*} %{a*}\
 		   %{g*} %{O*} \
 		   %{v:-version} %{pg:-p} %{p}\
 		   %<fbounds-check %<fno-bounds-check\
-		   %<fassume-compiled %<fno-assume-compiled\
+		   %<fassume-compiled* %<fno-assume-compiled*\
 		   %<fcompile-resource* %<fassert %<fno-assert \
 		   %<femit-class-file %<femit-class-files %<fencoding*\
 		   %<fuse-boehm-gc %<fhash-synchronization %<fjni\
-		   %<findirect-dispatch \
+		   %<findirect-dispatch %<fnew-verifier\
 		   %<fno-store-check %<foutput-class-dir\
 		   %<fclasspath* %<fCLASSPATH* %<fbootclasspath*\
 		   %<fextdirs*\
 		   %<fuse-divide-subroutine %<fno-use-divide-subroutine\
 		   %<fcheck-references %<fno-check-references\
-		   %<ffilelist-file\
+		   %<ffilelist-file %<fsaw-java-file %<fsource* %<ftarget*\
 		   %{f*} -fdollars-in-identifiers\
 		   %{aux-info*}\
 		   %{pg:%{fomit-frame-pointer:%e-pg and -fomit-frame-pointer are incompatible}}\
@@ -84,14 +84,13 @@ static const char jvgenmain_spec[] =
 /* Return full path name of spec file if it is in DIR, or NULL if
    not.  */
 static char *
-find_spec_file (dir)
-     const char *dir;
+find_spec_file (const char *dir)
 {
   char *spec;
   int x;
   struct stat sb;
 
-  spec = xmalloc (strlen (dir) + sizeof (SPEC_FILE)
+  spec = XNEWVEC (char, strlen (dir) + sizeof (SPEC_FILE)
 		  + sizeof ("-specs=") + 4);
   strcpy (spec, "-specs=");
   x = strlen (spec);
@@ -104,7 +103,6 @@ find_spec_file (dir)
   return NULL;
 }
 
-/* FIXME: these should come from lex.h.  */
 #define JAVA_START_CHAR_P(c) (c < 128 && (ISIDST (c) || c == '$'))
 #define JAVA_PART_CHAR_P(c) (c < 128					      \
 			     && (ISIDNUM (c)				      \
@@ -116,8 +114,7 @@ find_spec_file (dir)
 /* Verify that NAME is a valid Java class name that might contain
    `main'.  Return 0 on failure.  */
 static int
-verify_class_name (name)
-     const char *name;
+verify_class_name (const char *name)
 {
   /* FIXME: what encoding do we use for command-line arguments?  For
      now we assume plain ASCII, which of course is wrong.  */
@@ -144,10 +141,8 @@ verify_class_name (name)
 }
 
 void
-lang_specific_driver (in_argc, in_argv, in_added_libraries)
-     int *in_argc;
-     const char *const **in_argv;
-     int *in_added_libraries;
+lang_specific_driver (int *in_argc, const char *const **in_argv,
+		      int *in_added_libraries)
 {
   int i, j;
 
@@ -193,23 +188,6 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
      already gave a language for the file.  */
   int saw_speclang = 0;
 
-#if 0
-  /* "-lm" or "-lmath" if it appears on the command line.  */
-  const char *saw_math ATTRIBUTE_UNUSED = 0;
-
-  /* "-lc" if it appears on the command line.  */
-  const char *saw_libc ATTRIBUTE_UNUSED = 0;
-
-  /* "-lgcjgc" if it appears on the command line.  */
-  const char *saw_gc ATTRIBUTE_UNUSED = 0;
-
-  /* Saw `-l' option for the thread library.  */
-  const char *saw_threadlib ATTRIBUTE_UNUSED = 0;
-
-  /* Saw `-lgcj' on command line.  */
-  int saw_libgcj ATTRIBUTE_UNUSED = 0;
-#endif
-
   /* Saw --resource, -C or -o options, respectively. */
   int saw_resource = 0;
   int saw_C = 0;
@@ -247,11 +225,14 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
   /* The argument we use to specify the spec file.  */
   char *spec_file = NULL;
 
+  /* If linking, nonzero if the BC-ABI is in use.  */
+  int link_for_bc_abi = 0;
+
   argc = *in_argc;
   argv = *in_argv;
   added_libraries = *in_added_libraries;
 
-  args = xcalloc (argc, sizeof (int));
+  args = XCNEWVEC (int, argc);
 
   for (i = 1; i < argc; i++)
     {
@@ -319,7 +300,7 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
 	  else if (argv[i][1] == 'O')
 	    saw_O = 1;
 	  else if ((argv[i][2] == '\0'
-		    && (char *)strchr ("bBVDUoeTuIYmLiA", argv[i][1]) != NULL)
+		    && strchr ("bBVDUoeTuIYmLiAI", argv[i][1]) != NULL)
 		   || strcmp (argv[i], "-Tdata") == 0
 		   || strcmp (argv[i], "-MT") == 0
 		   || strcmp (argv[i], "-MF") == 0)
@@ -328,16 +309,18 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
 		saw_o = 1;
 	      quote = argv[i];
 	    }
-	  else if (strcmp(argv[i], "-classpath") == 0
-		   || strcmp(argv[i], "-bootclasspath") == 0
-		   || strcmp(argv[i], "-CLASSPATH") == 0)
+	  else if (strcmp (argv[i], "-classpath") == 0
+		   || strcmp (argv[i], "-bootclasspath") == 0
+		   || strcmp (argv[i], "-CLASSPATH") == 0
+		   || strcmp (argv[i], "-encoding") == 0
+		   || strcmp (argv[i], "-extdirs") == 0)
 	    {
 	      quote = argv[i];
 	      added -= 1;
 	    }
 	  else if (library != 0 
 		   && ((argv[i][2] == '\0'
-			&& (char *) strchr ("cSEM", argv[i][1]) != NULL)
+			&& strchr ("cSEM", argv[i][1]) != NULL)
 		       || strcmp (argv[i], "-MM") == 0))
 	    {
 	      /* Don't specify libraries if we won't link, since that would
@@ -357,7 +340,6 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
 	  else if (strcmp (argv[i], "-fsyntax-only") == 0
 		   || strcmp (argv[i], "--syntax-only") == 0)
 	    {
-	      want_spec_file = 0;
 	      library = 0;
 	      will_link = 0;
 	      continue;
@@ -367,6 +349,11 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
           else if (strcmp (argv[i], "-static-libgcc") == 0
                    || strcmp (argv[i], "-static") == 0)
 	    shared_libgcc = 0;
+	  else if (strcmp (argv[i], "-findirect-dispatch") == 0
+		   || strcmp (argv[i], "--indirect-dispatch") == 0)
+	    {
+	      link_for_bc_abi = 1;
+	    }
 	  else
 	    /* Pass other options through.  */
 	    continue;
@@ -416,13 +403,13 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
     }
 
   if (quote)
-    fatal ("argument to `%s' missing\n", quote);
+    fatal ("argument to '%s' missing\n", quote);
 
   if (saw_D && ! main_class_name)
-    fatal ("can't specify `-D' without `--main'\n");
+    fatal ("can't specify '-D' without '--main'\n");
 
   if (main_class_name && ! verify_class_name (main_class_name))
-    fatal ("`%s' is not a valid class name", main_class_name);
+    fatal ("'%s' is not a valid class name", main_class_name);
 
   num_args = argc + added;
   if (saw_resource)
@@ -460,16 +447,8 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
       if (filelist_file == NULL)
 	pfatal_with_name (filelist_filename);
       num_args -= java_files_count + class_files_count + zip_files_count;
-      num_args += 2;  /* for the combined arg and "-xjava" */
+      num_args += 3;  /* for the combined arg "-xjava", and "-xnone" */
     }
-  /* If we know we don't have to do anything, bail now.  */
-#if 0
-  if (! added && ! library && main_class_name == NULL && ! saw_C)
-    {
-      free (args);
-      return;
-    }
-#endif
 
   if (main_class_name)
     {
@@ -477,6 +456,8 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
     }
   if (saw_g + saw_O == 0)
     num_args++;
+  num_args++;
+  /* An additional entry for the classpath.  */
   num_args++;
 
   if (combine_inputs || indirect_files_count > 0)
@@ -490,16 +471,37 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
   shared_libgcc = 0;
 #endif  
   
+  if (java_files_count > 0)
+    ++num_args;
+
   num_args += shared_libgcc;
 
-  arglist = xmalloc ((num_args + 1) * sizeof (char *));
+  num_args += link_for_bc_abi;
+
+  arglist = XNEWVEC (const char *, num_args + 1);
   j = 0;
 
-  for (i = 0; i < argc; i++, j++)
+  arglist[j++] = argv[0];
+
+  if (combine_inputs || indirect_files_count > 0)
+    arglist[j++] = "-ffilelist-file";
+
+  if (combine_inputs)
+    {
+      arglist[j++] = "-xjava";
+      arglist[j++] = filelist_filename;
+      arglist[j++] = "-xnone";
+    }
+
+  if (java_files_count > 0)
+    arglist[j++] = "-fsaw-java-file";
+
+  jcf_path_init ();
+  for (i = 1; i < argc; i++, j++)
     {
       arglist[j] = argv[i];
 
-      if ((args[i] & PARAM_ARG) || i == 0)
+      if ((args[i] & PARAM_ARG))
 	continue;
 
       if ((args[i] & RESOURCE_FILE_ARG) != 0)
@@ -509,9 +511,61 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
 	  arglist[j] = "-xnone";
 	}
 
-      if (strcmp (argv[i], "-classpath") == 0
-	  || strcmp (argv[i], "-bootclasspath") == 0
-	  || strcmp (argv[i], "-CLASSPATH") == 0)
+      if (argv[i][0] == '-' && argv[i][1] == 'I')
+	{
+	  const char *arg;
+	  if (argv[i][2] == '\0')
+	    {
+	      gcc_assert (i + 1 < argc && (args[i + 1] & PARAM_ARG) != 0);
+	      arg = argv[i + 1];
+	      /* Drop the argument.  */
+	      ++i;
+	    }
+	  else
+	    arg = &argv[i][2];
+	  jcf_path_include_arg (arg);
+	  --j;
+	  continue;
+	}
+      if (! strcmp (argv[i], "-classpath")
+	  || ! strcmp (argv[i], "-CLASSPATH"))
+	{
+	  jcf_path_classpath_arg (argv[i + 1]);
+	  ++i;
+	  --j;
+	  continue;
+	}
+      if (! strcmp (argv[i], "-bootclasspath"))
+	{
+	  jcf_path_bootclasspath_arg (argv[i + 1]);
+	  ++i;
+	  --j;
+	  continue;
+	}
+      if (! strncmp (argv[i], "-fCLASSPATH=", 12)
+	  || ! strncmp (argv[i], "-fclasspath=", 12))
+	{
+	  char *p = strchr (argv[i], '=');
+	  jcf_path_classpath_arg (p + 1);
+	  --j;
+	  continue;
+	}
+      if (! strncmp (argv[i], "-fbootclasspath=", 16))
+	{
+	  char *p = strchr (argv[i], '=');
+	  jcf_path_bootclasspath_arg (p + 1);
+	  --j;
+	  continue;
+	}
+      if (! strcmp (argv[i], "-extdirs"))
+	{
+	  jcf_path_extdirs_arg (argv[i + 1]);
+	  ++i;
+	  --j;
+	  continue;
+	}
+
+      if (strcmp (argv[i], "-encoding") == 0)
 	{
 	  arglist[j] = concat ("-f", argv[i]+1, "=", argv[i+1], NULL);
 	  i++;
@@ -531,7 +585,7 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
       if (strncmp (argv[i], "-fmain=", 7) == 0)
 	{
 	  if (! will_link)
-	    fatal ("cannot specify `main' class when not linking");
+	    fatal ("cannot specify 'main' class when not linking");
 	  --j;
 	  continue;
 	}
@@ -559,15 +613,15 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
 	}
   }
 
-  if (combine_inputs || indirect_files_count > 0)
-    arglist[j++] = "-ffilelist-file";
+  /* Handle classpath setting.  We specify the bootclasspath since
+     that requires the fewest changes to our existing code...  */
+  jcf_path_seal (0);
+  arglist[j++] = jcf_path_compute ("-fbootclasspath=");
 
   if (combine_inputs)
     {
       if (fclose (filelist_file))
 	pfatal_with_name (filelist_filename);
-      arglist[j++] = "-xjava";
-      arglist[j++] = filelist_filename;
     }
 
   /* If we saw no -O or -g option, default to -g1, for javac compatibility. */
@@ -592,6 +646,9 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
   if (shared_libgcc)
     arglist[j++] = "-shared-libgcc";
 
+  if (link_for_bc_abi)
+    arglist[j++] = "-s-bc-abi";
+
   arglist[j] = NULL;
 
   *in_argc = j;
@@ -600,7 +657,7 @@ lang_specific_driver (in_argc, in_argv, in_added_libraries)
 }
 
 int
-lang_specific_pre_link ()
+lang_specific_pre_link (void)
 {
   int err;
   if (main_class_name == NULL)
@@ -628,9 +685,3 @@ lang_specific_pre_link ()
     }
   return err;
 }
-
-/* Table of language-specific spec functions.  */ 
-const struct spec_function lang_specific_spec_functions[] =
-{
-  { 0, 0 }
-};

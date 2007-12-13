@@ -1,13 +1,13 @@
 /* Generate from machine description:
    - some #define configuration flags.
-   Copyright (C) 1987, 1991, 1997, 1998,
-   1999, 2000 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1991, 1997, 1998, 1999, 2000, 2003, 2004, 2007
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -16,9 +16,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 #include "bconfig.h"
@@ -50,12 +49,12 @@ static int max_insns_per_peep2;
 static int clobbers_seen_this_insn;
 static int dup_operands_seen_this_insn;
 
-static void walk_insn_part PARAMS ((rtx, int, int));
-static void gen_insn PARAMS ((rtx));
-static void gen_expand PARAMS ((rtx));
-static void gen_split PARAMS ((rtx));
-static void gen_peephole PARAMS ((rtx));
-static void gen_peephole2 PARAMS ((rtx));
+static void walk_insn_part (rtx, int, int);
+static void gen_insn (rtx);
+static void gen_expand (rtx);
+static void gen_split (rtx);
+static void gen_peephole (rtx);
+static void gen_peephole2 (rtx);
 
 /* RECOG_P will be nonzero if this pattern was seen in a context where it will
    be used to recognize, rather than just generate an insn. 
@@ -64,10 +63,7 @@ static void gen_peephole2 PARAMS ((rtx));
    of a SET whose destination is not (pc).  */
 
 static void
-walk_insn_part (part, recog_p, non_pc_set_src)
-     rtx part;
-     int recog_p;
-     int non_pc_set_src;
+walk_insn_part (rtx part, int recog_p, int non_pc_set_src)
 {
   int i, j;
   RTX_CODE code;
@@ -101,7 +97,8 @@ walk_insn_part (part, recog_p, non_pc_set_src)
       break;
 
     case LABEL_REF:
-      if (GET_CODE (XEXP (part, 0)) == MATCH_OPERAND)
+      if (GET_CODE (XEXP (part, 0)) == MATCH_OPERAND
+	  || GET_CODE (XEXP (part, 0)) == MATCH_DUP)
 	break;
       return;
 
@@ -171,8 +168,7 @@ walk_insn_part (part, recog_p, non_pc_set_src)
 }
 
 static void
-gen_insn (insn)
-     rtx insn;
+gen_insn (rtx insn)
 {
   int i;
 
@@ -192,8 +188,7 @@ gen_insn (insn)
 /* Similar but scan a define_expand.  */
 
 static void
-gen_expand (insn)
-     rtx insn;
+gen_expand (rtx insn)
 {
   int i;
 
@@ -219,8 +214,7 @@ gen_expand (insn)
 /* Similar but scan a define_split.  */
 
 static void
-gen_split (split)
-     rtx split;
+gen_split (rtx split)
 {
   int i;
 
@@ -234,8 +228,7 @@ gen_split (split)
 }
 
 static void
-gen_peephole (peep)
-     rtx peep;
+gen_peephole (rtx peep)
 {
   int i;
 
@@ -246,8 +239,7 @@ gen_peephole (peep)
 }
 
 static void
-gen_peephole2 (peep)
-     rtx peep;
+gen_peephole2 (rtx peep)
 {
   int i, n;
 
@@ -265,19 +257,12 @@ gen_peephole2 (peep)
     max_insns_per_peep2 = n;
 }
 
-extern int main PARAMS ((int, char **));
-
 int
-main (argc, argv)
-     int argc;
-     char **argv;
+main (int argc, char **argv)
 {
   rtx desc;
 
   progname = "genconfig";
-
-  if (argc <= 1)
-    fatal ("no input file name");
 
   if (init_md_reader_args (argc, argv) != SUCCESS_EXIT_CODE)
     return (FATAL_EXIT_CODE);
@@ -342,7 +327,16 @@ main (argc, argv)
   printf ("#endif\n");
 
   if (have_cc0_flag)
-    printf ("#define HAVE_cc0 1\n");
+    {
+      printf ("#define HAVE_cc0 1\n");
+      printf ("#define CC0_P(X) ((X) == cc0_rtx)\n");
+    }
+  else
+    {
+      /* We output CC0_P this way to make sure that X is declared
+	 somewhere.  */
+      printf ("#define CC0_P(X) ((X) ? 0 : 0)\n");
+    }
 
   if (have_cmove_flag)
     printf ("#define HAVE_conditional_move 1\n");
@@ -368,12 +362,4 @@ main (argc, argv)
     return FATAL_EXIT_CODE;
 
   return SUCCESS_EXIT_CODE;
-}
-
-/* Define this so we can link with print-rtl.o to get debug_rtx function.  */
-const char *
-get_insn_name (code)
-     int code ATTRIBUTE_UNUSED;
-{
-  return NULL;
 }

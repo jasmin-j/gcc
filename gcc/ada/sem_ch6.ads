@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -28,23 +26,44 @@
 with Types; use Types;
 package Sem_Ch6 is
 
-   procedure Analyze_Abstract_Subprogram_Declaration    (N : Node_Id);
-   procedure Analyze_Function_Call                      (N : Node_Id);
-   procedure Analyze_Operator_Symbol                    (N : Node_Id);
-   procedure Analyze_Parameter_Association              (N : Node_Id);
-   procedure Analyze_Procedure_Call                     (N : Node_Id);
-   procedure Analyze_Return_Statement                   (N : Node_Id);
-   procedure Analyze_Subprogram_Declaration             (N : Node_Id);
-   procedure Analyze_Subprogram_Body                    (N : Node_Id);
+   type Conformance_Type is
+     (Type_Conformant, Mode_Conformant, Subtype_Conformant, Fully_Conformant);
+   --  Conformance type used in conformance checks between specs and bodies,
+   --  and for overriding. The literals match the RM definitions of the
+   --  corresponding terms.
 
-   function Analyze_Spec (N : Node_Id) return Entity_Id;
+   procedure Analyze_Abstract_Subprogram_Declaration (N : Node_Id);
+   procedure Analyze_Extended_Return_Statement       (N : Node_Id);
+   procedure Analyze_Function_Call                   (N : Node_Id);
+   procedure Analyze_Operator_Symbol                 (N : Node_Id);
+   procedure Analyze_Parameter_Association           (N : Node_Id);
+   procedure Analyze_Procedure_Call                  (N : Node_Id);
+   procedure Analyze_Simple_Return_Statement         (N : Node_Id);
+   procedure Analyze_Subprogram_Declaration          (N : Node_Id);
+   procedure Analyze_Subprogram_Body                 (N : Node_Id);
+
+   function Analyze_Subprogram_Specification (N : Node_Id) return Entity_Id;
    --  Analyze subprogram specification in both subprogram declarations
-   --  and body declarations.
+   --  and body declarations. Returns the defining entity for the
+   --  specification N.
+
+   procedure Cannot_Inline (Msg : String; N : Node_Id; Subp : Entity_Id);
+   --  This procedure is called if the node N, an instance of a call to
+   --  subprogram Subp, cannot be inlined. Msg is the message to be issued,
+   --  and has a ? as the last character. If Subp has a pragma Always_Inlined,
+   --  then an error message is issued (by removing the last character of Msg).
+   --  If Subp is not Always_Inlined, then a warning is issued if the flag
+   --  Ineffective_Inline_Warnings is set, and if not, the call has no effect.
+
+   procedure Check_Conventions (Typ : Entity_Id);
+   --  Ada 2005 (AI-430): Check that the conventions of all inherited and
+   --  overridden dispatching operations of type Typ are consistent with
+   --  their respective counterparts.
 
    procedure Check_Delayed_Subprogram (Designator : Entity_Id);
-   --  Designator can be a E_Subrpgram_Type, E_Procedure or E_Function. If a
+   --  Designator can be a E_Subprogram_Type, E_Procedure or E_Function. If a
    --  type in its profile depends on a private type without a full
-   --  declaration, indicate that the subprogram is delayed.
+   --  declaration, indicate that the subprogram or type is delayed.
 
    procedure Check_Discriminant_Conformance
      (N        : Node_Id;
@@ -99,6 +118,16 @@ package Sem_Ch6 is
    --  the flag being placed on the Err_Loc node if it is specified, and
    --  on the appropriate component of the New_Id construct if not.
 
+   function Conforming_Types
+     (T1       : Entity_Id;
+      T2       : Entity_Id;
+      Ctype    : Conformance_Type;
+      Get_Inst : Boolean := False) return Boolean;
+   --  Check that the types of two formal parameters are conforming. In most
+   --  cases this is just a name comparison, but within an instance it involves
+   --  generic actual types, and in the presence of anonymous access types
+   --  it must examine the designated types.
+
    procedure Create_Extra_Formals (E : Entity_Id);
    --  For each parameter of a subprogram or entry that requires an additional
    --  formal (such as for access parameters and indefinite discriminated
@@ -118,9 +147,16 @@ package Sem_Ch6 is
    function Fully_Conformant_Expressions
      (Given_E1 : Node_Id;
       Given_E2 : Node_Id)
-      return  Boolean;
+      return     Boolean;
    --  Determines if two (non-empty) expressions are fully conformant
    --  as defined by (RM 6.3.1(18-21))
+
+   function Fully_Conformant_Discrete_Subtypes
+      (Given_S1 : Node_Id;
+       Given_S2 : Node_Id)
+       return Boolean;
+   --  Determines if two subtype definitions are fully conformant. Used
+   --  for entry family conformance checks (RM 6.3.1 (24)).
 
    function Mode_Conformant (New_Id, Old_Id : Entity_Id) return Boolean;
    --  Determine whether two callable entities (subprograms, entries,
@@ -129,11 +165,10 @@ package Sem_Ch6 is
    procedure New_Overloaded_Entity
      (S            : Entity_Id;
       Derived_Type : Entity_Id := Empty);
-   --  Process new overloaded entity. Overloaded entities are created
-   --  by enumeration type declarations, subprogram specifications,
-   --  entry declarations, and (implicitly) by type derivations.
-   --  If Derived_Type is not Empty, then it indicates that this
-   --  is subprogram derived for that type.
+   --  Process new overloaded entity. Overloaded entities are created by
+   --  enumeration type declarations, subprogram specifications, entry
+   --  declarations, and (implicitly) by type derivations. Derived_Type non-
+   --  Empty indicates that this is subprogram derived for that type.
 
    procedure Process_Formals (T : List_Id; Related_Nod : Node_Id);
    --  Enter the formals in the scope of the subprogram or entry, and
@@ -154,11 +189,14 @@ package Sem_Ch6 is
 
    function Subtype_Conformant (New_Id, Old_Id : Entity_Id) return Boolean;
    --  Determine whether two callable entities (subprograms, entries,
-   --  literals) are subtype conformant (RM6.3.1(16))
+   --  literals) are subtype conformant (RM6.3.1(16)).
 
-   function Type_Conformant (New_Id, Old_Id : Entity_Id) return Boolean;
+   function Type_Conformant
+     (New_Id                   : Entity_Id;
+      Old_Id                   : Entity_Id;
+      Skip_Controlling_Formals : Boolean := False) return Boolean;
    --  Determine whether two callable entities (subprograms, entries,
-   --  literals) are type conformant (RM6.3.1(14))
+   --  literals) are type conformant (RM6.3.1(14)).
 
    procedure Valid_Operator_Definition (Designator : Entity_Id);
    --  Verify that an operator definition has the proper number of formals

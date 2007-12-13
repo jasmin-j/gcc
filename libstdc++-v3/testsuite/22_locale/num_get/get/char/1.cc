@@ -1,6 +1,9 @@
+// { dg-require-namedlocale "" }
+
 // 2001-11-21 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +18,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.2.1.1  num_get members
@@ -29,43 +32,26 @@ void test01()
   using namespace std;
   typedef istreambuf_iterator<char> iterator_type;
 
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   // basic construction
   locale loc_c = locale::classic();
-  locale loc_hk("en_HK");
-  locale loc_fr("fr_FR@euro");
-  locale loc_de("de_DE");
+  locale loc_de = locale("de_DE");
   VERIFY( loc_c != loc_de );
-  VERIFY( loc_hk != loc_fr );
-  VERIFY( loc_hk != loc_de );
-  VERIFY( loc_de != loc_fr );
-
-  // cache the numpunct facets
-  const numpunct<char>& numpunct_c = use_facet<numpunct<char> >(loc_c); 
-  const numpunct<char>& numpunct_de = use_facet<numpunct<char> >(loc_de); 
-  const numpunct<char>& numpunct_hk = use_facet<numpunct<char> >(loc_hk); 
 
   // sanity check the data is correct.
   const string empty;
-  char c;
 
   bool b1 = true;
   bool b0 = false;
-  long l1 = 2147483647;
-  long l2 = -2147483647;
-  long l;
   unsigned long ul1 = 1294967294;
-  unsigned long ul2 = 0;
   unsigned long ul;
   double d1 =  1.02345e+308;
   double d2 = 3.15e-308;
   double d;
   long double ld1 = 6.630025e+4;
-  long double ld2 = 0.0;
   long double ld;
-  void* v;
-  const void* cv = &ul2;
+  void* v = 0;
 
   // cache the num_get facet
   istringstream iss;
@@ -138,17 +124,16 @@ void test01()
   VERIFY( ld == 0 );
   VERIFY( err == goodbit );
 
-  // const void
+  // void*
   iss.str("0xbffff74c,");
   iss.clear();
   err = goodbit;
   ng.get(iss.rdbuf(), 0, iss, err, v);
-  VERIFY( &v != &cv );
+  VERIFY( v != 0 );
   VERIFY( err == goodbit );
 
-#ifdef _GLIBCPP_USE_LONG_LONG
+#ifdef _GLIBCXX_USE_LONG_LONG
   long long ll1 = 9223372036854775807LL;
-  long long ll2 = -9223372036854775807LL;
   long long ll;
 
   iss.str("9.223.372.036.854.775.807");

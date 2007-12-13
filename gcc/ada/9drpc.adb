@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2006 Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -94,11 +93,11 @@ package body System.RPC is
    task type Anonymous_Task_Type (Self : Anonymous_Task_Node_Access) is
 
       entry Start
-         (Message_Id   : in Message_Id_Type;
-          Partition    : in Partition_ID;
-          Params_Size  : in Ada.Streams.Stream_Element_Count;
-          Result_Size  : in Ada.Streams.Stream_Element_Count;
-          Protocol     : in Garlic.Protocol_Access);
+         (Message_Id   : Message_Id_Type;
+          Partition    : Partition_ID;
+          Params_Size  : Ada.Streams.Stream_Element_Count;
+          Result_Size  : Ada.Streams.Stream_Element_Count;
+          Protocol     : Garlic.Protocol_Access);
       --  This entry provides an anonymous task a remote call to perform.
       --  This task calls for a Request id is provided to construct the
       --  reply id by using -Request. Partition is used to send the reply
@@ -154,8 +153,8 @@ package body System.RPC is
       --  When it is resumed, we provide the size of the reply
 
       entry Wake_Up
-        (Request : in Request_Id_Type;
-         Length  : in Ada.Streams.Stream_Element_Count);
+        (Request : Request_Id_Type;
+         Length  : Ada.Streams.Stream_Element_Count);
       --  To wake up the calling stub when the environnement task has
       --  received a reply for this request
 
@@ -199,7 +198,7 @@ package body System.RPC is
    --  Debugging package
 
    procedure D
-     (Flag : in Debug_Level; Info : in String) renames Debugging.Debug;
+     (Flag : Debug_Level; Info : String) renames Debugging.Debug;
    --  Shortcut
 
    ------------------------
@@ -266,7 +265,7 @@ package body System.RPC is
    -- Null_Node --
    ---------------
 
-   function Null_Node (Index : in Packet_Node_Access) return Boolean is
+   function Null_Node (Index : Packet_Node_Access) return Boolean is
    begin
       return Index = null;
 
@@ -376,7 +375,7 @@ package body System.RPC is
 
    procedure Write
      (Stream : in out Params_Stream_Type;
-      Item   : in Ada.Streams.Stream_Element_Array)
+      Item   : Ada.Streams.Stream_Element_Array)
      renames System.RPC.Streams.Write;
 
    -----------------------
@@ -688,8 +687,8 @@ package body System.RPC is
    ----------------------------
 
    procedure Establish_RPC_Receiver
-     (Partition : in Partition_ID;
-      Receiver  : in RPC_Receiver)
+     (Partition : Partition_ID;
+      Receiver  : RPC_Receiver)
    is
    begin
       --  Set Partition_RPC_Receiver and allow RPC mechanism
@@ -800,11 +799,11 @@ package body System.RPC is
 
          select
             accept Start
-              (Message_Id   : in Message_Id_Type;
-               Partition    : in Partition_ID;
-               Params_Size  : in Ada.Streams.Stream_Element_Count;
-               Result_Size  : in Ada.Streams.Stream_Element_Count;
-               Protocol     : in Protocol_Access)
+              (Message_Id   : Message_Id_Type;
+               Partition    : Partition_ID;
+               Params_Size  : Ada.Streams.Stream_Element_Count;
+               Result_Size  : Ada.Streams.Stream_Element_Count;
+               Protocol     : Protocol_Access)
             do
                C_Message_Id := Message_Id;
                C_Partition  := Partition;

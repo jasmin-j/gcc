@@ -1,4 +1,4 @@
-// Build don't link:
+// { dg-do assemble  }
 
 // Copyright (C) 2000 Free Software Foundation, Inc.
 // Contributed by Nathan Sidwell 22 June 2000 <nathan@codesourcery.com>
@@ -17,10 +17,10 @@ class X {
 
 class Y {
   public:
-  typedef ::X W;
+  typedef ::X W;   // { dg-error "" } previous declaration
   class Z;
 };
 
 class Y::Z {};
-class Y::W  () {}  // ERROR - parse error
+class Y::W  () {}  // { dg-error "" } parse error
 Y::W::X () {}

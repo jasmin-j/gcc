@@ -1,24 +1,23 @@
 /* Subroutines for insn-output.c for Windows NT.
    Contributed by Douglas Rupp (drupp@cs.washington.edu)
-   Copyright (C) 1995, 1997, 1998, 1999, 2000, 2001, 2002
-   Free Software Foundation, Inc.
+   Copyright (C) 1995, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
+   2005, 2006, 2007 Free Software Foundation, Inc.
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
-any later version.
+GCC is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 3, or (at your option) any later
+version.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+GCC is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -34,6 +33,7 @@ Boston, MA 02111-1307, USA.  */
 #include "toplev.h"
 #include "hashtab.h"
 #include "ggc.h"
+#include "target.h"
 
 /* i386/PE specific attribute support.
 
@@ -46,453 +46,310 @@ Boston, MA 02111-1307, USA.  */
    multiple times.
 */
 
-static tree associated_type PARAMS ((tree));
-const char * gen_stdcall_suffix PARAMS ((tree));
-const char * gen_fastcall_suffix PARAMS ((tree));
-int i386_pe_dllexport_p PARAMS ((tree));
-int i386_pe_dllimport_p PARAMS ((tree));
-void i386_pe_mark_dllexport PARAMS ((tree));
-void i386_pe_mark_dllimport PARAMS ((tree));
-
-/* Handle a "dllimport" or "dllexport" attribute;
-   arguments as in struct attribute_spec.handler.  */
-tree
-ix86_handle_dll_attribute (node, name, args, flags, no_add_attrs)
-     tree *node;
-     tree name;
-     tree args;
-     int flags;
-     bool *no_add_attrs;
-{
-  /* These attributes may apply to structure and union types being created,
-     but otherwise should pass to the declaration involved.  */
-  if (!DECL_P (*node))
-    {
-      if (flags & ((int) ATTR_FLAG_DECL_NEXT | (int) ATTR_FLAG_FUNCTION_NEXT
-		   | (int) ATTR_FLAG_ARRAY_NEXT))
-	{
-	  *no_add_attrs = true;
-	  return tree_cons (name, args, NULL_TREE);
-	}
-      if (TREE_CODE (*node) != RECORD_TYPE && TREE_CODE (*node) != UNION_TYPE)
-	{
-	  warning ("`%s' attribute ignored", IDENTIFIER_POINTER (name));
-	  *no_add_attrs = true;
-	}
-    }
-
-  /* `extern' needn't be specified with dllimport.
-     Specify `extern' now and hope for the best.  Sigh.  */
-  else if (TREE_CODE (*node) == VAR_DECL
-	   && is_attribute_p ("dllimport", name))
-    {
-      DECL_EXTERNAL (*node) = 1;
-      TREE_PUBLIC (*node) = 1;
-    }
-
-  return NULL_TREE;
-}
-
 /* Handle a "shared" attribute;
    arguments as in struct attribute_spec.handler.  */
 tree
-ix86_handle_shared_attribute (node, name, args, flags, no_add_attrs)
-     tree *node;
-     tree name;
-     tree args ATTRIBUTE_UNUSED;
-     int flags ATTRIBUTE_UNUSED;
-     bool *no_add_attrs;
+ix86_handle_shared_attribute (tree *node, tree name,
+			      tree args ATTRIBUTE_UNUSED,
+			      int flags ATTRIBUTE_UNUSED, bool *no_add_attrs)
 {
   if (TREE_CODE (*node) != VAR_DECL)
     {
-      warning ("`%s' attribute only applies to variables",
+      warning (OPT_Wattributes, "%qs attribute only applies to variables",
 	       IDENTIFIER_POINTER (name));
       *no_add_attrs = true;
     }
 
   return NULL_TREE;
 }
+
+/* Handle a "selectany" attribute;
+   arguments as in struct attribute_spec.handler.  */
+tree
+ix86_handle_selectany_attribute (tree *node, tree name,
+			         tree args ATTRIBUTE_UNUSED,
+			         int flags ATTRIBUTE_UNUSED,
+				 bool *no_add_attrs)
+{
+  /* The attribute applies only to objects that are initialized and have
+     external linkage.  However, we may not know about initialization
+     until the language frontend has processed the decl. We'll check for
+     initialization later in encode_section_info.  */
+  if (TREE_CODE (*node) != VAR_DECL || !TREE_PUBLIC (*node))
+    {	
+      error ("%qs attribute applies only to initialized variables"
+       	     " with external linkage",  IDENTIFIER_POINTER (name));
+      *no_add_attrs = true;
+    }
+
+  return NULL_TREE;
+}
+
 
 /* Return the type that we should use to determine if DECL is
    imported or exported.  */
 
 static tree
-associated_type (decl)
-     tree decl;
+associated_type (tree decl)
 {
-  tree t = NULL_TREE;
+  return (DECL_CONTEXT (decl) && TYPE_P (DECL_CONTEXT (decl))
+          ?  DECL_CONTEXT (decl) : NULL_TREE);
+}
 
-  /* In the C++ frontend, DECL_CONTEXT for a method doesn't actually refer
-     to the containing class.  So we look at the 'this' arg.  */
-  if (TREE_CODE (TREE_TYPE (decl)) == METHOD_TYPE)
+/* Return true if DECL should be a dllexport'd object.  */
+
+static bool
+i386_pe_determine_dllexport_p (tree decl)
+{
+  tree assoc;
+
+  if (TREE_CODE (decl) != VAR_DECL && TREE_CODE (decl) != FUNCTION_DECL)
+    return false;
+
+  if (lookup_attribute ("dllexport", DECL_ATTRIBUTES (decl)))
+    return true;
+
+  /* Also mark class members of exported classes with dllexport.  */
+  assoc = associated_type (decl);
+  if (assoc && lookup_attribute ("dllexport", TYPE_ATTRIBUTES (assoc)))
+    return i386_pe_type_dllexport_p (decl);
+
+  return false;
+}
+
+/* Return true if DECL should be a dllimport'd object.  */
+
+static bool
+i386_pe_determine_dllimport_p (tree decl)
+{
+  tree assoc;
+
+  if (TREE_CODE (decl) != VAR_DECL && TREE_CODE (decl) != FUNCTION_DECL)
+    return false;
+
+  /* Lookup the attribute in addition to checking the DECL_DLLIMPORT_P flag.
+     We may need to override an earlier decision.  */
+  if (DECL_DLLIMPORT_P (decl))
+    return true;
+
+  /* The DECL_DLLIMPORT_P flag was set for decls in the class definition
+     by  targetm.cxx.adjust_class_at_definition.  Check again to emit
+     warnings if the class attribute has been overridden by an
+     out-of-class definition.  */
+  assoc = associated_type (decl);
+  if (assoc && lookup_attribute ("dllimport", TYPE_ATTRIBUTES (assoc)))
+    return i386_pe_type_dllimport_p (decl);
+
+  return false;
+}
+
+/* Handle the -mno-fun-dllimport target switch.  */
+
+bool
+i386_pe_valid_dllimport_attribute_p (const_tree decl)
+{
+   if (TARGET_NOP_FUN_DLLIMPORT && TREE_CODE (decl) == FUNCTION_DECL)
+     return false;
+   return true;
+}
+
+/* Return string which is the function name, identified by ID, modified
+   with a suffix consisting of an atsign (@) followed by the number of
+   bytes of arguments.  If ID is NULL use the DECL_NAME as base. If
+   FASTCALL is true, also add the FASTCALL_PREFIX.
+   Return NULL if no change required.  */
+
+static tree
+gen_stdcall_or_fastcall_suffix (tree decl, tree id, bool fastcall)
+{
+  HOST_WIDE_INT total = 0;
+  const char *old_str = IDENTIFIER_POINTER (id != NULL_TREE ? id : DECL_NAME (decl));
+  char *new_str, *p;
+  tree type = TREE_TYPE (decl);
+  tree arg;
+  function_args_iterator args_iter;
+
+  gcc_assert (TREE_CODE (decl) == FUNCTION_DECL);  
+
+  if (prototype_p (type))
     {
-      /* Artificial methods are not affected by the import/export status of
-	 their class unless they are virtual.  */
-      if (! DECL_ARTIFICIAL (decl) || DECL_VINDEX (decl))
-	t = TREE_TYPE (TREE_VALUE (TYPE_ARG_TYPES (TREE_TYPE (decl))));
-    }
-  else if (DECL_CONTEXT (decl)
-	   && TREE_CODE_CLASS (TREE_CODE (DECL_CONTEXT (decl))) == 't')
-    t = DECL_CONTEXT (decl);
+      /* This attribute is ignored for variadic functions.  */ 
+      if (stdarg_p (type))
+	return NULL_TREE;
 
-  return t;
-}
-
-/* Return nonzero if DECL is a dllexport'd object.  */
-
-int
-i386_pe_dllexport_p (decl)
-     tree decl;
-{
-  tree exp;
-
-  if (TREE_CODE (decl) != VAR_DECL
-      && TREE_CODE (decl) != FUNCTION_DECL)
-    return 0;
-  exp = lookup_attribute ("dllexport", DECL_ATTRIBUTES (decl));
-  if (exp)
-    return 1;
-
-  /* Class members get the dllexport status of their class.  */
-  if (associated_type (decl))
-    {
-      exp = lookup_attribute ("dllexport",
-			      TYPE_ATTRIBUTES (associated_type (decl)));
-      if (exp)
-	return 1;
-    }
-
-  return 0;
-}
-
-/* Return nonzero if DECL is a dllimport'd object.  */
-
-int
-i386_pe_dllimport_p (decl)
-     tree decl;
-{
-  tree imp;
-
-  if (TREE_CODE (decl) == FUNCTION_DECL
-      && TARGET_NOP_FUN_DLLIMPORT)
-    return 0;
-
-  if (TREE_CODE (decl) != VAR_DECL
-      && TREE_CODE (decl) != FUNCTION_DECL)
-    return 0;
-  imp = lookup_attribute ("dllimport", DECL_ATTRIBUTES (decl));
-  if (imp)
-    return 1;
-
-  /* Class members get the dllimport status of their class.  */
-  if (associated_type (decl))
-    {
-      imp = lookup_attribute ("dllimport",
-			      TYPE_ATTRIBUTES (associated_type (decl)));
-      if (imp)
-	return 1;
-    }
-
-  return 0;
-}
-
-/* Return nonzero if SYMBOL is marked as being dllexport'd.  */
-
-int
-i386_pe_dllexport_name_p (symbol)
-     const char *symbol;
-{
-  return symbol[0] == DLL_IMPORT_EXPORT_PREFIX
-         && symbol[1] == 'e' && symbol[2] == '.';
-}
-
-/* Return nonzero if SYMBOL is marked as being dllimport'd.  */
-
-int
-i386_pe_dllimport_name_p (symbol)
-     const char *symbol;
-{
-  return symbol[0] == DLL_IMPORT_EXPORT_PREFIX
-         && symbol[1] == 'i' && symbol[2] == '.';
-}
-
-/* Mark a DECL as being dllexport'd.
-   Note that we override the previous setting (eg: dllimport).  */
-
-void
-i386_pe_mark_dllexport (decl)
-     tree decl;
-{
-  const char *oldname;
-  char  *newname;
-  rtx rtlname;
-  tree idp;
-
-  rtlname = XEXP (DECL_RTL (decl), 0);
-  if (GET_CODE (rtlname) == SYMBOL_REF)
-    oldname = XSTR (rtlname, 0);
-  else if (GET_CODE (rtlname) == MEM
-	   && GET_CODE (XEXP (rtlname, 0)) == SYMBOL_REF)
-    oldname = XSTR (XEXP (rtlname, 0), 0);
-  else
-    abort ();
-  if (i386_pe_dllimport_name_p (oldname))
-    oldname += 9;
-  else if (i386_pe_dllexport_name_p (oldname))
-    return; /* already done */
-
-  newname = alloca (strlen (oldname) + 4);
-  sprintf (newname, "%ce.%s", DLL_IMPORT_EXPORT_PREFIX, oldname);
-
-  /* We pass newname through get_identifier to ensure it has a unique
-     address.  RTL processing can sometimes peek inside the symbol ref
-     and compare the string's addresses to see if two symbols are
-     identical.  */
-  idp = get_identifier (newname);
-
-  XEXP (DECL_RTL (decl), 0) =
-    gen_rtx (SYMBOL_REF, Pmode, IDENTIFIER_POINTER (idp));
-}
-
-/* Mark a DECL as being dllimport'd.  */
-
-void
-i386_pe_mark_dllimport (decl)
-     tree decl;
-{
-  const char *oldname;
-  char  *newname;
-  tree idp;
-  rtx rtlname, newrtl;
-
-  rtlname = XEXP (DECL_RTL (decl), 0);
-  if (GET_CODE (rtlname) == SYMBOL_REF)
-    oldname = XSTR (rtlname, 0);
-  else if (GET_CODE (rtlname) == MEM
-	   && GET_CODE (XEXP (rtlname, 0)) == SYMBOL_REF)
-    oldname = XSTR (XEXP (rtlname, 0), 0);
-  else
-    abort ();
-  if (i386_pe_dllexport_name_p (oldname))
-    {
-      error ("`%s' declared as both exported to and imported from a DLL",
-             IDENTIFIER_POINTER (DECL_NAME (decl)));
-      return;
-    }
-  else if (i386_pe_dllimport_name_p (oldname))
-    {
-      /* Already done, but force correct linkage since the redeclaration 
-         might have omitted explicit extern.  Sigh.  */
-      if (TREE_CODE (decl) == VAR_DECL
-	  /* ??? Is this test for vtables needed?  */
-	  && !DECL_VIRTUAL_P (decl))
+      /* Quit if we hit an incomplete type.  Error is reported
+	 by convert_arguments in c-typeck.c or cp/typeck.c.  */
+      FOREACH_FUNCTION_ARGS(type, arg, args_iter)
 	{
-	  DECL_EXTERNAL (decl) = 1;
-	  TREE_PUBLIC (decl) = 1;
+	  HOST_WIDE_INT parm_size;
+	  HOST_WIDE_INT parm_boundary_bytes = PARM_BOUNDARY / BITS_PER_UNIT;
+
+	  if (! COMPLETE_TYPE_P (arg))
+	    break;
+
+	  parm_size = int_size_in_bytes (arg);
+	  if (parm_size < 0)
+	    break;
+
+	  /* Must round up to include padding.  This is done the same
+	     way as in store_one_arg.  */
+	  parm_size = ((parm_size + parm_boundary_bytes - 1)
+		       / parm_boundary_bytes * parm_boundary_bytes);
+	  total += parm_size;
 	}
-      return;
-    }
-
-  /* ??? One can well ask why we're making these checks here,
-     and that would be a good question.  */
-
-  /* Imported variables can't be initialized. Note that C++ classes
-     are marked initial, so we need to check.  */
-  if (TREE_CODE (decl) == VAR_DECL
-      && !DECL_VIRTUAL_P (decl)
-      && (DECL_INITIAL (decl)
-          && ! TYPE_NEEDS_CONSTRUCTING (TREE_TYPE (decl))))
-    {
-      error_with_decl (decl, "initialized variable `%s' is marked dllimport");
-      return;
-    }
-  /* Nor can they be static.  */
-  if (TREE_CODE (decl) == VAR_DECL
-      /* ??? Is this test for vtables needed?  */
-      && !DECL_VIRTUAL_P (decl)
-      && 0 /*???*/)
-    {
-      error_with_decl (decl, "static variable `%s' is marked dllimport");
-      return;
-    }
-
-  newname = alloca (strlen (oldname) + 4);
-  sprintf (newname, "%ci.%s", DLL_IMPORT_EXPORT_PREFIX, oldname);
-
-  /* We pass newname through get_identifier to ensure it has a unique
-     address.  RTL processing can sometimes peek inside the symbol ref
-     and compare the string's addresses to see if two symbols are
-     identical.  */
-  idp = get_identifier (newname);
-
-  newrtl = gen_rtx (MEM, Pmode,
-		    gen_rtx (SYMBOL_REF, Pmode,
-			     IDENTIFIER_POINTER (idp)));
-  XEXP (DECL_RTL (decl), 0) = newrtl;
-
-  /* Can't treat a pointer to this as a constant address */
-  DECL_NON_ADDR_CONST_P (decl) = 1;
-}
-
-/* Return string which is the former assembler name modified with a 
-   prefix consisting of FASTCALL_PREFIX and a suffix consisting of an
-   atsign (@) followed by the number of bytes of arguments.  */
-
-const char *
-gen_fastcall_suffix (decl)
-  tree decl;
-{
-  int total = 0;
-
-  const char *asmname = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (decl));
-  char *newsym;
-
-  if (TYPE_ARG_TYPES (TREE_TYPE (decl)))
-    if (TREE_VALUE (tree_last (TYPE_ARG_TYPES (TREE_TYPE (decl))))
-        == void_type_node)
-      {
-	tree formal_type = TYPE_ARG_TYPES (TREE_TYPE (decl));
-
-	while (TREE_VALUE (formal_type) != void_type_node)
-	  {
-	    int parm_size
-	      = TREE_INT_CST_LOW (TYPE_SIZE (TREE_VALUE (formal_type)));
-	    /* Must round up to include padding.  This is done the same
-	       way as in store_one_arg.  */
-	    parm_size = ((parm_size + PARM_BOUNDARY - 1)
-			 / PARM_BOUNDARY * PARM_BOUNDARY);
-	    total += parm_size;
-	    formal_type = TREE_CHAIN (formal_type);
-	  }
       }
+  /* Assume max of 8 base 10 digits in the suffix.  */
+  p = new_str = alloca (1 + strlen (old_str) + 1 + 8 + 1);
+  if (fastcall)
+    *p++ = FASTCALL_PREFIX;
+  sprintf (p, "%s@" HOST_WIDE_INT_PRINT_DEC, old_str, total);
 
-  newsym = xmalloc (strlen (asmname) + 11);
-  sprintf (newsym, "%c%s@%d", FASTCALL_PREFIX, asmname, total/BITS_PER_UNIT);
-  return IDENTIFIER_POINTER (get_identifier (newsym));
+  return get_identifier (new_str);
 }
 
-/* Return string which is the former assembler name modified with a 
-   suffix consisting of an atsign (@) followed by the number of bytes of 
-   arguments */
+/* Maybe decorate and get a new identifier for the DECL of a stdcall or
+   fastcall function. The original identifier is supplied in ID. */
 
-const char *
-gen_stdcall_suffix (decl)
-  tree decl;
+static tree
+i386_pe_maybe_mangle_decl_assembler_name (tree decl, tree id)
 {
-  int total = 0;
-  /* ??? This probably should use XSTR (XEXP (DECL_RTL (decl), 0), 0) instead
-     of DECL_ASSEMBLER_NAME.  */
-  const char *asmname = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (decl));
-  char *newsym;
-
-  if (TYPE_ARG_TYPES (TREE_TYPE (decl)))
-    if (TREE_VALUE (tree_last (TYPE_ARG_TYPES (TREE_TYPE (decl)))) 
-        == void_type_node)
-      {
-	tree formal_type = TYPE_ARG_TYPES (TREE_TYPE (decl));
-
-	while (TREE_VALUE (formal_type) != void_type_node)
-	  {
-	    int parm_size
-	      = TREE_INT_CST_LOW (TYPE_SIZE (TREE_VALUE (formal_type)));
-	    /* Must round up to include padding.  This is done the same
-	       way as in store_one_arg.  */
-	    parm_size = ((parm_size + PARM_BOUNDARY - 1)
-			 / PARM_BOUNDARY * PARM_BOUNDARY);
-	    total += parm_size;
-	    formal_type = TREE_CHAIN (formal_type);
-	  }
-      }
-
-  newsym = xmalloc (strlen (asmname) + 10);
-  sprintf (newsym, "%s@%d", asmname, total/BITS_PER_UNIT);
-  return IDENTIFIER_POINTER (get_identifier (newsym));
-}
-
-void
-i386_pe_encode_section_info (decl, first)
-     tree decl;
-     int first;
-{
-  if (!first)
-    return;
-
-  /* This bit is copied from i386.h.  */
-  if (optimize > 0 && TREE_CONSTANT (decl)
-      && (!flag_writable_strings || TREE_CODE (decl) != STRING_CST))
-    {
-      rtx rtl = (TREE_CODE_CLASS (TREE_CODE (decl)) != 'd'
-                 ? TREE_CST_RTL (decl) : DECL_RTL (decl));
-      SYMBOL_REF_FLAG (XEXP (rtl, 0)) = 1;
-    }
+  tree new_id = NULL_TREE;
 
   if (TREE_CODE (decl) == FUNCTION_DECL)
+    { 
+      tree type_attributes = TYPE_ATTRIBUTES (TREE_TYPE (decl));
+      if (lookup_attribute ("stdcall", type_attributes))
+	new_id = gen_stdcall_or_fastcall_suffix (decl, id, false);
+      else if (lookup_attribute ("fastcall", type_attributes))
+	new_id = gen_stdcall_or_fastcall_suffix (decl, id, true);
+    }
+
+  return new_id;
+}
+
+/* This is used as a target hook to modify the DECL_ASSEMBLER_NAME
+   in the language-independent default hook
+   langhooks,c:lhd_set_decl_assembler_name ()
+   and in cp/mangle,c:mangle_decl ().  */
+tree
+i386_pe_mangle_decl_assembler_name (tree decl, tree id)
+{
+  tree new_id = i386_pe_maybe_mangle_decl_assembler_name (decl, id);   
+
+  return (new_id ? new_id : id);
+}
+
+void
+i386_pe_encode_section_info (tree decl, rtx rtl, int first)
+{
+  rtx symbol;
+  int flags;
+
+  /* Do this last, due to our frobbing of DECL_DLLIMPORT_P above.  */
+  default_encode_section_info (decl, rtl, first);
+
+  /* Careful not to prod global register variables.  */
+  if (!MEM_P (rtl))
+    return;
+
+  symbol = XEXP (rtl, 0);
+  gcc_assert (GET_CODE (symbol) == SYMBOL_REF);
+
+  switch (TREE_CODE (decl))
     {
-      if (lookup_attribute ("stdcall",
-			    TYPE_ATTRIBUTES (TREE_TYPE (decl))))
-        XEXP (DECL_RTL (decl), 0) = 
-	  gen_rtx (SYMBOL_REF, Pmode, gen_stdcall_suffix (decl));
-      else if (lookup_attribute ("fastcall",
-				 TYPE_ATTRIBUTES (TREE_TYPE (decl))))
-        XEXP (DECL_RTL (decl), 0) =
-	  gen_rtx (SYMBOL_REF, Pmode, gen_fastcall_suffix (decl));
+    case FUNCTION_DECL:
+      if (first)
+	{
+	  /* FIXME: In Ada, and perhaps other language frontends,
+	     imported stdcall names may not yet have been modified.
+	     Check and do it know.  */
+         tree new_id;
+         tree old_id = DECL_ASSEMBLER_NAME (decl);
+     	  const char* asm_str = IDENTIFIER_POINTER (old_id);
+          /* Do not change the identifier if a verbatim asmspec
+	     or if stdcall suffix already added. */
+      	  if (*asm_str == '*' || strchr (asm_str, '@'))
+            break;
+	  if ((new_id = i386_pe_maybe_mangle_decl_assembler_name (decl, old_id)))
+	    {
+	      /* These attributes must be present on first declaration,
+		 change_decl_assembler_name will warn if they are added
+		 later and the decl has been referenced, but duplicate_decls
+		 should catch the mismatch first.  */
+	      change_decl_assembler_name (decl, new_id);
+	      XSTR (symbol, 0) = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (decl));
+	    }
+	}
+      break;
+
+    case VAR_DECL:
+      if (lookup_attribute ("selectany", DECL_ATTRIBUTES (decl)))
+	{
+	  if (DECL_INITIAL (decl)
+	      /* If an object is initialized with a ctor, the static
+		 initialization and destruction code for it is present in
+		 each unit defining the object.  The code that calls the
+		 ctor is protected by a link-once guard variable, so that
+		 the object still has link-once semantics,  */
+	      || TYPE_NEEDS_CONSTRUCTING (TREE_TYPE (decl)))
+	    make_decl_one_only (decl);
+	  else
+	    error ("%q+D:'selectany' attribute applies only to "
+		   "initialized objects", decl);
+	}
+      break;
+
+    default:
+      return;
     }
 
   /* Mark the decl so we can tell from the rtl whether the object is
-     dllexport'd or dllimport'd.  */
-
-  if (i386_pe_dllexport_p (decl))
-    i386_pe_mark_dllexport (decl);
-  else if (i386_pe_dllimport_p (decl))
-    i386_pe_mark_dllimport (decl);
-  /* It might be that DECL has already been marked as dllimport, but a
-     subsequent definition nullified that.  The attribute is gone but
-     DECL_RTL still has (DLL_IMPORT_EXPORT_PREFIX)i._imp__foo.  We need
-     to remove that. Ditto for the DECL_NON_ADDR_CONST_P flag.  */
-  else if ((TREE_CODE (decl) == FUNCTION_DECL
-	    || TREE_CODE (decl) == VAR_DECL)
-	   && DECL_RTL (decl) != NULL_RTX
-	   && GET_CODE (DECL_RTL (decl)) == MEM
-	   && GET_CODE (XEXP (DECL_RTL (decl), 0)) == MEM
-	   && GET_CODE (XEXP (XEXP (DECL_RTL (decl), 0), 0)) == SYMBOL_REF
-	   && i386_pe_dllimport_name_p (XSTR (XEXP (XEXP (DECL_RTL (decl), 0), 0), 0)))
+     dllexport'd or dllimport'd.  tree.c: merge_dllimport_decl_attributes
+     handles dllexport/dllimport override semantics.  */
+  flags = (SYMBOL_REF_FLAGS (symbol) &
+	   ~(SYMBOL_FLAG_DLLIMPORT | SYMBOL_FLAG_DLLEXPORT));
+  if (i386_pe_determine_dllexport_p (decl))
+    flags |= SYMBOL_FLAG_DLLEXPORT;
+  else if (i386_pe_determine_dllimport_p (decl))
     {
-      const char *oldname = XSTR (XEXP (XEXP (DECL_RTL (decl), 0), 0), 0);
-      tree idp = get_identifier (oldname + 9);
-      rtx newrtl = gen_rtx (SYMBOL_REF, Pmode, IDENTIFIER_POINTER (idp));
-
-      XEXP (DECL_RTL (decl), 0) = newrtl;
-
-      DECL_NON_ADDR_CONST_P (decl) = 0;
-
-      /* We previously set TREE_PUBLIC and DECL_EXTERNAL.
-	 We leave these alone for now.  */
+      flags |= SYMBOL_FLAG_DLLIMPORT;
+      /* If we went through the associated_type path, this won't already
+	 be set.  Though, frankly, this seems wrong, and should be fixed
+	 elsewhere.  */
+      if (!DECL_DLLIMPORT_P (decl))
+	{
+	  DECL_DLLIMPORT_P (decl) = 1;
+	  flags &= ~SYMBOL_FLAG_LOCAL;
+	}
     }
+  SYMBOL_REF_FLAGS (symbol) = flags;
 }
 
-/* Strip only the leading encoding, leaving the stdcall suffix and fastcall
-   prefix if it exists.  */
-
-const char *
-i386_pe_strip_name_encoding (str)
-     const char *str;
+bool
+i386_pe_binds_local_p (const_tree exp)
 {
-  if (*str == DLL_IMPORT_EXPORT_PREFIX)
-    str += 3;
-  if (*str == '*')
-    str += 1;
-  return str;
+  /* PE does not do dynamic binding.  Indeed, the only kind of
+     non-local reference comes from a dllimport'd symbol.  */
+  if ((TREE_CODE (exp) == VAR_DECL || TREE_CODE (exp) == FUNCTION_DECL)
+      && DECL_DLLIMPORT_P (exp))
+    return false;
+
+  return true;
 }
 
-/* Also strip the stdcall suffix.  */
+/* Also strip the fastcall prefix and stdcall suffix.  */
 
 const char *
-i386_pe_strip_name_encoding_full (str)
-     const char *str;
+i386_pe_strip_name_encoding_full (const char *str)
 {
   const char *p;
-  const char *name = i386_pe_strip_name_encoding (str);
- 
+  const char *name = default_strip_name_encoding (str);
+
+  /* Strip leading '@' on fastcall symbols.  */
+  if (*name == '@')
+    name++;
+
+  /* Strip trailing "@n".  */
   p = strchr (name, '@');
   if (p)
     return ggc_alloc_string (name, p - name);
@@ -500,48 +357,8 @@ i386_pe_strip_name_encoding_full (str)
   return name;
 }
 
-/* Output a reference to a label. Fastcall symbols are prefixed with @,
-   whereas symbols for functions using other calling conventions don't
-   have a prefix (unless they are marked dllimport or dllexport).  */
-
-void i386_pe_output_labelref (stream, name)
-     FILE *stream;
-     const char *name;
-{
-  char prefix[4];
-
-  sprintf (prefix, "%ci.", DLL_IMPORT_EXPORT_PREFIX);
-  if (strncmp (name, prefix, strlen (prefix)) == 0)
-    {
-      if (name[3] == FASTCALL_PREFIX)
-        {
-          fprintf (stream, "__imp_%s",
-                   i386_pe_strip_name_encoding (name));
-        }
-      else
-        {
-          fprintf (stream, "__imp__%s",
-                   i386_pe_strip_name_encoding (name));
-        }
-    }
-  else if ((name[0] == FASTCALL_PREFIX)
-           || ((name[0] == DLL_IMPORT_EXPORT_PREFIX)
-               && (name[3] == FASTCALL_PREFIX)))
-    {
-      fprintf (stream, "%s",
-               i386_pe_strip_name_encoding (name));
-    }
-  else
-    {
-      fprintf (stream, "%s%s", USER_LABEL_PREFIX,
-               i386_pe_strip_name_encoding (name));
-    }
-}
-
 void
-i386_pe_unique_section (decl, reloc)
-     tree decl;
-     int reloc;
+i386_pe_unique_section (tree decl, int reloc)
 {
   int len;
   const char *name, *prefix;
@@ -553,7 +370,7 @@ i386_pe_unique_section (decl, reloc)
   /* The object is put in, for example, section .text$foo.
      The linker will then ultimately place them in .text
      (everything from the $ on is stripped). Don't put
-     read-only data in .rdata section to avoid a PE linker 
+     read-only data in .rdata section to avoid a PE linker
      bug when .rdata$* grouped sections are used in code
      without a .rdata section.  */
   if (TREE_CODE (decl) == FUNCTION_DECL)
@@ -587,17 +404,14 @@ i386_pe_unique_section (decl, reloc)
 #define SECTION_PE_SHARED	SECTION_MACH_DEP
 
 unsigned int
-i386_pe_section_type_flags (decl, name, reloc)
-     tree decl;
-     const char *name;
-     int reloc;
+i386_pe_section_type_flags (tree decl, const char *name, int reloc)
 {
   static htab_t htab;
   unsigned int flags;
   unsigned int **slot;
 
   /* The names we put in the hashtable will always be the unique
-     versions gived to us by the stringtable, so we can just use
+     versions given to us by the stringtable, so we can just use
      their addresses as the keys.  */
   if (!htab)
     htab = htab_create (31, htab_hash_pointer, htab_eq_pointer, NULL);
@@ -628,25 +442,34 @@ i386_pe_section_type_flags (decl, name, reloc)
   else
     {
       if (decl && **slot != flags)
-	error_with_decl (decl, "%s causes a section type conflict");
+	error ("%q+D causes a section type conflict", decl);
     }
 
   return flags;
 }
 
 void
-i386_pe_asm_named_section (name, flags)
-     const char *name;
-     unsigned int flags;
+i386_pe_asm_named_section (const char *name, unsigned int flags, 
+			   tree decl)
 {
   char flagchars[8], *f = flagchars;
 
-  if (flags & SECTION_CODE)
-    *f++ = 'x';
-  if (flags & SECTION_WRITE)
-    *f++ = 'w';
-  if (flags & SECTION_PE_SHARED)
-    *f++ = 's';
+  if ((flags & (SECTION_CODE | SECTION_WRITE)) == 0)
+    /* readonly data */
+    {
+      *f++ ='d';  /* This is necessary for older versions of gas.  */
+      *f++ ='r';
+    }
+  else	
+    {
+      if (flags & SECTION_CODE)
+        *f++ = 'x';
+      if (flags & SECTION_WRITE)
+        *f++ = 'w';
+      if (flags & SECTION_PE_SHARED)
+        *f++ = 's';
+    }
+
   *f = '\0';
 
   fprintf (asm_out_file, "\t.section\t%s,\"%s\"\n", name, flagchars);
@@ -654,11 +477,40 @@ i386_pe_asm_named_section (name, flags)
   if (flags & SECTION_LINKONCE)
     {
       /* Functions may have been compiled at various levels of
-         optimization so we can't use `same_size' here.
-         Instead, have the linker pick one.  */
+	 optimization so we can't use `same_size' here.
+	 Instead, have the linker pick one, without warning.
+	 If 'selectany' attribute has been specified,  MS compiler
+	 sets 'discard' characteristic, rather than telling linker
+	 to warn of size or content mismatch, so do the same.  */ 
+      bool discard = (flags & SECTION_CODE)
+		      || lookup_attribute ("selectany",
+					   DECL_ATTRIBUTES (decl));	 
       fprintf (asm_out_file, "\t.linkonce %s\n",
-	       (flags & SECTION_CODE ? "discard" : "same_size"));
+	       (discard  ? "discard" : "same_size"));
     }
+}
+
+void
+i386_pe_asm_output_aligned_decl_common (FILE *stream, tree decl,
+					const char *name, HOST_WIDE_INT size,
+					HOST_WIDE_INT align ATTRIBUTE_UNUSED)
+{
+  HOST_WIDE_INT rounded;
+
+  /* Compute as in assemble_noswitch_variable, since we don't actually
+     support aligned common.  */
+  rounded = size ? size : 1;
+  rounded += (BIGGEST_ALIGNMENT / BITS_PER_UNIT) - 1;
+  rounded = (rounded / (BIGGEST_ALIGNMENT / BITS_PER_UNIT)
+	     * (BIGGEST_ALIGNMENT / BITS_PER_UNIT));
+  
+  i386_pe_maybe_record_exported_symbol (decl, name, 1);
+
+  fprintf (stream, "\t.comm\t");
+  assemble_name (stream, name);
+  fprintf (stream, ", " HOST_WIDE_INT_PRINT_DEC "\t" ASM_COMMENT_START
+	   " " HOST_WIDE_INT_PRINT_DEC "\n",
+	   rounded, size);
 }
 
 /* The Microsoft linker requires that every function be marked as
@@ -674,10 +526,7 @@ i386_pe_asm_named_section (name, flags)
    visible.  */
 
 void
-i386_pe_declare_function_type (file, name, public)
-     FILE *file;
-     const char *name;
-     int public;
+i386_pe_declare_function_type (FILE *file, const char *name, int public)
 {
   fprintf (file, "\t.def\t");
   assemble_name (file, name);
@@ -688,13 +537,14 @@ i386_pe_declare_function_type (file, name, public)
 
 /* Keep a list of external functions.  */
 
-struct extern_list
+struct extern_list GTY(())
 {
   struct extern_list *next;
+  tree decl;
   const char *name;
 };
 
-static struct extern_list *extern_head;
+static GTY(()) struct extern_list *extern_head;
 
 /* Assemble an external function reference.  We need to keep a list of
    these, so that we can output the function types at the end of the
@@ -703,42 +553,46 @@ static struct extern_list *extern_head;
    for it then.  */
 
 void
-i386_pe_record_external_function (name)
-     const char *name;
+i386_pe_record_external_function (tree decl, const char *name)
 {
   struct extern_list *p;
 
-  p = (struct extern_list *) xmalloc (sizeof *p);
+  p = (struct extern_list *) ggc_alloc (sizeof *p);
   p->next = extern_head;
+  p->decl = decl;
   p->name = name;
   extern_head = p;
 }
 
 /* Keep a list of exported symbols.  */
 
-struct export_list
+struct export_list GTY(())
 {
   struct export_list *next;
   const char *name;
   int is_data;		/* used to type tag exported symbols.  */
 };
 
-static struct export_list *export_head;
+static GTY(()) struct export_list *export_head;
 
 /* Assemble an export symbol entry.  We need to keep a list of
    these, so that we can output the export list at the end of the
    assembly.  We used to output these export symbols in each function,
-   but that causes problems with GNU ld when the sections are 
+   but that causes problems with GNU ld when the sections are
    linkonce.  */
 
 void
-i386_pe_record_exported_symbol (name, is_data)
-     const char *name;
-     int is_data;
+i386_pe_maybe_record_exported_symbol (tree decl, const char *name, int is_data)
 {
+  rtx symbol;
   struct export_list *p;
 
-  p = (struct export_list *) xmalloc (sizeof *p);
+  symbol = XEXP (DECL_RTL (decl), 0);
+  gcc_assert (GET_CODE (symbol) == SYMBOL_REF);
+  if (!SYMBOL_REF_DLLEXPORT_P (symbol))
+    return;
+
+  p = (struct export_list *) ggc_alloc (sizeof *p);
   p->next = export_head;
   p->name = name;
   p->is_data = is_data;
@@ -750,24 +604,25 @@ i386_pe_record_exported_symbol (name, is_data)
    output the .drectve section.  */
 
 void
-i386_pe_asm_file_end (file)
-     FILE *file;
+i386_pe_file_end (void)
 {
   struct extern_list *p;
 
-  ix86_asm_file_end (file);
+  ix86_file_end ();
 
   for (p = extern_head; p != NULL; p = p->next)
     {
       tree decl;
 
-      decl = get_identifier (p->name);
+      decl = p->decl;
 
       /* Positively ensure only one declaration for any given symbol.  */
-      if (! TREE_ASM_WRITTEN (decl) && TREE_SYMBOL_REFERENCED (decl))
+      if (! TREE_ASM_WRITTEN (decl)
+	  && TREE_SYMBOL_REFERENCED (DECL_ASSEMBLER_NAME (decl)))
 	{
 	  TREE_ASM_WRITTEN (decl) = 1;
-	  i386_pe_declare_function_type (file, p->name, TREE_PUBLIC (decl));
+	  i386_pe_declare_function_type (asm_out_file, p->name,
+					 TREE_PUBLIC (decl));
 	}
     }
 
@@ -777,10 +632,11 @@ i386_pe_asm_file_end (file)
       drectve_section ();
       for (q = export_head; q != NULL; q = q->next)
 	{
-	  fprintf (file, "\t.ascii \" -export:%s%s\"\n",
-		   i386_pe_strip_name_encoding (q->name),
-		   (q->is_data) ? ",data" : "");
+	  fprintf (asm_out_file, "\t.ascii \" -export:%s%s\"\n",
+		   default_strip_name_encoding (q->name),
+		   (q->is_data ? ",data" : ""));
 	}
     }
 }
 
+#include "gt-winnt.h"

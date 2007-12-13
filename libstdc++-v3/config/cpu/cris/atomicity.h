@@ -1,6 +1,6 @@
 // Low-level functions for atomic operations: CRIS version  -*- C++ -*-
 
-// Copyright (C) 2001 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2003, 2004, 2005 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -27,21 +27,18 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
-#ifndef _BITS_ATOMICITY_H
-#define _BITS_ATOMICITY_H	1
+#include <ext/atomicity.h>
 
-// This entity must not cross a page boundary.
-typedef int _Atomic_word __attribute__ ((__aligned__ (4)));
+_GLIBCXX_BEGIN_NAMESPACE(__gnu_cxx)
 
-static inline _Atomic_word
-__attribute__ ((__unused__))
-__exchange_and_add (_Atomic_word* __mem, int __val)
-{
-  int __tmp;
-  _Atomic_word __result;
+  _Atomic_word
+  __exchange_and_add(volatile _Atomic_word* __mem, int __val)
+  {
+    int __tmp;
+    _Atomic_word __result;
 
 #if (__CRIS_arch_version >= 10)
-  __asm__ __volatile__ (" clearf		\n"
+    __asm__ __volatile__ (" clearf		\n"
 			"0:			\n"
 			" move.d %4,%2		\n"
 			" move.d [%3],%0	\n"
@@ -50,30 +47,32 @@ __exchange_and_add (_Atomic_word* __mem, int __val)
 			" move.d %2,[%3]	\n"
 			" bwf 0b		\n"
 			" clearf		\n"
-			:  "=&r" (__result), "=m" (*__mem), "=&r" (__tmp)
-			: "r" (__mem), "g" (__val), "m" (*__mem)
+			:  "=&r" (__result), "=Q" (*__mem), "=&r" (__tmp)
+			: "r" (__mem), "g" (__val), "Q" (*__mem)
+			/* The memory clobber must stay, regardless of
+			   current uses of this function.  */
 			: "memory");
 #else
-  __asm__ __volatile__ (" move $ccr,$r9		\n"
+    __asm__ __volatile__ (" move $ccr,$r9	\n"
 			" di			\n"
 			" move.d %4,%2		\n"
 			" move.d [%3],%0	\n"
 			" add.d %0,%2		\n"
 			" move.d %2,[%3]	\n"
 			" move $r9,$ccr		\n"
-			:  "=&r" (__result), "=m" (*__mem), "=&r" (__tmp)
-			: "r" (__mem), "g" (__val), "m" (*__mem)
-			: "memory", "r9");
+			:  "=&r" (__result), "=Q" (*__mem), "=&r" (__tmp)
+			: "r" (__mem), "g" (__val), "Q" (*__mem)
+			: "r9",
+			  /* The memory clobber must stay, regardless of
+			     current uses of this function.  */
+			  "memory");
 #endif
 
-  return __result;
-}
+    return __result;
+  }
 
-static inline void
-__attribute__ ((__unused__))
-__atomic_add (_Atomic_word* __mem, int __val)
-{
-  __exchange_and_add (__mem, __val);
-}
+  void
+  __atomic_add(volatile _Atomic_word* __mem, int __val)
+  { __exchange_and_add(__mem, __val); }
 
-#endif /* atomicity.h */
+_GLIBCXX_END_NAMESPACE

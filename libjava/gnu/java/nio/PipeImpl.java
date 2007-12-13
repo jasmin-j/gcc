@@ -1,5 +1,5 @@
 /* PipeImpl.java -- 
-   Copyright (C) 2002 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2005  Free Software Foundation, Inc.
 
 This file is part of GNU Classpath.
 
@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -37,21 +37,142 @@ exception statement from your version. */
 
 package gnu.java.nio;
 
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.Pipe;
+import java.nio.channels.spi.SelectorProvider;
 
 class PipeImpl extends Pipe
 {
-  public PipeImpl()
+  public static final class SourceChannelImpl extends Pipe.SourceChannel
   {
-  }
+    private int native_fd;
+    private VMChannel vmch;
     
+    public SourceChannelImpl (SelectorProvider selectorProvider,
+                              int native_fd)
+    {
+      super (selectorProvider);
+      this.native_fd = native_fd;
+      vmch = VMChannel.getVMChannel(this);
+    }
+
+    protected final void implCloseSelectableChannel()
+      throws IOException
+    {
+      throw new Error ("Not implemented");
+    }
+
+    protected void implConfigureBlocking (boolean blocking)
+      throws IOException
+    {
+      vmch.setBlocking(blocking);
+    }
+
+    public final int read (ByteBuffer src)
+      throws IOException
+    {
+      return vmch.read(src);
+    }
+
+    public final long read (ByteBuffer[] srcs)
+      throws IOException
+    {
+      return vmch.readScattering(srcs, 0, srcs.length);
+    }
+
+    public final synchronized long read (ByteBuffer[] srcs, int offset,
+					 int len)
+      throws IOException
+    {
+      if (offset < 0
+	  || offset > srcs.length
+	  || len < 0
+	  || len > srcs.length - offset)
+	throw new IndexOutOfBoundsException();
+
+      return vmch.readScattering(srcs, offset, len);
+    }
+
+    public final int getNativeFD()
+    {
+      return native_fd;
+    }
+  }
+
+  public static final class SinkChannelImpl extends Pipe.SinkChannel
+  {
+    private int native_fd;
+    private VMChannel vmch;
+    
+    public SinkChannelImpl (SelectorProvider selectorProvider,
+                            int native_fd)
+    {
+      super (selectorProvider);
+      this.native_fd = native_fd;
+      vmch = VMChannel.getVMChannel(this);
+    }
+
+    protected final void implCloseSelectableChannel()
+      throws IOException
+    {
+      throw new Error ("Not implemented");
+    }
+
+    protected final void implConfigureBlocking (boolean blocking)
+      throws IOException
+    {
+      vmch.setBlocking(blocking);
+    }
+
+    public final int write (ByteBuffer dst)
+      throws IOException
+    {
+      return vmch.write(dst);
+    }
+
+    public final long write (ByteBuffer[] srcs)
+      throws IOException
+    {
+      return vmch.writeGathering(srcs, 0, srcs.length);
+    }
+
+    public final synchronized long write (ByteBuffer[] srcs, int offset, int len)
+      throws IOException
+    {
+      if (offset < 0
+	  || offset > srcs.length
+	  || len < 0
+	  || len > srcs.length - offset)
+	throw new IndexOutOfBoundsException();
+      
+      return vmch.writeGathering(srcs, offset, len);
+    }
+
+    public final int getNativeFD()
+    {
+      return native_fd;
+    }
+  }
+
+  private SinkChannelImpl sink;
+  private SourceChannelImpl source;
+  
+  public PipeImpl (SelectorProvider provider)
+    throws IOException
+  {
+    super();
+    VMPipe.init (this, provider);
+  }
+
   public Pipe.SinkChannel sink()
   {
-    return null;
+    return sink;
   }
 
   public Pipe.SourceChannel source()
   {
-    return null;
+    return source;
   }
 }

@@ -1,4 +1,4 @@
-// Build don't link: 
+// { dg-do assemble  }
 // GROUPS passed ptolemy-bugs
 class Tcl_Interp;
 
@@ -12,7 +12,7 @@ public:
 typedef int (PTcl::*InterpFuncP)(int,char**);
 
 struct InterpTableEntry {
-	char* name;
+	const char* name;
 	InterpFuncP func;
 };
 

@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-1998, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -31,7 +29,7 @@
 
 --    To call gnatprep use
 
---      gnatprep infile outfile [deffile] [-c] [-b] [-r] [-s] [-u]
+--      gnatprep infile outfile [deffile] [-v] [-c] [-b] [-r] [-s] [-u]
 --            [-Dsymbol=value]
 
 --    where
@@ -44,7 +42,8 @@
 --      normally have an ads or adb suffix.
 
 --      deffile is the full name of a text file containing definitions of
---      symbols to be referenced by the preprocessor. This argument is optional
+--      symbols to be referenced by the preprocessor. This argument is
+--      optional.
 
 --      The -c switch, causes both preprocessor lines and the lines deleted
 --      by preprocessing to be retained in the output source as comments marked
@@ -66,8 +65,13 @@
 --      The -s switch causes a sorted list of symbol names and values to be
 --      listed on the standard output file.
 
+--      The -v switch causes a Copyright notice to be displayed, and
+--      lines containing errors in the input file or the definition file
+--      to be displayed before the errors.
+
 --      The -D switch causes symbol 'symbol' to be associated with 'value'.
---      This symbols can then be referenced by the preprocessor
+--      This symbols can then be referenced by the preprocessor. Several
+--      -D switches may be specified.
 
 --      Note: if neither -b nor -c is present, then preprocessor lines and
 --      deleted lines are completely removed from the output, unless -r is
@@ -118,6 +122,9 @@
 --        expression ::=  <expression> or else <expression>
 --        expression ::=  ( <expression> )
 
+--        "or" and "and" may not be used in the same expression without
+--        using parentheses.
+
 --     For these Boolean tests, the symbol must have either the value True or
 --     False. If the value is True, then the corresponding lines are included,
 --     and if the value is False, they are excluded. It is an error to
@@ -134,9 +141,9 @@
 --     may be used on a preprocessor line, but other than that, no other
 --     tokens may appear on a preprocessor line.
 
---     Any number of #elsif clauses can be present, including none at all.
+--     Any number of #elsif clauses can be present, including none at all
 
---     The #else is optional, as in Ada.
+--     The #else is optional, as in Ada
 
 --     The # marking the start of a preprocessor line must be the first
 --     non-blank character on the line, i.e. it must be preceded only by

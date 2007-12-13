@@ -1,4 +1,4 @@
-// Build don't link: 
+// { dg-do assemble  }
 // GROUPS passed old-abort
 /*
    I received the following message when using g++ (version 2.3.3):
@@ -24,8 +24,8 @@ public:
 template< class T,  int n> class Implicit : public T {
    public:
      typedef typename T::BASE BASE;
-     Implicit(BASE value ): T(value) {};
-     Implicit() : T() {};
+     Implicit(BASE value ): T(value) {}
+     Implicit() : T() {}
      int myTag() { return n; }
      void encode() { T::encode(); }
      BASE operator=(BASE t) { return T::operator=(t); }

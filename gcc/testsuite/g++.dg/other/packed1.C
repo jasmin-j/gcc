@@ -1,4 +1,7 @@
-// { dg-do run }
+// { dg-do run { xfail arm-*-* sh-*-* ia64-hp-hpux* } }
+
+// NMS:2003-04-21 this fails on strict aligned architectures again,
+// the patch was reverted because it broke something more important.
 
 // Copyright (C) 2002 Free Software Foundation, Inc.
 // Contributed by Nathan Sidwell 8 Aug 2002 <nathan@codesourcery.com>
@@ -8,7 +11,11 @@
 
 struct thing { int m; };
 
-struct pod {char a; thing m __attribute__ ((packed)); };
+struct pod
+ {
+   char a;
+   thing m __attribute__ ((packed)); // { dg-warning "attribute ignored" "" { target default_packed } }
+ };
 
 int main ()
 {

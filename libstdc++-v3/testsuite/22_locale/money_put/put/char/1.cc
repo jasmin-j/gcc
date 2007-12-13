@@ -1,6 +1,8 @@
+// { dg-require-namedlocale "" }
+
 // 2001-08-27 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2004, 2005 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.6.2.1 money_put members
@@ -28,31 +30,14 @@
 void test01()
 {
   using namespace std;
-  typedef money_base::part part;
-  typedef money_base::pattern pattern;
   typedef ostreambuf_iterator<char> iterator_type;
 
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   // basic construction
   locale loc_c = locale::classic();
-  locale loc_hk("en_HK");
-  locale loc_fr("fr_FR@euro");
-  locale loc_de("de_DE@euro");
+  locale loc_de = locale("de_DE@euro");
   VERIFY( loc_c != loc_de );
-  VERIFY( loc_hk != loc_fr );
-  VERIFY( loc_hk != loc_de );
-  VERIFY( loc_de != loc_fr );
-
-  // cache the moneypunct facets
-  typedef moneypunct<char, true> __money_true;
-  typedef moneypunct<char, false> __money_false;
-  const __money_true& monpunct_c_t = use_facet<__money_true>(loc_c); 
-  const __money_true& monpunct_de_t = use_facet<__money_true>(loc_de); 
-  const __money_false& monpunct_c_f = use_facet<__money_false>(loc_c); 
-  const __money_false& monpunct_de_f = use_facet<__money_false>(loc_de); 
-  const __money_true& monpunct_hk_t = use_facet<__money_true>(loc_hk); 
-  const __money_false& monpunct_hk_f = use_facet<__money_false>(loc_hk); 
 
   // sanity check the data is correct.
   const string empty;
@@ -60,14 +45,8 @@ void test01()
   // total EPA budget FY 2002
   const string digits1("720000000000");
 
-  // est. cost, national missile "defense", expressed as a loss in USD 2001
-  const string digits2("-10000000000000");  
-
-  // not valid input
-  const string digits3("-A"); 
-
   // input less than frac_digits
-  const string digits4("-1");
+  const string digits2("-1");
   
   // cache the money_put facet
   ostringstream oss;
@@ -110,14 +89,14 @@ void test01()
   // test various fill strategies
   oss.str(empty);
   oss.width(20);
-  iterator_type os_it10 = mon_put.put(oss.rdbuf(), true, oss, '*', digits4);
+  iterator_type os_it10 = mon_put.put(oss.rdbuf(), true, oss, '*', digits2);
   string result10 = oss.str();
   VERIFY( result10 == "***************-,01*");
 
   oss.str(empty);
   oss.width(20);
   oss.setf(ios_base::internal);
-  iterator_type os_it11 = mon_put.put(oss.rdbuf(), true, oss, '*', digits4);
+  iterator_type os_it11 = mon_put.put(oss.rdbuf(), true, oss, '*', digits2);
   string result11 = oss.str();
   VERIFY( result11 == "-,01****************");
 }

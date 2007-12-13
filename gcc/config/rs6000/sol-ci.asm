@@ -23,8 +23,8 @@
 # 
 # You should have received a copy of the GNU General Public License
 # along with this program; see the file COPYING.  If not, write to
-# the Free Software Foundation, 59 Temple Place - Suite 330,
-# Boston, MA 02111-1307, USA.
+# the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+# Boston, MA 02110-1301, USA.
 # 
 #    As a special exception, if you link this library with files
 #    compiled with GCC to produce an executable, this does not cause
@@ -39,6 +39,7 @@
 	.file	"scrti.s"
 	.ident	"GNU C scrti.s"
 
+#ifndef __powerpc64__
 # Start of .text
 	.section ".text"
 	.globl	_ex_text0
@@ -102,3 +103,4 @@ _fini:	stwu	%r1,-16(%r1)
 	.space 4
 	.weak	environ
 	.set	environ,_environ
+#endif

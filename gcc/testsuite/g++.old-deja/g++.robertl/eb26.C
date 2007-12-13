@@ -1,3 +1,4 @@
+// { dg-do run  }
 //
 // egcs-2.90.06
 // cannot declare friend of enclosing class using its scope, works fine
@@ -13,7 +14,7 @@ public:
 //  friend int f();
     static int x;
   public:
-    static int f() {return foo::f();};
+    static int f() {return foo::f();}
    };
 };
 

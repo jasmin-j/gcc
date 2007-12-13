@@ -5,9 +5,9 @@
             and Herman Ten Brugge (Haj.Ten.Brugge@net.HCC.nl).
 
 	
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify it
+GCC is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
 Free Software Foundation; either version 2, or (at your option) any
 later version.
@@ -28,8 +28,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
 ; These routines are called using the standard TI register argument
 ; passing model.
@@ -327,7 +327,7 @@ div_32:	tstb	ar1, ar1
 ; Now divisor and dividend are aligned.  Do first SUBC by hand, save
 ; of the forst quotient digit.  Then, shift divisor right rather
 ; than shifting dividend left.  This leaves a zero in the top bit of
-; the divident
+; the dividend
 ;
 	ldi	1, ar0		; Initizialize MSB of quotient
 	lsh	rc, ar0		; create a mask for MSBs

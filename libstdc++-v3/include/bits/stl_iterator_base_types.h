@@ -1,6 +1,7 @@
 // Types used in iterator implementation -*- C++ -*-
 
-// Copyright (C) 2001, 2002 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -61,13 +62,16 @@
  *  such as iterator_traits and struct iterator.
  */
 
-#ifndef __GLIBCPP_INTERNAL_ITERATOR_BASE_TYPES_H
-#define __GLIBCPP_INTERNAL_ITERATOR_BASE_TYPES_H
+#ifndef _STL_ITERATOR_BASE_TYPES_H
+#define _STL_ITERATOR_BASE_TYPES_H 1
 
 #pragma GCC system_header
 
-namespace std
-{
+#include <bits/c++config.h>
+#include <cstddef>
+
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
   //@{
   /**
    *  @defgroup iterator_tags Iterator Tags
@@ -82,9 +86,11 @@ namespace std
   struct output_iterator_tag {};
   /// Forward iterators support a superset of input iterator operations.
   struct forward_iterator_tag : public input_iterator_tag {};
-  /// Bidirectional iterators support a superset of forward iterator operations.
+  /// Bidirectional iterators support a superset of forward iterator
+  /// operations.
   struct bidirectional_iterator_tag : public forward_iterator_tag {};
-  /// Random-access iterators support a superset of bidirectional iterator operations.
+  /// Random-access iterators support a superset of bidirectional iterator
+  /// operations.
   struct random_access_iterator_tag : public bidirectional_iterator_tag {};
   //@}
 
@@ -122,7 +128,8 @@ namespace std
    *  provide tighter, more correct semantics.
   */
   template<typename _Iterator>
-    struct iterator_traits {
+    struct iterator_traits
+    {
       typedef typename _Iterator::iterator_category iterator_category;
       typedef typename _Iterator::value_type        value_type;
       typedef typename _Iterator::difference_type   difference_type;
@@ -131,7 +138,8 @@ namespace std
     };
 
   template<typename _Tp>
-    struct iterator_traits<_Tp*> {
+    struct iterator_traits<_Tp*>
+    {
       typedef random_access_iterator_tag iterator_category;
       typedef _Tp                         value_type;
       typedef ptrdiff_t                   difference_type;
@@ -140,7 +148,8 @@ namespace std
     };
 
   template<typename _Tp>
-    struct iterator_traits<const _Tp*> {
+    struct iterator_traits<const _Tp*>
+    {
       typedef random_access_iterator_tag iterator_category;
       typedef _Tp                         value_type;
       typedef ptrdiff_t                   difference_type;
@@ -159,7 +168,7 @@ namespace std
     __iterator_category(const _Iter&)
     { return typename iterator_traits<_Iter>::iterator_category(); }
 
-} // namespace std
+_GLIBCXX_END_NAMESPACE
 
-#endif /* __GLIBCPP_INTERNAL_ITERATOR_BASE_TYPES_H */
+#endif /* _STL_ITERATOR_BASE_TYPES_H */
 

@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.6.1.1 money_get members
@@ -34,7 +34,7 @@ struct My_money_io_a : public std::moneypunct<wchar_t,false>
   
   int do_frac_digits() const { return 2; }
 
-  pattern do_pos_format() const
+  pattern do_neg_format() const
   {
     pattern pat = { { sign, value, space, symbol } };
     return pat;
@@ -51,7 +51,7 @@ struct My_money_io_b : public std::moneypunct<wchar_t,false>
   
   int do_frac_digits() const { return 2; }
 
-  pattern do_pos_format() const
+  pattern do_neg_format() const
   {
     pattern pat = { { sign, value, symbol, none } };
     return pat;
@@ -68,7 +68,7 @@ void test08()
   typedef istreambuf_iterator<wchar_t> InIt;
 
   bool intl = false;
-  bool test = true;
+  bool test __attribute__((unused)) = true;
   ios_base::iostate err;
 
   locale loc_a(locale::classic(), new My_money_io_a);

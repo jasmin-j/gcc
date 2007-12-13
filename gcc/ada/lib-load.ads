@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -89,6 +87,14 @@ package Lib.Load is
    -----------------
 
    procedure Initialize;
+   --  Initialize internal tables
+
+   procedure Initialize_Version (U : Unit_Number_Type);
+   --  This is called once the source file corresponding to unit U has been
+   --  fully scanned. At that point the checksum is computed, and can be used
+   --  to initialize the version number.
+
+   procedure Load_Main_Source;
    --  Called at the start of compiling a new main source unit to initialize
    --  the library processing for the new main source. Establishes and
    --  initializes the units table entry for the new main unit (leaving
@@ -96,19 +102,14 @@ package Lib.Load is
    --  more files. Otherwise the main source file has been opened and read
    --  and then closed on return.
 
-   procedure Initialize_Version (U : Unit_Number_Type);
-   --  This is called once the source file corresponding to unit U has been
-   --  fully scanned. At that point the checksum is computed, and can be used
-   --  to initialize the version number.
-
    function Load_Unit
-     (Load_Name  : Unit_Name_Type;
-      Required   : Boolean;
-      Error_Node : Node_Id;
-      Subunit    : Boolean;
-      Corr_Body  : Unit_Number_Type := No_Unit;
-      Renamings  : Boolean          := False)
-      return       Unit_Number_Type;
+     (Load_Name         : Unit_Name_Type;
+      Required          : Boolean;
+      Error_Node        : Node_Id;
+      Subunit           : Boolean;
+      Corr_Body         : Unit_Number_Type := No_Unit;
+      Renamings         : Boolean          := False;
+      With_Node         : Node_Id          := Empty) return Unit_Number_Type;
    --  This function loads and parses the unit specified by Load_Name (or
    --  returns the unit number for the previously constructed units table
    --  entry if this is not the first call for this unit). Required indicates
@@ -146,11 +147,23 @@ package Lib.Load is
    --  described in the documentation of this unit. If this parameter is
    --  set to True, then Load_Name may not be the real unit name and it
    --  is necessary to load parents to find the real name.
+   --
+   --  From_Limited_With is True if we are loading a unit X found in a
+   --  limited-with clause, or some unit in the context of X. It is used to
+   --  avoid the check on circular dependency (Ada 2005, AI-50217)
+
+   procedure Change_Main_Unit_To_Spec;
+   --  This procedure is called if the main unit file contains a No_Body pragma
+   --  and no other tokens. The effect is, if possible, to change the main unit
+   --  from the body it references now, to the corresponding spec. This has the
+   --  effect of ignoring the body, which is what we want. If it is impossible
+   --  to successfully make the change, then the call has no effect, and the
+   --  file is unchanged (this will lead to an error complaining about the
+   --  inappropriate No_Body spec).
 
    function Create_Dummy_Package_Unit
      (With_Node : Node_Id;
-      Spec_Name : Unit_Name_Type)
-      return      Unit_Number_Type;
+      Spec_Name : Unit_Name_Type) return Unit_Number_Type;
    --  With_Node is the Node_Id of a with statement for which the file could
    --  not be found, and Spec_Name is the corresponding unit name. This call
    --  creates a dummy package unit so that compilation can continue without

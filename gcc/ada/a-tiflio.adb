@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                 A D A . T E X T _ I O . F L O A T _ I O                  --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-1999 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -43,14 +42,23 @@ package body Ada.Text_IO.Float_IO is
    ---------
 
    procedure Get
-     (File  : in File_Type;
+     (File  : File_Type;
       Item  : out Num;
-      Width : in Field := 0)
+      Width : Field := 0)
    is
       pragma Unsuppress (Range_Check);
 
    begin
       Aux.Get (File, Long_Long_Float (Item), Width);
+
+      --  In the case where the type is unconstrained (e.g. Standard'Float),
+      --  the above conversion may result in an infinite value, which is
+      --  normally fine for a conversion, but in this case, we want to treat
+      --  that as a data error.
+
+      if not Item'Valid then
+         raise Data_Error;
+      end if;
 
    exception
       when Constraint_Error => raise Data_Error;
@@ -58,19 +66,28 @@ package body Ada.Text_IO.Float_IO is
 
    procedure Get
      (Item  : out Num;
-      Width : in Field := 0)
+      Width : Field := 0)
    is
       pragma Unsuppress (Range_Check);
 
    begin
       Aux.Get (Current_In, Long_Long_Float (Item), Width);
 
+      --  In the case where the type is unconstrained (e.g. Standard'Float),
+      --  the above conversion may result in an infinite value, which is
+      --  normally fine for a conversion, but in this case, we want to treat
+      --  that as a data error.
+
+      if not Item'Valid then
+         raise Data_Error;
+      end if;
+
    exception
       when Constraint_Error => raise Data_Error;
    end Get;
 
    procedure Get
-     (From : in String;
+     (From : String;
       Item : out Num;
       Last : out Positive)
    is
@@ -78,6 +95,15 @@ package body Ada.Text_IO.Float_IO is
 
    begin
       Aux.Gets (From, Long_Long_Float (Item), Last);
+
+      --  In the case where the type is unconstrained (e.g. Standard'Float),
+      --  the above conversion may result in an infinite value, which is
+      --  normally fine for a conversion, but in this case, we want to treat
+      --  that as a data error.
+
+      if not Item'Valid then
+         raise Data_Error;
+      end if;
 
    exception
       when Constraint_Error => raise Data_Error;
@@ -88,21 +114,21 @@ package body Ada.Text_IO.Float_IO is
    ---------
 
    procedure Put
-     (File : in File_Type;
-      Item : in Num;
-      Fore : in Field := Default_Fore;
-      Aft  : in Field := Default_Aft;
-      Exp  : in Field := Default_Exp)
+     (File : File_Type;
+      Item : Num;
+      Fore : Field := Default_Fore;
+      Aft  : Field := Default_Aft;
+      Exp  : Field := Default_Exp)
    is
    begin
       Aux.Put (File, Long_Long_Float (Item), Fore, Aft, Exp);
    end Put;
 
    procedure Put
-     (Item : in Num;
-      Fore : in Field := Default_Fore;
-      Aft  : in Field := Default_Aft;
-      Exp  : in Field := Default_Exp)
+     (Item : Num;
+      Fore : Field := Default_Fore;
+      Aft  : Field := Default_Aft;
+      Exp  : Field := Default_Exp)
    is
    begin
       Aux.Put (Current_Out, Long_Long_Float (Item), Fore, Aft, Exp);
@@ -110,9 +136,9 @@ package body Ada.Text_IO.Float_IO is
 
    procedure Put
      (To   : out String;
-      Item : in Num;
-      Aft  : in Field := Default_Aft;
-      Exp  : in Field := Default_Exp)
+      Item : Num;
+      Aft  : Field := Default_Aft;
+      Exp  : Field := Default_Exp)
    is
    begin
       Aux.Puts (To, Long_Long_Float (Item), Aft, Exp);

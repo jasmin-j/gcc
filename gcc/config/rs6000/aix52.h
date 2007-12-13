@@ -1,35 +1,24 @@
 /* Definitions of target machine for GNU compiler,
    for IBM RS/6000 POWER running AIX V5.2.
-   Copyright (C) 2002 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007
+   Free Software Foundation, Inc.
    Contributed by David Edelsohn (edelsohn@gnu.org).
 
-This file is part of GNU CC.
+   This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
-any later version.
+   GCC is free software; you can redistribute it and/or modify it
+   under the terms of the GNU General Public License as published
+   by the Free Software Foundation; either version 3, or (at your
+   option) any later version.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+   GCC is distributed in the hope that it will be useful, but WITHOUT
+   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+   or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
+   License for more details.
 
-You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
-
-
-/* AIX V5 and above support 64-bit executables.  */
-#undef  SUBSUBTARGET_SWITCHES
-#define SUBSUBTARGET_SWITCHES					\
-  {"aix64", 		MASK_64BIT | MASK_POWERPC64 | MASK_POWERPC,	\
-   N_("Compile for 64-bit pointers") },					\
-  {"aix32",		- (MASK_64BIT | MASK_POWERPC64),		\
-   N_("Compile for 32-bit pointers") },					\
-  {"pe",		0,						\
-   N_("Support message passing with the Parallel Environment") },
+   You should have received a copy of the GNU General Public License
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 /* Sometimes certain combinations of command options do not make sense
    on a particular target machine.  You can define a macro
@@ -46,12 +35,18 @@ do {									\
   if (TARGET_64BIT && (target_flags & NON_POWERPC_MASKS))		\
     {									\
       target_flags &= ~NON_POWERPC_MASKS;				\
-      warning ("-maix64 and POWER architecture are incompatible");	\
+      warning (0, "-maix64 and POWER architecture are incompatible");	\
     }									\
   if (TARGET_64BIT && ! TARGET_POWERPC64)				\
     {									\
       target_flags |= MASK_POWERPC64;					\
-      warning ("-maix64 requires PowerPC64 architecture remain enabled"); \
+      warning (0, "-maix64 requires PowerPC64 architecture remain enabled"); \
+    }									\
+  if (TARGET_SOFT_FLOAT && TARGET_LONG_DOUBLE_128)			\
+    {									\
+      rs6000_long_double_type_size = 64;				\
+      if (rs6000_explicit_options.long_double)				\
+	warning (0, "soft-float and long-double-128 are incompatible");	\
     }									\
   if (TARGET_POWERPC64 && ! TARGET_64BIT)				\
     {									\
@@ -60,45 +55,44 @@ do {									\
 } while (0);
 
 #undef ASM_SPEC
-#define ASM_SPEC "-u %{maix64:-a64 -mppc64} %(asm_cpu)"
+#define ASM_SPEC "-u %{maix64:-a64 %{!mcpu*:-mppc64}} %(asm_cpu)"
 
-/* Common ASM definitions used by ASM_SPEC amonst the various targets
+/* Common ASM definitions used by ASM_SPEC amongst the various targets
    for handling -mcpu=xxx switches.  */
 #undef ASM_CPU_SPEC
 #define ASM_CPU_SPEC \
 "%{!mcpu*: %{!maix64: \
   %{mpowerpc64: -mppc64} \
   %{!mpower64: %(asm_default)}}} \
-%{mcpu=power3: -m604} \
-%{mcpu=power4: -m604} \
+%{mcpu=power3: -m620} \
+%{mcpu=power4: -m620} \
+%{mcpu=power5: -m620} \
+%{mcpu=power5+: -m620} \
+%{mcpu=power6: -m620} \
+%{mcpu=power6x: -m620} \
 %{mcpu=powerpc: -mppc} \
 %{mcpu=rs64a: -mppc} \
 %{mcpu=603: -m603} \
 %{mcpu=603e: -m603} \
 %{mcpu=604: -m604} \
 %{mcpu=604e: -m604} \
-%{mcpu=620: -mppc} \
-%{mcpu=630: -m604}"
+%{mcpu=620: -m620} \
+%{mcpu=630: -m620} \
+%{mcpu=970: -m620} \
+%{mcpu=G5: -m620}"
 
 #undef	ASM_DEFAULT_SPEC
 #define ASM_DEFAULT_SPEC "-mppc"
 
 #undef TARGET_OS_CPP_BUILTINS
-#define TARGET_OS_CPP_BUILTINS()      \
-  do                                  \
-    {                                 \
-      builtin_define ("_IBMR2");      \
-      builtin_define ("_POWER");      \
-      builtin_define ("_LONG_LONG");  \
-      builtin_define ("_AIX");        \
-      builtin_define ("_AIX32");      \
-      builtin_define ("_AIX41");      \
-      builtin_define ("_AIX43");      \
-      builtin_define ("_AIX51");      \
-      builtin_define ("_AIX52");      \
-      builtin_assert ("system=unix"); \
-      builtin_assert ("system=aix");  \
-    }                                 \
+#define TARGET_OS_CPP_BUILTINS()     \
+  do                                 \
+    {                                \
+      builtin_define ("_AIX43");     \
+      builtin_define ("_AIX51");     \
+      builtin_define ("_AIX52");     \
+      TARGET_OS_AIX_CPP_BUILTINS (); \
+    }                                \
   while (0)
 
 #undef CPP_SPEC
@@ -109,13 +103,10 @@ do {									\
   %{pthread: -D_THREAD_SAFE}"
 
 /* The GNU C++ standard library requires that these macros be 
-   defined.  */
+   defined.  Synchronize with libstdc++ os_defines.h.  */
 #undef CPLUSPLUS_CPP_SPEC                       
 #define CPLUSPLUS_CPP_SPEC			\
-  "-D_XOPEN_SOURCE=500				\
-   -D_XOPEN_SOURCE_EXTENDED=1			\
-   -D_LARGE_FILE_API				\
-   -D_ALL_SOURCE				\
+  "-D_ALL_SOURCE				\
    %{maix64: -D__64BIT__}			\
    %{mpe: -I/usr/lpp/ppe.poe/include}		\
    %{pthread: -D_THREAD_SAFE}"
@@ -124,12 +115,18 @@ do {									\
 #define TARGET_DEFAULT (MASK_POWERPC | MASK_NEW_MNEMONICS)
 
 #undef  PROCESSOR_DEFAULT
-#define PROCESSOR_DEFAULT PROCESSOR_PPC630
+#define PROCESSOR_DEFAULT PROCESSOR_POWER4
 #undef  PROCESSOR_DEFAULT64
 #define PROCESSOR_DEFAULT64 PROCESSOR_POWER4
 
 #undef  TARGET_POWER
 #define TARGET_POWER 0
+
+/* AIX does not support Altivec.  */
+#undef  TARGET_ALTIVEC
+#define TARGET_ALTIVEC 0
+#undef  TARGET_ALTIVEC_ABI
+#define TARGET_ALTIVEC_ABI 0
 
 /* Define this macro as a C expression for the initializer of an
    array of string to tell the driver program which options are
@@ -174,7 +171,6 @@ do {									\
 /* Width of wchar_t in bits.  */
 #undef  WCHAR_TYPE_SIZE
 #define WCHAR_TYPE_SIZE (!TARGET_64BIT ? 16 : 32)
-#define MAX_WCHAR_TYPE_SIZE 32
 
 /* AIX V5 uses PowerPC nop (ori 0,0,0) instruction as call glue for PowerPC
    and "cror 31,31,31" for POWER architecture.  */
@@ -189,3 +185,14 @@ do {									\
 
 #undef LD_INIT_SWITCH
 #define LD_INIT_SWITCH "-binitfini"
+
+/* AIX 5.2 has the float and long double forms of math functions.  */
+#undef TARGET_C99_FUNCTIONS
+#define TARGET_C99_FUNCTIONS  1
+
+#ifndef _AIX52
+extern long long int    atoll(const char *);  
+#endif
+
+/* This target uses the aix64.opt file.  */
+#define TARGET_USES_AIX64_OPT 1

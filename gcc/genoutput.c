@@ -1,12 +1,12 @@
 /* Generate code from to output assembler insns as recognized from rtl.
    Copyright (C) 1987, 1988, 1992, 1994, 1995, 1997, 1998, 1999, 2000, 2002,
-   2003 Free Software Foundation, Inc.
+   2003, 2004, 2005, 2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,9 +15,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 /* This program reads the machine description for the compiler target machine
@@ -54,12 +53,10 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
      a. `predicate', an int-valued function, is the match_operand predicate
      for this operand.
 
-     b. `constraint' is the constraint for this operand.  This exists
-     only if register constraints appear in match_operand rtx's.
+     b. `constraint' is the constraint for this operand.
 
      c. `address_p' indicates that the operand appears within ADDRESS
-     rtx's.  This exists only if there are *no* register constraints
-     in the match_operand rtx's.
+     rtx's.
 
      d. `mode' is the machine mode that that operand is supposed to have.
 
@@ -99,8 +96,8 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 
 #define MAX_MAX_OPERANDS 40
 
-static int n_occurrences		PARAMS ((int, const char *));
-static const char *strip_whitespace	PARAMS ((const char *));
+static int n_occurrences		(int, const char *);
+static const char *strip_whitespace	(const char *);
 
 /* insns in the machine description are assigned sequential code numbers
    that are used by insn-recog.c (produced by genrecog) to communicate
@@ -160,6 +157,7 @@ struct data
   const char *template;
   int code_number;
   int index_number;
+  const char *filename;
   int lineno;
   int n_operands;		/* Number of operands this insn recognizes */
   int n_dups;			/* Number times match_dup appears in pattern */
@@ -173,50 +171,53 @@ struct data
 
 static struct data *idata, **idata_end = &idata;
 
-static void output_prologue PARAMS ((void));
-static void output_predicate_decls PARAMS ((void));
-static void output_operand_data PARAMS ((void));
-static void output_insn_data PARAMS ((void));
-static void output_get_insn_name PARAMS ((void));
-static void scan_operands PARAMS ((struct data *, rtx, int, int));
-static int compare_operands PARAMS ((struct operand_data *,
-				   struct operand_data *));
-static void place_operands PARAMS ((struct data *));
-static void process_template PARAMS ((struct data *, const char *));
-static void validate_insn_alternatives PARAMS ((struct data *));
-static void validate_insn_operands PARAMS ((struct data *));
-static void gen_insn PARAMS ((rtx, int));
-static void gen_peephole PARAMS ((rtx, int));
-static void gen_expand PARAMS ((rtx, int));
-static void gen_split PARAMS ((rtx, int));
-static void check_constraint_len PARAMS ((void));
-static int constraint_len PARAMS ((const char *, int));
-
-const char *
-get_insn_name (index)
-     int index;
+static void output_prologue (void);
+static void output_operand_data (void);
+static void output_insn_data (void);
+static void output_get_insn_name (void);
+static void scan_operands (struct data *, rtx, int, int);
+static int compare_operands (struct operand_data *,
+			     struct operand_data *);
+static void place_operands (struct data *);
+static void process_template (struct data *, const char *);
+static void validate_insn_alternatives (struct data *);
+static void validate_insn_operands (struct data *);
+static void gen_insn (rtx, int);
+static void gen_peephole (rtx, int);
+static void gen_expand (rtx, int);
+static void gen_split (rtx, int);
+
+#ifdef USE_MD_CONSTRAINTS
+
+struct constraint_data
 {
-  static char buf[100];
+  struct constraint_data *next_this_letter;
+  int lineno;
+  unsigned int namelen;
+  const char name[1];
+};
 
-  struct data *i, *last_named = NULL;
-  for (i = idata; i ; i = i->next)
-    {
-      if (i->index_number == index)
-	return i->name;
-      if (i->name)
-	last_named = i;
-    }
+/* This is a complete list (unlike the one in genpreds.c) of constraint
+   letters and modifiers with machine-independent meaning.  The only
+   omission is digits, as these are handled specially.  */
+static const char indep_constraints[] = ",=+%*?!#&<>EFVXgimnoprs";
 
-  if (last_named)
-    sprintf(buf, "%s+%d", last_named->name, index - last_named->index_number);
-  else
-    sprintf(buf, "insn %d", index);
+static struct constraint_data *
+constraints_by_letter_table[1 << CHAR_BIT];
 
-  return buf;
-}
+static int mdep_constraint_len (const char *, int, int);
+static void note_constraint (rtx, int);
 
+#else  /* !USE_MD_CONSTRAINTS */
+
+static void check_constraint_len (void);
+static int constraint_len (const char *, int);
+
+#endif /* !USE_MD_CONSTRAINTS */
+
+
 static void
-output_prologue ()
+output_prologue (void)
 {
   printf ("/* Generated automatically by the program `genoutput'\n\
    from the machine description file `md'.  */\n\n");
@@ -242,49 +243,11 @@ output_prologue ()
   printf ("#include \"toplev.h\"\n");
   printf ("#include \"output.h\"\n");
   printf ("#include \"target.h\"\n");
-}
-
-
-/* We need to define all predicates used.  Keep a list of those we
-   have defined so far.  There normally aren't very many predicates
-   used, so a linked list should be fast enough.  */
-struct predicate { const char *name; struct predicate *next; };
-
-static void
-output_predicate_decls ()
-{
-  struct predicate *predicates = 0;
-  struct operand_data *d;
-  struct predicate *p, *next;
-
-  for (d = odata; d; d = d->next)
-    if (d->predicate && d->predicate[0])
-      {
-	for (p = predicates; p; p = p->next)
-	  if (strcmp (p->name, d->predicate) == 0)
-	    break;
-
-	if (p == 0)
-	  {
-	    printf ("extern int %s PARAMS ((rtx, enum machine_mode));\n",
-		    d->predicate);
-	    p = (struct predicate *) xmalloc (sizeof (struct predicate));
-	    p->name = d->predicate;
-	    p->next = predicates;
-	    predicates = p;
-	  }
-      }
-
-  printf ("\n\n");
-  for (p = predicates; p; p = next)
-    {
-      next = p->next;
-      free (p);
-    }
+  printf ("#include \"tm-constrs.h\"\n");
 }
 
 static void
-output_operand_data ()
+output_operand_data (void)
 {
   struct operand_data *d;
 
@@ -311,7 +274,7 @@ output_operand_data ()
 }
 
 static void
-output_insn_data ()
+output_insn_data (void)
 {
   struct data *d;
   int name_offset = 0;
@@ -327,10 +290,12 @@ output_insn_data ()
 	break;
       }
 
+  printf ("#if GCC_VERSION >= 2007\n__extension__\n#endif\n");
   printf ("\nconst struct insn_data insn_data[] = \n{\n");
 
   for (d = idata; d; d = d->next)
     {
+      printf ("  /* %s:%d */\n", d->filename, d->lineno);
       printf ("  {\n");
 
       if (d->name)
@@ -363,13 +328,22 @@ output_insn_data ()
       switch (d->output_format)
 	{
 	case INSN_OUTPUT_FORMAT_NONE:
-	  printf ("    0,\n");
+	  printf ("#if HAVE_DESIGNATED_INITIALIZERS\n");
+	  printf ("    { 0 },\n");
+	  printf ("#else\n");
+	  printf ("    { 0, 0, 0 },\n");
+	  printf ("#endif\n");
 	  break;
 	case INSN_OUTPUT_FORMAT_SINGLE:
 	  {
 	    const char *p = d->template;
 	    char prev = 0;
-	    
+
+	    printf ("#if HAVE_DESIGNATED_INITIALIZERS\n");
+	    printf ("    { .single =\n");
+	    printf ("#else\n");
+	    printf ("    {\n");
+	    printf ("#endif\n");
 	    printf ("    \"");
 	    while (*p)
 	      {
@@ -386,14 +360,29 @@ output_insn_data ()
 		++p;
 	      }
 	    printf ("\",\n");
+	    printf ("#if HAVE_DESIGNATED_INITIALIZERS\n");
+	    printf ("    },\n");
+	    printf ("#else\n");
+	    printf ("    0, 0 },\n");
+	    printf ("#endif\n");
 	  }
 	  break;
 	case INSN_OUTPUT_FORMAT_MULTI:
+	  printf ("#if HAVE_DESIGNATED_INITIALIZERS\n");
+	  printf ("    { .multi = output_%d },\n", d->code_number);
+	  printf ("#else\n");
+	  printf ("    { 0, output_%d, 0 },\n", d->code_number);
+	  printf ("#endif\n");
+	  break;
 	case INSN_OUTPUT_FORMAT_FUNCTION:
-	  printf ("    (const PTR) output_%d,\n", d->code_number);
+	  printf ("#if HAVE_DESIGNATED_INITIALIZERS\n");
+	  printf ("    { .function = output_%d },\n", d->code_number);
+	  printf ("#else\n");
+	  printf ("    { 0, 0, output_%d },\n", d->code_number);
+	  printf ("#endif\n");
 	  break;
 	default:
-	  abort ();
+	  gcc_unreachable ();
 	}
 
       if (d->name && d->name[0] != '*')
@@ -413,13 +402,15 @@ output_insn_data ()
 }
 
 static void
-output_get_insn_name ()
+output_get_insn_name (void)
 {
   printf ("const char *\n");
-  printf ("get_insn_name (code)\n");
-  printf ("     int code;\n");
+  printf ("get_insn_name (int code)\n");
   printf ("{\n");
-  printf ("  return insn_data[code].name;\n");
+  printf ("  if (code == NOOP_MOVE_INSN_CODE)\n");
+  printf ("    return \"NOOP_MOVE\";\n");
+  printf ("  else\n");
+  printf ("    return insn_data[code].name;\n");
   printf ("}\n");
 }
 
@@ -435,11 +426,8 @@ static int max_opno;
 static int num_dups;
 
 static void
-scan_operands (d, part, this_address_p, this_strict_low)
-     struct data *d;
-     rtx part;
-     int this_address_p;
-     int this_strict_low;
+scan_operands (struct data *d, rtx part, int this_address_p,
+	       int this_strict_low)
 {
   int i, j;
   const char *format_ptr;
@@ -551,7 +539,7 @@ scan_operands (d, part, this_address_p, this_strict_low)
     case STRICT_LOW_PART:
       scan_operands (d, XEXP (part, 0), 0, 1);
       return;
-      
+
     default:
       break;
     }
@@ -576,8 +564,7 @@ scan_operands (d, part, this_address_p, this_strict_low)
 /* Compare two operands for content equality.  */
 
 static int
-compare_operands (d0, d1)
-     struct operand_data *d0, *d1;
+compare_operands (struct operand_data *d0, struct operand_data *d1)
 {
   const char *p0, *p1;
 
@@ -615,8 +602,7 @@ compare_operands (d0, d1)
    find a subsequence that is the same, or allocate a new one at the end.  */
 
 static void
-place_operands (d)
-     struct data *d;
+place_operands (struct data *d)
 {
   struct operand_data *od, *od2;
   int i;
@@ -670,9 +656,7 @@ place_operands (d)
    templates, or C code to generate the assembler code template.  */
 
 static void
-process_template (d, template)
-    struct data *d;
-    const char *template;
+process_template (struct data *d, const char *template)
 {
   const char *cp;
   int i;
@@ -683,14 +667,11 @@ process_template (d, template)
       d->template = 0;
       d->output_format = INSN_OUTPUT_FORMAT_FUNCTION;
 
-      printf ("\nstatic const char *output_%d PARAMS ((rtx *, rtx));\n",
-	      d->code_number);
       puts ("\nstatic const char *");
-      printf ("output_%d (operands, insn)\n", d->code_number);
-      puts ("     rtx *operands ATTRIBUTE_UNUSED;");
-      puts ("     rtx insn ATTRIBUTE_UNUSED;");
+      printf ("output_%d (rtx *operands ATTRIBUTE_UNUSED, rtx insn ATTRIBUTE_UNUSED)\n",
+	      d->code_number);
       puts ("{");
-
+      print_rtx_ptr_loc (template);
       puts (template + 1);
       puts ("}");
     }
@@ -706,11 +687,22 @@ process_template (d, template)
 
       for (i = 0, cp = &template[1]; *cp; )
 	{
+	  const char *ep, *sp;
+
 	  while (ISSPACE (*cp))
 	    cp++;
 
 	  printf ("  \"");
-	  while (!IS_VSPACE (*cp) && *cp != '\0')
+
+	  for (ep = sp = cp; !IS_VSPACE (*ep) && *ep != '\0'; ++ep)
+	    if (!ISSPACE (*ep))
+	      sp = ep + 1;
+
+	  if (sp != ep)
+	    message_with_line (d->lineno,
+			       "trailing whitespace in output template");
+
+	  while (cp < sp)
 	    {
 	      putchar (*cp);
 	      cp++;
@@ -741,8 +733,7 @@ process_template (d, template)
 /* Check insn D for consistency in number of constraint alternatives.  */
 
 static void
-validate_insn_alternatives (d)
-     struct data *d;
+validate_insn_alternatives (struct data *d)
 {
   int n = 0, start;
 
@@ -759,6 +750,20 @@ validate_insn_alternatives (d)
 
 	for (p = d->operand[start].constraint; (c = *p); p += len)
 	  {
+#ifdef USE_MD_CONSTRAINTS
+	    if (ISSPACE (c) || strchr (indep_constraints, c))
+	      len = 1;
+	    else if (ISDIGIT (c))
+	      {
+		const char *q = p;
+		do
+		  q++;
+		while (ISDIGIT (*q));
+		len = q - p;
+	      }
+	    else
+	      len = mdep_constraint_len (p, d->lineno, start);
+#else
 	    len = CONSTRAINT_LEN (c, p);
 
 	    if (len < 1 || (len > 1 && strchr (",#*+=&%!0123456789", c)))
@@ -769,6 +774,7 @@ validate_insn_alternatives (d)
 		len = 1;
 		have_error = 1;
 	      }
+#endif
 
 	    if (c == ',')
 	      {
@@ -813,8 +819,7 @@ validate_insn_alternatives (d)
 /* Verify that there are no gaps in operand numbers for INSNs.  */
 
 static void
-validate_insn_operands (d)
-     struct data *d;
+validate_insn_operands (struct data *d)
 {
   int i;
 
@@ -831,15 +836,14 @@ validate_insn_operands (d)
    a hairy output action, output a function for now.  */
 
 static void
-gen_insn (insn, lineno)
-     rtx insn;
-     int lineno;
+gen_insn (rtx insn, int lineno)
 {
-  struct data *d = (struct data *) xmalloc (sizeof (struct data));
+  struct data *d = XNEW (struct data);
   int i;
 
   d->code_number = next_code_number;
   d->index_number = next_index_number;
+  d->filename = read_rtx_filename;
   d->lineno = lineno;
   if (XSTR (insn, 0)[0])
     d->name = XSTR (insn, 0);
@@ -862,7 +866,9 @@ gen_insn (insn, lineno)
   d->n_operands = max_opno + 1;
   d->n_dups = num_dups;
 
+#ifndef USE_MD_CONSTRAINTS
   check_constraint_len ();
+#endif
   validate_insn_operands (d);
   validate_insn_alternatives (d);
   place_operands (d);
@@ -874,15 +880,14 @@ gen_insn (insn, lineno)
    If the insn has a hairy output action, output it now.  */
 
 static void
-gen_peephole (peep, lineno)
-     rtx peep;
-     int lineno;
+gen_peephole (rtx peep, int lineno)
 {
-  struct data *d = (struct data *) xmalloc (sizeof (struct data));
+  struct data *d = XNEW (struct data);
   int i;
 
   d->code_number = next_code_number;
   d->index_number = next_index_number;
+  d->filename = read_rtx_filename;
   d->lineno = lineno;
   d->name = 0;
 
@@ -914,15 +919,14 @@ gen_peephole (peep, lineno)
    only for the purposes of `insn_gen_function'.  */
 
 static void
-gen_expand (insn, lineno)
-     rtx insn;
-     int lineno;
+gen_expand (rtx insn, int lineno)
 {
-  struct data *d = (struct data *) xmalloc (sizeof (struct data));
+  struct data *d = XNEW (struct data);
   int i;
 
   d->code_number = next_code_number;
   d->index_number = next_index_number;
+  d->filename = read_rtx_filename;
   d->lineno = lineno;
   if (XSTR (insn, 0)[0])
     d->name = XSTR (insn, 0);
@@ -959,15 +963,14 @@ gen_expand (insn, lineno)
    only for reasons of consistency and to simplify genrecog.  */
 
 static void
-gen_split (split, lineno)
-     rtx split;
-     int lineno;
+gen_split (rtx split, int lineno)
 {
-  struct data *d = (struct data *) xmalloc (sizeof (struct data));
+  struct data *d = XNEW (struct data);
   int i;
 
   d->code_number = next_code_number;
   d->index_number = next_index_number;
+  d->filename = read_rtx_filename;
   d->lineno = lineno;
   d->name = 0;
 
@@ -996,19 +999,14 @@ gen_split (split, lineno)
   place_operands (d);
 }
 
-extern int main PARAMS ((int, char **));
+extern int main (int, char **);
 
 int
-main (argc, argv)
-     int argc;
-     char **argv;
+main (int argc, char **argv)
 {
   rtx desc;
 
   progname = "genoutput";
-
-  if (argc <= 1)
-    fatal ("no input file name");
 
   if (init_md_reader_args (argc, argv) != SUCCESS_EXIT_CODE)
     return (FATAL_EXIT_CODE);
@@ -1027,20 +1025,41 @@ main (argc, argv)
       if (desc == NULL)
 	break;
 
-      if (GET_CODE (desc) == DEFINE_INSN)
-	gen_insn (desc, line_no);
-      if (GET_CODE (desc) == DEFINE_PEEPHOLE)
-	gen_peephole (desc, line_no);
-      if (GET_CODE (desc) == DEFINE_EXPAND)
-	gen_expand (desc, line_no);
-      if (GET_CODE (desc) == DEFINE_SPLIT
- 	  || GET_CODE (desc) == DEFINE_PEEPHOLE2)
-	gen_split (desc, line_no);
+      switch (GET_CODE (desc))
+	{
+	case DEFINE_INSN:
+	  gen_insn (desc, line_no);
+	  break;
+
+	case DEFINE_PEEPHOLE:
+	  gen_peephole (desc, line_no);
+	  break;
+
+	case DEFINE_EXPAND:
+	  gen_expand (desc, line_no);
+	  break;
+
+	case DEFINE_SPLIT:
+	case DEFINE_PEEPHOLE2:
+	  gen_split (desc, line_no);
+	  break;
+
+#ifdef USE_MD_CONSTRAINTS
+	case DEFINE_CONSTRAINT:
+	case DEFINE_REGISTER_CONSTRAINT:
+	case DEFINE_ADDRESS_CONSTRAINT:
+	case DEFINE_MEMORY_CONSTRAINT:
+	  note_constraint (desc, line_no);
+	  break;
+#endif
+
+	default:
+	  break;
+	}
       next_index_number++;
     }
 
   printf("\n\n");
-  output_predicate_decls ();
   output_operand_data ();
   output_insn_data ();
   output_get_insn_name ();
@@ -1054,9 +1073,7 @@ main (argc, argv)
    -1 if S is the null string.  */
 
 static int
-n_occurrences (c, s)
-     int c;
-     const char *s;
+n_occurrences (int c, const char *s)
 {
   int n = 0;
 
@@ -1073,8 +1090,7 @@ n_occurrences (c, s)
    Return a new string.  */
 
 static const char *
-strip_whitespace (s)
-     const char *s;
+strip_whitespace (const char *s)
 {
   char *p, *q;
   char ch;
@@ -1082,7 +1098,7 @@ strip_whitespace (s)
   if (s == 0)
     return 0;
 
-  p = q = xmalloc (strlen (s) + 1);
+  p = q = XNEWVEC (char, strlen (s) + 1);
   while ((ch = *s++) != '\0')
     if (! ISSPACE (ch))
       *p++ = ch;
@@ -1091,31 +1107,123 @@ strip_whitespace (s)
   return q;
 }
 
+#ifdef USE_MD_CONSTRAINTS
+
+/* Record just enough information about a constraint to allow checking
+   of operand constraint strings above, in validate_insn_alternatives.
+   Does not validate most properties of the constraint itself; does
+   enforce no duplicate names, no overlap with MI constraints, and no
+   prefixes.  EXP is the define_*constraint form, LINENO the line number
+   reported by the reader.  */
+static void
+note_constraint (rtx exp, int lineno)
+{
+  const char *name = XSTR (exp, 0);
+  unsigned int namelen = strlen (name);
+  struct constraint_data **iter, **slot, *new;
+
+  if (strchr (indep_constraints, name[0]))
+    {
+      if (name[1] == '\0')
+	message_with_line (lineno, "constraint letter '%s' cannot be "
+			   "redefined by the machine description", name);
+      else
+	message_with_line (lineno, "constraint name '%s' cannot be defined by "
+			   "the machine description, as it begins with '%c'",
+			   name, name[0]);
+      have_error = 1;
+      return;
+    }
+
+  slot = &constraints_by_letter_table[(unsigned int)name[0]];
+  for (iter = slot; *iter; iter = &(*iter)->next_this_letter)
+    {
+      /* This causes slot to end up pointing to the
+	 next_this_letter field of the last constraint with a name
+	 of equal or greater length than the new constraint; hence
+	 the new constraint will be inserted after all previous
+	 constraints with names of the same length.  */
+      if ((*iter)->namelen >= namelen)
+	slot = iter;
+
+      if (!strcmp ((*iter)->name, name))
+	{
+	  message_with_line (lineno, "redefinition of constraint '%s'", name);
+	  message_with_line ((*iter)->lineno, "previous definition is here");
+	  have_error = 1;
+	  return;
+	}
+      else if (!strncmp ((*iter)->name, name, (*iter)->namelen))
+	{
+	  message_with_line (lineno, "defining constraint '%s' here", name);
+	  message_with_line ((*iter)->lineno, "renders constraint '%s' "
+			     "(defined here) a prefix", (*iter)->name);
+	  have_error = 1;
+	  return;
+	}
+      else if (!strncmp ((*iter)->name, name, namelen))
+	{
+	  message_with_line (lineno, "constraint '%s' is a prefix", name);
+	  message_with_line ((*iter)->lineno, "of constraint '%s' "
+			     "(defined here)", (*iter)->name);
+	  have_error = 1;
+	  return;
+	}
+    }
+  new = xmalloc (sizeof (struct constraint_data) + namelen);
+  strcpy ((char *)new + offsetof(struct constraint_data, name), name);
+  new->namelen = namelen;
+  new->lineno = lineno;
+  new->next_this_letter = *slot;
+  *slot = new;
+}
+
+/* Return the length of the constraint name beginning at position S
+   of an operand constraint string, or issue an error message if there
+   is no such constraint.  Does not expect to be called for generic
+   constraints.  */
+static int
+mdep_constraint_len (const char *s, int lineno, int opno)
+{
+  struct constraint_data *p;
+
+  p = constraints_by_letter_table[(unsigned int)s[0]];
+
+  if (p)
+    for (; p; p = p->next_this_letter)
+      if (!strncmp (s, p->name, p->namelen))
+	return p->namelen;
+
+  message_with_line (lineno,
+		     "error: undefined machine-specific constraint "
+		     "at this point: \"%s\"", s);
+  message_with_line (lineno, "note:  in operand %d", opno);
+  have_error = 1;
+  return 1; /* safe */
+}
+
+#else
 /* Verify that DEFAULT_CONSTRAINT_LEN is used properly and not
    tampered with.  This isn't bullet-proof, but it should catch
    most genuine mistakes.  */
 static void
-check_constraint_len ()
+check_constraint_len (void)
 {
   const char *p;
   int d;
 
   for (p = ",#*+=&%!1234567890"; *p; p++)
     for (d = -9; d < 9; d++)
-      if (constraint_len (p, d) != d)
-	abort ();
+      gcc_assert (constraint_len (p, d) == d);
 }
 
 static int
-constraint_len (p, genoutput_default_constraint_len)
-     const char *p;
-     int genoutput_default_constraint_len;
+constraint_len (const char *p, int genoutput_default_constraint_len)
 {
   /* Check that we still match defaults.h .  First we do a generation-time
      check that fails if the value is not the expected one...  */
-  if (DEFAULT_CONSTRAINT_LEN (*p, p) != 1)
-    abort ();
-  /* And now a comile-time check that should give a diagnostic if the
+  gcc_assert (DEFAULT_CONSTRAINT_LEN (*p, p) == 1);
+  /* And now a compile-time check that should give a diagnostic if the
      definition doesn't exactly match.  */
 #define DEFAULT_CONSTRAINT_LEN(C,STR) 1
   /* Now re-define DEFAULT_CONSTRAINT_LEN so that we can verify it is
@@ -1128,3 +1236,4 @@ constraint_len (p, genoutput_default_constraint_len)
 #undef DEFAULT_CONSTRAINT_LEN
 #define DEFAULT_CONSTRAINT_LEN(C,STR) 1
 }
+#endif

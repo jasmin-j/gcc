@@ -1,5 +1,5 @@
-// excess errors test - XFAIL xstormy16-*-* *-*-darwin*
-// Copyright (C) 2000, 2002 Free Software Foundation, Inc.
+// { dg-do run { xfail xstormy16-*-* *-*-darwin[1-7]* } }
+// Copyright (C) 2000, 2002, 2003 Free Software Foundation, Inc.
 // Contributed by Nathan Sidwell 6 June 2000 <nathan@codesourcery.com>
 
 // Check we can throw a bad_alloc exception when malloc dies.
@@ -14,7 +14,13 @@ extern "C" void *memcpy(void *, const void *, size_t);
 #ifdef STACK_SIZE
 const int arena_size = 256;
 #else
+#if defined(__FreeBSD__) || defined(__sun__) || defined(__hpux__)
+// FreeBSD, Solaris and HP-UX with threads require even more
+// space at initialization time.  FreeBSD 5 now requires over 131072 bytes.
+const int arena_size = 262144;
+#else
 const int arena_size = 32768;
+#endif
 #endif
 
 struct object
@@ -98,6 +104,16 @@ void fn_catchthrow() throw(int)
 
 int main()
 {
+  /* On some systems (including FreeBSD and Solaris 2.10),
+     __cxa_get_globals will try to call "malloc" when threads are in
+     use.  Therefore, we throw one exception up front so that
+     __cxa_get_globals is all set up.  Ideally, this would not be
+     necessary, but it is a well-known idiom, and using this technique
+     means that we can still validate the fact that exceptions can be
+     thrown when malloc fails.  */
+  try{fn_throw();}
+  catch(int a){}
+
   fail = 1;
 
   try{fn_throw();}

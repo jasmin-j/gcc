@@ -1,3 +1,4 @@
+// { dg-do run  }
 // Make sure we can initialize complex (MI ambiguous) vtables.
 
 extern "C" int printf(const char *, ...);
@@ -9,7 +10,7 @@ struct a
 
 struct b
 {
-    virtual void g() { };
+    virtual void g() { }
 };
 
 struct c: public a, public b

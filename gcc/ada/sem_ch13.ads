@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2002 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -36,6 +34,13 @@ package Sem_Ch13 is
    procedure Analyze_Record_Representation_Clause       (N : Node_Id);
    procedure Analyze_Code_Statement                     (N : Node_Id);
 
+   procedure Adjust_Record_For_Reverse_Bit_Order (R : Entity_Id);
+   --  Called from Freeze where R is a record entity for which reverse bit
+   --  order is specified and there is at least one component clause. Adjusts
+   --  component positions according to Ada 2005 AI-133. Note that this is only
+   --  called in Ada 2005 mode. The Ada 95 handling for bit order is entirely
+   --  contained in Freeze.
+
    procedure Initialize;
    --  Initialize internal tables for new compilation
 
@@ -47,9 +52,8 @@ package Sem_Ch13 is
 
    function Minimum_Size
      (T      : Entity_Id;
-      Biased : Boolean := False)
-      return   Nat;
-   --  Given a primitive type, determines the minimum number of bits required
+      Biased : Boolean := False) return Nat;
+   --  Given an elementary type, determines the minimum number of bits required
    --  to represent all values of the type. This function may not be called
    --  with any other types. If the flag Biased is set True, then the minimum
    --  size calculation that biased representation is used in the case of a
@@ -62,6 +66,17 @@ package Sem_Ch13 is
    --  regardless of the setting of Biased. Also, fixed-point types are never
    --  biased in the current implementation.
 
+   procedure Check_Constant_Address_Clause (Expr : Node_Id; U_Ent : Entity_Id);
+   --  Expr is an expression for an address clause. This procedure checks
+   --  that the expression is constant, in the limited sense that it is safe
+   --  to evaluate it at the point the object U_Ent is declared, rather than
+   --  at the point of the address clause. The condition for this to be true
+   --  is that the expression has no variables, no constants declared after
+   --  U_Ent, and no calls to non-pure functions. If this condition is not
+   --  met, then an appropriate error message is posted. This check is applied
+   --  at the point an object with an address clause is frozen, as well as for
+   --  address clauses for tasks and entries.
+
    procedure Check_Size
      (N      : Node_Id;
       T      : Entity_Id;
@@ -69,24 +84,19 @@ package Sem_Ch13 is
       Biased : out Boolean);
    --  Called when size Siz is specified for subtype T. This subprogram checks
    --  that the size is appropriate, posting errors on node N as required.
-   --  For non-elementary types, a check is only made if an explicit size
-   --  has been given for the type (and the specified size must match). The
-   --  parameter Biased is set False if the size specified did not require
+   --  This check is effective for elementary types and bit-packed arrays.
+   --  For other non-elementary types, a check is only made if an explicit
+   --  size has been given for the type (and the specified size must match).
+   --  The parameter Biased is set False if the size specified did not require
    --  the use of biased representation, and True if biased representation
    --  was required to meet the size requirement. Note that Biased is only
    --  set if the type is not currently biased, but biasing it is the only
    --  way to meet the requirement. If the type is currently biased, then
    --  this biased size is used in the initial check, and Biased is False.
+   --  If the size is too small, and an error message is given, then both
+   --  Esize and RM_Size are reset to the allowed minimum value in T.
 
-   procedure Record_Rep_Item (T : Entity_Id; N : Node_Id);
-   --  N is the node for either a representation pragma or an attribute
-   --  definition clause that applies to type T. This procedure links
-   --  the node N onto the Rep_Item chain for the type T.
-
-   function Rep_Item_Too_Early
-     (T     : Entity_Id;
-      N     : Node_Id)
-      return  Boolean;
+   function Rep_Item_Too_Early (T : Entity_Id; N : Node_Id) return Boolean;
    --  Called at the start of processing a representation clause or a
    --  representation pragma. Used to check that the representation item
    --  is not being applied to an incompleted type or to a generic formal
@@ -97,8 +107,7 @@ package Sem_Ch13 is
    function Rep_Item_Too_Late
      (T     : Entity_Id;
       N     : Node_Id;
-      FOnly : Boolean := False)
-      return  Boolean;
+      FOnly : Boolean := False) return Boolean;
    --  Called at the start of processing a representation clause or a
    --  representation pragma. Used to check that a representation item
    --  for entity T does not appear too late (according to the rules in
@@ -151,5 +160,11 @@ package Sem_Ch13 is
    --  unchecked conversions for size and alignment appropriateness.
    --  The reason it is called that late is to take advantage of any
    --  back-annotation of size and alignment performed by the backend.
+
+   procedure Validate_Address_Clauses;
+   --  This is called after the back end has been called (and thus after the
+   --  alignments of objects have been back annotated). It goes through the
+   --  table of saved address clauses checking for suspicious alignments and
+   --  if necessary issuing warnings.
 
 end Sem_Ch13;

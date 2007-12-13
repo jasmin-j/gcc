@@ -1,7 +1,6 @@
-// Build don't link:
+// { dg-do assemble }
 // Origin: Jakub Jelinek <jakub@redhat.com>
 
-// crash test - XFAIL *-*-*
 
 class v
 {

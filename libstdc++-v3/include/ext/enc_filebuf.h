@@ -1,6 +1,6 @@
-// __enc_traits layer for filebuf -*- C++ -*-
+// filebuf with encoding state type -*- C++ -*-
 
-// Copyright (C) 2002 Free Software Foundation, Inc.
+// Copyright (C) 2002, 2003, 2004, 2007 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -27,35 +27,41 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
+/** @file ext/enc_filebuf.h
+ *  This file is a GNU extension to the Standard C++ Library.
+ */
+
+#ifndef _EXT_ENC_FILEBUF_H
+#define _EXT_ENC_FILEBUF_H 1
+
 #include <fstream>
 #include <locale>
+#include <ext/codecvt_specializations.h>
 
-namespace __gnu_cxx
-{
-  // Custom traits type with __enc_traits for state type, all other bits
-  // equivalent to the required char_traits instantiations.
-  template<typename _CharT>
-    struct enc_char_traits: public std::char_traits<_CharT>
-    {
-      typedef std::__enc_traits	state_type;
-    };
+_GLIBCXX_BEGIN_NAMESPACE(__gnu_cxx)
 
+  /// @brief  class enc_filebuf.
   template<typename _CharT>
     class enc_filebuf
-    : public std::basic_filebuf<_CharT, enc_char_traits<_CharT> >
+    : public std::basic_filebuf<_CharT, encoding_char_traits<_CharT> >
     {
     public:
-      typedef typename enc_char_traits<_CharT>::state_type state_type;
-      
+      typedef encoding_char_traits<_CharT>     	traits_type;
+      typedef typename traits_type::state_type	state_type;
+      typedef typename traits_type::pos_type	pos_type;
+
       enc_filebuf(state_type& __state)
-      : std::basic_filebuf<_CharT, enc_char_traits<_CharT> >()
-      { 
-	// Set state type to something useful.
-	// Something more than copyconstructible is needed here, so
-	// require copyconstructible + assignment operator.
-	__glibcpp_class_requires(state_type, _SGIAssignableConcept);
-	_M_state_cur = __state;
-	_M_state_cur._M_init();
-      };
+      : std::basic_filebuf<_CharT, encoding_char_traits<_CharT> >()
+      { this->_M_state_beg = __state; }
+
+    private:
+      // concept requirements:
+      // Set state type to something useful.
+      // Something more than copyconstructible is needed here, so
+      // require default and copy constructible + assignment operator.
+      __glibcxx_class_requires(state_type, _SGIAssignableConcept)
     };
-} // namespace __gnu_cxx
+
+_GLIBCXX_END_NAMESPACE
+
+#endif

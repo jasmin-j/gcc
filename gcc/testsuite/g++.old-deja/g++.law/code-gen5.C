@@ -1,3 +1,4 @@
+// { dg-do run  }
 // GROUPS passed code-generation
 // code-gen file
 // From: "David" <norman@pi14.arc.umn.edu>
@@ -33,7 +34,7 @@ class VectorInt
 
 	VectorInt *refer();
 	void unrefer();
-	int count;				/* Number of Vector's refering to me */
+	int count;				/* Number of Vector's referring to me */
 
 	VEC *vec;
 
@@ -69,7 +70,7 @@ class Vector
 	Vector( int, double *, int beg = 0 );
 	Vector( const Vector & );
 	Vector &operator=( const Vector & );
-	~Vector() { if(r) r->unrefer(); };
+	~Vector() { if(r) r->unrefer(); }
 
 	int row() const { return 19; }
 	int dim() const { return 10; }

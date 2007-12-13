@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -26,6 +26,11 @@
 // the GNU General Public License.  This exception does not however
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
+
+/** @file ctype_noninline.h
+ *  This is an internal header file, included by other library headers.
+ *  You should not attempt to use it directly.
+ */
 
 //
 // ISO C++ 14882: 22.1  Locales
@@ -39,16 +44,26 @@
 
   ctype<char>::ctype(__c_locale, const mask* __table, bool __del, 
 		     size_t __refs) 
-  : __ctype_abstract_base<char>(__refs), _M_del(__table != 0 && __del), 
+  : facet(__refs), _M_del(__table != 0 && __del), 
   _M_toupper(NULL), _M_tolower(NULL), 
   _M_table(__table ? __table : classic_table()) 
-  { }
+  { 
+    memset(_M_widen, 0, sizeof(_M_widen));
+    _M_widen_ok = 0;
+    memset(_M_narrow, 0, sizeof(_M_narrow));
+    _M_narrow_ok = 0;
+  }
 
   ctype<char>::ctype(const mask* __table, bool __del, size_t __refs) 
-  : __ctype_abstract_base<char>(__refs), _M_del(__table != 0 && __del), 
+  : facet(__refs), _M_del(__table != 0 && __del), 
   _M_toupper(NULL), _M_tolower(NULL), 
   _M_table(__table ? __table : classic_table()) 
-  { }
+  { 
+    memset(_M_widen, 0, sizeof(_M_widen));
+    _M_widen_ok = 0;
+    memset(_M_narrow, 0, sizeof(_M_narrow));
+    _M_narrow_ok = 0;
+  }
 
   char
   ctype<char>::do_toupper(char __c) const

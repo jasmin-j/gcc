@@ -1,3 +1,4 @@
+// { dg-do run  }
 // This is a test case to make sure the explicit cast on a pointer to
 // a member function works ok.
 // prms-id: 3060
@@ -6,7 +7,7 @@ extern "C" int printf(const char *, ...);
 
 class Object;
 
-typedef void (Object::*VoidObjMemberFunc)(Object *, ...);
+typedef void (Object::*VoidObjMemberFunc)(Object *tracker, void *ap);
 
 class Object {
 public:

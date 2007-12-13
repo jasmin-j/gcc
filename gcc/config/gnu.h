@@ -6,15 +6,23 @@
 
 /* Default C library spec.  Use -lbsd-compat for gcc -bsd.  */
 #undef LIB_SPEC
-#define LIB_SPEC "%{bsd:-lbsd-compat} %{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p}"
+#define LIB_SPEC "%{pthread:-lpthread} %{bsd:-lbsd-compat} %{pg|p|profile:-lc_p;:-lc}"
 
 /* Standard include directory.  In GNU, "/usr" is a four-letter word.  */
 #undef STANDARD_INCLUDE_DIR
 #define STANDARD_INCLUDE_DIR "/include"
 
-/* Implicit library calls should use memcpy, not bcopy, etc.  */
-#undef TARGET_MEM_FUNCTIONS
-#define TARGET_MEM_FUNCTIONS
-
 /* The system headers under GNU are C++-aware.  */
 #define NO_IMPLICIT_EXTERN_C
+
+#define HURD_TARGET_OS_CPP_BUILTINS()		\
+    do {					\
+	builtin_define ("__gnu_hurd__");	\
+	builtin_define ("__GNU__");		\
+	builtin_define_std ("unix");		\
+	builtin_define_std ("MACH");		\
+	builtin_assert ("system=gnu");		\
+	builtin_assert ("system=mach");		\
+	builtin_assert ("system=unix");		\
+	builtin_assert ("system=posix");	\
+    } while (0)

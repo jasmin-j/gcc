@@ -1,9 +1,10 @@
+// { dg-do run  }
 // PRMS Id: 5184
 // Bug: cast to C& below does not adjust address
 
 struct A {};
 struct B {
-  virtual void foo () {};
+  virtual void foo () {}
 };
 struct C : public B, public A {};
 

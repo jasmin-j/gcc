@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --      A D A . W I D E _ T E X T _ I O . E N U M E R A T I O N _ A U X     --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2002, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -47,10 +46,10 @@ package body Ada.Wide_Text_IO.Enumeration_Aux is
    -----------------------
 
    procedure Store_Char
-     (WC   : Wide_Character;
-      Buf  : out Wide_String;
-      Ptr  : in out Integer);
-   --  Store a single character in buffer, checking for overflow.
+     (WC  : Wide_Character;
+      Buf : out Wide_String;
+      Ptr : in out Integer);
+   --  Store a single character in buffer, checking for overflow
 
    --  These definitions replace the ones in Ada.Characters.Handling, which
    --  do not seem to work for some strange not understood reason ??? at
@@ -136,8 +135,9 @@ package body Ada.Wide_Text_IO.Enumeration_Aux is
                null;
 
             else
-               exit when Is_Letter (Character'Val (ch))
-                 and then not Is_Digit (Character'Val (ch));
+               exit when not Is_Letter (Character'Val (ch))
+                           and then
+                         not Is_Digit (Character'Val (ch));
             end if;
          end loop;
       end if;
@@ -159,7 +159,7 @@ package body Ada.Wide_Text_IO.Enumeration_Aux is
    begin
       Check_On_One_Line (TFT (File), Actual_Width);
 
-      if Set = Lower_Case and then Item (1) /= ''' then
+      if Set = Lower_Case and then Item (Item'First) /= ''' then
          declare
             Iteml : Wide_String (Item'First .. Item'Last);
 
@@ -190,9 +190,9 @@ package body Ada.Wide_Text_IO.Enumeration_Aux is
    ----------
 
    procedure Puts
-     (To    : out Wide_String;
-      Item  : in Wide_String;
-      Set   : Type_Set)
+     (To   : out Wide_String;
+      Item : Wide_String;
+      Set  : Type_Set)
    is
       Ptr : Natural;
 
@@ -204,7 +204,7 @@ package body Ada.Wide_Text_IO.Enumeration_Aux is
          Ptr := To'First;
          for J in Item'Range loop
             if Set = Lower_Case
-              and then Item (1) /= '''
+              and then Item (Item'First) /= '''
               and then Is_Character (Item (J))
             then
                To (Ptr) :=
@@ -280,7 +280,6 @@ package body Ada.Wide_Text_IO.Enumeration_Aux is
             end if;
          end if;
 
-         Stop := Stop - 1;
          raise Data_Error;
 
       --  Similarly for identifiers, read as far as we can, in particular,
@@ -325,9 +324,9 @@ package body Ada.Wide_Text_IO.Enumeration_Aux is
    ----------------
 
    procedure Store_Char
-     (WC   : Wide_Character;
-      Buf  : out Wide_String;
-      Ptr  : in out Integer)
+     (WC  : Wide_Character;
+      Buf : out Wide_String;
+      Ptr : in out Integer)
    is
    begin
       if Ptr = Buf'Last then

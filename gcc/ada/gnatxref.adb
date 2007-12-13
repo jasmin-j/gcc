@@ -6,36 +6,38 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---         Copyright (C) 1998-2002 Free Software Foundation, Inc.           --
+--          Copyright (C) 1998-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
+--                                                                          --
+-- GNAT was originally developed  by the GNAT team at  New York University. --
+-- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Xr_Tabls;     use Xr_Tabls;
-with Xref_Lib;     use Xref_Lib;
-with Osint;        use Osint;
-with Types;        use Types;
-
-with Gnatvsn;
 with Opt;
+with Osint;    use Osint;
+with Types;    use Types;
+with Switch;   use Switch;
+with Xr_Tabls; use Xr_Tabls;
+with Xref_Lib; use Xref_Lib;
 
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Text_IO;       use Ada.Text_IO;
+
 with GNAT.Command_Line; use GNAT.Command_Line;
 
-procedure Gnatxref is
+with System.Strings;    use System.Strings;
 
+procedure Gnatxref is
    Search_Unused   : Boolean := False;
    Local_Symbols   : Boolean := True;
    Prj_File        : File_Name_String;
@@ -47,8 +49,14 @@ procedure Gnatxref is
    Have_File       : Boolean := False;
    Der_Info        : Boolean := False;
 
+   RTS_Specified : String_Access := null;
+   --  Used to detect multiple use of --RTS= switch
+
    procedure Parse_Cmd_Line;
    --  Parse every switch on the command line
+
+   procedure Usage;
+   --  Display the usage
 
    procedure Write_Usage;
    --  Print a small help page for program usage
@@ -59,6 +67,10 @@ procedure Gnatxref is
 
    procedure Parse_Cmd_Line is
    begin
+      --  First check for --version or --help
+
+      Check_Version_And_Help ("GNATXREF", "1998", Usage'Unrestricted_Access);
+
       loop
          case
            GNAT.Command_Line.Getopt
@@ -67,7 +79,7 @@ procedure Gnatxref is
             when ASCII.NUL =>
                exit;
 
-            when 'a'    =>
+            when 'a' =>
                if GNAT.Command_Line.Full_Switch = "a" then
                   Read_Only := True;
 
@@ -78,58 +90,67 @@ procedure Gnatxref is
                   Osint.Add_Lib_Search_Dir (GNAT.Command_Line.Parameter);
                end if;
 
-            when 'd'    =>
+            when 'd' =>
                Der_Info := True;
 
-            when 'f'    =>
+            when 'f' =>
                Full_Path_Name := True;
 
-            when 'g'    =>
+            when 'g' =>
                Local_Symbols := False;
 
-            when 'h'    =>
+            when 'h' =>
                Write_Usage;
 
-            when 'I'    =>
+            when 'I' =>
                Osint.Add_Src_Search_Dir (GNAT.Command_Line.Parameter);
                Osint.Add_Lib_Search_Dir (GNAT.Command_Line.Parameter);
 
-            when 'n'    =>
+            when 'n' =>
                if GNAT.Command_Line.Full_Switch = "nostdinc" then
                   Opt.No_Stdinc := True;
                elsif GNAT.Command_Line.Full_Switch = "nostlib" then
                   Opt.No_Stdlib := True;
                end if;
 
-            when 'p'    =>
+            when 'p' =>
                declare
                   S : constant String := GNAT.Command_Line.Parameter;
-
                begin
                   Prj_File_Length := S'Length;
                   Prj_File (1 .. Prj_File_Length) := S;
                end;
 
-            when 'u'    =>
+            when 'u' =>
                Search_Unused := True;
                Vi_Mode := False;
 
-            when 'v'    =>
+            when 'v' =>
                Vi_Mode := True;
                Search_Unused := False;
 
             --  The only switch starting with -- recognized is --RTS
 
-            when '-'    =>
+            when '-' =>
+
+               --  Check that it is the first time we see this switch
+
+               if RTS_Specified = null then
+                  RTS_Specified := new String'(GNAT.Command_Line.Parameter);
+
+               elsif RTS_Specified.all /= GNAT.Command_Line.Parameter then
+                  Osint.Fail ("--RTS cannot be specified multiple times");
+               end if;
+
                Opt.No_Stdinc  := True;
                Opt.RTS_Switch := True;
 
                declare
-                  Src_Path_Name : String_Ptr :=
+                  Src_Path_Name : constant String_Ptr :=
                                     Get_RTS_Search_Dir
                                       (GNAT.Command_Line.Parameter, Include);
 
-                  Lib_Path_Name : String_Ptr :=
+                  Lib_Path_Name : constant String_Ptr :=
                                     Get_RTS_Search_Dir
                                       (GNAT.Command_Line.Parameter, Objects);
 
@@ -189,16 +210,12 @@ procedure Gnatxref is
          Write_Usage;
    end Parse_Cmd_Line;
 
-   -----------------
-   -- Write_Usage --
-   -----------------
+   -----------
+   -- Usage --
+   -----------
 
-   procedure Write_Usage is
-      use Ada.Text_IO;
-
+   procedure Usage is
    begin
-      Put_Line ("GNATXREF " & Gnatvsn.Gnat_Version_String
-                & " Copyright 1998-2002, Ada Core Technologies Inc.");
       Put_Line ("Usage: gnatxref [switches] file1 file2 ...");
       New_Line;
       Put_Line ("  file ... list of source files to xref, " &
@@ -224,6 +241,17 @@ procedure Gnatxref is
       Put_Line ("   -v        Print a 'tags' file for vi");
       New_Line;
 
+   end Usage;
+
+   -----------------
+   -- Write_Usage --
+   -----------------
+
+   procedure Write_Usage is
+   begin
+      Display_Version ("GNATXREF", "1998");
+      New_Line;
+      Usage;
       raise Usage_Error;
    end Write_Usage;
 

@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -28,8 +26,6 @@
 --  This unit contains the routines used to handle type determination,
 --  including the routine used to support overload resolution.
 
-with Alloc;
-with Table;
 with Types; use Types;
 
 package Sem_Type is
@@ -44,19 +40,19 @@ package Sem_Type is
    --  the visibility rules find such a potential ambiguity, the set of
    --  possible interpretations must be attached to the identifier, and
    --  overload resolution must be performed over the innermost enclosing
-   --  complete context. At the end of the resolution,  either a single
+   --  complete context. At the end of the resolution, either a single
    --  interpretation is found for all identifiers in the context, or else a
    --  type error (invalid type or ambiguous reference) must be signalled.
 
    --  The set of interpretations of a given name is stored in a data structure
    --  that is separate from the syntax tree, because it corresponds to
-   --  transient information.  The interpretations themselves are stored in
+   --  transient information. The interpretations themselves are stored in
    --  table All_Interp. A mapping from tree nodes to sets of interpretations
    --  called Interp_Map, is maintained by the overload resolution routines.
    --  Both these structures are initialized at the beginning of every complete
    --  context.
 
-   --  Corresponding to the set of interpretation for a given overloadable
+   --  Corresponding to the set of interpretations for a given overloadable
    --  identifier, there is a set of possible types corresponding to the types
    --  that the overloaded call may return. We keep a 1-to-1 correspondence
    --  between interpretations and types: for user-defined subprograms the
@@ -67,45 +63,21 @@ package Sem_Type is
    --  only one interpretation is present anyway.
 
    type Interp is record
-      Nam : Entity_Id;
-      Typ : Entity_Id;
+      Nam         : Entity_Id;
+      Typ         : Entity_Id;
+      Abstract_Op : Entity_Id := Empty;
    end record;
 
-   No_Interp : constant Interp := (Empty, Empty);
+   --  Entity Abstract_Op is set to the abstract operation which potentially
+   --  disables the interpretation in Ada 2005 mode.
 
-   package All_Interp is new Table.Table (
-     Table_Component_Type => Interp,
-     Table_Index_Type     => Int,
-     Table_Low_Bound      => 0,
-     Table_Initial        => Alloc.All_Interp_Initial,
-     Table_Increment      => Alloc.All_Interp_Increment,
-     Table_Name           => "All_Interp");
-
-   --  The following data structures establish a mapping between nodes and
-   --  their interpretations. Eventually the Interp_Index corresponding to
-   --  the first interpretation of a node may be stored directly in the
-   --  corresponding node.
+   No_Interp : constant Interp := (Empty, Empty, Empty);
 
    subtype Interp_Index is Int;
 
-   type Interp_Ref is record
-      Node  : Node_Id;
-      Index : Interp_Index;
-   end record;
-
-   package Interp_Map is new Table.Table (
-     Table_Component_Type => Interp_Ref,
-     Table_Index_Type     => Int,
-     Table_Low_Bound      => 0,
-     Table_Initial        => Alloc.Interp_Map_Initial,
-     Table_Increment      => Alloc.Interp_Map_Increment,
-     Table_Name           => "Interp_Map");
-
-   --  For now Interp_Map is searched sequentially
-
-   ----------------------
-   --  Error Reporting --
-   ----------------------
+   ---------------------
+   -- Error Reporting --
+   ---------------------
 
    --  A common error is the use of an operator in infix notation on arguments
    --  of a type that is not directly visible. Rather than diagnosing a type
@@ -122,7 +94,7 @@ package Sem_Type is
    -----------------
 
    procedure Init_Interp_Tables;
-   --  Invoked by gnatf when processing multiple files.
+   --  Invoked by gnatf when processing multiple files
 
    procedure Collect_Interps (N : Node_Id);
    --  Invoked when the name N has more than one visible interpretation.
@@ -131,11 +103,17 @@ package Sem_Type is
    --  already been stored in N. If the name is an expanded name, the homonyms
    --  are only those that belong to the same scope.
 
-   procedure New_Interps (N : Node_Id);
-   --  Initialize collection of interpretations for the given node, which is
-   --  either an overloaded entity, or an operation whose arguments have
-   --  multiple intepretations. Interpretations can be added to only one
-   --  node at a time.
+   function Is_Invisible_Operator
+     (N    : Node_Id;
+      T    : Entity_Id)
+      return Boolean;
+   --  Check whether a predefined operation with universal operands appears
+   --  in a context in which the operators of the expected type are not
+   --  visible.
+
+   procedure List_Interps (Nam : Node_Id; Err : Node_Id);
+   --  List candidate interpretations of an overloaded name. Used for
+   --  various error reports.
 
    procedure Add_One_Interp
      (N         : Node_Id;
@@ -147,8 +125,9 @@ package Sem_Type is
    --  E is an overloadable entity, and T is its type. For constructs such
    --  as indexed expressions, the caller sets E equal to T, because the
    --  overloading comes from other fields, and the node itself has no name
-   --  to resolve. Add_One_Interp includes the semantic processing to deal
-   --  with adding entries that hide one another etc.
+   --  to resolve. Hidden denotes whether an interpretation has been disabled
+   --  by an abstract operator. Add_One_Interp includes semantic processing to
+   --  deal with adding entries that hide one another etc.
 
    --  For operators, the legality of the operation depends on the visibility
    --  of T and its scope. If the operator is an equality or comparison, T is
@@ -156,7 +135,7 @@ package Sem_Type is
    --  of the operands of N, to check visibility.
 
    procedure End_Interp_List;
-   --  End the list of interpretations of current node.
+   --  End the list of interpretations of current node
 
    procedure Get_First_Interp
      (N  : Node_Id;
@@ -187,7 +166,7 @@ package Sem_Type is
    --  New_N, its new copy. It has no effect in the non-overloaded case.
 
    function Covers (T1, T2 : Entity_Id) return Boolean;
-   --  This is the basic type compatibility routine. T1 is the expexted
+   --  This is the basic type compatibility routine. T1 is the expected
    --  type, imposed by context, and T2 is the actual type. The processing
    --  reflects both the definition of type coverage and the rules
    --  for operand matching.
@@ -197,7 +176,7 @@ package Sem_Type is
       I1, I2 : Interp_Index;
       Typ    : Entity_Id)
       return   Interp;
-   --  If more than one interpretation  of a name in a call is legal, apply
+   --  If more than one interpretation of a name in a call is legal, apply
    --  preference rules (universal types first) and operator visibility in
    --  order to remove ambiguity. I1 and I2 are the first two interpretations
    --  that are compatible with the context, but there may be others.
@@ -228,23 +207,34 @@ package Sem_Type is
    --  matches the signature of the operator, and is declared in an
    --  open scope, or in the scope of the result type.
 
+   function Interface_Present_In_Ancestor
+     (Typ   : Entity_Id;
+      Iface : Entity_Id) return Boolean;
+   --  Ada 2005 (AI-251): Typ must be a tagged record type/subtype and Iface
+   --  must be an abstract interface type (or a class-wide abstract interface).
+   --  This function is used to check if Typ or some ancestor of Typ implements
+   --  Iface (returning True only if so).
+
    function Intersect_Types (L, R : Node_Id) return Entity_Id;
    --  Find the common interpretation to two analyzed nodes. If one of the
    --  interpretations is universal, choose the non-universal one. If either
    --  node is overloaded, find single common interpretation.
 
-   function Is_Subtype_Of (T1 : Entity_Id; T2 : Entity_Id) return Boolean;
-   --  Checks whether T1 is any subtype of T2 directly or indirectly. Applies
-   --  only to scalar subtypes ???
-
    function Is_Ancestor (T1, T2 : Entity_Id) return Boolean;
    --  T1 is a tagged type (not class-wide). Verify that it is one of the
    --  ancestors of type T2 (which may or not be class-wide)
 
-   function Operator_Matches_Spec (Op,  New_S : Entity_Id) return Boolean;
+   function Is_Subtype_Of (T1 : Entity_Id; T2 : Entity_Id) return Boolean;
+   --  Checks whether T1 is any subtype of T2 directly or indirectly. Applies
+   --  only to scalar subtypes ???
+
+   function Operator_Matches_Spec (Op, New_S : Entity_Id) return Boolean;
    --  Used to resolve subprograms renaming operators, and calls to user
    --  defined operators. Determines whether a given operator Op, matches
    --  a specification, New_S.
+
+   procedure Set_Abstract_Op (I : Interp_Index; V : Entity_Id);
+   --  Set the abstract operation field of an interpretation
 
    function Valid_Comparison_Arg (T : Entity_Id) return Boolean;
    --  A valid argument to an ordering operator must be a discrete type, a
@@ -253,6 +243,10 @@ package Sem_Type is
    function Valid_Boolean_Arg (T : Entity_Id) return Boolean;
    --  A valid argument of a boolean operator is either some boolean type,
    --  or a one-dimensional array of boolean type.
+
+   procedure Write_Interp_Ref (Map_Ptr : Int);
+   --  Debugging procedure to display entry in Interp_Map. Would not be
+   --  needed if it were possible to debug instantiations of Table.
 
    procedure Write_Overloads (N : Node_Id);
    --  Debugging procedure to output info on possibly overloaded entities

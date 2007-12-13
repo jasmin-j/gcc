@@ -1,6 +1,6 @@
 // Locale support -*- C++ -*-
 
-// Copyright (C) 2001 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2003 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -31,6 +31,9 @@
 // ISO C++ 14882: 22.1  Locales
 //
   
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
+  /// @brief  Base class for ctype.
   struct ctype_base
   {
     typedef unsigned short 	mask;
@@ -49,9 +52,8 @@
     static const mask digit = __dj_ISDIGIT;	// Numeric
     static const mask punct = __dj_ISPUNCT;     // Punctuation
     static const mask xdigit = __dj_ISXDIGIT;   // Hexadecimal numeric
-    static const mask alnum = __dj_ISALPHA;     // Alphanumeric
-    static const mask graph = __dj_ISGRAPH;	// Graphical
+    static const mask alnum = __dj_ISALPHA | __dj_ISDIGIT;  // Alphanumeric
+    static const mask graph = __dj_ISALPHA | __dj_ISDIGIT | __dj_ISPUNCT;  // Graphical
   };
 
-
-
+_GLIBCXX_END_NAMESPACE

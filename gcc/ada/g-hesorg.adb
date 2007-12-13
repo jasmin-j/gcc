@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                     G N A T . H E A P _ S O R T _ G                      --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---           Copyright (C) 1995-1999 Ada Core Technologies, Inc.            --
+--                     Copyright (C) 1995-2005, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -27,7 +26,8 @@
 -- however invalidate  any other reasons why  the executable file  might be --
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
--- GNAT is maintained by Ada Core Technologies Inc (http://www.gnat.com).   --
+-- GNAT was originally developed  by the GNAT team at  New York University. --
+-- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
@@ -59,10 +59,17 @@ package body GNAT.Heap_Sort_G is
       --  entry are irrelevant. This is just a minor optimization to avoid
       --  what would otherwise be two junk moves in phase two of the sort.
 
+      ----------
+      -- Sift --
+      ----------
+
       procedure Sift (S : Positive) is
          C      : Positive := S;
          Son    : Positive;
          Father : Positive;
+         --  Note: by making the above all Positive, we ensure that a test
+         --  against zero for the temporary location can be resolved on the
+         --  basis of types when the routines are inlined.
 
       begin
          --  This is where the optimization is done, normally we would do a
@@ -79,10 +86,13 @@ package body GNAT.Heap_Sort_G is
 
          loop
             Son := 2 * C;
-            exit when Son > Max;
 
-            if Son < Max and then Lt (Son, Son + 1) then
-               Son := Son + 1;
+            if Son < Max then
+               if Lt (Son, Son + 1) then
+                  Son := Son + 1;
+               end if;
+            elsif Son > Max then
+               exit;
             end if;
 
             Move (Son, C);

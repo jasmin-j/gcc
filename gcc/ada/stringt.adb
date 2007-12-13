@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -62,7 +61,7 @@ package body Stringt is
 
    package Strings is new Table.Table (
      Table_Component_Type => String_Entry,
-     Table_Index_Type     => String_Id,
+     Table_Index_Type     => String_Id'Base,
      Table_Low_Bound      => First_String_Id,
      Table_Initial        => Alloc.Strings_Initial,
      Table_Increment      => Alloc.Strings_Increment,
@@ -140,9 +139,7 @@ package body Stringt is
 
    procedure Start_String is
    begin
-      Strings.Increment_Last;
-      Strings.Table (Strings.Last).String_Index := String_Chars.Last + 1;
-      Strings.Table (Strings.Last).Length := 0;
+      Strings.Append ((String_Index => String_Chars.Last + 1, Length => 0));
    end Start_String;
 
    --  Version to start from initially stored string
@@ -167,9 +164,8 @@ package body Stringt is
            String_Chars.Last + 1;
 
          for J in 1 .. Strings.Table (S).Length loop
-            String_Chars.Increment_Last;
-            String_Chars.Table (String_Chars.Last) :=
-              String_Chars.Table (Strings.Table (S).String_Index + (J - 1));
+            String_Chars.Append
+              (String_Chars.Table (Strings.Table (S).String_Index + (J - 1)));
          end loop;
       end if;
 
@@ -184,8 +180,7 @@ package body Stringt is
 
    procedure Store_String_Char (C : Char_Code) is
    begin
-      String_Chars.Increment_Last;
-      String_Chars.Table (String_Chars.Last) := C;
+      String_Chars.Append (C);
       Strings.Table (Strings.Last).Length :=
         Strings.Table (Strings.Last).Length + 1;
    end Store_String_Char;
@@ -207,10 +202,27 @@ package body Stringt is
    end Store_String_Chars;
 
    procedure Store_String_Chars (S : String_Id) is
+
+      --  We are essentially doing this:
+
+      --   for J in 1 .. String_Length (S) loop
+      --      Store_String_Char (Get_String_Char (S, J));
+      --   end loop;
+
+      --  but when the string is long it's more efficient to grow the
+      --  String_Chars table all at once.
+
+      S_First  : constant Int := Strings.Table (S).String_Index;
+      S_Len    : constant Int := String_Length (S);
+      Old_Last : constant Int := String_Chars.Last;
+      New_Last : constant Int := Old_Last + S_Len;
+
    begin
-      for J in 1 .. String_Length (S) loop
-         Store_String_Char (Get_String_Char (S, J));
-      end loop;
+      String_Chars.Set_Last (New_Last);
+      String_Chars.Table (Old_Last + 1 .. New_Last) :=
+        String_Chars.Table (S_First .. S_First + S_Len - 1);
+      Strings.Table (Strings.Last).Length :=
+        Strings.Table (Strings.Last).Length + S_Len;
    end Store_String_Chars;
 
    ----------------------
@@ -356,15 +368,19 @@ package body Stringt is
 
    procedure Write_Char_Code (Code : Char_Code) is
 
-      procedure Write_Hex_Byte (J : Natural);
-      --  Write single hex digit
+      procedure Write_Hex_Byte (J : Char_Code);
+      --  Write single hex byte (value in range 0 .. 255) as two digits
 
-      procedure Write_Hex_Byte (J : Natural) is
-         Hexd : String := "0123456789abcdef";
+      --------------------
+      -- Write_Hex_Byte --
+      --------------------
 
+      procedure Write_Hex_Byte (J : Char_Code) is
+         Hexd : constant array (Char_Code range 0 .. 15) of Character :=
+                  "0123456789abcdef";
       begin
-         Write_Char (Hexd (J / 16 + 1));
-         Write_Char (Hexd (J mod 16 + 1));
+         Write_Char (Hexd (J / 16));
+         Write_Char (Hexd (J mod 16));
       end Write_Hex_Byte;
 
    --  Start of processing for Write_Char_Code
@@ -377,11 +393,19 @@ package body Stringt is
          Write_Char ('[');
          Write_Char ('"');
 
-         if Code > 16#FF# then
-            Write_Hex_Byte (Natural (Code / 256));
+         if Code > 16#FF_FFFF# then
+            Write_Hex_Byte (Code / 2 ** 24);
          end if;
 
-         Write_Hex_Byte (Natural (Code mod 256));
+         if Code > 16#FFFF# then
+            Write_Hex_Byte ((Code / 2 ** 16) mod 256);
+         end if;
+
+         if Code > 16#FF# then
+            Write_Hex_Byte ((Code / 256) mod 256);
+         end if;
+
+         Write_Hex_Byte (Code mod 256);
          Write_Char ('"');
          Write_Char (']');
       end if;
@@ -409,6 +433,15 @@ package body Stringt is
 
             else
                Write_Char_Code (C);
+            end if;
+
+            --  If string is very long, quit
+
+            if J >= 1000 then  --  arbitrary limit
+               Write_Str ("""...etc (length = ");
+               Write_Int (String_Length (Id));
+               Write_Str (")");
+               return;
             end if;
          end loop;
 

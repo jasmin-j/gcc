@@ -1,3 +1,4 @@
+// { dg-do run  }
 // Test that binfos aren't erroneously shared between instantiations.
 
 class PK_CryptoSystem
@@ -17,7 +18,7 @@ class PK_FixedLengthEncryptor : public virtual PK_Encryptor, public virtual PK_F
 class PK_SignatureSystem
 {
 public:
-	virtual ~PK_SignatureSystem() {};
+	virtual ~PK_SignatureSystem() {}
 };
 class PK_Signer : public virtual PK_SignatureSystem
 {

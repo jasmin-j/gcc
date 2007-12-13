@@ -1,3 +1,4 @@
+// { dg-do run  }
 // GROUPS passed virtual-functions
 // Not in g++ bugs snapshot
 // From: grande@isi.edu (Jim Grande)
@@ -11,7 +12,7 @@ class doubleclass
 {
 	public:
 		double	d;
-		doubleclass(double x = 0)	{ d = x; };
+		doubleclass(double x = 0)	{ d = x; }
 };
 
 class test

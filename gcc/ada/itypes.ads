@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---   Copyright (C) 1992,1993,1994,1995,1996 Free Software Foundation, Inc.  --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -73,8 +71,14 @@ package Itypes is
    --  or not to copy a referenced Itype. If the associated node is part of
    --  the tree to be copied by New_Copy_Tree, then (since the idea of the
    --  call to New_Copy_Tree is to create a complete duplicate of a tree,
-   --  as though it had appeared separately int he source), the Itype in
+   --  as though it had appeared separately in the source), the Itype in
    --  question is duplicated as part of the New_Copy_Tree processing.
+   --  As a consequence of this copying mechanism, the association between
+   --  itypes and associated nodes must be one-to-one: several itypes must
+   --  not share an associated node. For example, the semantic decoration
+   --  of an array aggregate generates several itypes: for each index subtype
+   --  and for the array subtype. The associated node of each index subtype
+   --  is the corresponding range expression.
 
    -----------------
    -- Subprograms --
@@ -86,8 +90,7 @@ package Itypes is
       Related_Id   : Entity_Id := Empty;
       Suffix       : Character := ' ';
       Suffix_Index : Nat       := 0;
-      Scope_Id     : Entity_Id := Current_Scope)
-      return         Entity_Id;
+      Scope_Id     : Entity_Id := Current_Scope) return Entity_Id;
    --  Used to create a new Itype.
    --
    --   Related_Nod is the node for which this Itype was created.  It is
@@ -110,5 +113,33 @@ package Itypes is
    --
    --  The Scope_Id parameter specifies the scope of the created type, and
    --  is normally the Current_Scope as shown, but can be set otherwise.
+
+   ---------------------------------
+   -- Create_Null_Excluding_Itype --
+   ---------------------------------
+
+   function Create_Null_Excluding_Itype
+      (T           : Entity_Id;
+       Related_Nod : Node_Id;
+       Scope_Id    : Entity_Id := Current_Scope) return Entity_Id;
+   --  Ada 2005 (AI-231): T is an access type and this subprogram creates and
+   --  returns an internal access-subtype declaration of T that has the null
+   --  exclusion attribute set to True.
+   --
+   --  Usage of null-excluding itypes
+   --  ------------------------------
+   --
+   --      type T1 is access ...
+   --      type T2 is not null T1;
+   --
+   --      type Rec is record
+   --         Comp : not null T1;
+   --      end record;
+   --
+   --      type Arr is array (...) of not null T1;
+   --
+   --  Instead of associating the not-null attribute with the defining ids of
+   --  these declarations, we generate an internal subtype declaration of T1
+   --  that has the null exclusion attribute set to true.
 
 end Itypes;

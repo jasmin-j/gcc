@@ -1,4 +1,5 @@
-// Build don't link:
+// { dg-do assemble  }
+// { dg-options "-std=gnu++98" }
 
 template <class T>
 struct C {
@@ -9,7 +10,7 @@ struct C {
   struct I {}; // OK
 
   template <class W = int>
-  void h(W); // ERROR - default argument
+  void h(W); // { dg-error "" } default argument
   
   template <class Y>
   void k(Y);
@@ -17,11 +18,11 @@ struct C {
 
 template <class T>
 template <class U = double>
-void C<T>::f(U) {} // ERROR - default argument
+void C<T>::f(U) {} // { dg-error "" } default argument
 
 template <class X = void*>
-void g(X); // ERROR - default argument
+void g(X); // { dg-error "" } default argument
 
 template <class T = double>
 template <class Y>
-void C<T>::k(Y) {} // ERROR - default argument
+void C<T>::k(Y) {} // { dg-error "" } default argument

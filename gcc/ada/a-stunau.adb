@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                          GNAT RUN-TIME COMPONENTS                        --
 --                                                                          --
 --            A D A . S T R I N G S . U N B O U N D E D . A U X             --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-1998, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2005, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -38,9 +37,14 @@ package body Ada.Strings.Unbounded.Aux is
    -- Get_String --
    ----------------
 
-   function Get_String (U  : Unbounded_String) return String_Access is
+   procedure Get_String
+     (U : Unbounded_String;
+      S : out String_Access;
+      L : out Natural)
+   is
    begin
-      return U.Reference;
+      S := U.Reference;
+      L := U.Last;
    end Get_String;
 
    ----------------
@@ -49,26 +53,20 @@ package body Ada.Strings.Unbounded.Aux is
 
    procedure Set_String (UP : in out Unbounded_String; S : String) is
    begin
-      if UP.Reference'Length = S'Length then
-         UP.Reference.all := S;
-
-      else
-         declare
-            subtype String_1 is String (1 .. S'Length);
-            Tmp : String_Access;
-
-         begin
-            Tmp := new String'(String_1 (S));
-            Finalize (UP);
-            UP.Reference := Tmp;
-         end;
+      if S'Length > UP.Last then
+         Finalize (UP);
+         UP.Reference := new String (1 .. S'Length);
       end if;
+
+      UP.Reference (1 .. S'Length) := S;
+      UP.Last := S'Length;
    end Set_String;
 
    procedure Set_String (UP : in out Unbounded_String; S : String_Access) is
    begin
       Finalize (UP);
       UP.Reference := S;
+      UP.Last := UP.Reference'Length;
    end Set_String;
 
 end Ada.Strings.Unbounded.Aux;

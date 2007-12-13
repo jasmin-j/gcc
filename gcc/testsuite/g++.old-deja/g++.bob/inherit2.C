@@ -1,4 +1,4 @@
-// Build don't link:
+// { dg-do assemble  }
 #include <stdlib.h>
 
 class A {
@@ -6,11 +6,11 @@ public:
   void z();
   A(void) {}
 private:
-  A(const A &) { abort(); } // ERROR - 
+  A(const A &) { abort(); } // { dg-error "private" } 
   const A& operator =(const A &) { abort(); }
 };
 
-class B : public A {
+class B : public A { // { dg-error "within" }
 public:
   B(void) {}
 };
@@ -20,5 +20,5 @@ void f(B b) {
 
 void g() {
   B h;
-  f(h); // ERROR - 
+  f(h); // { dg-error "synthesized|argument" } 
 }

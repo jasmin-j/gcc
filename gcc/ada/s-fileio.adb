@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2002 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,14 +34,20 @@
 with Ada.Finalization;            use Ada.Finalization;
 with Ada.IO_Exceptions;           use Ada.IO_Exceptions;
 with Interfaces.C_Streams;        use Interfaces.C_Streams;
+
+with System.CRTL;
+with System.Case_Util;            use System.Case_Util;
 with System.Soft_Links;
-with Unchecked_Deallocation;
+
+with Ada.Unchecked_Deallocation;
 
 package body System.File_IO is
 
    use System.File_Control_Block;
 
    package SSL renames System.Soft_Links;
+
+   use type System.CRTL.size_t;
 
    ----------------------
    -- Global Variables --
@@ -58,7 +63,7 @@ package body System.File_IO is
    type Temp_File_Record_Ptr is access all Temp_File_Record;
 
    type Temp_File_Record is record
-      Name : String (1 .. L_tmpnam + 1);
+      Name : String (1 .. max_path_len + 1);
       Next : Temp_File_Record_Ptr;
    end record;
    --  One of these is allocated for each temporary file created
@@ -75,7 +80,7 @@ package body System.File_IO is
    --  a controlled type introduced for this purpose.
 
    procedure Finalize (V : in out File_IO_Clean_Up_Type);
-   --  This is the finalize operation that is used to do the cleanup.
+   --  This is the finalize operation that is used to do the cleanup
 
    File_IO_Clean_Up_Object : File_IO_Clean_Up_Type;
    pragma Warnings (Off, File_IO_Clean_Up_Object);
@@ -84,15 +89,24 @@ package body System.File_IO is
    --  environment task is finalized.
 
    text_translation_required : Boolean;
+   for text_translation_required'Size use Character'Size;
    pragma Import
      (C, text_translation_required, "__gnat_text_translation_required");
-   --  If true, add appropriate suffix to control string for Open.
+   --  If true, add appropriate suffix to control string for Open
+
+   function Get_Case_Sensitive return Integer;
+   pragma Import (C, Get_Case_Sensitive,
+                  "__gnat_get_file_names_case_sensitive");
+   File_Names_Case_Sensitive : constant Boolean := Get_Case_Sensitive /= 0;
+   --  Set to indicate whether the operating system convention is for file
+   --  names to be case sensitive (e.g., in Unix, set True), or non case
+   --  sensitive (e.g., in OS/2, set False).
 
    -----------------------
    -- Local Subprograms --
    -----------------------
 
-   procedure Free_String is new Unchecked_Deallocation (String, Pstring);
+   procedure Free_String is new Ada.Unchecked_Deallocation (String, Pstring);
 
    subtype Fopen_String is String (1 .. 4);
    --  Holds open string (longest is "w+b" & nul)
@@ -130,9 +144,11 @@ package body System.File_IO is
    procedure Chain_File (File : AFCB_Ptr) is
    begin
       --  Take a task lock, to protect the global data value Open_Files
-      --  No exception handler needed, since we cannot get an exception.
 
       SSL.Lock_Task.all;
+
+      --  Do the chaining operation locked
+
       File.Next := Open_Files;
       File.Prev := null;
       Open_Files := File;
@@ -142,6 +158,11 @@ package body System.File_IO is
       end if;
 
       SSL.Unlock_Task.all;
+
+   exception
+      when others =>
+         SSL.Unlock_Task.all;
+         raise;
    end Chain_File;
 
    ---------------------
@@ -190,6 +211,10 @@ package body System.File_IO is
       Dup_Strm     : Boolean := False;
 
    begin
+      --  Take a task lock, to protect the global data value Open_Files
+
+      SSL.Lock_Task.all;
+
       Check_File_Open (File);
       AFCB_Close (File);
 
@@ -232,27 +257,16 @@ package body System.File_IO is
       end if;
 
       --  Dechain file from list of open files and then free the storage
-      --  Since this is a global data structure, we have to protect against
-      --  multiple tasks attempting to access this list.
 
-      --  Note that we do not use an exception handler to unlock here since
-      --  no exception can occur inside the lock/unlock pair.
+      if File.Prev = null then
+         Open_Files := File.Next;
+      else
+         File.Prev.Next := File.Next;
+      end if;
 
-      begin
-         SSL.Lock_Task.all;
-
-         if File.Prev = null then
-            Open_Files := File.Next;
-         else
-            File.Prev.Next := File.Next;
-         end if;
-
-         if File.Next /= null then
-            File.Next.Prev := File.Prev;
-         end if;
-
-         SSL.Unlock_Task.all;
-      end;
+      if File.Next /= null then
+         File.Next.Prev := File.Prev;
+      end if;
 
       --  Deallocate some parts of the file structure that were kept in heap
       --  storage with the exception of system files (standard input, output
@@ -269,6 +283,13 @@ package body System.File_IO is
       if Close_Status /= 0 then
          raise Device_Error;
       end if;
+
+      SSL.Unlock_Task.all;
+
+   exception
+      when others =>
+         SSL.Unlock_Task.all;
+         raise;
    end Close;
 
    ------------
@@ -333,11 +354,17 @@ package body System.File_IO is
    procedure Finalize (V : in out File_IO_Clean_Up_Type) is
       pragma Warnings (Off, V);
 
-      Discard : int;
       Fptr1   : AFCB_Ptr;
       Fptr2   : AFCB_Ptr;
 
+      Discard : int;
+      pragma Unreferenced (Discard);
+
    begin
+      --  Take a lock to protect global Open_Files data structure
+
+      SSL.Lock_Task.all;
+
       --  First close all open files (the slightly complex form of this loop
       --  is required because Close as a side effect nulls out its argument)
 
@@ -357,6 +384,12 @@ package body System.File_IO is
          Temp_Files := Temp_Files.Next;
       end loop;
 
+      SSL.Unlock_Task.all;
+
+   exception
+      when others =>
+         SSL.Unlock_Task.all;
+         raise;
    end Finalize;
 
    -----------
@@ -414,7 +447,7 @@ package body System.File_IO is
       Amethod : Character;
       Fopstr  : out Fopen_String)
    is
-      Fptr  : Positive;
+      Fptr : Positive;
 
    begin
       case Mode is
@@ -470,7 +503,7 @@ package body System.File_IO is
    -- Form --
    ----------
 
-   function Form (File : in AFCB_Ptr) return String is
+   function Form (File : AFCB_Ptr) return String is
    begin
       if File = null then
          raise Status_Error;
@@ -490,6 +523,7 @@ package body System.File_IO is
       return    Boolean
    is
       V1, V2 : Natural;
+      pragma Unreferenced (V2);
 
    begin
       Form_Parameter (Form, Keyword, V1, V2);
@@ -586,9 +620,15 @@ package body System.File_IO is
    -- Is_Open --
    -------------
 
-   function Is_Open (File : in AFCB_Ptr) return Boolean is
+   function Is_Open (File : AFCB_Ptr) return Boolean is
    begin
-      return (File /= null);
+      --  We return True if the file is open, and the underlying file stream is
+      --  usable. In particular on Windows an application linked with -mwindows
+      --  option set does not have a console attached. In this case standard
+      --  files (Current_Output, Current_Error, Current_Input) are not created.
+      --  We want Is_Open (Current_Output) to return False in this case.
+
+      return File /= null and then fileno (File.Stream) /= -1;
    end Is_Open;
 
    -------------------
@@ -596,9 +636,11 @@ package body System.File_IO is
    -------------------
 
    procedure Make_Buffered
-     (File     : AFCB_Ptr;
-      Buf_Siz  : Interfaces.C_Streams.size_t) is
-      status   : Integer;
+     (File    : AFCB_Ptr;
+      Buf_Siz : Interfaces.C_Streams.size_t)
+   is
+      status : Integer;
+      pragma Unreferenced (status);
 
    begin
       status := setvbuf (File.Stream, Null_Address, IOFBF, Buf_Siz);
@@ -610,8 +652,10 @@ package body System.File_IO is
 
    procedure Make_Line_Buffered
      (File     : AFCB_Ptr;
-      Line_Siz : Interfaces.C_Streams.size_t) is
-      status   : Integer;
+      Line_Siz : Interfaces.C_Streams.size_t)
+   is
+      status : Integer;
+      pragma Unreferenced (status);
 
    begin
       status := setvbuf (File.Stream, Null_Address, IOLBF, Line_Siz);
@@ -623,6 +667,7 @@ package body System.File_IO is
 
    procedure Make_Unbuffered (File : AFCB_Ptr) is
       status : Integer;
+      pragma Unreferenced (status);
 
    begin
       status := setvbuf (File.Stream, Null_Address, IONBF, 0);
@@ -632,7 +677,7 @@ package body System.File_IO is
    -- Mode --
    ----------
 
-   function Mode (File : in AFCB_Ptr) return File_Mode is
+   function Mode (File : AFCB_Ptr) return File_Mode is
    begin
       if File = null then
          raise Status_Error;
@@ -645,7 +690,7 @@ package body System.File_IO is
    -- Name --
    ----------
 
-   function Name (File : in AFCB_Ptr) return String is
+   function Name (File : AFCB_Ptr) return String is
    begin
       if File = null then
          raise Status_Error;
@@ -660,7 +705,7 @@ package body System.File_IO is
 
    procedure Open
      (File_Ptr  : in out AFCB_Ptr;
-      Dummy_FCB : in out AFCB'Class;
+      Dummy_FCB : AFCB'Class;
       Mode      : File_Mode;
       Name      : String;
       Form      : String;
@@ -669,9 +714,13 @@ package body System.File_IO is
       Text      : Boolean;
       C_Stream  : FILEs := NULL_Stream)
    is
+      pragma Warnings (Off, Dummy_FCB);
+      --  Yes we know this is never assigned a value. That's intended, since
+      --  all we ever use of this value is the tag for dispatching purposes.
+
       procedure Tmp_Name (Buffer : Address);
       pragma Import (C, Tmp_Name, "__gnat_tmp_name");
-      --  set buffer (a String address) with a temporary filename.
+      --  set buffer (a String address) with a temporary filename
 
       Stream : FILEs := C_Stream;
       --  Stream which we open in response to this request
@@ -702,6 +751,9 @@ package body System.File_IO is
 
       Full_Name_Len : Integer;
       --  Length of name actually stored in Fullname
+
+      Encoding : System.CRTL.Filename_Encoding;
+      --  Filename encoding specified into the form parameter
 
    begin
       if File_Ptr /= null then
@@ -743,13 +795,35 @@ package body System.File_IO is
          end if;
       end;
 
+      --  Acquire setting of shared parameter
+
+      declare
+         V1, V2 : Natural;
+
+      begin
+         Form_Parameter (Formstr, "encoding", V1, V2);
+
+         if V1 = 0 then
+            Encoding := System.CRTL.UTF8;
+
+         elsif Formstr (V1 .. V2) = "utf8" then
+            Encoding := System.CRTL.UTF8;
+
+         elsif Formstr (V1 .. V2) = "8bits" then
+            Encoding := System.CRTL.ASCII_8bits;
+
+         else
+            raise Use_Error;
+         end if;
+      end;
+
       --  If we were given a stream (call from xxx.C_Streams.Open), then set
-      --  full name to null and that is all we have to do in this case so
-      --  skip to end of processing.
+      --  the full name to the given one, and skip to end of processing.
 
       if Stream /= NULL_Stream then
-         Fullname (1) := ASCII.Nul;
-         Full_Name_Len := 1;
+         Full_Name_Len := Name'Length + 1;
+         Fullname (1 .. Full_Name_Len - 1) := Name;
+         Fullname (Full_Name_Len) := ASCII.Nul;
 
       --  Normal case of Open or Create
 
@@ -785,11 +859,15 @@ package body System.File_IO is
          --  Normal case of non-null name given
 
          else
+            if Name'Length > Namelen then
+               raise Name_Error;
+            end if;
+
             Namestr (1 .. Name'Length) := Name;
             Namestr (Name'Length + 1)  := ASCII.NUL;
          end if;
 
-         --  Get full name in accordance with the advice of RM A.8.2(22).
+         --  Get full name in accordance with the advice of RM A.8.2(22)
 
          full_name (Namestr'Address, Fullname'Address);
 
@@ -804,6 +882,17 @@ package body System.File_IO is
             Full_Name_Len := Full_Name_Len + 1;
          end loop;
 
+         --  Fullname is generated by calling system's full_name. The problem
+         --  is, full_name does nothing about the casing, so a file name
+         --  comparison may generally speaking not be valid on non-case
+         --  sensitive systems, and in particular we get unexpected failures
+         --  on Windows/Vista because of this. So we use s-casuti to force
+         --  the name to lower case.
+
+         if not File_Names_Case_Sensitive then
+            To_Lower (Fullname (1 .. Full_Name_Len));
+         end if;
+
          --  If Shared=None or Shared=Yes, then check for the existence
          --  of another file with exactly the same full name.
 
@@ -812,14 +901,20 @@ package body System.File_IO is
                P : AFCB_Ptr;
 
             begin
+               --  Take a task lock to protect Open_Files
+
+               SSL.Lock_Task.all;
+
+               --  Search list of open files
+
                P := Open_Files;
                while P /= null loop
                   if Fullname (1 .. Full_Name_Len) = P.Name.all then
 
                      --  If we get a match, and either file has Shared=None,
-                     --  then raise Use_Error, since we don't allow two
-                     --  files of the same name to be opened unless they
-                     --  specify the required sharing mode.
+                     --  then raise Use_Error, since we don't allow two files
+                     --  of the same name to be opened unless they specify the
+                     --  required sharing mode.
 
                      if Shared = None
                        or else P.Shared_Status = None
@@ -835,13 +930,12 @@ package body System.File_IO is
                         Stream := P.Stream;
                         exit;
 
-                     --  Otherwise one of the files has Shared=Yes and one
-                     --  has Shared=No. If the current file has Shared=No
-                     --  then all is well but we don't want to share any
-                     --  other file's stream. If the current file has
-                     --  Shared=Yes, we would like to share a stream, but
-                     --  not from a file that has Shared=No, so in either
-                     --  case we just keep going on the search.
+                     --  Otherwise one of the files has Shared=Yes and one has
+                     --  Shared=No. If the current file has Shared=No then all
+                     --  is well but we don't want to share any other file's
+                     --  stream. If the current file has Shared=Yes, we would
+                     --  like to share a stream, but not from a file that has
+                     --  Shared=No, so either way, we just continue the search.
 
                      else
                         null;
@@ -850,6 +944,13 @@ package body System.File_IO is
 
                   P := P.Next;
                end loop;
+
+               SSL.Unlock_Task.all;
+
+            exception
+               when others =>
+                  SSL.Unlock_Task.all;
+                  raise;
             end;
          end if;
 
@@ -858,10 +959,9 @@ package body System.File_IO is
          if Stream = NULL_Stream then
             Fopen_Mode (Mode, Text, Creat, Amethod, Fopstr);
 
-            --  A special case, if we are opening (OPEN case) a file and
-            --  the mode returned by Fopen_Mode is not "r" or "r+", then
-            --  we first make sure that the file exists as required by
-            --  Ada semantics.
+            --  A special case, if we are opening (OPEN case) a file and the
+            --  mode returned by Fopen_Mode is not "r" or "r+", then we first
+            --  make sure that the file exists as required by Ada semantics.
 
             if Creat = False and then Fopstr (1) /= 'r' then
                if file_exists (Namestr'Address) = 0 then
@@ -869,19 +969,17 @@ package body System.File_IO is
                end if;
             end if;
 
-            --  Now open the file. Note that we use the name as given
-            --  in the original Open call for this purpose, since that
-            --  seems the clearest implementation of the intent. It
-            --  would presumably work to use the full name here, but
-            --  if there is any difference, then we should use the
-            --  name used in the call.
+            --  Now open the file. Note that we use the name as given in the
+            --  original Open call for this purpose, since that seems the
+            --  clearest implementation of the intent. It would presumably
+            --  work to use the full name here, but if there is any difference,
+            --  then we should use the name used in the call.
 
-            --  Note: for a corresponding delete, we will use the
-            --  full name, since by the time of the delete, the
-            --  current working directory may have changed and
-            --  we do not want to delete a different file!
+            --  Note: for a corresponding delete, we will use the full name,
+            --  since by the time of the delete, the current working directory
+            --  may have changed and we do not want to delete a different file!
 
-            Stream := fopen (Namestr'Address, Fopstr'Address);
+            Stream := fopen (Namestr'Address, Fopstr'Address, Encoding);
 
             if Stream = NULL_Stream then
                if file_exists (Namestr'Address) = 0 then
@@ -899,18 +997,17 @@ package body System.File_IO is
 
       File_Ptr := AFCB_Allocate (Dummy_FCB);
 
-      File_Ptr.Is_Regular_File   := (is_regular_file
-                                      (fileno (Stream)) /= 0);
+      File_Ptr.Is_Regular_File   := (is_regular_file (fileno (Stream)) /= 0);
       File_Ptr.Is_System_File    := False;
       File_Ptr.Is_Text_File      := Text;
       File_Ptr.Shared_Status     := Shared;
       File_Ptr.Access_Method     := Amethod;
       File_Ptr.Stream            := Stream;
       File_Ptr.Form              := new String'(Formstr);
-      File_Ptr.Name              := new String'(Fullname
-                                                 (1 .. Full_Name_Len));
+      File_Ptr.Name              := new String'(Fullname (1 .. Full_Name_Len));
       File_Ptr.Mode              := Mode;
       File_Ptr.Is_Temporary_File := Tempfile;
+      File_Ptr.Encoding          := Encoding;
 
       Chain_File (File_Ptr);
       Append_Set (File_Ptr);
@@ -944,7 +1041,7 @@ package body System.File_IO is
    procedure Read_Buf
      (File  : AFCB_Ptr;
       Buf   : Address;
-      Siz   : in Interfaces.C_Streams.size_t;
+      Siz   : Interfaces.C_Streams.size_t;
       Count : out Interfaces.C_Streams.size_t)
    is
    begin
@@ -959,7 +1056,7 @@ package body System.File_IO is
    -- Reset --
    -----------
 
-   --  The reset which does not change the mode simply does a rewind.
+   --  The reset which does not change the mode simply does a rewind
 
    procedure Reset (File : in out AFCB_Ptr) is
    begin
@@ -971,7 +1068,7 @@ package body System.File_IO is
    --  not permitted except for regular files (since otherwise there
    --  is no name for the freopen, and in any case it seems meaningless)
 
-   procedure Reset (File : in out AFCB_Ptr; Mode : in File_Mode) is
+   procedure Reset (File : in out AFCB_Ptr; Mode : File_Mode) is
       Fopstr : aliased Fopen_String;
 
    begin
@@ -1003,8 +1100,8 @@ package body System.File_IO is
          Fopen_Mode
            (Mode, File.Is_Text_File, False, File.Access_Method, Fopstr);
 
-         File.Stream :=
-           freopen (File.Name.all'Address, Fopstr'Address, File.Stream);
+         File.Stream := freopen
+           (File.Name.all'Address, Fopstr'Address, File.Stream, File.Encoding);
 
          if File.Stream = NULL_Stream then
             Close (File);

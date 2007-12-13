@@ -1,6 +1,6 @@
 // natSystem.cc - Native code implementing System class.
 
-/* Copyright (C) 1998, 1999, 2000, 2001 , 2002 Free Software Foundation
+/* Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2006 Free Software Foundation
 
    This file is part of libgcj.
 
@@ -9,6 +9,7 @@ Libgcj License.  Please consult the file "LIBGCJ_LICENSE" for
 details.  */
 
 #include <config.h>
+#include <platform.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -23,8 +24,6 @@ details.  */
 #include <java/lang/NullPointerException.h>
 #include <java/io/PrintStream.h>
 #include <java/io/InputStream.h>
-
-#include "platform.h"
 
 
 
@@ -67,8 +66,10 @@ java::lang::System::arraycopy (jobject src, jint src_offset,
   __JArray *src_a = (__JArray *) src;
   __JArray *dst_a = (__JArray *) dst;
   if (src_offset < 0 || dst_offset < 0 || count < 0
-      || src_offset + count > src_a->length
-      || dst_offset + count > dst_a->length)
+      || (unsigned jint) src_offset > (unsigned jint) src_a->length
+      || (unsigned jint) (src_offset + count) > (unsigned jint) src_a->length
+      || (unsigned jint) dst_offset > (unsigned jint) dst_a->length
+      || (unsigned jint) (dst_offset + count) > (unsigned jint) dst_a->length)
     throw new ArrayIndexOutOfBoundsException;
 
   // Do-nothing cases.
@@ -123,21 +124,27 @@ java::lang::System::currentTimeMillis (void)
   return _Jv_platform_gettimeofday ();
 }
 
+jlong
+java::lang::System::nanoTime ()
+{
+  return _Jv_platform_nanotime ();
+}
+
 jint
 java::lang::System::identityHashCode (jobject obj)
 {
   return _Jv_HashCode (obj);
 }
 
-jboolean
-java::lang::System::isWordsBigEndian (void)
+jstring
+java::lang::System::getenv0 (jstring name)
 {
-  union
-  {
-    long lval;
-    char cval;
-  } u;
-
-  u.lval = 1;
-  return u.cval == 0;
+  jint len = _Jv_GetStringUTFLength (name);
+  char buf[len + 1];
+  jsize total = JvGetStringUTFRegion (name, 0, name->length(), buf);
+  buf[total] = '\0';
+  const char *value = ::getenv (buf);
+  if (value == NULL)
+    return NULL;
+  return JvNewStringUTF (value);
 }

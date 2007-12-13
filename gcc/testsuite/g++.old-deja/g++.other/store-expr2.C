@@ -1,5 +1,6 @@
-// Skip if not target: i?86-*-*
-// Special g++ Options: -mcpu=i686 -O2
+// { dg-do run { target i?86-*-* x86_64-*-*} }
+// { dg-require-effective-target ilp32 }
+// { dg-options "-mtune=i686 -O2" }
 class G {};
 
 struct N {

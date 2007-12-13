@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,12 +34,12 @@
 pragma Style_Checks (All_Checks);
 --  Subprograms not all in alpha order
 
-with Debug;   use Debug;
-with Namet;   use Namet;
-with Opt;     use Opt;
-with Output;  use Output;
-with Tree_IO; use Tree_IO;
-with System;  use System;
+with Debug;    use Debug;
+with Opt;      use Opt;
+with Output;   use Output;
+with Tree_IO;  use Tree_IO;
+with System;   use System;
+with Widechar; use Widechar;
 
 with System.Memory;
 
@@ -57,6 +56,10 @@ package body Sinput is
    --  Routines to support conversion between types Lines_Table_Ptr,
    --  Logical_Lines_Table_Ptr and System.Address.
 
+   pragma Warnings (Off);
+   --  These unchecked conversions are aliasing safe, since they are never
+   --  used to construct improperly aliased pointer values.
+
    function To_Address is
      new Unchecked_Conversion (Lines_Table_Ptr, Address);
 
@@ -69,6 +72,8 @@ package body Sinput is
    function To_Pointer is
      new Unchecked_Conversion (Address, Logical_Lines_Table_Ptr);
 
+   pragma Warnings (On);
+
    ---------------------------
    -- Add_Line_Tables_Entry --
    ---------------------------
@@ -80,7 +85,7 @@ package body Sinput is
       LL : Physical_Line_Number;
 
    begin
-      --  Reallocate the lines tables if necessary.
+      --  Reallocate the lines tables if necessary
 
       --  Note: the reason we do not use the normal Table package
       --  mechanism is that we have several of these tables. We could
@@ -377,7 +382,9 @@ package body Sinput is
          return Source_Cache_Index;
 
       else
-         for J in 1 .. Source_File.Last loop
+         for J in Source_File_Index_Table (Int (S) / Chunk_Size)
+                                                    .. Source_File.Last
+         loop
             if S in Source_File.Table (J).Source_First ..
                     Source_File.Table (J).Source_Last
             then
@@ -402,6 +409,12 @@ package body Sinput is
 
    procedure Initialize is
    begin
+      Source_Cache_First := 1;
+      Source_Cache_Last  := 0;
+      Source_Cache_Index := No_Source_File;
+      Source_gnat_adc    := No_Source_File;
+      First_Time_Around  := True;
+
       Source_File.Init;
    end Initialize;
 
@@ -561,8 +574,8 @@ package body Sinput is
    --------------------------------
 
    procedure Register_Source_Ref_Pragma
-     (File_Name          : Name_Id;
-      Stripped_File_Name : Name_Id;
+     (File_Name          : File_Name_Type;
+      Stripped_File_Name : File_Name_Type;
       Mapped_Line        : Nat;
       Line_After_Pragma  : Physical_Line_Number)
    is
@@ -573,14 +586,15 @@ package body Sinput is
       ML : Logical_Line_Number;
 
    begin
-      if File_Name /= No_Name then
-         SFR.Full_Ref_Name := File_Name;
+      if File_Name /= No_File then
+         SFR.Reference_Name := Stripped_File_Name;
+         SFR.Full_Ref_Name  := File_Name;
 
          if not Debug_Generated_Code then
-            SFR.Debug_Source_Name := File_Name;
+            SFR.Debug_Source_Name := Stripped_File_Name;
+            SFR.Full_Debug_Name   := File_Name;
          end if;
 
-         SFR.Reference_Name   := Stripped_File_Name;
          SFR.Num_SRef_Pragmas := SFR.Num_SRef_Pragmas + 1;
       end if;
 
@@ -605,57 +619,61 @@ package body Sinput is
       end loop;
    end Register_Source_Ref_Pragma;
 
+   ---------------------------------
+   -- Set_Source_File_Index_Table --
+   ---------------------------------
+
+   procedure Set_Source_File_Index_Table (Xnew : Source_File_Index) is
+      Ind : Int;
+      SP  : Source_Ptr;
+      SL  : constant Source_Ptr := Source_File.Table (Xnew).Source_Last;
+
+   begin
+      SP  := (Source_File.Table (Xnew).Source_First + Chunk_Size - 1)
+                                                    / Chunk_Size * Chunk_Size;
+      Ind := Int (SP) / Chunk_Size;
+
+      while SP <= SL loop
+         Source_File_Index_Table (Ind) := Xnew;
+         SP := SP + Chunk_Size;
+         Ind := Ind + 1;
+      end loop;
+   end Set_Source_File_Index_Table;
+
    ---------------------------
    -- Skip_Line_Terminators --
    ---------------------------
-
-   --  There are two distinct concepts of line terminator in GNAT
-
-   --    A logical line terminator is what corresponds to the "end of a line"
-   --    as described in RM 2.2 (13). Any of the characters FF, LF, CR or VT
-   --    acts as an end of logical line in this sense, and it is essentially
-   --    irrelevant whether one or more appears in sequence (since if a
-   --    sequence of such characters is regarded as separate ends of line,
-   --    then the intervening logical lines are null in any case).
-
-   --    A physical line terminator is a sequence of format effectors that
-   --    is treated as ending a physical line. Physical lines have no Ada
-   --    semantic significance, but they are significant for error reporting
-   --    purposes, since errors are identified by line and column location.
-
-   --  In GNAT, a physical line is ended by any of the sequences LF, CR/LF,
-   --  CR or LF/CR. LF is used in typical Unix systems, CR/LF in DOS systems,
-   --  and CR alone in System 7. We don't know of any system using LF/CR, but
-   --  it seems reasonable to include this case for consistency. In addition,
-   --  we recognize any of these sequences in any of the operating systems,
-   --  for better behavior in treating foreign files (e.g. a Unix file with
-   --  LF terminators transferred to a DOS system).
 
    procedure Skip_Line_Terminators
      (P        : in out Source_Ptr;
       Physical : out Boolean)
    is
-   begin
-      pragma Assert (Source (P) in Line_Terminator);
+      Chr : constant Character := Source (P);
 
-      if Source (P) = CR then
+   begin
+      if  Chr = CR then
          if Source (P + 1) = LF then
             P := P + 2;
          else
             P := P + 1;
          end if;
 
-      elsif Source (P) = LF then
-         if Source (P + 1) = CR then
+      elsif Chr = LF then
+         if Source (P) = CR then
             P := P + 2;
          else
             P := P + 1;
          end if;
 
-      else -- Source (P) = FF or else Source (P) = VT
+      elsif Chr = FF or else Chr = VT then
          P := P + 1;
          Physical := False;
          return;
+
+         --  Otherwise we have a wide character
+
+      else
+         Skip_Wide (Source, P);
       end if;
 
       --  Fall through in the physical line terminator case. First deal with
@@ -731,8 +749,14 @@ package body Sinput is
                procedure Free_Ptr is new Unchecked_Deallocation
                  (Big_Source_Buffer, Source_Buffer_Ptr);
 
+               pragma Warnings (Off);
+               --  This unchecked conversion is aliasing safe, since it is not
+               --  used to create improperly aliased pointer values.
+
                function To_Source_Buffer_Ptr is new
                  Unchecked_Conversion (Address, Source_Buffer_Ptr);
+
+               pragma Warnings (On);
 
                Tmp1 : Source_Buffer_Ptr;
 
@@ -812,8 +836,14 @@ package body Sinput is
                   declare
                      pragma Suppress (All_Checks);
 
+                     pragma Warnings (Off);
+                     --  This unchecked conversion is aliasing safe since it
+                     --  not used to create improperly aliased pointer values.
+
                      function To_Source_Buffer_Ptr is new
                        Unchecked_Conversion (Address, Source_Buffer_Ptr);
+
+                     pragma Warnings (On);
 
                   begin
                      S.Source_Text :=
@@ -852,8 +882,14 @@ package body Sinput is
 
                   pragma Suppress (All_Checks);
 
+                  pragma Warnings (Off);
+                  --  This unchecked conversion is aliasing safe, since it is
+                  --  never used to create improperly aliased pointer values.
+
                   function To_Source_Buffer_Ptr is new
                     Unchecked_Conversion (Address, Source_Buffer_Ptr);
+
+                  pragma Warnings (On);
 
                begin
                   T := new B;
@@ -865,6 +901,8 @@ package body Sinput is
                end;
             end if;
          end;
+
+         Set_Source_File_Index_Table (J);
       end loop;
    end Tree_Read;
 
@@ -1007,10 +1045,20 @@ package body Sinput is
       return Source_File.Table (S).File_Name;
    end File_Name;
 
+   function File_Type (S : SFI) return Type_Of_File is
+   begin
+      return Source_File.Table (S).File_Type;
+   end File_Type;
+
    function First_Mapped_Line (S : SFI) return Logical_Line_Number is
    begin
       return Source_File.Table (S).First_Mapped_Line;
    end First_Mapped_Line;
+
+   function Full_Debug_Name (S : SFI) return File_Name_Type is
+   begin
+      return Source_File.Table (S).Full_Debug_Name;
+   end Full_Debug_Name;
 
    function Full_File_Name (S : SFI) return File_Name_Type is
    begin
@@ -1026,6 +1074,11 @@ package body Sinput is
    begin
       return Source_File.Table (S).Identifier_Casing;
    end Identifier_Casing;
+
+   function Inlined_Body (S : SFI) return Boolean is
+   begin
+      return Source_File.Table (S).Inlined_Body;
+   end Inlined_Body;
 
    function Instantiation (S : SFI) return Source_Ptr is
    begin
@@ -1064,17 +1117,31 @@ package body Sinput is
 
    function Source_First (S : SFI) return Source_Ptr is
    begin
-      return Source_File.Table (S).Source_First;
+      if S = Internal_Source_File then
+         return Internal_Source'First;
+      else
+         return Source_File.Table (S).Source_First;
+      end if;
    end Source_First;
 
    function Source_Last (S : SFI) return Source_Ptr is
    begin
-      return Source_File.Table (S).Source_Last;
+      if S = Internal_Source_File then
+         return Internal_Source'Last;
+      else
+         return Source_File.Table (S).Source_Last;
+      end if;
+
    end Source_Last;
 
    function Source_Text (S : SFI) return Source_Buffer_Ptr is
    begin
-      return Source_File.Table (S).Source_Text;
+      if S = Internal_Source_File then
+         return Internal_Source_Ptr;
+      else
+         return Source_File.Table (S).Source_Text;
+      end if;
+
    end Source_Text;
 
    function Template (S : SFI) return SFI is
@@ -1086,6 +1153,11 @@ package body Sinput is
    begin
       return Source_File.Table (S).Time_Stamp;
    end Time_Stamp;
+
+   function Unit (S : SFI) return Unit_Number_Type is
+   begin
+      return Source_File.Table (S).Unit;
+   end Unit;
 
    ------------------------------------------
    -- Set Procedures for Source File Table --
@@ -1106,6 +1178,11 @@ package body Sinput is
       Source_File.Table (S).License := L;
    end Set_License;
 
+   procedure Set_Unit (S : SFI; U : Unit_Number_Type) is
+   begin
+      Source_File.Table (S).Unit := U;
+   end Set_Unit;
+
    ----------------------
    -- Trim_Lines_Table --
    ----------------------
@@ -1123,6 +1200,16 @@ package body Sinput is
             (Max * (Lines_Table_Type'Component_Size / System.Storage_Unit))));
       Source_File.Table (S).Lines_Table_Max := Physical_Line_Number (Max);
    end Trim_Lines_Table;
+
+   ------------
+   -- Unlock --
+   ------------
+
+   procedure Unlock is
+   begin
+      Source_File.Locked := False;
+      Source_File.Release;
+   end Unlock;
 
    --------
    -- wl --

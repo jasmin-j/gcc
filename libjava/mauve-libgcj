@@ -10,19 +10,16 @@ JLS1.2
 JDBC1.0
 JDBC2.0
 
-# Cannot be compiled
-!java.text.ACIAttribute
-
 # The following tests seem to hang or crash the testsuite.
 # This a problem when running Mauve "standalone".
-!java.io.ObjectInputOutput
 !java.lang.reflect.Array.newInstance
-
-# Character.unicode seems to be very broken (the test)
-# Does not give meaningfull test results at the moment.
-!java.lang.Character.unicode
 
 # These are almost certainly buggy test cases.
 # The behaviour of the garbarge collector cannot be predicted.
 # Note the . at the end so we do test java.lang.reflect
 !java.lang.ref.
+
+# Tests for not yet implemented classes and/or methods.
+!java.awt.event.MouseEvent.modifiersEx
+!org.omg.
+!javax.rmi

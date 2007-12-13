@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                          A D A . T E X T _ I O                           --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -34,10 +33,12 @@
 
 with Ada.Streams;          use Ada.Streams;
 with Interfaces.C_Streams; use Interfaces.C_Streams;
-with System;
+
 with System.File_IO;
-with Unchecked_Conversion;
-with Unchecked_Deallocation;
+with System.CRTL;
+
+with Ada.Unchecked_Conversion;
+with Ada.Unchecked_Deallocation;
 
 pragma Elaborate_All (System.File_IO);
 --  Needed because of calls to Chain_File in package body elaboration
@@ -48,17 +49,18 @@ package body Ada.Text_IO is
 
    subtype AP is FCB.AFCB_Ptr;
 
-   function To_FCB is new Unchecked_Conversion (File_Mode, FCB.File_Mode);
-   function To_TIO is new Unchecked_Conversion (FCB.File_Mode, File_Mode);
+   function To_FCB is new Ada.Unchecked_Conversion (File_Mode, FCB.File_Mode);
+   function To_TIO is new Ada.Unchecked_Conversion (FCB.File_Mode, File_Mode);
    use type FCB.File_Mode;
+
+   use type System.CRTL.size_t;
 
    -------------------
    -- AFCB_Allocate --
    -------------------
 
    function AFCB_Allocate (Control_Block : Text_AFCB) return FCB.AFCB_Ptr is
-      pragma Warnings (Off, Control_Block);
-
+      pragma Unreferenced (Control_Block);
    begin
       return new Text_AFCB;
    end AFCB_Allocate;
@@ -67,7 +69,7 @@ package body Ada.Text_IO is
    -- AFCB_Close --
    ----------------
 
-   procedure AFCB_Close (File : access Text_AFCB) is
+   procedure AFCB_Close (File : not null access Text_AFCB) is
    begin
       --  If the file being closed is one of the current files, then close
       --  the corresponding current file. It is not clear that this action
@@ -89,11 +91,11 @@ package body Ada.Text_IO is
    -- AFCB_Free --
    ---------------
 
-   procedure AFCB_Free (File : access Text_AFCB) is
+   procedure AFCB_Free (File : not null access Text_AFCB) is
       type FCB_Ptr is access all Text_AFCB;
       FT : FCB_Ptr := FCB_Ptr (File);
 
-      procedure Free is new Unchecked_Deallocation (Text_AFCB, FCB_Ptr);
+      procedure Free is new Ada.Unchecked_Deallocation (Text_AFCB, FCB_Ptr);
 
    begin
       Free (FT);
@@ -116,7 +118,7 @@ package body Ada.Text_IO is
    --  to exceed the value of Count'Last, i.e. no check is required for
    --  overflow raising layout error.
 
-   function Col (File : in File_Type) return Positive_Count is
+   function Col (File : File_Type) return Positive_Count is
    begin
       FIO.Check_File_Open (AP (File));
       return File.Col;
@@ -133,15 +135,18 @@ package body Ada.Text_IO is
 
    procedure Create
      (File : in out File_Type;
-      Mode : in File_Mode := Out_File;
-      Name : in String := "";
-      Form : in String := "")
+      Mode : File_Mode := Out_File;
+      Name : String := "";
+      Form : String := "")
    is
-      File_Control_Block : Text_AFCB;
+      Dummy_File_Control_Block : Text_AFCB;
+      pragma Warnings (Off, Dummy_File_Control_Block);
+      --  Yes, we know this is never assigned a value, only the tag
+      --  is used for dispatching purposes, so that's expected.
 
    begin
       FIO.Open (File_Ptr  => AP (File),
-                Dummy_FCB => File_Control_Block,
+                Dummy_FCB => Dummy_File_Control_Block,
                 Mode      => To_FCB (Mode),
                 Name      => Name,
                 Form      => Form,
@@ -207,8 +212,8 @@ package body Ada.Text_IO is
    -- End_Of_File --
    -----------------
 
-   function End_Of_File (File : in File_Type) return Boolean is
-      ch  : int;
+   function End_Of_File (File : File_Type) return Boolean is
+      ch : int;
 
    begin
       FIO.Check_Read_Status (AP (File));
@@ -265,7 +270,7 @@ package body Ada.Text_IO is
    -- End_Of_Line --
    -----------------
 
-   function End_Of_Line (File : in File_Type) return Boolean is
+   function End_Of_Line (File : File_Type) return Boolean is
       ch : int;
 
    begin
@@ -296,7 +301,7 @@ package body Ada.Text_IO is
    -- End_Of_Page --
    -----------------
 
-   function End_Of_Page (File : in File_Type) return Boolean is
+   function End_Of_Page (File : File_Type) return Boolean is
       ch  : int;
 
    begin
@@ -339,11 +344,20 @@ package body Ada.Text_IO is
       return End_Of_Page (Current_In);
    end End_Of_Page;
 
+   --------------
+   -- EOF_Char --
+   --------------
+
+   function EOF_Char return Integer is
+   begin
+      return EOF;
+   end EOF_Char;
+
    -----------
    -- Flush --
    -----------
 
-   procedure Flush (File : in File_Type) is
+   procedure Flush (File : File_Type) is
    begin
       FIO.Flush (AP (File));
    end Flush;
@@ -357,7 +371,7 @@ package body Ada.Text_IO is
    -- Form --
    ----------
 
-   function Form (File : in File_Type) return String is
+   function Form (File : File_Type) return String is
    begin
       return FIO.Form (AP (File));
    end Form;
@@ -367,7 +381,7 @@ package body Ada.Text_IO is
    ---------
 
    procedure Get
-     (File : in File_Type;
+     (File : File_Type;
       Item : out Character)
    is
       ch : int;
@@ -416,7 +430,7 @@ package body Ada.Text_IO is
    end Get;
 
    procedure Get
-     (File : in File_Type;
+     (File : File_Type;
       Item : out String)
    is
       ch : int;
@@ -475,14 +489,16 @@ package body Ada.Text_IO is
    --  More work required here ???
 
    procedure Get_Immediate
-     (File : in File_Type;
+     (File : File_Type;
       Item : out Character)
    is
       ch          : int;
       end_of_file : int;
 
       procedure getc_immediate
-        (stream : FILEs; ch : out int; end_of_file : out int);
+        (stream      : FILEs;
+         ch          : out int;
+         end_of_file : out int);
       pragma Import (C, getc_immediate, "getc_immediate");
 
    begin
@@ -504,7 +520,6 @@ package body Ada.Text_IO is
       end if;
 
       Item := Character'Val (ch);
-
    end Get_Immediate;
 
    procedure Get_Immediate
@@ -515,7 +530,7 @@ package body Ada.Text_IO is
    end Get_Immediate;
 
    procedure Get_Immediate
-     (File      : in File_Type;
+     (File      : File_Type;
       Item      : out Character;
       Available : out Boolean)
    is
@@ -579,7 +594,7 @@ package body Ada.Text_IO is
    --------------
 
    procedure Get_Line
-     (File : in File_Type;
+     (File : File_Type;
       Item : out String;
       Last : out Natural)
    is
@@ -697,6 +712,58 @@ package body Ada.Text_IO is
       Get_Line (Current_In, Item, Last);
    end Get_Line;
 
+   function Get_Line (File : File_Type) return String is
+      Buffer : String (1 .. 500);
+      Last   : Natural;
+
+      function Get_Rest (S : String) return String;
+      --  This is a recursive function that reads the rest of the line and
+      --  returns it. S is the part read so far.
+
+      --------------
+      -- Get_Rest --
+      --------------
+
+      function Get_Rest (S : String) return String is
+
+         --  Each time we allocate a buffer the same size as what we have
+         --  read so far. This limits us to a logarithmic number of calls
+         --  to Get_Rest and also ensures only a linear use of stack space.
+
+         Buffer : String (1 .. S'Length);
+         Last   : Natural;
+
+      begin
+         Get_Line (File, Buffer, Last);
+
+         declare
+            R : constant String := S & Buffer (1 .. Last);
+         begin
+            if Last < Buffer'Last then
+               return R;
+            else
+               return Get_Rest (R);
+            end if;
+         end;
+      end Get_Rest;
+
+   --  Start of processing for Get_Line
+
+   begin
+      Get_Line (File, Buffer, Last);
+
+      if Last < Buffer'Last then
+         return Buffer (1 .. Last);
+      else
+         return Get_Rest (Buffer (1 .. Last));
+      end if;
+   end Get_Line;
+
+   function Get_Line return String is
+   begin
+      return Get_Line (Current_In);
+   end Get_Line;
+
    ----------
    -- Getc --
    ----------
@@ -718,7 +785,7 @@ package body Ada.Text_IO is
    -- Is_Open --
    -------------
 
-   function Is_Open (File : in File_Type) return Boolean is
+   function Is_Open (File : File_Type) return Boolean is
    begin
       return FIO.Is_Open (AP (File));
    end Is_Open;
@@ -731,7 +798,7 @@ package body Ada.Text_IO is
    --  to exceed the value of Count'Last, i.e. no check is required for
    --  overflow raising layout error.
 
-   function Line (File : in File_Type) return Positive_Count is
+   function Line (File : File_Type) return Positive_Count is
    begin
       FIO.Check_File_Open (AP (File));
       return File.Line;
@@ -746,7 +813,7 @@ package body Ada.Text_IO is
    -- Line_Length --
    -----------------
 
-   function Line_Length (File : in File_Type) return Count is
+   function Line_Length (File : File_Type) return Count is
    begin
       FIO.Check_Write_Status (AP (File));
       return File.Line_Length;
@@ -762,7 +829,7 @@ package body Ada.Text_IO is
    ----------------
 
    procedure Look_Ahead
-     (File        : in File_Type;
+     (File        : File_Type;
       Item        : out Character;
       End_Of_Line : out Boolean)
    is
@@ -803,7 +870,7 @@ package body Ada.Text_IO is
    -- Mode --
    ----------
 
-   function Mode (File : in File_Type) return File_Mode is
+   function Mode (File : File_Type) return File_Mode is
    begin
       return To_TIO (FIO.Mode (AP (File)));
    end Mode;
@@ -812,7 +879,7 @@ package body Ada.Text_IO is
    -- Name --
    ----------
 
-   function Name (File : in File_Type) return String is
+   function Name (File : File_Type) return String is
    begin
       return FIO.Name (AP (File));
    end Name;
@@ -822,15 +889,15 @@ package body Ada.Text_IO is
    --------------
 
    procedure New_Line
-     (File    : in File_Type;
-      Spacing : in Positive_Count := 1)
+     (File    : File_Type;
+      Spacing : Positive_Count := 1)
    is
    begin
       --  Raise Constraint_Error if out of range value. The reason for this
       --  explicit test is that we don't want junk values around, even if
       --  checks are off in the caller.
 
-      if Spacing not in Positive_Count then
+      if not Spacing'Valid then
          raise Constraint_Error;
       end if;
 
@@ -852,7 +919,7 @@ package body Ada.Text_IO is
       File.Col := 1;
    end New_Line;
 
-   procedure New_Line (Spacing : in Positive_Count := 1) is
+   procedure New_Line (Spacing : Positive_Count := 1) is
    begin
       New_Line (Current_Out, Spacing);
    end New_Line;
@@ -861,7 +928,7 @@ package body Ada.Text_IO is
    -- New_Page --
    --------------
 
-   procedure New_Page (File : in File_Type) is
+   procedure New_Page (File : File_Type) is
    begin
       FIO.Check_Write_Status (AP (File));
 
@@ -910,15 +977,18 @@ package body Ada.Text_IO is
 
    procedure Open
      (File : in out File_Type;
-      Mode : in File_Mode;
-      Name : in String;
-      Form : in String := "")
+      Mode : File_Mode;
+      Name : String;
+      Form : String := "")
    is
-      File_Control_Block : Text_AFCB;
+      Dummy_File_Control_Block : Text_AFCB;
+      pragma Warnings (Off, Dummy_File_Control_Block);
+      --  Yes, we know this is never assigned a value, only the tag
+      --  is used for dispatching purposes, so that's expected.
 
    begin
       FIO.Open (File_Ptr  => AP (File),
-                Dummy_FCB => File_Control_Block,
+                Dummy_FCB => Dummy_File_Control_Block,
                 Mode      => To_FCB (Mode),
                 Name      => Name,
                 Form      => Form,
@@ -937,7 +1007,7 @@ package body Ada.Text_IO is
    --  to exceed the value of Count'Last, i.e. no check is required for
    --  overflow raising layout error.
 
-   function Page (File : in File_Type) return Positive_Count is
+   function Page (File : File_Type) return Positive_Count is
    begin
       FIO.Check_File_Open (AP (File));
       return File.Page;
@@ -952,7 +1022,7 @@ package body Ada.Text_IO is
    -- Page_Length --
    -----------------
 
-   function Page_Length (File : in File_Type) return Count is
+   function Page_Length (File : File_Type) return Count is
    begin
       FIO.Check_Write_Status (AP (File));
       return File.Page_Length;
@@ -968,8 +1038,8 @@ package body Ada.Text_IO is
    ---------
 
    procedure Put
-     (File : in File_Type;
-      Item : in Character)
+     (File : File_Type;
+      Item : Character)
    is
    begin
       FIO.Check_Write_Status (AP (File));
@@ -985,7 +1055,7 @@ package body Ada.Text_IO is
       File.Col := File.Col + 1;
    end Put;
 
-   procedure Put (Item : in Character) is
+   procedure Put (Item : Character) is
    begin
       FIO.Check_Write_Status (AP (Current_Out));
 
@@ -1007,8 +1077,8 @@ package body Ada.Text_IO is
    ---------
 
    procedure Put
-     (File : in File_Type;
-      Item : in String)
+     (File : File_Type;
+      Item : String)
    is
    begin
       FIO.Check_Write_Status (AP (File));
@@ -1034,7 +1104,7 @@ package body Ada.Text_IO is
       end if;
    end Put;
 
-   procedure Put (Item : in String) is
+   procedure Put (Item : String) is
    begin
       Put (Current_Out, Item);
    end Put;
@@ -1044,9 +1114,12 @@ package body Ada.Text_IO is
    --------------
 
    procedure Put_Line
-     (File : in File_Type;
-      Item : in String)
+     (File : File_Type;
+      Item : String)
    is
+      Ilen   : Natural := Item'Length;
+      Istart : Natural := Item'First;
+
    begin
       FIO.Check_Write_Status (AP (File));
 
@@ -1066,13 +1139,25 @@ package body Ada.Text_IO is
       --  tasking programs, since often the OS will treat the entire put
       --  operation as an atomic operation.
 
+      --  We only do this if the message is 512 characters or less in length,
+      --  since otherwise Put_Line would use an unbounded amount of stack
+      --  space and could cause undetected stack overflow. If we have a
+      --  longer string, then output the first part separately to avoid this.
+
+      if Ilen > 512 then
+         FIO.Write_Buf (AP (File), Item'Address, size_t (Ilen - 512));
+         Istart := Istart + Ilen - 512;
+         Ilen   := 512;
+      end if;
+
+      --  Now prepare the string with its terminator
+
       declare
-         Ilen   : constant Natural := Item'Length;
          Buffer : String (1 .. Ilen + 2);
          Plen   : size_t;
 
       begin
-         Buffer (1 .. Ilen) := Item;
+         Buffer (1 .. Ilen) := Item (Istart .. Item'Last);
          Buffer (Ilen + 1) := Character'Val (LM);
 
          if File.Page_Length /= 0
@@ -1094,7 +1179,7 @@ package body Ada.Text_IO is
       end;
    end Put_Line;
 
-   procedure Put_Line (Item : in String) is
+   procedure Put_Line (Item : String) is
    begin
       Put_Line (Current_Out, Item);
    end Put_Line;
@@ -1122,7 +1207,8 @@ package body Ada.Text_IO is
       Item : out Stream_Element_Array;
       Last : out Stream_Element_Offset)
    is
-      ch : int;
+      Discard_ch : int;
+      pragma Warnings (Off, Discard_ch);
 
    begin
       if File.Mode /= FCB.In_File then
@@ -1144,7 +1230,7 @@ package body Ada.Text_IO is
          --  be expected if stream and text input are mixed this way?
 
          if File.Before_LM_PM then
-            ch := ungetc (PM, File.Stream);
+            Discard_ch := ungetc (PM, File.Stream);
             File.Before_LM_PM := False;
          end if;
 
@@ -1197,7 +1283,7 @@ package body Ada.Text_IO is
 
    procedure Reset
      (File : in out File_Type;
-      Mode : in File_Mode)
+      Mode : File_Mode)
    is
    begin
       --  Don't allow change of mode for current file (RM A.10.2(5))
@@ -1239,8 +1325,8 @@ package body Ada.Text_IO is
    -------------
 
    procedure Set_Col
-     (File : in File_Type;
-      To   : in Positive_Count)
+     (File : File_Type;
+      To   : Positive_Count)
    is
       ch : int;
 
@@ -1249,48 +1335,87 @@ package body Ada.Text_IO is
       --  explicit test is that we don't want junk values around, even if
       --  checks are off in the caller.
 
-      if To not in Positive_Count then
+      if not To'Valid then
          raise Constraint_Error;
       end if;
 
       FIO.Check_File_Open (AP (File));
 
-      if To = File.Col then
-         return;
-      end if;
+      --  Output case
 
       if Mode (File) >= Out_File then
+
+         --  Error if we attempt to set Col to a value greater than the
+         --  maximum permissible line length.
+
          if File.Line_Length /= 0 and then To > File.Line_Length then
             raise Layout_Error;
          end if;
+
+         --  If we are behind current position, then go to start of new line
 
          if To < File.Col then
             New_Line (File);
          end if;
 
+         --  Loop to output blanks till we are at the required column
+
          while File.Col < To loop
             Put (File, ' ');
          end loop;
 
+      --  Input case
+
       else
+         --  If we are logically before a LM, but physically after it, the
+         --  file position still reflects the position before the LM, so eat
+         --  it now and adjust the file position appropriately.
+
+         if File.Before_LM then
+            File.Before_LM := False;
+            File.Before_LM_PM := False;
+            File.Line := File.Line + 1;
+            File.Col := 1;
+         end if;
+
+         --  Loop reading characters till we get one at the required Col value
+
          loop
+            --  Read next character. The reason we have to read ahead is to
+            --  skip formatting characters, the effect of Set_Col is to set
+            --  us to a real character with the right Col value, and format
+            --  characters don't count.
+
             ch := Getc (File);
+
+            --  Error if we hit an end of file
 
             if ch = EOF then
                raise End_Error;
 
+            --  If line mark, eat it and adjust file position
+
             elsif ch = LM then
                File.Line := File.Line + 1;
                File.Col := 1;
+
+            --  If recognized page mark, eat it, and adjust file position
 
             elsif ch = PM and then File.Is_Regular_File then
                File.Page := File.Page + 1;
                File.Line := 1;
                File.Col := 1;
 
+            --  Otherwise this is the character we are looking for, so put it
+            --  back in the input stream (we have not adjusted the file
+            --  position yet, so everything is set right after this ungetc).
+
             elsif To = File.Col then
                Ungetc (ch, File);
                return;
+
+            --  Keep skipping characters if we are not there yet, updating the
+            --  file position past the skipped character.
 
             else
                File.Col := File.Col + 1;
@@ -1299,7 +1424,7 @@ package body Ada.Text_IO is
       end if;
    end Set_Col;
 
-   procedure Set_Col (To : in Positive_Count) is
+   procedure Set_Col (To : Positive_Count) is
    begin
       Set_Col (Current_Out, To);
    end Set_Col;
@@ -1308,7 +1433,7 @@ package body Ada.Text_IO is
    -- Set_Error --
    ---------------
 
-   procedure Set_Error (File : in File_Type) is
+   procedure Set_Error (File : File_Type) is
    begin
       FIO.Check_Write_Status (AP (File));
       Current_Err := File;
@@ -1318,7 +1443,7 @@ package body Ada.Text_IO is
    -- Set_Input --
    ---------------
 
-   procedure Set_Input (File : in File_Type) is
+   procedure Set_Input (File : File_Type) is
    begin
       FIO.Check_Read_Status (AP (File));
       Current_In := File;
@@ -1329,15 +1454,15 @@ package body Ada.Text_IO is
    --------------
 
    procedure Set_Line
-     (File : in File_Type;
-      To   : in Positive_Count)
+     (File : File_Type;
+      To   : Positive_Count)
    is
    begin
       --  Raise Constraint_Error if out of range value. The reason for this
       --  explicit test is that we don't want junk values around, even if
       --  checks are off in the caller.
 
-      if To not in Positive_Count then
+      if not To'Valid then
          raise Constraint_Error;
       end if;
 
@@ -1367,7 +1492,7 @@ package body Ada.Text_IO is
       end if;
    end Set_Line;
 
-   procedure Set_Line (To : in Positive_Count) is
+   procedure Set_Line (To : Positive_Count) is
    begin
       Set_Line (Current_Out, To);
    end Set_Line;
@@ -1376,13 +1501,13 @@ package body Ada.Text_IO is
    -- Set_Line_Length --
    ---------------------
 
-   procedure Set_Line_Length (File : in File_Type; To : in Count) is
+   procedure Set_Line_Length (File : File_Type; To : Count) is
    begin
       --  Raise Constraint_Error if out of range value. The reason for this
       --  explicit test is that we don't want junk values around, even if
       --  checks are off in the caller.
 
-      if To not in Count then
+      if not To'Valid then
          raise Constraint_Error;
       end if;
 
@@ -1390,7 +1515,7 @@ package body Ada.Text_IO is
       File.Line_Length := To;
    end Set_Line_Length;
 
-   procedure Set_Line_Length (To : in Count) is
+   procedure Set_Line_Length (To : Count) is
    begin
       Set_Line_Length (Current_Out, To);
    end Set_Line_Length;
@@ -1399,7 +1524,7 @@ package body Ada.Text_IO is
    -- Set_Output --
    ----------------
 
-   procedure Set_Output (File : in File_Type) is
+   procedure Set_Output (File : File_Type) is
    begin
       FIO.Check_Write_Status (AP (File));
       Current_Out := File;
@@ -1409,13 +1534,13 @@ package body Ada.Text_IO is
    -- Set_Page_Length --
    ---------------------
 
-   procedure Set_Page_Length (File : in File_Type; To : in Count) is
+   procedure Set_Page_Length (File : File_Type; To : Count) is
    begin
       --  Raise Constraint_Error if out of range value. The reason for this
       --  explicit test is that we don't want junk values around, even if
       --  checks are off in the caller.
 
-      if To not in Count then
+      if not To'Valid then
          raise Constraint_Error;
       end if;
 
@@ -1423,7 +1548,7 @@ package body Ada.Text_IO is
       File.Page_Length := To;
    end Set_Page_Length;
 
-   procedure Set_Page_Length (To : in Count) is
+   procedure Set_Page_Length (To : Count) is
    begin
       Set_Page_Length (Current_Out, To);
    end Set_Page_Length;
@@ -1433,8 +1558,8 @@ package body Ada.Text_IO is
    ---------------
 
    procedure Skip_Line
-     (File    : in File_Type;
-      Spacing : in Positive_Count := 1)
+     (File    : File_Type;
+      Spacing : Positive_Count := 1)
    is
       ch : int;
 
@@ -1443,7 +1568,7 @@ package body Ada.Text_IO is
       --  explicit test is that we don't want junk values around, even if
       --  checks are off in the caller.
 
-      if Spacing not in Positive_Count then
+      if not Spacing'Valid then
          raise Constraint_Error;
       end if;
 
@@ -1452,7 +1577,12 @@ package body Ada.Text_IO is
       for L in 1 .. Spacing loop
          if File.Before_LM then
             File.Before_LM := False;
-            File.Before_LM_PM := False;
+
+            --  Note that if File.Before_LM_PM is currently set, we also have
+            --  to reset it (because it makes sense for Before_LM_PM to be set
+            --  only when Before_LM is also set). This is done later on in this
+            --  subprogram, as soon as Before_LM_PM has been taken into account
+            --  for the purpose of page and line counts.
 
          else
             ch := Getc (File);
@@ -1514,7 +1644,7 @@ package body Ada.Text_IO is
       end loop;
    end Skip_Line;
 
-   procedure Skip_Line (Spacing : in Positive_Count := 1) is
+   procedure Skip_Line (Spacing : Positive_Count := 1) is
    begin
       Skip_Line (Current_In, Spacing);
    end Skip_Line;
@@ -1523,7 +1653,7 @@ package body Ada.Text_IO is
    -- Skip_Page --
    ---------------
 
-   procedure Skip_Page (File : in File_Type) is
+   procedure Skip_Page (File : File_Type) is
       ch : int;
 
    begin
@@ -1644,8 +1774,12 @@ package body Ada.Text_IO is
          --  because it is too much of a nuisance to have these odd line
          --  feeds when nothing has been written to the file.
 
+         --  We also avoid this for files opened in append mode, in
+         --  accordance with (RM A.8.2(10))
+
          elsif (File /= Standard_Err and then File /= Standard_Out)
            and then (File.Line = 1 and then File.Page = 1)
+           and then Mode (File) = Out_File
          then
             New_Line (File);
          end if;
@@ -1674,8 +1808,10 @@ package body Ada.Text_IO is
 
    procedure Write
      (File : in out Text_AFCB;
-      Item : in Stream_Element_Array)
+      Item : Stream_Element_Array)
    is
+      pragma Warnings (Off, File);
+      --  Because in this implementation we don't need IN OUT, we only read
 
       function Has_Translated_Characters return Boolean;
       --  return True if Item array contains a character which will be
@@ -1683,10 +1819,15 @@ package body Ada.Text_IO is
       --  character under DOS based systems which is character 10.
 
       text_translation_required : Boolean;
+      for text_translation_required'Size use Character'Size;
       pragma Import (C, text_translation_required,
                      "__gnat_text_translation_required");
 
       Siz : constant size_t := Item'Length;
+
+      -------------------------------
+      -- Has_Translated_Characters --
+      -------------------------------
 
       function Has_Translated_Characters return Boolean is
       begin
@@ -1699,7 +1840,10 @@ package body Ada.Text_IO is
       end Has_Translated_Characters;
 
       Needs_Binary_Write : constant Boolean :=
-        text_translation_required and then Has_Translated_Characters;
+                             text_translation_required
+                               and then Has_Translated_Characters;
+
+   --  Start of processing for Write
 
    begin
       if File.Mode = FCB.In_File then
@@ -1719,7 +1863,6 @@ package body Ada.Text_IO is
       --  with text mode if needed.
 
       if Needs_Binary_Write then
-
          if fflush (File.Stream) = -1 then
             raise Device_Error;
          end if;
@@ -1735,7 +1878,6 @@ package body Ada.Text_IO is
       --  we reset to text mode.
 
       if Needs_Binary_Write then
-
          if fflush (File.Stream) = -1 then
             raise Device_Error;
          end if;
@@ -1753,6 +1895,7 @@ package body Ada.Text_IO is
    Err_Name : aliased String := "*stderr" & ASCII.Nul;
    In_Name  : aliased String := "*stdin" & ASCII.Nul;
    Out_Name : aliased String := "*stdout" & ASCII.Nul;
+
 begin
    -------------------------------
    -- Initialize Standard Files --

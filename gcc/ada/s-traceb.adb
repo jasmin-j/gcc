@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1999-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1999-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -33,6 +32,13 @@
 ------------------------------------------------------------------------------
 
 --  This is the default version of this package
+
+--  Note: this unit must be compiled using -fno-optimize-sibling-calls.
+--  See comment below in body of Call_Chain for details on the reason.
+
+pragma Warnings (Off);
+pragma Compiler_Unit;
+pragma Warnings (On);
 
 package body System.Traceback is
 
@@ -60,19 +66,32 @@ package body System.Traceback is
      (Traceback   : System.Address;
       Len         : Integer;
       Exclude_Min : System.Address;
-      Exclude_Max : System.Address)
+      Exclude_Max : System.Address;
+      Skip_Frames : Integer)
       return        Integer;
    pragma Import (C, Backtrace, "__gnat_backtrace");
 
    procedure Call_Chain
-     (Traceback : System.Address;
-      Max_Len   : Natural;
-      Len       : out Natural;
-      Exclude_Min,
-      Exclude_Max : System.Address := System.Null_Address)
+     (Traceback   : System.Address;
+      Max_Len     : Natural;
+      Len         : out Natural;
+      Exclude_Min : System.Address := System.Null_Address;
+      Exclude_Max : System.Address := System.Null_Address;
+      Skip_Frames : Natural := 1)
    is
    begin
-      Len := Backtrace (Traceback, Max_Len, Exclude_Min, Exclude_Max);
+      --  Note: Backtrace relies on the following call actually creating a
+      --  stack frame. To ensure that this is the case, it is essential to
+      --  compile this unit without sibling call optimization.
+
+      --  We want the underlying engine to skip its own frame plus the
+      --  ones we have been requested to skip ourselves.
+
+      Len := Backtrace (Traceback   => Traceback,
+                        Len         => Max_Len,
+                        Exclude_Min => Exclude_Min,
+                        Exclude_Max => Exclude_Max,
+                        Skip_Frames => Skip_Frames + 1);
    end Call_Chain;
 
 end System.Traceback;

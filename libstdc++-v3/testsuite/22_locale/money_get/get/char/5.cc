@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.6.1.1 money_get members
@@ -27,14 +27,13 @@
 void test05()
 {
   using namespace std;
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   // Check money_get works with other iterators besides streambuf
   // input iterators.
   typedef string::const_iterator iter_type;
   typedef money_get<char, iter_type> mon_get_type;
   const ios_base::iostate goodbit = ios_base::goodbit;
-  const ios_base::iostate eofbit = ios_base::eofbit;
   ios_base::iostate err = goodbit;
   const locale loc_c = locale::classic();
   const string str = "0.01Eleanor Roosevelt";

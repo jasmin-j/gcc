@@ -1,4 +1,4 @@
-/* Copyright (C) 1999, 2002  Free Software Foundation
+/* Copyright (C) 1999, 2002, 2005, 2006, 2007  Free Software Foundation
 
    This file is part of libgcj.
 
@@ -45,7 +45,7 @@ public class Convert
 		       + ") "
 		       + System.getProperty("java.vm.version"));
     System.out.println();
-    System.out.println("Copyright (C) 2002 Free Software Foundation, Inc.");
+    System.out.println("Copyright (C) 2006 Free Software Foundation, Inc.");
     System.out.println("This is free software; see the source for copying conditions.  There is NO");
     System.out.println("warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.");
     System.exit(0);
@@ -151,23 +151,21 @@ public class Convert
 
     try
       {
-	BytesToUnicode inDecoder
-	  = inEncodingName == null ? BytesToUnicode.getDefaultDecoder()
-	  : BytesToUnicode.getDecoder(inEncodingName);
-	UnicodeToBytes outEncoder
-	  = outEncodingName == null ? UnicodeToBytes.getDefaultEncoder()
-	  : UnicodeToBytes.getEncoder(outEncodingName);
-	InputStream inStream = inName == "-" ? System.in
+	InputStream inStream = inName.equals("-") ? System.in
 	  : new FileInputStream(inName);
 	OutputStream outStream;
-	if (outName == "-")
+	if (outName.equals("-"))
 	  outStream = System.out;
 	else
 	  outStream = new FileOutputStream(outName);
 	InputStreamReader in
-	  = new InputStreamReader(inStream, inEncodingName);
+	  = (inEncodingName == null
+	     ? new InputStreamReader(inStream)
+	     : new InputStreamReader(inStream, inEncodingName));
 	OutputStreamWriter out
-	  = new OutputStreamWriter(outStream, outEncodingName);
+	  = (outEncodingName == null
+	     ? new OutputStreamWriter(outStream)
+	     : new OutputStreamWriter(outStream, outEncodingName));
 	char[] buffer = new char[2048];
 	for (;;)
 	  {

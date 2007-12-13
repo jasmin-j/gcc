@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,24 +31,35 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with System.Storage_Elements;
-with System.Address_To_Access_Conversions;
+with System.Soft_Links;
+
+with Ada.Unchecked_Conversion;
 
 package body System.Pool_Size is
 
    package SSE renames System.Storage_Elements;
    use type SSE.Storage_Offset;
 
-   package SC is new Address_To_Access_Conversions (SSE.Storage_Count);
+   --  Even though these storage pools are typically only used by a single
+   --  task, if multiple tasks are declared at the same or a more nested scope
+   --  as the storage pool, there still may be concurrent access. The current
+   --  implementation of Stack_Bounded_Pool always uses a global lock for
+   --  protecting access. This should eventually be replaced by an atomic
+   --  linked list implementation for efficiency reasons.
 
-   SC_Size : constant
-     :=  SSE.Storage_Count'Object_Size / System.Storage_Unit;
+   package SSL renames System.Soft_Links;
+
+   type Storage_Count_Access is access SSE.Storage_Count;
+   function To_Storage_Count_Access is
+     new Ada.Unchecked_Conversion (Address, Storage_Count_Access);
+
+   SC_Size : constant :=  SSE.Storage_Count'Object_Size / System.Storage_Unit;
 
    package Variable_Size_Management is
 
-      --  Embedded pool that manages allocation of variable-size data.
+      --  Embedded pool that manages allocation of variable-size data
 
-      --  This pool is used as soon as the Elmt_sizS of the pool object is 0.
+      --  This pool is used as soon as the Elmt_sizS of the pool object is 0
 
       --  Allocation is done on the first chunk long enough for the request.
       --  Deallocation just puts the freed chunk at the beginning of the list.
@@ -81,12 +91,14 @@ package body System.Pool_Size is
       Alignment    : SSE.Storage_Count)
    is
    begin
+      SSL.Lock_Task.all;
+
       if Pool.Elmt_Size = 0 then
          Vsize.Allocate (Pool, Address, Storage_Size, Alignment);
 
       elsif Pool.First_Free /= 0 then
          Address := Pool.The_Pool (Pool.First_Free)'Address;
-         Pool.First_Free := SC.To_Pointer (Address).all;
+         Pool.First_Free := To_Storage_Count_Access (Address).all;
 
       elsif
         Pool.First_Empty <= (Pool.Pool_Size - Pool.Aligned_Elmt_Size + 1)
@@ -97,6 +109,13 @@ package body System.Pool_Size is
       else
          raise Storage_Error;
       end if;
+
+      SSL.Unlock_Task.all;
+
+   exception
+      when others =>
+         SSL.Unlock_Task.all;
+         raise;
    end Allocate;
 
    ----------------
@@ -110,13 +129,21 @@ package body System.Pool_Size is
       Alignment    : SSE.Storage_Count)
    is
    begin
+      SSL.Lock_Task.all;
+
       if Pool.Elmt_Size = 0 then
          Vsize.Deallocate (Pool, Address, Storage_Size, Alignment);
 
       else
-         SC.To_Pointer (Address).all := Pool.First_Free;
+         To_Storage_Count_Access (Address).all := Pool.First_Free;
          Pool.First_Free := Address - Pool.The_Pool'Address + 1;
       end if;
+
+      SSL.Unlock_Task.all;
+   exception
+      when others =>
+         SSL.Unlock_Task.all;
+         raise;
    end Deallocate;
 
    ----------------
@@ -124,8 +151,15 @@ package body System.Pool_Size is
    ----------------
 
    procedure Initialize  (Pool : in out Stack_Bounded_Pool) is
+
+      --  Define the appropriate alignment for allocations. This is the
+      --  maximum of the requested alignment, and the alignment required
+      --  for Storage_Count values. The latter test is to ensure that we
+      --  can properly reference the linked list pointers for free lists.
+
       Align : constant SSE.Storage_Count :=
-        SSE.Storage_Count'Max (SSE.Storage_Count'Alignment, Pool.Alignment);
+                SSE.Storage_Count'Max
+                  (SSE.Storage_Count'Alignment, Pool.Alignment);
 
    begin
       if Pool.Elmt_Size = 0 then
@@ -136,7 +170,7 @@ package body System.Pool_Size is
          Pool.First_Empty := 1;
 
          --  Compute the size to allocate given the size of the element and
-         --  the possible Alignment clause
+         --  the possible alignment requirement as defined above.
 
          Pool.Aligned_Elmt_Size :=
            SSE.Storage_Count'Max (SC_Size,
@@ -149,8 +183,7 @@ package body System.Pool_Size is
    ------------------
 
    function  Storage_Size
-     (Pool : Stack_Bounded_Pool)
-      return SSE.Storage_Count
+     (Pool : Stack_Bounded_Pool) return SSE.Storage_Count
    is
    begin
       return Pool.Pool_Size;
@@ -176,20 +209,17 @@ package body System.Pool_Size is
 
       function Size
         (Pool  : Stack_Bounded_Pool;
-         Chunk : SSE.Storage_Count)
-         return SSE.Storage_Count;
+         Chunk : SSE.Storage_Count) return SSE.Storage_Count;
       --  Fetch the field 'size' of a chunk of available storage
 
       function Next
         (Pool  : Stack_Bounded_Pool;
-         Chunk : SSE.Storage_Count)
-         return  SSE.Storage_Count;
+         Chunk : SSE.Storage_Count) return SSE.Storage_Count;
       --  Fetch the field 'next' of a chunk of available storage
 
       function Chunk_Of
         (Pool : Stack_Bounded_Pool;
-         Addr : System.Address)
-         return SSE.Storage_Count;
+         Addr : System.Address) return SSE.Storage_Count;
       --  Give the chunk number in the pool from its Address
 
       --------------
@@ -255,8 +285,7 @@ package body System.Pool_Size is
 
       function Chunk_Of
         (Pool : Stack_Bounded_Pool;
-         Addr : System.Address)
-         return SSE.Storage_Count
+         Addr : System.Address) return SSE.Storage_Count
       is
       begin
          return 1 + abs (Addr - Pool.The_Pool (1)'Address);
@@ -275,7 +304,7 @@ package body System.Pool_Size is
          Align_Size : constant SSE.Storage_Count :=
                         ((Storage_Size + Alignment - 1) / Alignment) *
                                                                  Alignment;
-         Chunk : SSE.Storage_Count := Chunk_Of (Pool, Address);
+         Chunk : constant SSE.Storage_Count := Chunk_Of (Pool, Address);
 
       begin
          --  Attach the freed chunk to the chain
@@ -310,11 +339,17 @@ package body System.Pool_Size is
 
       function Next
         (Pool  : Stack_Bounded_Pool;
-         Chunk : SSE.Storage_Count)
-         return  SSE.Storage_Count
+         Chunk : SSE.Storage_Count) return SSE.Storage_Count
       is
       begin
-         return SC.To_Pointer (Pool.The_Pool (Chunk + SC_Size)'Address).all;
+         pragma Warnings (Off);
+         --  Kill alignment warnings, we are careful to make sure
+         --  that the alignment is correct.
+
+         return To_Storage_Count_Access
+                  (Pool.The_Pool (Chunk + SC_Size)'Address).all;
+
+         pragma Warnings (On);
       end Next;
 
       --------------
@@ -326,7 +361,14 @@ package body System.Pool_Size is
          Chunk, Next : SSE.Storage_Count)
       is
       begin
-         SC.To_Pointer (Pool.The_Pool (Chunk + SC_Size)'Address).all := Next;
+         pragma Warnings (Off);
+         --  Kill alignment warnings, we are careful to make sure
+         --  that the alignment is correct.
+
+         To_Storage_Count_Access
+           (Pool.The_Pool (Chunk + SC_Size)'Address).all := Next;
+
+         pragma Warnings (On);
       end Set_Next;
 
       --------------
@@ -338,7 +380,14 @@ package body System.Pool_Size is
          Chunk, Size : SSE.Storage_Count)
       is
       begin
-         SC.To_Pointer (Pool.The_Pool (Chunk)'Address).all := Size;
+         pragma Warnings (Off);
+         --  Kill alignment warnings, we are careful to make sure
+         --  that the alignment is correct.
+
+         To_Storage_Count_Access
+           (Pool.The_Pool (Chunk)'Address).all := Size;
+
+         pragma Warnings (On);
       end Set_Size;
 
       ----------
@@ -347,11 +396,16 @@ package body System.Pool_Size is
 
       function Size
         (Pool  : Stack_Bounded_Pool;
-         Chunk : SSE.Storage_Count)
-         return  SSE.Storage_Count
+         Chunk : SSE.Storage_Count) return SSE.Storage_Count
       is
       begin
-         return  SC.To_Pointer (Pool.The_Pool (Chunk)'Address).all;
+         pragma Warnings (Off);
+         --  Kill alignment warnings, we are careful to make sure
+         --  that the alignment is correct.
+
+         return To_Storage_Count_Access (Pool.The_Pool (Chunk)'Address).all;
+
+         pragma Warnings (On);
       end Size;
 
    end  Variable_Size_Management;

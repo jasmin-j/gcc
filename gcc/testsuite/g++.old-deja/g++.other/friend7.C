@@ -1,6 +1,6 @@
+// { dg-do assemble  }
 // Origin: Martin v. Löwis  <loewis@informatik.hu-berlin.de>
 // Test that a friend declaration with an explicit :: finds the right fn.
-// Build don't link:
 
 namespace M {
 class S; 
@@ -15,7 +15,7 @@ class S {
 };
 } 
 
-void (::foo)(M::S *ptr) {
+void (foo)(M::S *ptr) {
   M::S::s.Fn();
   ptr->Fn();
 } 

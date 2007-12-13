@@ -1,5 +1,5 @@
-// Build don't link:
-// Special g++ Options:
+// { dg-do assemble  }
+// { dg-options "-w -fpermissive" }
 // prms-id: 8154
 
 class QvFieldData;

@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-1998 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,7 +34,7 @@
 with Interfaces.C_Streams; use Interfaces.C_Streams;
 with System.File_IO;
 with System.File_Control_Block;
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package body Ada.Wide_Text_IO.C_Streams is
 
@@ -44,7 +43,7 @@ package body Ada.Wide_Text_IO.C_Streams is
 
    subtype AP is FCB.AFCB_Ptr;
 
-   function To_FCB is new Unchecked_Conversion (File_Mode, FCB.File_Mode);
+   function To_FCB is new Ada.Unchecked_Conversion (File_Mode, FCB.File_Mode);
 
    --------------
    -- C_Stream --
@@ -62,17 +61,21 @@ package body Ada.Wide_Text_IO.C_Streams is
 
    procedure Open
      (File     : in out File_Type;
-      Mode     : in File_Mode;
-      C_Stream : in FILEs;
-      Form     : in String := "")
+      Mode     : File_Mode;
+      C_Stream : FILEs;
+      Form     : String := "";
+      Name     : String := "")
    is
-      File_Control_Block : Wide_Text_AFCB;
+      Dummy_File_Control_Block : Wide_Text_AFCB;
+      pragma Warnings (Off, Dummy_File_Control_Block);
+      --  Yes, we know this is never assigned a value, only the tag
+      --  is used for dispatching purposes, so that's expected.
 
    begin
       FIO.Open (File_Ptr  => AP (File),
-                Dummy_FCB => File_Control_Block,
+                Dummy_FCB => Dummy_File_Control_Block,
                 Mode      => To_FCB (Mode),
-                Name      => "",
+                Name      => Name,
                 Form      => Form,
                 Amethod   => 'W',
                 Creat     => False,

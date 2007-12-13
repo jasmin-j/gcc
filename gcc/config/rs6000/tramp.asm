@@ -1,6 +1,6 @@
 /*  Special support for trampolines
  *
- *   Copyright (C) 1996, 1997, 2000 Free Software Foundation, Inc.
+ *   Copyright (C) 1996, 1997, 2000, 2007 Free Software Foundation, Inc.
  *   Written By Michael Meissner
  * 
  * This file is free software; you can redistribute it and/or modify it
@@ -23,8 +23,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program; see the file COPYING.  If not, write to
- * the Free Software Foundation, 59 Temple Place - Suite 330,
- * Boston, MA 02111-1307, USA.
+ * the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301, USA.
  * 
  *    As a special exception, if you link this library with files
  *    compiled with GCC to produce an executable, this does not cause
@@ -37,13 +37,15 @@
 
 	.file	"tramp.asm"
 	.section ".text"
-	#include "ppc-asm.h"
+#include "ppc-asm.h"
+#include "config.h"
 
+#ifndef __powerpc64__
 	.type	trampoline_initial,@object
 	.align	2
 trampoline_initial:
 	mflr	r0
-	bl	1f
+	bcl	20,31,1f
 .Lfunc = .-trampoline_initial
 	.long	0			/* will be replaced with function address */
 .Lchain = .-trampoline_initial
@@ -66,7 +68,7 @@ trampoline_size = .-trampoline_initial
 
 FUNC_START(__trampoline_setup)
 	mflr	r0		/* save return address */
-        bl	.LCF0		/* load up __trampoline_initial into r7 */
+        bcl	20,31,.LCF0	/* load up __trampoline_initial into r7 */
 .LCF0:
         mflr	r11
         addi	r7,r11,trampoline_initial-4-.LCF0 /* trampoline address -4 */
@@ -104,6 +106,13 @@ FUNC_START(__trampoline_setup)
 	blr
 
 .Labort:
+#if (defined __PIC__ || defined __pic__) && defined HAVE_AS_REL16
+	bcl	20,31,1f
+1:	mflr	r30
+	addis	r30,r30,_GLOBAL_OFFSET_TABLE_-1b@ha
+	addi	r30,r30,_GLOBAL_OFFSET_TABLE_-1b@l
+#endif
 	bl	JUMP_TARGET(abort)
 FUNC_END(__trampoline_setup)
 
+#endif

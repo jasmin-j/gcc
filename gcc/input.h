@@ -1,12 +1,13 @@
 /* Declarations for variables relating to reading the source file.
    Used by parsers, lexical analyzers, and error message routines.
-   Copyright (C) 1993, 1997, 1998, 2000 Free Software Foundation, Inc.
+   Copyright (C) 1993, 1997, 1998, 2000, 2003, 2004, 2007
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,28 +16,88 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
-/* Source file current line is coming from.  */
-extern const char *input_filename;
+#ifndef GCC_INPUT_H
+#define GCC_INPUT_H
+
+#include "line-map.h"
+extern GTY(()) struct line_maps *line_table;
+
+/* The location for declarations in "<built-in>" */
+#define BUILTINS_LOCATION ((source_location) 2)
+
+/* Note: if any of the types defined inside this #ifdef are changed,
+   gengtype.c:define_location_structures must be updated to match.  */
+
+#ifdef USE_MAPPED_LOCATION
+
+typedef struct
+{
+  /* The name of the source file involved.  */
+  const char *file;
+
+  /* The line-location in the source file.  */
+  int line;
+
+  int column;
+} expanded_location;
+
+extern expanded_location expand_location (source_location);
+
+#define UNKNOWN_LOCATION ((source_location) 0)
+typedef source_location location_t; /* deprecated typedef */
+typedef source_location source_locus; /* to be removed */
+
+#define location_from_locus(LOCUS) (LOCUS)
+
+#else /* ! USE_MAPPED_LOCATION */
+
+struct location_s GTY(())
+{
+  /* The name of the source file involved.  */
+  const char *file;
+
+  /* The line-location in the source file.  */
+  int line;
+};
+
+typedef struct location_s expanded_location;
+typedef struct location_s location_t;
+typedef location_t *source_locus;
+
+#define expand_location(FILELINE) (FILELINE)
+extern location_t unknown_location;
+#define UNKNOWN_LOCATION unknown_location
+
+#define location_from_locus(LOCUS) (* (LOCUS))
+
+#endif /* ! USE_MAPPED_LOCATION */
+
+struct file_stack
+{
+  struct file_stack *next;
+  location_t location;
+};
 
 /* Top-level source file.  */
 extern const char *main_input_filename;
 
-/* Line number in current source file.  */
-extern int lineno;
+extern location_t input_location;
+#ifdef USE_MAPPED_LOCATION
+extern void push_srcloc (location_t);
+#else /* ! USE_MAPPED_LOCATION */
+extern void push_srcloc (const char *name, int line);
+#endif /* ! USE_MAPPED_LOCATION */
+extern void pop_srcloc (void);
+extern void restore_input_file_stack (int);
 
-/* Stream for reading from input file.  */
-extern FILE *finput;
+#define LOCATION_FILE(LOC) ((expand_location (LOC)).file)
+#define LOCATION_LINE(LOC) ((expand_location (LOC)).line)
 
-struct file_stack
-  {
-    const char *name;
-    struct file_stack *next;
-    int line;
-  };
+#define input_line LOCATION_LINE(input_location)
+#define input_filename LOCATION_FILE(input_location)
 
 /* Stack of currently pending input files.
    The line member is not accurate for the innermost file on the stack.  */
@@ -45,5 +106,7 @@ extern struct file_stack *input_file_stack;
 /* Incremented on each change to input_file_stack.  */
 extern int input_file_stack_tick;
 
-extern void push_srcloc PARAMS ((const char *name, int line));
-extern void pop_srcloc PARAMS ((void));
+/* The number of bits available for input_file_stack_tick.  */
+#define INPUT_FILE_STACK_BITS	31
+
+#endif

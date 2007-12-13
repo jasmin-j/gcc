@@ -1,6 +1,7 @@
 // Wrapper for underlying C-language localization -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -38,130 +39,54 @@
 #include <langinfo.h>
 #include <bits/c++locale_internal.h>
 
-namespace std 
-{
-  template<>
-    void
-    __convert_to_v(const char* __s, long& __v, ios_base::iostate& __err, 
-		   const __c_locale& __cloc, int __base)
-    {
-      if (!(__err & ios_base::failbit))
-      {
-	char* __sanity;
-	errno = 0;
-	long __l = __strtol_l(__s, &__sanity, __base, __cloc);
-	if (__sanity != __s && *__sanity == '\0' && errno != ERANGE)
-	  __v = __l;
-	else
-	  __err |= ios_base::failbit;
-      }
-    }
-
-  template<>
-    void
-    __convert_to_v(const char* __s, unsigned long& __v, 
-		   ios_base::iostate& __err, const __c_locale& __cloc, 
-		   int __base)
-    {
-      if (!(__err & ios_base::failbit))
-	{
-	  char* __sanity;
-	  errno = 0;
-	  unsigned long __ul = __strtoul_l(__s, &__sanity, __base, __cloc);
-          if (__sanity != __s && *__sanity == '\0' && errno != ERANGE)
-	    __v = __ul;
-	  else
-	    __err |= ios_base::failbit;
-	}
-    }
-
-#ifdef _GLIBCPP_USE_LONG_LONG
-  template<>
-    void
-    __convert_to_v(const char* __s, long long& __v, ios_base::iostate& __err, 
-		   const __c_locale& __cloc, int __base)
-    {
-      if (!(__err & ios_base::failbit))
-	{
-	  char* __sanity;
-	  errno = 0;
-	  long long __ll = __strtoll_l(__s, &__sanity, __base, __cloc);
-          if (__sanity != __s && *__sanity == '\0' && errno != ERANGE)
-	    __v = __ll;
-	  else
-	    __err |= ios_base::failbit;
-	}
-    }
-
-  template<>
-    void
-    __convert_to_v(const char* __s, unsigned long long& __v, 
-		   ios_base::iostate& __err, const __c_locale& __cloc, 
-		   int __base)
-    {
-      if (!(__err & ios_base::failbit))
-	{      
-	  char* __sanity;
-	  errno = 0;
-	  unsigned long long __ull = __strtoull_l(__s, &__sanity, __base, 
-						  __cloc);
-          if (__sanity != __s && *__sanity == '\0' && errno != ERANGE)
-	    __v = __ull;
-	  else
-	    __err |= ios_base::failbit;
-	}  
-    }
-#endif
+_GLIBCXX_BEGIN_NAMESPACE(std)
 
   template<>
     void
     __convert_to_v(const char* __s, float& __v, ios_base::iostate& __err, 
-		   const __c_locale& __cloc, int)
+		   const __c_locale& __cloc)
     {
-      if (!(__err & ios_base::failbit))
-	{
-	  char* __sanity;
-	  errno = 0;
-	  float __f = __strtof_l(__s, &__sanity, __cloc);
-          if (__sanity != __s && *__sanity == '\0' && errno != ERANGE)
-	    __v = __f;
-	  else
-	    __err |= ios_base::failbit;
-	}
+      char* __sanity;
+      float __f = __strtof_l(__s, &__sanity, __cloc);
+      if (__sanity != __s && __f != __builtin_huge_valf()
+	  && __f != -__builtin_huge_valf())
+	__v = __f;
+      else
+	__err |= ios_base::failbit;
     }
 
   template<>
     void
     __convert_to_v(const char* __s, double& __v, ios_base::iostate& __err, 
-		   const __c_locale& __cloc, int)
+		   const __c_locale& __cloc)
     {
-      if (!(__err & ios_base::failbit))
-	{
-	  char* __sanity;
-	  errno = 0;
-	  double __d = __strtod_l(__s, &__sanity, __cloc);
-          if (__sanity != __s && *__sanity == '\0' && errno != ERANGE)
-	    __v = __d;
-	  else
-	    __err |= ios_base::failbit;
-	}
+      char* __sanity;
+      double __d = __strtod_l(__s, &__sanity, __cloc);
+      if (__sanity != __s && __d != __builtin_huge_val()
+	  && __d != -__builtin_huge_val())
+	__v = __d;
+      else
+	__err |= ios_base::failbit;
     }
 
   template<>
     void
     __convert_to_v(const char* __s, long double& __v, ios_base::iostate& __err,
-		   const __c_locale& __cloc, int)
+		   const __c_locale& __cloc)
     {
-      if (!(__err & ios_base::failbit))
-	{
-	  char* __sanity;
-	  errno = 0;
-	  long double __ld = __strtold_l(__s, &__sanity, __cloc);
-          if (__sanity != __s && *__sanity == '\0' && errno != ERANGE)
-	    __v = __ld;
-	  else
-	    __err |= ios_base::failbit;
-	}
+      char* __sanity;
+#if __GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ > 2)
+      // Prefer strtold_l, as __strtold_l isn't prototyped in more recent
+      // glibc versions.
+      long double __ld = strtold_l(__s, &__sanity, __cloc);
+#else
+      long double __ld = __strtold_l(__s, &__sanity, __cloc);
+#endif
+      if (__sanity != __s && __ld != __builtin_huge_vall()
+	  && __ld != -__builtin_huge_vall())
+	__v = __ld;
+      else
+	__err |= ios_base::failbit;
     }
 
   void
@@ -172,14 +97,15 @@ namespace std
     if (!__cloc)
       {
 	// This named locale is not supported by the underlying OS.
-	__throw_runtime_error("attempt to create locale from unknown name");
+	__throw_runtime_error(__N("locale::facet::_S_create_c_locale "
+			      "name not valid"));
       }
   }
   
   void
   locale::facet::_S_destroy_c_locale(__c_locale& __cloc)
   {
-    if (_S_c_locale != __cloc)
+    if (__cloc && _S_get_c_locale() != __cloc)
       __freelocale(__cloc); 
   }
 
@@ -187,8 +113,11 @@ namespace std
   locale::facet::_S_clone_c_locale(__c_locale& __cloc)
   { return __duplocale(__cloc); }
 
-  const char* locale::_S_categories[_S_categories_size 
-				    + _S_extra_categories_size] =
+_GLIBCXX_END_NAMESPACE
+
+_GLIBCXX_BEGIN_NAMESPACE(__gnu_cxx)
+
+  const char* const category_names[6 + _GLIBCXX_NUM_CATEGORIES] =
     {
       "LC_CTYPE", 
       "LC_NUMERIC",
@@ -203,4 +132,18 @@ namespace std
       "LC_MEASUREMENT", 
       "LC_IDENTIFICATION" 
     };
-}  // namespace std
+
+_GLIBCXX_END_NAMESPACE
+
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
+  const char* const* const locale::_S_categories = __gnu_cxx::category_names;
+
+_GLIBCXX_END_NAMESPACE
+
+// XXX GLIBCXX_ABI Deprecated
+#ifdef _GLIBCXX_LONG_DOUBLE_COMPAT
+#define _GLIBCXX_LDBL_COMPAT(dbl, ldbl) \
+  extern "C" void ldbl (void) __attribute__ ((alias (#dbl)))
+_GLIBCXX_LDBL_COMPAT(_ZSt14__convert_to_vIdEvPKcRT_RSt12_Ios_IostateRKP15__locale_struct, _ZSt14__convert_to_vIeEvPKcRT_RSt12_Ios_IostateRKP15__locale_struct);
+#endif // _GLIBCXX_LONG_DOUBLE_COMPAT

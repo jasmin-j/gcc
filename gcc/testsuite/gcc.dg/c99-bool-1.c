@@ -32,8 +32,6 @@ int c = __bool_true_false_are_defined;
 struct foo
 {
   _Bool a : 1;
-  _Bool b : 2;
-  _Bool c : 7;
 } sf;
 
 #define str(x) xstr(x)
@@ -228,9 +226,7 @@ main (void)
     abort ();
   if ((u |= 2) != 1)
     abort ();
-  /* ??? A bit queer, since this gets optimized to ((u = (u != 3)) != 1)
-     early in semantic analysis, which then yields the warning below.  */
-  if ((u ^= 3) != 1)	/* { dg-warning "always true due to limited range" } */
+  if ((u ^= 3) != 1)
     abort ();
   /* Test comma expressions.  */
   u = 1;
@@ -244,20 +240,8 @@ main (void)
     sf.a = 1;
     if (sf.a != 1)
       abort ();
-    sf.b = 1;
-    if (sf.b != 1)
-      abort ();
-    sf.c = 1;
-    if (sf.c != 1)
-      abort ();
     sf.a = 0;
     if (sf.a != 0)
-      abort ();
-    sf.b = 0;
-    if (sf.b != 0)
-      abort ();
-    sf.c = 0;
-    if (sf.c != 0)
       abort ();
   }
   exit (0);

@@ -1,3 +1,4 @@
+// { dg-do run  }
 // prms-id: 5571
 
 int err = 0;
@@ -5,9 +6,9 @@ void *vp = 0;
 
 class ParentOne {
 public:
-  ParentOne() {};
+  ParentOne() {}
 #ifdef MAKE_WORK
-  virtual ~ParentOne() {};
+  virtual ~ParentOne() {}
 #endif
 private:
   char SomeData[101];
@@ -15,8 +16,8 @@ private:
 
 class ParentTwo {
 public:
-  ParentTwo() {};
-  virtual ~ParentTwo() {};
+  ParentTwo() {}
+  virtual ~ParentTwo() {}
 private:
   int MoreData[12];
   virtual int foo() { return 0; }

@@ -1,4 +1,4 @@
-// Build don't link: 
+// { dg-do assemble  }
 // GROUPS passed unions
 // anon-union file
 // From: "Terry R. Coley" <terry@wag.caltech.edu>
@@ -10,7 +10,7 @@ typedef enum { BADBINOP = 0, PLUS, MINUS, MULT, DIV, POWR } binoptype;
 typedef enum { BADUNOP = 0, NEG = POWR+1, SIN, COS, TAN } unoptype;
 
 typedef struct {
-  char *s;
+  const char *s;
   union {
     binoptype bop;
     unoptype uop;

@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2000 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -37,9 +35,24 @@
 --  Note that we treat Preelaborate as a categorization pragma, even though
 --  strictly, according to RM E.2(2,3), the term does not apply in this case.
 
-with Types; use Types;
+with Exp_Tss; use Exp_Tss;
+with Types;   use Types;
 
 package Sem_Cat is
+
+   function Has_Stream_Attribute_Definition
+     (Typ          : Entity_Id;
+      Nam          : TSS_Name_Type;
+      At_Any_Place : Boolean := False) return Boolean;
+   --  True when there is a attribute definition clause specifying attribute
+   --  Nam for Typ. In Ada 2005 mode, returns True only when the attribute
+   --  definition clause is visible, unless At_Any_Place is True (in which case
+   --  no visiblity test is made, and True is returned as long as an attribute
+   --  is visible at any place). Note that attribute definition clauses
+   --  inherited from parent types are taken into account by this predicate
+   --  (to test for presence of an attribute definition clause for one
+   --  specific type, excluding inherited definitions, the flags
+   --  Has_Specified_Stream_* can be used instead).
 
    function In_Preelaborated_Unit return Boolean;
    --  Determines if the current scope is within a preelaborated compilation
@@ -58,9 +71,13 @@ package Sem_Cat is
    --  (RM 10.2.1(16)).
 
    procedure Set_Categorization_From_Pragmas (N : Node_Id);
-   --  Since validation of categorization dependency is done during analyze
-   --  so categorization flags from following pragmas should be set before
+   --  Since validation of categorization dependency is done during Analyze,
+   --  categorization flags from following pragmas should be set before
    --  validation begin. N is the N_Compilation_Unit node.
+
+   procedure Set_Categorization_From_Scope (E : Entity_Id; Scop : Entity_Id);
+   --  Set categorization flags Pure, Remote_Call_Interface and Remote_Types
+   --  on entity E according to those of Scop.
 
    procedure Validate_Access_Type_Declaration (T : Entity_Id; N : Node_Id);
    --  Validate all constraints against declaration of access types in
@@ -93,7 +110,7 @@ package Sem_Cat is
    --  the checks cannot be made before knowing if the object is imported.
 
    procedure Validate_RCI_Declarations (P : Entity_Id);
-   --  Apply semantic checks given in  E2.3(10-14).
+   --  Apply semantic checks given in  E2.3(10-14)
 
    procedure Validate_RCI_Subprogram_Declaration (N : Node_Id);
    --  Check for RCI unit subprogram declarations with respect to
@@ -106,12 +123,6 @@ package Sem_Cat is
    --  type for an allocator shall not be a remote access-to-class-wide
    --  type. And a remote access-to-class-wide type shall not be an actual
    --  parameter for a generic formal access type. RM E.2.3(22).
-
-   procedure Validate_Remote_Access_To_Subprogram_Type (N : Node_Id);
-   --  Checks that a remote access to subprogram type does not have a
-   --  parameter of an access type. This is not strictly forbidden at this
-   --  time, but this is useless, as such a RAS type will not be usable
-   --  per E.2.2(12) and E.2.3(14).
 
    procedure Validate_RT_RAT_Component (N : Node_Id);
    --  Given N, the package library unit declaration node, we should check
@@ -139,5 +150,11 @@ package Sem_Cat is
    --  Non-static constant and variable are the targets, generic parameters
    --  are not included because the generic declaration and body are
    --  preelaborable.
+
+   procedure Validate_RACW_Primitives (T : Entity_Id);
+   --  Enforce constraints on primitive operations of the designated type of
+   --  an RACW. Note that since the complete set of primitive operations of the
+   --  designated type needs to be known, we must defer these checks until the
+   --  designated type is frozen.
 
 end Sem_Cat;

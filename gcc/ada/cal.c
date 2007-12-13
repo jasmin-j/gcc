@@ -6,8 +6,7 @@
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *                                                                          *
- *          Copyright (C) 1992-2001, Free Software Foundation, Inc.         *
+ *          Copyright (C) 1992-2007, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -17,8 +16,8 @@
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
  * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
+ * Boston, MA 02110-1301, USA.                                              *
  *                                                                          *
  * As a  special  exception,  if you  link  this file  with other  files to *
  * produce an executable,  this file does not by itself cause the resulting *
@@ -32,12 +31,12 @@
  ****************************************************************************/
 
 /*  This file contains those routines named by Import pragmas in package    */
-/*  GNAT.Calendar. It is used to to Duration to timeval convertion.         */
-/*  These are simple wrappers function to abstarct the fact that the C      */
-/*  struct timeval fields type are not normalized (they are generaly        */
+/*  GNAT.Calendar. It is used to do Duration to timeval conversion.         */
+/*  These are simple wrappers function to abstract the fact that the C      */
+/*  struct timeval fields type are not normalized (they are generally       */
 /*  defined as int or long values).                                         */
 
-#if defined(VMS)
+#if defined(VMS) || defined(__nucleus__)
 
 /* this is temporary code to avoid build failure under VMS */
 
@@ -54,9 +53,26 @@ __gnat_duration_to_timeval (long sec, long usec, void *t)
 #else
 
 #if defined (__vxworks)
+#ifdef __RTP__
+#include <time.h>
+#include <version.h>
+#if (_WRS_VXWORKS_MINOR != 0)
+#include <sys/time.h>
+#endif
+#else
 #include <sys/times.h>
+#endif
+#elif defined (__nucleus__)
+#include <time.h>
 #else
 #include <sys/time.h>
+#endif
+
+#ifdef __MINGW32__
+#include "mingw32.h"
+#if STD_MINGW
+#include <winsock.h>
+#endif
 #endif
 
 void
@@ -69,7 +85,7 @@ __gnat_timeval_to_duration (struct timeval *t, long *sec, long *usec)
 void
 __gnat_duration_to_timeval (long sec, long usec, struct timeval *t)
 {
-  /* here we are doing implicit convertion from a long to the struct timeval
+  /* here we are doing implicit conversion from a long to the struct timeval
      fields types. */
 
   t->tv_sec = sec;
@@ -88,7 +104,7 @@ __gnat_duration_to_timeval (long sec, long usec, struct timeval *t)
    what time_t is on the target.  */
 
 long
-gnat_time ()
+gnat_time (void)
 {
   return time (0);
 }

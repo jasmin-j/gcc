@@ -1,5 +1,7 @@
+// { dg-do link }
+// { dg-options "-frepo" }
+// { dg-require-host-local "" }
 // Build then link:
-// Special g++ Options: -frepo
 
 template <class T>
 struct S {
@@ -13,3 +15,5 @@ int main ()
 {
   S<int> s;
 }
+
+// { dg-final { cleanup-repo-files } }

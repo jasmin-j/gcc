@@ -1,6 +1,6 @@
 // Low-level functions for atomic operations: AIX version  -*- C++ -*-
 
-// Copyright (C) 2000, 2001 Free Software Foundation, Inc.
+// Copyright (C) 2000, 2001, 2004, 2005 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -27,33 +27,32 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
-#ifndef _BITS_ATOMICITY_H
-#define _BITS_ATOMICITY_H       1
+#include <ext/atomicity.h>
 
 /* We cannot use the cpu/powerpc/bits/atomicity.h inline assembly
    definitions for these operations since they depend on operations
    that are not available on the original POWER architecture.  AIX
    still runs on the POWER architecture, so it would be incorrect to
-   assume the existence of these instructions.  */
+   assume the existence of these instructions.
 
-/* This should match the type pointed to by atomic_p in
-   <sys/atomic_op.h>.  */
-typedef int _Atomic_word;
+   The definition of _Atomic_word must match the type pointed to by
+   atomic_p in <sys/atomic_op.h>.  */
 
+extern "C"
+{
 #include <sys/atomic_op.h>
-
-static inline int
-__attribute__ ((unused))
-__exchange_and_add (atomic_p __mem, int __val)
-{
-  return fetch_and_add (__mem, __val);
 }
 
-static inline void
-__attribute__ ((unused))
-__atomic_add (atomic_p __mem, int __val)
-{
-  (void) fetch_and_add (__mem, __val);
-}
+_GLIBCXX_BEGIN_NAMESPACE(__gnu_cxx)
 
-#endif /* atomicity.h */
+  _Atomic_word
+  __attribute__ ((__unused__))
+  __exchange_and_add (volatile _Atomic_word* __mem, int __val)
+  { return ::fetch_and_add(const_cast<atomic_p>(__mem), __val); }
+
+  void
+  __attribute__ ((__unused__))
+  __atomic_add (volatile _Atomic_word* __mem, int __val)
+  { (void) ::fetch_and_add(const_cast<atomic_p>(__mem), __val); }
+
+_GLIBCXX_END_NAMESPACE

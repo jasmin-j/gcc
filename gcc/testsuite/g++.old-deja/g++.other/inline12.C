@@ -1,5 +1,5 @@
-// Build don't link:
-// Special g++ Options: -O2 -g
+// { dg-do assemble  }
+// { dg-options "-O2 -g" }
 // (Should preferrably cycle through options.)
 // Origin: Hans-Peter Nilsson <hp@axis.com>
 // See <URL:http://gcc.gnu.org/ml/gcc-patches/2000-06/msg00310.html>
@@ -62,10 +62,10 @@ class ShBop
  public:
   inline ShBop(const ShBe* theBe);
   void            shWw(bool,
-                                char* a1 = "",
-                                char* a2 = "",
+                                const char* a1 = "",
+                                const char* a2 = "",
                                 int   a3 = -1,
-                                char* a4 = "foo");
+                                const char* a4 = "foo");
   typedef enum { shOk,
                  shFailed,
                  shDone,

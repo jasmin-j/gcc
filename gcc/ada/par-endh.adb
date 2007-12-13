@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -88,7 +86,7 @@ package body Endh is
    --  child unit or a node with a Chars field identifying the actual label.
 
    End_Labl_Present : Boolean;
-   --  Indicates that the value in End_Labl was for an explicit label.
+   --  Indicates that the value in End_Labl was for an explicit label
 
    Syntax_OK : Boolean;
    --  Set True if the entry is syntactically correct
@@ -115,11 +113,16 @@ package body Endh is
    -- Local Subprograms --
    -----------------------
 
-   procedure Evaluate_End_Entry (SS_Index : Int);
+   procedure Evaluate_End_Entry (SS_Index : Nat);
    --  Compare scanned END entry (as recorded by a prior call to P_End_Scan)
    --  with a specified entry in the scope stack (the single parameter is the
    --  entry index in the scope stack). Note that Scan is not called. The above
    --  variables xxx_OK are set to indicate the result of the evaluation.
+
+   function Explicit_Start_Label (SS_Index : Nat) return Boolean;
+   --  Determines whether the specified entry in the scope stack has an
+   --  explicit start label (i.e. one other than one that was created by
+   --  the parser when no explicit label was present)
 
    procedure Output_End_Deleted;
    --  Output a message complaining that the current END structure does not
@@ -215,6 +218,10 @@ package body Endh is
             End_Type := E_Record;
             Scan; -- past RECORD
 
+         elsif Token = Tok_Return then
+            End_Type := E_Return;
+            Scan; -- past RETURN
+
          elsif Token = Tok_Select then
             End_Type := E_Select;
             Scan; -- past SELECT
@@ -299,7 +306,7 @@ package body Endh is
                   --  Case of child unit name
 
                   if Nkind (End_Labl) = N_Defining_Program_Unit_Name then
-                     declare
+                     Child_End : declare
                         Eref : constant Node_Id :=
                                  Make_Identifier (Token_Ptr,
                                    Chars =>
@@ -307,6 +314,10 @@ package body Endh is
 
                         function Copy_Name (N : Node_Id) return Node_Id;
                         --  Copies a selected component or identifier
+
+                        ---------------
+                        -- Copy_Name --
+                        ---------------
 
                         function Copy_Name (N : Node_Id) return Node_Id is
                            R : Node_Id;
@@ -329,6 +340,8 @@ package body Endh is
                            end if;
                         end Copy_Name;
 
+                     --  Start of processing for Child_End
+
                      begin
                         Set_Comes_From_Source (Eref, False);
 
@@ -336,7 +349,7 @@ package body Endh is
                           Make_Designator (Token_Ptr,
                             Name       => Copy_Name (Name (End_Labl)),
                             Identifier => Eref);
-                     end;
+                     end Child_End;
 
                   --  Simple identifier case
 
@@ -365,7 +378,7 @@ package body Endh is
 
                   if Style_Check
                     and then End_Type = E_Name
-                    and then Present (Scope.Table (Scope.Last).Labl)
+                    and then Explicit_Start_Label (Scope.Last)
                   then
                      Style.No_End_Name (Scope.Table (Scope.Last).Labl);
                   end if;
@@ -656,7 +669,7 @@ package body Endh is
    -- Evaluate End Entry --
    ------------------------
 
-   procedure Evaluate_End_Entry (SS_Index : Int) is
+   procedure Evaluate_End_Entry (SS_Index : Nat) is
    begin
       Column_OK := (End_Column = Scope.Table (SS_Index).Ecol);
 
@@ -693,6 +706,7 @@ package body Endh is
 
          begin
             if Nkind (End_Labl) in N_Has_Chars
+              and then Comes_From_Source (Nam)
               and then Nkind (Nam) in N_Has_Chars
               and then Chars (End_Labl) > Error_Name
               and then Chars (Nam) > Error_Name
@@ -702,7 +716,8 @@ package body Endh is
 
                if Error_Msg_Name_1 > Error_Name then
                   declare
-                     S : String (1 .. Name_Len) := Name_Buffer (1 .. Name_Len);
+                     S : constant String (1 .. Name_Len) :=
+                           Name_Buffer (1 .. Name_Len);
 
                   begin
                      Get_Name_String (Error_Msg_Name_1);
@@ -725,13 +740,14 @@ package body Endh is
       --  case, this is acceptable only if the loop is unlabeled.
 
       elsif End_Type = E_Loop then
-         Syntax_OK := (Scope.Table (SS_Index).Labl = Empty);
+         Syntax_OK := not Explicit_Start_Label (SS_Index);
 
       --  Cases where a label is definitely allowed on the END line
 
       elsif End_Type = E_Name then
-         Syntax_OK := (Scope.Table (SS_Index).Labl = Empty or else
-                         not Scope.Table (SS_Index).Lreq);
+         Syntax_OK := (not Explicit_Start_Label (SS_Index))
+                         or else
+                      (not Scope.Table (SS_Index).Lreq);
 
       --  Otherwise we have cases which don't allow labels anyway, so we
       --  certainly accept an END which does not have a label.
@@ -740,6 +756,33 @@ package body Endh is
          Syntax_OK := True;
       end if;
    end Evaluate_End_Entry;
+
+   --------------------------
+   -- Explicit_Start_Label --
+   --------------------------
+
+   function Explicit_Start_Label (SS_Index : Nat) return Boolean is
+      L    : constant Node_Id := Scope.Table (SS_Index).Labl;
+      Etyp : constant SS_End_Type := Scope.Table (SS_Index).Etyp;
+
+   begin
+      if No (L) then
+         return False;
+
+      --  In the following test we protect the call to Comes_From_Source
+      --  against lines containing previously reported syntax errors.
+
+      elsif (Etyp = E_Loop
+         or else Etyp = E_Name
+         or else Etyp = E_Suspicious_Is
+         or else Etyp = E_Bad_Is)
+         and then Comes_From_Source (L)
+      then
+         return True;
+      else
+         return False;
+      end if;
+   end Explicit_Start_Label;
 
    ------------------------
    -- Output End Deleted --
@@ -759,6 +802,9 @@ package body Endh is
 
       elsif End_Type = E_Record then
          Error_Msg_SC ("no RECORD for this `END RECORD`!");
+
+      elsif End_Type = E_Return then
+         Error_Msg_SC ("no RETURN for this `END RETURN`!");
 
       elsif End_Type = E_Select then
          Error_Msg_SC ("no SELECT for this `END SELECT`!");
@@ -785,8 +831,13 @@ package body Endh is
 
       End_Type := Scope.Table (Scope.Last).Etyp;
       Error_Msg_Col    := Scope.Table (Scope.Last).Ecol;
-      Error_Msg_Node_1 := Scope.Table (Scope.Last).Labl;
       Error_Msg_Sloc   := Scope.Table (Scope.Last).Sloc;
+
+      if Explicit_Start_Label (Scope.Last) then
+         Error_Msg_Node_1 := Scope.Table (Scope.Last).Labl;
+      else
+         Error_Msg_Node_1 := Empty;
+      end if;
 
       --  Suppress message if error was posted on opening label
 
@@ -813,6 +864,10 @@ package body Endh is
       elsif End_Type = E_Record then
          Error_Msg_SC
            ("`END RECORD;` expected@ for RECORD#!");
+
+      elsif End_Type = E_Return then
+         Error_Msg_SC
+           ("`END RETURN;` expected@ for RETURN#!");
 
       elsif End_Type = E_Select then
          Error_Msg_SC
@@ -854,8 +909,13 @@ package body Endh is
       end if;
 
       End_Type := Scope.Table (Scope.Last).Etyp;
-      Error_Msg_Node_1 := Scope.Table (Scope.Last).Labl;
       Error_Msg_Sloc   := Scope.Table (Scope.Last).Sloc;
+
+      if Explicit_Start_Label (Scope.Last) then
+         Error_Msg_Node_1 := Scope.Table (Scope.Last).Labl;
+      else
+         Error_Msg_Node_1 := Empty;
+      end if;
 
       if End_Type = E_Case then
          Error_Msg_BC ("missing `END CASE;` for CASE#!");
@@ -873,6 +933,10 @@ package body Endh is
       elsif End_Type = E_Record then
          Error_Msg_SC
            ("missing `END RECORD;` for RECORD#!");
+
+      elsif End_Type = E_Return then
+         Error_Msg_SC
+           ("missing `END RETURN;` for RETURN#!");
 
       elsif End_Type = E_Select then
          Error_Msg_BC
@@ -977,6 +1041,13 @@ package body Endh is
             if Style.RM_Column_Check then
                if End_Column /= Scope.Table (Scope.Last).Ecol
                  and then Current_Line_Start > Scope.Table (Scope.Last).Sloc
+
+               --  A special case, for END RECORD, we are also allowed to
+               --  line up with the TYPE keyword opening the declaration.
+
+                 and then (Scope.Table (Scope.Last).Etyp /= E_Record
+                            or else Get_Column_Number (End_Sloc) /=
+                                    Get_Column_Number (Type_Token_Location))
                then
                   Error_Msg_Col := Scope.Table (Scope.Last).Ecol;
                   Error_Msg
@@ -1015,9 +1086,9 @@ package body Endh is
                        and then
                          (Scope.Last = 1
                             or else
-                              (No (Scope.Table (Scope.Last - 1).Labl)
-                                or else
-                               not Same_Label
+                              (not Explicit_Start_Label (Scope.Last - 1))
+                                 or else
+                              (not Same_Label
                                      (End_Labl,
                                       Scope.Table (Scope.Last - 1).Labl)))
                      then

@@ -4,19 +4,19 @@
 /* Origin: Aldy Hernandez <aldyh@redhat.com>.  */
 /* Purpose: Program to test generic SIMD support.  */
 
-typedef int __attribute__((mode(V4SI))) v4si;
-typedef int __attribute__((mode(V8HI))) v8hi;
-typedef int __attribute__((mode(V2SI))) v2si;
-typedef unsigned int __attribute__((mode(V4SI))) uv4si;
+typedef int __attribute__((vector_size (16))) v4si;
+typedef short __attribute__((vector_size (16))) v8hi;
+typedef int __attribute__((vector_size (8))) v2si;
+typedef unsigned int __attribute__((vector_size (16))) uv4si;
 
 v4si a, b;
 v2si c, d;
 v8hi e;
 uv4si f;
 
-int foo __attribute__((mode(DI)));
-int foo1 __attribute__((mode(SI)));
-int foo2 __attribute__((mode(V4HI)));
+long long foo;
+int foo1;
+short foo2 __attribute__((vector_size (8)));
 
 void
 hanneke ()
@@ -32,7 +32,8 @@ hanneke ()
   e = (typeof (e)) a;
 
   /* Different signed SIMD assignment.  */
-  f = a; /* { dg-error "incompatible types in assignment" } */
+  f = a; /* { dg-message "note: use -flax-vector-conversions to permit conversions between vectors with differing element types or numbers of subparts" } */
+  /* { dg-error "incompatible types in assignment" "" { target *-*-* } 35 } */
 
   /* Casted different signed SIMD assignment.  */
   f = (uv4si) a;
@@ -54,8 +55,8 @@ hanneke ()
   a = -b;
 
   /* Operators on incompatible SIMD types.  */
-  a = b + c; /* { dg-error "can't convert between vector values of different size" } */
-  a = b - c; /* { dg-error "can't convert between vector values of different size" } */
-  a = b * c; /* { dg-error "can't convert between vector values of different size" } */
-  a = b / c; /* { dg-error "can't convert between vector values of different size" } */
+  a = b + c; /* { dg-error "invalid operands to binary +" } */
+  a = b - c; /* { dg-error "invalid operands to binary -" } */
+  a = b * c; /* { dg-error "invalid operands to binary *" } */
+  a = b / c; /* { dg-error "invalid operands to binary /" } */
 }

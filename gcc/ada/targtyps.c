@@ -6,8 +6,7 @@
  *                                                                          *
  *                                  Body                                    *
  *                                                                          *
- *                                                                          *
- *          Copyright (C) 1992-2001 Free Software Foundation, Inc.          *
+ *          Copyright (C) 1992-2007, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -17,8 +16,8 @@
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
  * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
+ * Boston, MA 02110-1301, USA.                                              *
  *                                                                          *
  * As a  special  exception,  if you  link  this file  with other  files to *
  * produce an executable,  this file does not by itself cause the resulting *
@@ -70,92 +69,134 @@
    to determine the sizes that are used for various C types. */
 
 Pos
-get_target_bits_per_unit ()
+get_target_bits_per_unit (void)
 {
   return BITS_PER_UNIT;
 }
 
 Pos
-get_target_bits_per_word ()
+get_target_bits_per_word (void)
 {
   return BITS_PER_WORD;
 }
 
 Pos
-get_target_char_size ()
+get_target_char_size (void)
 {
   return CHAR_TYPE_SIZE;
 }
 
 Pos
-get_target_wchar_t_size ()
+get_target_wchar_t_size (void)
 {
-  /* We never want wide chacters less than "short" in Ada.  */
+  /* We never want wide characters less than "short" in Ada.  */
   return MAX (SHORT_TYPE_SIZE, WCHAR_TYPE_SIZE);
 }
 
 Pos
-get_target_short_size ()
+get_target_short_size (void)
 {
   return SHORT_TYPE_SIZE;
 }
 
 Pos
-get_target_int_size ()
+get_target_int_size (void)
 {
   return INT_TYPE_SIZE;
 }
 
 Pos
-get_target_long_size ()
+get_target_long_size (void)
 {
   return ADA_LONG_TYPE_SIZE;
 }
 
 Pos
-get_target_long_long_size ()
+get_target_long_long_size (void)
 {
   return LONG_LONG_TYPE_SIZE;
 }
 
 Pos
-get_target_float_size ()
+get_target_float_size (void)
 {
-  return FLOAT_TYPE_SIZE;
+  return fp_prec_to_size (FLOAT_TYPE_SIZE);
 }
 
 Pos
-get_target_double_size ()
+get_target_double_size (void)
 {
-  return DOUBLE_TYPE_SIZE;
+  return fp_prec_to_size (DOUBLE_TYPE_SIZE);
 }
 
 Pos
-get_target_long_double_size ()
+get_target_long_double_size (void)
 {
-  return WIDEST_HARDWARE_FP_SIZE;
+  return fp_prec_to_size (WIDEST_HARDWARE_FP_SIZE);
 }
 
+
 Pos
-get_target_pointer_size ()
+get_target_pointer_size (void)
 {
   return POINTER_SIZE;
 }
 
+/* Alignment related values, mapped to attributes for functional and
+   documentation purposes.  */
+
+/* Standard'Maximum_Default_Alignment.  Maximum alignment that the compiler
+   might choose by default for a type or object.
+
+   Stricter alignment requests trigger gigi's aligning_type circuitry for
+   stack objects or objects allocated by the default allocator.  */
+
 Pos
-get_target_maximum_alignment ()
+get_target_maximum_default_alignment (void)
 {
   return BIGGEST_ALIGNMENT / BITS_PER_UNIT;
 }
 
-Boolean
-get_target_no_dollar_in_label ()
-{
-#ifdef NO_DOLLAR_IN_LABEL
-  return 1;
-#else
-  return 0;
+/* Standard'Default_Allocator_Alignment.  Alignment guaranteed to be honored
+   by the default allocator (System.Memory.Alloc or malloc if we have no
+   run-time library at hand).
+
+   Stricter alignment requests trigger gigi's aligning_type circuitry for
+   objects allocated by the default allocator.  */
+
+#ifndef MALLOC_ALIGNMENT
+#define MALLOC_ALIGNMENT BIGGEST_ALIGNMENT
 #endif
+
+Pos
+get_target_default_allocator_alignment (void)
+{
+  /* ??? Need a way to get info about __gnat_malloc from here (whether
+     it is handy and what alignment it honors).  */
+
+  return MALLOC_ALIGNMENT / BITS_PER_UNIT;
+}
+
+/* Standard'Maximum_Allowed_Alignment.  Maximum alignment that we may
+   accept for any type or object.  */
+
+#ifndef MAX_OFILE_ALIGNMENT
+#define MAX_OFILE_ALIGNMENT BIGGEST_ALIGNMENT
+#endif
+
+Pos
+get_target_maximum_allowed_alignment (void)
+{
+  return MAX_OFILE_ALIGNMENT / BITS_PER_UNIT;
+}
+
+/* Standard'Maximum_Alignment.  The single attribute initially made
+   available, now a synonym of Standard'Maximum_Default_Alignment.  */
+
+Pos
+get_target_maximum_alignment (void)
+{
+  return get_target_maximum_default_alignment ();
 }
 
 #ifndef FLOAT_WORDS_BIG_ENDIAN
@@ -163,31 +204,31 @@ get_target_no_dollar_in_label ()
 #endif
 
 Nat
-get_float_words_be ()
+get_float_words_be (void)
 {
   return FLOAT_WORDS_BIG_ENDIAN;
 }
 
 Nat
-get_words_be ()
+get_words_be (void)
 {
   return WORDS_BIG_ENDIAN;
 }
 
 Nat
-get_bytes_be ()
+get_bytes_be (void)
 {
   return BYTES_BIG_ENDIAN;
 }
 
 Nat
-get_bits_be ()
+get_bits_be (void)
 {
   return BITS_BIG_ENDIAN;
 }
 
 Nat
-get_strict_alignment ()
+get_strict_alignment (void)
 {
   return STRICT_ALIGNMENT;
 }

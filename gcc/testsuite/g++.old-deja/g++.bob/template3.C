@@ -1,4 +1,4 @@
-// Build don't link: 
+// { dg-do assemble  }
 // prms-id: 9979
 
 template < class Referencee >
@@ -38,7 +38,7 @@ public:
 class ObjectExchange
 {
 public:
-    ObjectExchange() {};
+    ObjectExchange() {}
 
     ExchangeableList	i_theWatchList; // Instruments being monitored
 };

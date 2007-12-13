@@ -1,13 +1,13 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
---                SYSTEM.TASK_PRIMITIVES.INTERRUPT_OPERATIONS               --
+--               S Y S T E M . T A S K _ P R I M I T I V E S .              --
+--                  I N T E R R U P T _ O P E R A T I O N S                 --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---                                                                          --
---           Copyright (C) 1998-2001 Free Software Foundation, Inc.         --
+--           Copyright (C) 1998-2005 Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +17,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -28,24 +28,26 @@
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
--- Extensive contributions were provided by Ada Core Technologies Inc.      --
+-- Extensive contributions were provided by Ada Core Technologies, Inc.     --
 --                                                                          --
 ------------------------------------------------------------------------------
 
 with System.Interrupt_Management;
 with System.Tasking;
+
 package System.Task_Primitives.Interrupt_Operations is
+   pragma Preelaborate;
 
    package IM renames System.Interrupt_Management;
    package ST renames System.Tasking;
 
-   procedure Set_Interrupt_ID (Interrupt : IM.Interrupt_ID; T : ST.Task_ID);
+   procedure Set_Interrupt_ID (Interrupt : IM.Interrupt_ID; T : ST.Task_Id);
    --  Associate an Interrupt_ID with a task.
 
-   function Get_Interrupt_ID (T : ST.Task_ID) return IM.Interrupt_ID;
+   function Get_Interrupt_ID (T : ST.Task_Id) return IM.Interrupt_ID;
    --  Return the Interrupt_ID associated with a task.
 
-   function Get_Task_ID (Interrupt : IM.Interrupt_ID) return ST.Task_ID;
-   --  Return the Task_ID associated with an Interrupt.
+   function Get_Task_Id (Interrupt : IM.Interrupt_ID) return ST.Task_Id;
+   --  Return the Task_Id associated with an Interrupt.
 
 end System.Task_Primitives.Interrupt_Operations;

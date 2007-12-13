@@ -1,6 +1,6 @@
 // -*- C++ -*- compatibility header.
 
-// Copyright (C) 2002 Free Software Foundation, Inc.
+// Copyright (C) 2002, 2003, 2007 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -13,10 +13,10 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 
-// You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// You should have received a copy of the GNU General Public License
+// along with this library; see the file COPYING.  If not, write to
+// the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+// Boston, MA 02110-1301, USA.
 
 // As a special exception, you may use this file as part of a free software
 // library without restriction.  Specifically, if other files instantiate
@@ -27,14 +27,19 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
-#ifndef _CPP_WCHAR_H_
-#define _CPP_WCHAR_H_ 1
+/** @file wchar.h
+ *  This is a Standard C++ Library header.
+ */
 
 #include <cwchar>
 
+#ifndef _GLIBCXX_WCHAR_H
+#define _GLIBCXX_WCHAR_H 1
+
+#ifdef _GLIBCXX_NAMESPACE_C
 using std::mbstate_t;
 
-#if _GLIBCPP_USE_WCHAR_T
+#if _GLIBCXX_USE_WCHAR_T
 using std::wint_t;
 
 using std::btowc;
@@ -50,11 +55,17 @@ using std::fwscanf;
 using std::swprintf;
 using std::swscanf;
 using std::vfwprintf;
+#if _GLIBCXX_HAVE_VFWSCANF
 using std::vfwscanf;
+#endif
 using std::vswprintf;
+#if _GLIBCXX_HAVE_VSWSCANF
 using std::vswscanf;
+#endif
 using std::vwprintf;
+#if _GLIBCXX_HAVE_VWSCANF
 using std::vwscanf;
+#endif
 using std::wprintf;
 using std::wscanf;
 using std::getwc;
@@ -69,7 +80,9 @@ using std::putwchar;
 using std::ungetwc;
 using std::wcrtomb;
 using std::wcstod;
+#if _GLIBCXX_HAVE_WCSTOF
 using std::wcstof;
+#endif
 using std::wcstol;
 using std::wcstoul;
 using std::wcscpy;
@@ -95,12 +108,14 @@ using std::wmemmove;
 using std::wmemset;
 using std::wcsftime;
 
-#if _GLIBCPP_USE_C99
+#if _GLIBCXX_USE_C99
 using std::wcstold;
 using std::wcstoll;
 using std::wcstoull;
 #endif
 
-#endif  //_GLIBCPP_USE_WCHAR_T
+#endif  //_GLIBCXX_USE_WCHAR_T
+
+#endif 
 
 #endif

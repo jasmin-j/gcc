@@ -4,10 +4,9 @@
 --                                                                          --
 --                      S Y S T E M . V A L _ R E A L                       --
 --                                                                          --
---                                 S p e c                                  --
+--                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2000 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -42,10 +41,9 @@ package body System.Val_Real is
    ---------------
 
    function Scan_Real
-     (Str  : String;
-      Ptr  : access Integer;
-      Max  : Integer)
-      return Long_Long_Float
+     (Str : String;
+      Ptr : not null access Integer;
+      Max : Integer) return Long_Long_Float
    is
       procedure Reset;
       pragma Import (C, Reset, "__gnat_init_float");
@@ -82,6 +80,17 @@ package body System.Val_Real is
       After_Point : Natural := 0;
       --  Set to 1 after the point
 
+      Num_Saved_Zeroes : Natural := 0;
+      --  This counts zeroes after the decimal point. A non-zero value means
+      --  that this number of previously scanned digits are zero. if the end
+      --  of the number is reached, these zeroes are simply discarded, which
+      --  ensures that trailing zeroes after the point never affect the value
+      --  (which might otherwise happen as a result of rounding). With this
+      --  processing in place, we can ensure that, for example, we get the
+      --  same exact result from 1.0E+49 and 1.0000000E+49. This is not
+      --  necessarily required in a case like this where the result is not
+      --  a machine number, but it is certainly a desirable behavior.
+
       procedure Scanf;
       --  Scans integer literal value starting at current character position.
       --  For each digit encountered, Uval is multiplied by 10.0, and the new
@@ -91,15 +100,46 @@ package body System.Val_Real is
       --  return P points past the last character. On entry, the current
       --  character is known to be a digit, so a numeral is definitely present.
 
+      -----------
+      -- Scanf --
+      -----------
+
       procedure Scanf is
          Digit : Natural;
 
       begin
          loop
             Digit := Character'Pos (Str (P)) - Character'Pos ('0');
-            Uval := Uval * 10.0 + Long_Long_Float (Digit);
             P := P + 1;
-            Scale := Scale - After_Point;
+
+            --  Save up trailing zeroes after the decimal point
+
+            if Digit = 0 and After_Point = 1 then
+               Num_Saved_Zeroes := Num_Saved_Zeroes + 1;
+
+            --  Here for a non-zero digit
+
+            else
+               --  First deal with any previously saved zeroes
+
+               if Num_Saved_Zeroes /= 0 then
+                  while Num_Saved_Zeroes > Maxpow loop
+                     Uval := Uval * Powten (Maxpow);
+                     Num_Saved_Zeroes := Num_Saved_Zeroes - Maxpow;
+                     Scale := Scale - Maxpow;
+                  end loop;
+
+                  Uval := Uval * Powten (Num_Saved_Zeroes);
+                  Scale := Scale - Num_Saved_Zeroes;
+
+                  Num_Saved_Zeroes := 0;
+               end if;
+
+               --  Accumulate new digit
+
+               Uval := Uval * 10.0 + Long_Long_Float (Digit);
+               Scale := Scale - After_Point;
+            end if;
 
             --  Done if end of input field
 
@@ -198,15 +238,35 @@ package body System.Val_Real is
                   raise Constraint_Error;
                end if;
 
-               P := P + 1;
-               Fdigit := Long_Long_Float (Digit);
+               --  Save up trailing zeroes after the decimal point
 
-               if Fdigit >= Base then
-                  Bad_Base := True;
+               if Digit = 0 and After_Point = 1 then
+                  Num_Saved_Zeroes := Num_Saved_Zeroes + 1;
+
+               --  Here for a non-zero digit
+
                else
-                  Scale := Scale - After_Point;
-                  Uval := Uval * Base + Fdigit;
+                  --  First deal with any previously saved zeroes
+
+                  if Num_Saved_Zeroes /= 0 then
+                     Uval := Uval * Base ** Num_Saved_Zeroes;
+                     Scale := Scale - Num_Saved_Zeroes;
+                     Num_Saved_Zeroes := 0;
+                  end if;
+
+                  --  Now accumulate the new digit
+
+                  Fdigit := Long_Long_Float (Digit);
+
+                  if Fdigit >= Base then
+                     Bad_Base := True;
+                  else
+                     Scale := Scale - After_Point;
+                     Uval := Uval * Base + Fdigit;
+                  end if;
                end if;
+
+               P := P + 1;
 
                if P > Max then
                   raise Constraint_Error;
@@ -274,10 +334,9 @@ package body System.Val_Real is
       if Base /= 10.0 then
          Uval := Uval * Base ** Scale;
 
-      --  For base 10, use power of ten table, repeatedly if necessary.
+      --  For base 10, use power of ten table, repeatedly if necessary
 
       elsif Scale > 0 then
-
          while Scale > Maxpow loop
             Uval := Uval * Powten (Maxpow);
             Scale := Scale - Maxpow;
@@ -288,7 +347,6 @@ package body System.Val_Real is
          end if;
 
       elsif Scale < 0 then
-
          while (-Scale) > Maxpow loop
             Uval := Uval / Powten (Maxpow);
             Scale := Scale + Maxpow;
@@ -314,7 +372,6 @@ package body System.Val_Real is
             return Uval;
          end if;
       end if;
-
    end Scan_Real;
 
    ----------------
@@ -324,12 +381,10 @@ package body System.Val_Real is
    function Value_Real (Str : String) return Long_Long_Float is
       V : Long_Long_Float;
       P : aliased Integer := Str'First;
-
    begin
       V := Scan_Real (Str, P'Access, Str'Last);
       Scan_Trailing_Blanks (Str, P);
       return V;
-
    end Value_Real;
 
 end System.Val_Real;

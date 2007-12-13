@@ -1,6 +1,6 @@
 # crtn.s for sysv4
 
-#   Copyright (C) 1996 Free Software Foundation, Inc.
+#   Copyright (C) 1996, 2007 Free Software Foundation, Inc.
 #   Written By Michael Meissner
 # 
 # This file is free software; you can redistribute it and/or modify it
@@ -23,8 +23,8 @@
 # 
 # You should have received a copy of the GNU General Public License
 # along with this program; see the file COPYING.  If not, write to
-# the Free Software Foundation, 59 Temple Place - Suite 330,
-# Boston, MA 02111-1307, USA.
+# the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+# Boston, MA 02110-1301, USA.
 # 
 #    As a special exception, if you link this library with files
 #    compiled with GCC to produce an executable, this does not cause
@@ -39,6 +39,7 @@
 	.file	"scrtn.s"
 	.ident	"GNU C scrtn.s"
 
+#ifndef __powerpc64__
 # Default versions of exception handling register/deregister
 	.weak	_ex_register
 	.weak	_ex_deregister
@@ -53,7 +54,7 @@ __CTOR_END__:
 
 # End list of C++ destructors
 	.section ".dtors","aw"
-	.globl	__DTOR_END__
+	.weak	__DTOR_END__
 	.type	__DTOR_END__,@object
 __DTOR_END__:
 
@@ -80,3 +81,4 @@ _ex_range1:
 	mtlr	%r0
 	addi	%r1,%r1,16
 	blr
+#endif

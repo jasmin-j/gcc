@@ -1,12 +1,12 @@
 /* Functions related to building resource files.
-   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003
-   Free Software Foundation, Inc.
+   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+   2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.
 
 Java and all Java-based marks are trademarks or registered trademarks
 of Sun Microsystems, Inc. in the United States and other countries.
@@ -40,6 +39,9 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "ggc.h"
 #include "stdio.h"
 #include "target.h"
+#include "expr.h"
+#include "tree-iterator.h"
+#include "cgraph.h"
 
 /* DOS brain-damage */
 #ifndef O_BINARY
@@ -49,14 +51,11 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 /* A list of all the resources files.  */
 static GTY(()) tree resources = NULL;
 
-/* Function used to register resources.  */
-static GTY(()) rtx registerResource_libfunc;
-
 /* Count of all the resources compiled in this invocation.  */
 static int Jr_count = 0;
 
 void
-compile_resource_data (char *name, const char *buffer, int length)
+compile_resource_data (const char *name, const char *buffer, int length)
 {
   tree rtype, field = NULL_TREE, data_type, rinit, data, decl;
   char buf[60];
@@ -70,14 +69,15 @@ compile_resource_data (char *name, const char *buffer, int length)
   FINISH_RECORD (rtype);
   START_RECORD_CONSTRUCTOR (rinit, rtype);
   PUSH_FIELD_VALUE (rinit, "name_length", 
-		    build_int_2 (strlen (name), 0));
+		    build_int_cst (NULL_TREE, strlen (name)));
   PUSH_FIELD_VALUE (rinit, "resource_length", 
-		    build_int_2 (length, 0));
+		    build_int_cst (NULL_TREE, length));
   data = build_string (strlen(name) + length, buffer);
   TREE_TYPE (data) = data_type;
   PUSH_FIELD_VALUE (rinit, "data", data);
   FINISH_RECORD_CONSTRUCTOR (rinit);
   TREE_CONSTANT (rinit) = 1;
+  TREE_INVARIANT (rinit) = 1;
 
   /* Generate a unique-enough identifier.  */
   sprintf (buf, "_Jr%d", ++Jr_count);
@@ -91,65 +91,33 @@ compile_resource_data (char *name, const char *buffer, int length)
   DECL_INITIAL (decl) = rinit;
   layout_decl (decl, 0);
   pushdecl (decl);
-  rest_of_decl_compilation (decl, (char*) 0, global_bindings_p (), 0);
-  make_decl_rtl (decl, (char*) 0);
-  assemble_variable (decl, 1, 0, 0);
+  rest_of_decl_compilation (decl, global_bindings_p (), 0);
+  varpool_finalize_decl (decl);
 
   resources = tree_cons (NULL_TREE, decl, resources);
 }
 
 void
-write_resource_constructor (void)
+write_resource_constructor (tree *list_p)
 {
-  tree init_name, init_type, init_decl;
-  tree iter;
+  tree iter, t, register_resource_fn;
 
-  /* Only do work if required.  */
-  if (resources == NULL_TREE)
+  if (resources == NULL)
     return;
 
-  init_name = get_file_function_name ('I');
-  init_type = build_function_type (void_type_node, end_params_node);
-
-  init_decl = build_decl (FUNCTION_DECL, init_name, init_type);
-  SET_DECL_ASSEMBLER_NAME (init_decl, init_name);
-  TREE_STATIC (init_decl) = 1;
-  current_function_decl = init_decl;
-  DECL_RESULT (init_decl) = build_decl (RESULT_DECL, 
-					NULL_TREE, void_type_node);
-
-  /* It can be a static function as long as collect2 does not have
-     to scan the object file to find its ctor/dtor routine.  */
-  TREE_PUBLIC (init_decl) = ! targetm.have_ctors_dtors;
-
-  pushlevel (0);
-  make_decl_rtl (init_decl, NULL);
-  init_function_start (init_decl, input_filename, 0);
-  expand_function_start (init_decl, 0);
+  t = build_function_type_list (void_type_node, ptr_type_node, NULL);
+  t = build_decl (FUNCTION_DECL, get_identifier ("_Jv_RegisterResource"), t);
+  TREE_PUBLIC (t) = 1;
+  DECL_EXTERNAL (t) = 1;
+  register_resource_fn = t;
 
   /* Write out entries in the same order in which they were defined.  */
-  for (iter = nreverse (resources); iter != NULL_TREE;
-       iter = TREE_CHAIN (iter))
+  for (iter = nreverse (resources); iter ; iter = TREE_CHAIN (iter))
     {
-      const char *name = IDENTIFIER_POINTER (DECL_NAME (TREE_VALUE (iter)));
-      emit_library_call (registerResource_libfunc, 0, VOIDmode, 1,
-			 gen_rtx (SYMBOL_REF, Pmode, name),
-			 Pmode);
+      t = build_fold_addr_expr (TREE_VALUE (iter));
+      t = build_call_expr (register_resource_fn, 1, t);
+      append_to_statement_list (t, list_p);
     }
-
-  expand_function_end (input_filename, 0, 0);
-  poplevel (1, 0, 1);
-  { 
-    /* Force generation, even with -O3 or deeper.  Gross hack.
-       FIXME.  */
-    int saved_flag = flag_inline_functions;
-    flag_inline_functions = 0;	
-    rest_of_compilation (init_decl);
-    flag_inline_functions = saved_flag;
-  }
-  current_function_decl = NULL_TREE;
-  (* targetm.asm_out.constructor) (XEXP (DECL_RTL (init_decl), 0),
-				   DEFAULT_INIT_PRIORITY);
 }
 
 /* Generate a byte array representing the contents of FILENAME.  The
@@ -157,7 +125,7 @@ write_resource_constructor (void)
    compiled Java resource, which is accessed by the runtime using
    NAME.  */
 void
-compile_resource_file (char *name, const char *filename)
+compile_resource_file (const char *name, const char *filename)
 {
   struct stat stat_buf;
   int fd;
@@ -175,20 +143,12 @@ compile_resource_file (char *name, const char *filename)
       perror ("Could not figure length of resource file");
       return;
     }
-  buffer = xmalloc (strlen (name) + stat_buf.st_size);
+  buffer = XNEWVEC (char, strlen (name) + stat_buf.st_size);
   strcpy (buffer, name);
   read (fd, buffer + strlen (name), stat_buf.st_size);
   close (fd);
 
   compile_resource_data (name, buffer, stat_buf.st_size);
-  write_resource_constructor ();
-}
-
-void
-init_resource_processing (void)
-{
-  registerResource_libfunc =
-    gen_rtx_SYMBOL_REF (Pmode, "_Jv_RegisterResource");
 }
 
 #include "gt-java-resource.h"

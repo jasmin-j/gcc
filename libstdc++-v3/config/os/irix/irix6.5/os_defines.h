@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -27,8 +27,8 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
-#ifndef _GLIBCPP_OS_DEFINES
-#define _GLIBCPP_OS_DEFINES 1
+#ifndef _GLIBCXX_OS_DEFINES
+#define _GLIBCXX_OS_DEFINES 1
 
 // System-specific #define, typedefs, corrections, etc, go here.  This
 // file will come before all others.
@@ -44,12 +44,11 @@
 // the command-line.
 #undef _POSIX_SOURCE
 
-#define __off_t off_t
-#define __off64_t off64_t
-#define __ssize_t ssize_t
-
 // GCC does not use thunks on IRIX. 
 #define _G_USING_THUNKS 0
+
+// FINOREAD takes an "off_t *" as argument.
+#define _GLIBCXX_FIONREAD_TAKES_OFF_T
 
 #endif
 

@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -26,7 +24,7 @@
 ------------------------------------------------------------------------------
 
 --  Program to construct C header file a-einfo.h (C version of einfo.ads spec)
---  for use by Gigi. This header file contaInF all definitions and access
+--  for use by Gigi. This header file contains all definitions and access
 --  functions, but does not contain set procedures, since Gigi is not allowed
 --  to modify the GNAT tree)
 
@@ -86,6 +84,9 @@ procedure XEinfo is
    OldS      : VString := Nul;
    Rtn       : VString := Nul;
    Term      : VString := Nul;
+
+   InB : File_Type;
+   --  Used to read initial header from body
 
    InF   : File_Type;
    --  Used to read full text of both spec and body
@@ -244,12 +245,10 @@ begin
       Create (Ofile, Out_File, "a-einfo.h");
    end if;
 
+   Open (InB, In_File, "einfo.adb");
    Open (InF, In_File, "einfo.ads");
 
    Lineno := 0;
-
-   --  Write header to output file
-
    loop
       Line := Get_Line (InF);
       Lineno := Lineno + 1;
@@ -258,7 +257,6 @@ begin
       Match (Line,
              "--                                 S p e c       ",
              "--                              C Header File    ");
-
       Match (Line, "--", "/*");
       Match (Line, Rtab (2) * A & "--", M);
       Replace (M, A & "*/");
@@ -378,7 +376,7 @@ begin
 
    while Match (Line, Get_FN) loop
 
-      --  Non-inlined function
+      --  Non-inlined funcion
 
       if not Present (Inlined, FN) then
          Put_Line (Ofile, "");
@@ -405,6 +403,7 @@ begin
 
    --  Read body to find inlined functions
 
+   Close (InB);
    Close (InF);
    Open (InF, In_File, "einfo.adb");
    Lineno := 0;

@@ -1,6 +1,8 @@
+// { dg-do link }
+// { dg-options "-frepo -Werror" }
+// { dg-require-host-local "" }
 // Build then link:
 
-// Special g++ Options: -frepo -Werror
 
 // Submitted by Melissa O'Neill <oneill@cs.sfu.ca>
 // the vtable of Foo<int> wouldn't be generated
@@ -25,3 +27,5 @@ int main () {
     
     rab.bar();
 }
+
+// { dg-final { cleanup-repo-files } }

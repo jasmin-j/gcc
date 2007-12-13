@@ -6,26 +6,24 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  Token scan routines.
+--  Token scan routines
 
 --  Error recovery: none of the T_xxx or TF_xxx routines raise Error_Resync
 
@@ -85,15 +83,15 @@ package body Tchk is
       --  A little recovery helper, accept then in place of =>
 
       elsif Token = Tok_Then then
-         Error_Msg_BC ("missing ""=>""");
+         Error_Msg_BC ("missing ""='>""");
          Scan; -- past THEN used in place of =>
 
       elsif Token = Tok_Colon_Equal then
-         Error_Msg_SC (""":="" should be ""=>""");
+         Error_Msg_SC (""":="" should be ""='>""");
          Scan; -- past := used in place of =>
 
       else
-         Error_Msg_AP ("missing ""=>""");
+         Error_Msg_AP ("missing ""='>""");
       end if;
    end T_Arrow;
 
@@ -124,7 +122,7 @@ package body Tchk is
       if Token = Tok_Box then
          Scan;
       else
-         Error_Msg_AP ("missing ""<>""");
+         Error_Msg_AP ("missing ""'<'>""");
       end if;
    end T_Box;
 
@@ -224,7 +222,7 @@ package body Tchk is
       if Token = Tok_Greater_Greater then
          Scan;
       else
-         Error_Msg_AP ("missing "">>""");
+         Error_Msg_AP ("missing ""'>'>""");
       end if;
    end T_Greater_Greater;
 
@@ -400,42 +398,59 @@ package body Tchk is
             Scan;
          end if;
 
+         return;
+
       elsif Token = Tok_Colon then
          Error_Msg_SC (""":"" should be "";""");
          Scan;
+         return;
 
       elsif Token = Tok_Comma then
          Error_Msg_SC (""","" should be "";""");
          Scan;
+         return;
 
       elsif Token = Tok_Dot then
          Error_Msg_SC ("""."" should be "";""");
          Scan;
+         return;
 
       --  An interesting little kludge here. If the previous token is a
-      --  semicolon, then there is no way that we can legitimately need
-      --  another semicolon. This could only arise in an error situation
-      --  where an error has already been signalled. By simply ignoring
-      --  the request for a semicolon in this case, we avoid some spurious
-      --  missing semicolon messages.
+      --  semicolon, then there is no way that we can legitimately need another
+      --  semicolon. This could only arise in an error situation where an error
+      --  has already been signalled. By simply ignoring the request for a
+      --  semicolon in this case, we avoid some spurious missing semicolon
+      --  messages.
 
       elsif Prev_Token = Tok_Semicolon then
          return;
 
-      --  If the current token is | then this is a reasonable
-      --  place to suggest the possibility of a "C" confusion :-)
+      --  If the current token is | then this is a reasonable place to suggest
+      --  the possibility of a "C" confusion.
 
       elsif Token = Tok_Vertical_Bar then
          Error_Msg_SC ("unexpected occurrence of ""'|"", did you mean OR'?");
          Resync_Past_Semicolon;
-
-      --  Otherwise we really do have a missing semicolon
-
-      else
-         Error_Msg_AP ("|missing "";""");
          return;
+
+      --  Deal with pragma. If pragma is not at start of line, it is considered
+      --  misplaced otherwise we treat it as a normal missing semicolong case.
+
+      elsif Token = Tok_Pragma
+        and then not Token_Is_At_Start_Of_Line
+      then
+         P_Pragmas_Misplaced;
+
+         if Token = Tok_Semicolon then
+            Scan;
+            return;
+         end if;
       end if;
 
+      --  If none of those tests return, we really have a missing semicolon
+
+      Error_Msg_AP ("|missing "";""");
+      return;
    end T_Semicolon;
 
    ------------
@@ -661,7 +676,13 @@ package body Tchk is
          return;
 
       else
-         if Token = Tok_Pragma then
+         --  Deal with pragma. If pragma is not at start of line, it is
+         --  considered misplaced otherwise we treat it as a normal
+         --  missing semicolong case.
+
+         if Token = Tok_Pragma
+           and then not Token_Is_At_Start_Of_Line
+         then
             P_Pragmas_Misplaced;
 
             if Token = Tok_Semicolon then
@@ -670,12 +691,19 @@ package body Tchk is
             end if;
          end if;
 
-         T_Semicolon; -- give missing semicolon message
+         --  Here we definitely have a missing semicolon, so give message
+
+         T_Semicolon;
+
+         --  Scan out junk on rest of line. Scan stops on END keyword, since
+         --  that seems to help avoid cascaded errors.
+
          Save_Scan_State (Scan_State); -- at start of junk tokens
 
          loop
             if Prev_Token_Ptr < Current_Line_Start
               or else Token = Tok_EOF
+              or else Token = Tok_End
             then
                Restore_Scan_State (Scan_State); -- to where we were
                return;
@@ -767,17 +795,12 @@ package body Tchk is
    -----------------
 
    procedure Wrong_Token (T : Token_Type; P : Position) is
-      Missing : constant String := "missing ";
-      Image : constant String := Token_Type'Image (T);
+      Missing  : constant String := "missing ";
+      Image    : constant String := Token_Type'Image (T);
       Tok_Name : constant String := Image (5 .. Image'Length);
-      M : String (1 .. Missing'Length + Tok_Name'Length);
+      M        : constant String := Missing & Tok_Name;
 
    begin
-      --  Set M to Missing & Tok_Name.
-
-      M (1 .. Missing'Length) := Missing;
-      M (Missing'Length + 1 .. M'Last) := Tok_Name;
-
       if Token = Tok_Semicolon then
          Scan;
 

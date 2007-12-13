@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---            Copyright (C) 2001 Ada Core Technologies, Inc.                --
+--                     Copyright (C) 2001-2007, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -27,7 +26,8 @@
 -- however invalidate  any other reasons why  the executable file  might be --
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
--- GNAT is maintained by Ada Core Technologies Inc (http://www.gnat.com).   --
+-- GNAT was originally developed  by the GNAT team at  New York University. --
+-- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
@@ -51,13 +51,14 @@ package body GNAT.Directory_Operations.Iteration is
    is
       File_Regexp : constant Regexp.Regexp := Regexp.Compile (File_Pattern);
       Index       : Natural := 0;
+      Quit        : Boolean;
 
       procedure Read_Directory (Directory : Dir_Name_Str);
       --  Open Directory and read all entries. This routine is called
       --  recursively for each sub-directories.
 
       function Make_Pathname (Dir, File : String) return String;
-      --  Returns the pathname for File by adding Dir as prefix.
+      --  Returns the pathname for File by adding Dir as prefix
 
       -------------------
       -- Make_Pathname --
@@ -77,10 +78,11 @@ package body GNAT.Directory_Operations.Iteration is
       --------------------
 
       procedure Read_Directory (Directory : Dir_Name_Str) is
-         Dir    : Dir_Type;
          Buffer : String (1 .. 2_048);
          Last   : Natural;
-         Quit   : Boolean;
+
+         Dir : Dir_Type;
+         pragma Warnings (Off, Dir);
 
       begin
          Open (Dir, Directory);
@@ -91,11 +93,11 @@ package body GNAT.Directory_Operations.Iteration is
 
             declare
                Dir_Entry : constant String := Buffer (1 .. Last);
-               Pathname  : constant String
-                 := Make_Pathname (Directory, Dir_Entry);
+               Pathname  : constant String :=
+                             Make_Pathname (Directory, Dir_Entry);
+
             begin
                if Regexp.Match (Dir_Entry, File_Regexp) then
-                  Quit  := False;
                   Index := Index + 1;
 
                   begin
@@ -115,6 +117,7 @@ package body GNAT.Directory_Operations.Iteration is
                  and then OS_Lib.Is_Directory (Pathname)
                then
                   Read_Directory (Pathname);
+                  exit when Quit;
                end if;
             end;
          end loop;
@@ -123,6 +126,7 @@ package body GNAT.Directory_Operations.Iteration is
       end Read_Directory;
 
    begin
+      Quit := False;
       Read_Directory (Root_Directory);
    end Find;
 
@@ -191,8 +195,7 @@ package body GNAT.Directory_Operations.Iteration is
             --  Starting with "../"
 
             DS := Strings.Fixed.Index
-              (SP (SP'First + 3 .. SP'Last),
-               Dir_Seps);
+                    (SP (SP'First + 3 .. SP'Last), Dir_Seps);
 
             if DS = 0 then
 
@@ -204,7 +207,7 @@ package body GNAT.Directory_Operations.Iteration is
                --  We have "../dir"
 
                Read (Current_Path & "..",
-                     SP (SP'First + 4 .. DS - 1),
+                     SP (SP'First + 3 .. DS - 1),
                      SP (DS .. SP'Last));
             end if;
 
@@ -225,22 +228,27 @@ package body GNAT.Directory_Operations.Iteration is
 
                if DS = 0 then
 
-                  --  Se have "<drive>:\dir"
+                  --  We have "<drive>:\dir"
 
-                  Read (SP (SP'First .. SP'First + 1),
+                  Read (SP (SP'First .. SP'First + 2),
                         SP (SP'First + 3 .. SP'Last),
                         "");
 
                else
                   --  We have "<drive>:\dir\kkk"
 
-                  Read (SP (SP'First .. SP'First + 1),
+                  Read (SP (SP'First .. SP'First + 2),
                         SP (SP'First + 3 .. DS - 1),
                         SP (DS .. SP'Last));
                end if;
 
             else
-               --  Starting with "<drive>:"
+               --  Starting with "<drive>:" and the drive letter not followed
+               --  by a directory separator. The proper semantic on Windows is
+               --  to read the content of the current selected directory on
+               --  this drive. For example, if drive C current selected
+               --  directory is c:\temp the suffix pattern "c:m*" is
+               --  equivalent to c:\temp\m*.
 
                DS :=  Strings.Fixed.Index
                         (SP (SP'First + 2 .. SP'Last), Dir_Seps);
@@ -249,18 +257,13 @@ package body GNAT.Directory_Operations.Iteration is
 
                   --  We have "<drive>:dir"
 
-                  Read (SP (SP'First .. SP'First + 1),
-                        SP (SP'First + 2 .. SP'Last),
-                        "");
+                  Read (SP, "", "");
 
                else
                   --  We have "<drive>:dir/kkk"
 
-                  Read (SP (SP'First .. SP'First + 1),
-                        SP (SP'First + 2 .. DS - 1),
-                        SP (DS .. SP'Last));
+                  Read (SP (SP'First .. DS - 1), "", SP (DS .. SP'Last));
                end if;
-
             end if;
 
          elsif Strings.Maps.Is_In (SP (SP'First), Dir_Seps) then
@@ -268,16 +271,13 @@ package body GNAT.Directory_Operations.Iteration is
             --  Starting with a /
 
             DS := Strings.Fixed.Index
-              (SP (SP'First + 1 .. SP'Last),
-               Dir_Seps);
+                    (SP (SP'First + 1 .. SP'Last), Dir_Seps);
 
             if DS = 0 then
 
                --  We have "/dir"
 
-               Read (Current_Path,
-                     SP (SP'First + 1 .. SP'Last),
-                     "");
+               Read (Current_Path, SP (SP'First + 1 .. SP'Last), "");
             else
                --  We have "/dir/kkk"
 
@@ -295,9 +295,7 @@ package body GNAT.Directory_Operations.Iteration is
 
                --  We have "dir"
 
-               Read (Current_Path & '.',
-                     SP,
-                     "");
+               Read (Current_Path & '.', SP, "");
             else
                --  We have "dir/kkk"
 
@@ -314,7 +312,7 @@ package body GNAT.Directory_Operations.Iteration is
       ----------
 
       Quit : Boolean := False;
-      --  Global state to be able to exit all recursive calls.
+      --  Global state to be able to exit all recursive calls
 
       procedure Read
         (Directory      : String;
@@ -323,13 +321,16 @@ package body GNAT.Directory_Operations.Iteration is
       is
          File_Regexp : constant Regexp.Regexp :=
                          Regexp.Compile (File_Pattern, Glob => True);
-         Dir    : Dir_Type;
+
+         Dir : Dir_Type;
+         pragma Warnings (Off, Dir);
+
          Buffer : String (1 .. 2_048);
          Last   : Natural;
 
       begin
-         if OS_Lib.Is_Directory (Directory) then
-            Open (Dir, Directory);
+         if OS_Lib.Is_Directory (Directory & Dir_Separator) then
+            Open (Dir, Directory & Dir_Separator);
 
             Dir_Iterator : loop
                Read (Dir, Buffer, Last);
@@ -349,7 +350,6 @@ package body GNAT.Directory_Operations.Iteration is
                      (Dir_Entry = ".." and then File_Pattern /= ".."))
                   then
                      if Regexp.Match (Dir_Entry, File_Regexp) then
-
                         if Suffix_Pattern = "" then
 
                            --  No more matching needed, call user's callback
@@ -358,14 +358,11 @@ package body GNAT.Directory_Operations.Iteration is
 
                            begin
                               Action (Pathname, Index, Quit);
-
                            exception
                               when others =>
                                  Close (Dir);
                                  raise;
                            end;
-
-                           exit Dir_Iterator when Quit;
 
                         else
                            --  Down one level
@@ -378,15 +375,23 @@ package body GNAT.Directory_Operations.Iteration is
                   end if;
                end;
 
-               exit Dir_Iterator when Quit;
+               --  Exit if Quit set by call to Action, either at this level
+               --  or at at some lower recursive call to Next_Level.
 
+               exit Dir_Iterator when Quit;
             end loop Dir_Iterator;
 
             Close (Dir);
          end if;
       end Read;
 
+   --  Start of processing for Wildcard_Iterator
+
    begin
+      if Path = "" then
+         return;
+      end if;
+
       Next_Level ("", Path);
    end Wildcard_Iterator;
 

@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1996-1998 Free Software Foundation, Inc.          --
+--          Copyright (C) 1996-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -49,14 +47,14 @@ package body Sem_Maps is
 
    procedure Write_Map (E : Entity_Id);
    pragma Warnings (Off, Write_Map);
-   --  For debugging purposes.
+   --  For debugging purposes
 
    ---------------------
    -- Add_Association --
    ---------------------
 
    procedure Add_Association
-     (M    : in out Map;
+     (M    : Map;
       O_Id : Entity_Id;
       N_Id : Entity_Id;
       Kind : Scope_Kind := S_Local)
@@ -73,7 +71,7 @@ package body Sem_Maps is
 
       if Headers_Table.Table (Offh + J) /= No_Assoc then
 
-         --  Place new association at head of chain.
+         --  Place new association at head of chain
 
          Associations_Table.Table (K).Next := Headers_Table.Table (Offh + J);
       end if;
@@ -285,7 +283,7 @@ package body Sem_Maps is
    -------------
 
    function New_Map (Num_Assoc : Int) return Map is
-      Header_Size : Header_Index := Find_Header_Size (Num_Assoc);
+      Header_Size : constant Header_Index := Find_Header_Size (Num_Assoc);
       Res         : Map_Info;
 
    begin
@@ -319,7 +317,7 @@ package body Sem_Maps is
    ------------------------
 
    procedure Update_Association
-     (M    : in out Map;
+     (M    : Map;
       O_Id : Entity_Id;
       N_Id : Entity_Id;
       Kind : Scope_Kind := S_Local)

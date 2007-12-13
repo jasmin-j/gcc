@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1996-2002 Free Software Foundation, Inc.          --
+--          Copyright (C) 1996-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -28,13 +26,14 @@
 with Atree;    use Atree;
 with Einfo;    use Einfo;
 with Errout;   use Errout;
-with Targparm; use Targparm;
+with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Sem;      use Sem;
 with Sem_Util; use Sem_Util;
 with Sinfo;    use Sinfo;
 with Snames;   use Snames;
 with Stand;    use Stand;
+with Targparm; use Targparm;
 
 package body Sem_Mech is
 
@@ -171,7 +170,6 @@ package body Sem_Mech is
          Bad_Class;
          return;
       end if;
-
    end Set_Mechanism_Value;
 
    -------------------------------
@@ -276,6 +274,7 @@ package body Sem_Mech is
 
                when Convention_Assembler |
                     Convention_C         |
+                    Convention_CIL       |
                     Convention_CPP       |
                     Convention_Java      |
                     Convention_Stdcall   =>
@@ -417,17 +416,19 @@ package body Sem_Mech is
          Next_Formal (Formal);
       end loop;
 
-      --  Now deal with return type, we always leave the default mechanism
-      --  set except for the case of returning a By_Reference type for an
-      --  Ada convention, where we force return by reference
+      --  Note: there is nothing we need to do for the return type here.
+      --  We deal with returning by reference in the Ada sense, by use of
+      --  the flag By_Ref, rather than by messing with mechanisms.
 
-      if Ekind (E) = E_Function
-        and then Mechanism (E) = Default_Mechanism
-        and then not Has_Foreign_Convention (E)
-        and then Is_By_Reference_Type (Etype (E))
-      then
-         Set_Mechanism (E, By_Reference);
-      end if;
+      --  A mechanism of Reference for the return means that an extra
+      --  parameter must be provided for the return value (that is the
+      --  DEC meaning of the pragma), and is unrelated to the Ada notion
+      --  of return by reference.
+
+      --  Note: there was originally code here to set the mechanism to
+      --  By_Reference for types that are "by reference" in the Ada sense,
+      --  but, in accordance with the discussion above, this is wrong, and
+      --  the code was removed.
 
    end Set_Mechanisms;
 

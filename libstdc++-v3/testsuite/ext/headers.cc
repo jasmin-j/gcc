@@ -1,6 +1,7 @@
+// { dg-do compile }
 // 1999-06-23 bkoz 
 
-// Copyright (C) 1999, 2001 Free Software Foundation, Inc.
+// Copyright (C) 1999, 2001, 2003, 2007 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // extension headers
@@ -24,14 +25,35 @@
 // subdirectory that are meant to be directly included.
 
 #include <ext/algorithm>
+#include <ext/array_allocator.h>
+#include <ext/atomicity.h>
+#include <ext/bitmap_allocator.h>
+#include <ext/codecvt_specializations.h>
+#include <ext/concurrence.h>
+#include <ext/debug_allocator.h>
+#include <ext/enc_filebuf.h>
 #include <ext/functional>
-#include <ext/hash_map>
-#include <ext/hash_set>
 #include <ext/iterator>
+#include <ext/malloc_allocator.h>
 #include <ext/memory>
+#include <ext/mt_allocator.h>
+#include <ext/new_allocator.h>
 #include <ext/numeric>
+#include <ext/pod_char_traits.h>
+#include <ext/pool_allocator.h>
 #include <ext/rb_tree>
 #include <ext/rope>
 #include <ext/slist>
-
-int main() { }
+#include <ext/stdio_filebuf.h>
+#include <ext/stdio_sync_filebuf.h>
+#include <ext/throw_allocator.h>
+#include <ext/typelist.h>
+#include <ext/type_traits.h>
+#include <ext/vstring.h>
+#include <ext/pb_ds/assoc_container.hpp>
+#include <ext/pb_ds/priority_queue.hpp>
+#include <ext/pb_ds/exception.hpp>
+#include <ext/pb_ds/hash_policy.hpp>
+#include <ext/pb_ds/list_update_policy.hpp>
+#include <ext/pb_ds/tree_policy.hpp>
+#include <ext/pb_ds/trie_policy.hpp>

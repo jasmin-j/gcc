@@ -1,10 +1,11 @@
+// { dg-do run  }
 // GROUPS vtable
 extern "C" int printf (const char *, ...);
 
 class A
 {
 public:
-  virtual ~A(){};
+  virtual ~A(){}
   virtual int type(void)
   {
     return -1;
@@ -14,7 +15,7 @@ public:
 class B
 {
 public:
-  virtual ~B(){};
+  virtual ~B(){}
 };
 
 

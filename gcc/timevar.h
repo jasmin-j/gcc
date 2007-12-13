@@ -1,12 +1,12 @@
 /* Timing variables for measuring compiler performance.
-   Copyright (C) 2000 Free Software Foundation, Inc.
+   Copyright (C) 2000, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
    Contributed by Alex Samuel <samuel@codesourcery.com>
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2, or (at your option)
+   the Free Software Foundation; either version 3, or (at your option)
    any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -15,9 +15,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the Free
-   Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-   02111-1307, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_TIMEVAR_H
 #define GCC_TIMEVAR_H
@@ -61,6 +60,9 @@ struct timevar_time_def
 
   /* Wall clock time.  */
   double wall;
+
+  /* Garbage collector memory.  */
+  unsigned ggc_mem;
 };
 
 /* An enumeration of timing variable identifiers.  Constructed from
@@ -76,16 +78,23 @@ typedef enum
 timevar_id_t;
 #undef DEFTIMEVAR
 
-extern void init_timevar PARAMS ((void));
-extern void timevar_push PARAMS ((timevar_id_t));
-extern void timevar_pop PARAMS ((timevar_id_t));
-extern void timevar_start PARAMS ((timevar_id_t));
-extern void timevar_stop PARAMS ((timevar_id_t));
-extern void timevar_get PARAMS ((timevar_id_t, struct timevar_time_def *));
-extern void timevar_print PARAMS ((FILE *));
+/* Execute the sequence: timevar_pop (TV), return (E);  */
+#define POP_TIMEVAR_AND_RETURN(TV, E)  do { timevar_pop (TV); return (E); }while(0)
+#define timevar_pop(TV) do { if (timevar_enable) timevar_pop_1 (TV); }while(0)
+#define timevar_push(TV) do { if (timevar_enable) timevar_push_1 (TV); }while(0)
+
+extern void timevar_init (void);
+extern void timevar_push_1 (timevar_id_t);
+extern void timevar_pop_1 (timevar_id_t);
+extern void timevar_start (timevar_id_t);
+extern void timevar_stop (timevar_id_t);
+extern void timevar_print (FILE *);
 
 /* Provided for backward compatibility.  */
-extern long get_run_time PARAMS ((void));
-extern void print_time PARAMS ((const char *, long));
+extern void print_time (const char *, long);
+
+extern bool timevar_enable;
+
+extern size_t timevar_ggc_mem_total;
 
 #endif /* ! GCC_TIMEVAR_H */

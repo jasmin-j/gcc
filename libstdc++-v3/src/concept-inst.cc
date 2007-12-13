@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -36,7 +36,7 @@
 
 #include <bits/concept_check.h>
 
-#ifdef _GLIBCPP_CONCEPT_CHECKS
+#ifdef _GLIBCXX_CONCEPT_CHECKS
 
 #include <memory>
 #include <iterator>
@@ -44,8 +44,8 @@
 
 #define _Instantiate(...) template void __function_requires< __VA_ARGS__ > ()
 
-namespace __gnu_cxx
-{
+_GLIBCXX_BEGIN_NAMESPACE(__gnu_cxx)
+
   template void __aux_require_boolean_expr<bool>(bool const&);
 
   _Instantiate(_ConvertibleConcept<unsigned, unsigned> );
@@ -54,7 +54,7 @@ namespace __gnu_cxx
 
   _Instantiate(_InputIteratorConcept<char const*> );
 
-#ifdef _GLIBCPP_USE_WCHAR_T
+#ifdef _GLIBCXX_USE_WCHAR_T
   _Instantiate(_InputIteratorConcept<wchar_t*> );
 
   _Instantiate(_InputIteratorConcept<wchar_t const*> );
@@ -75,7 +75,7 @@ namespace __gnu_cxx
   _Instantiate(_OutputIteratorConcept<std::ostreambuf_iterator<
     char, std::char_traits<char> >, char> );
 
-#ifdef _GLIBCPP_USE_WCHAR_T
+#ifdef _GLIBCXX_USE_WCHAR_T
   _Instantiate(_OutputIteratorConcept<std::ostreambuf_iterator<
     wchar_t, std::char_traits<wchar_t> >, wchar_t> );
 #endif
@@ -90,7 +90,7 @@ namespace __gnu_cxx
   _Instantiate(_RandomAccessIteratorConcept<
     __normal_iterator<char*, std::string> > );
 
-#ifdef _GLIBCPP_USE_WCHAR_T
+#ifdef _GLIBCXX_USE_WCHAR_T
   _Instantiate(_RandomAccessIteratorConcept<
     __normal_iterator<wchar_t const*,
     std::basic_string<wchar_t, std::char_traits<wchar_t>,
@@ -105,7 +105,8 @@ namespace __gnu_cxx
 
   _Instantiate(_RandomAccessIteratorConcept<wchar_t const*> );
 #endif
-} // namespace __gnu_cxx
+
+_GLIBCXX_END_NAMESPACE
 
 #undef _Instantiate
 

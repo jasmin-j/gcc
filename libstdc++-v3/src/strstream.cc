@@ -1,6 +1,6 @@
 // strstream definitions -*- C++ -*-
 
-// Copyright (C) 2001, 2002 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2005 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -53,8 +53,8 @@
 #include <string.h>
 #include <limits.h>
 
-namespace std
-{
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
   strstreambuf::strstreambuf(streamsize initial_capacity)
   : _Base(), _M_alloc_fun(0), _M_free_fun(0), _M_dynamic(true), 
     _M_frozen(false), _M_constant(false)
@@ -148,7 +148,7 @@ namespace std
     if (pptr() == epptr() && _M_dynamic && !_M_frozen && !_M_constant) 
       {
 	ptrdiff_t old_size = epptr() - pbase();
-	ptrdiff_t new_size = std::max(2 * old_size, ptrdiff_t(1));
+	ptrdiff_t new_size = std::max(ptrdiff_t(2 * old_size), ptrdiff_t(1));
 	
 	char* buf = _M_alloc(new_size);
 	if (buf) 
@@ -194,7 +194,7 @@ namespace std
 	  gbump(-1);
 	  return _Traits::not_eof(c);
 	}
-      else if (c == static_cast<int_type>(gptr()[-1])) 
+      else if (c == _Traits::to_int_type(gptr()[-1])) 
 	{  // KLUDGE
 	  gbump(-1);
 	  return c;
@@ -311,10 +311,12 @@ namespace std
   strstreambuf::_M_free(char* p)
   {
     if (p)
-      if (_M_free_fun)
-	_M_free_fun(p);
-      else
-	delete[] p;
+      {
+	if (_M_free_fun)
+	  _M_free_fun(p);
+	else
+	  delete[] p;
+      }
   }
 
   void 
@@ -413,4 +415,5 @@ namespace std
   char* 
   strstream::str()
   { return _M_buf.str(); }
-} // namespace std
+
+_GLIBCXX_END_NAMESPACE

@@ -2,14 +2,14 @@
    on information stored in GCC's tree structure.  This code implements the
    -aux-info option.
    Copyright (C) 1989, 1991, 1994, 1995, 1997, 1998,
-   1999, 2000 Free Software Foundation, Inc.
+   1999, 2000, 2003, 2004, 2007 Free Software Foundation, Inc.
    Contributed by Ron Guilmette (rfg@segfault.us.com).
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -18,18 +18,17 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "toplev.h"
 #include "flags.h"
 #include "tree.h"
 #include "c-tree.h"
+#include "toplev.h"
 
 enum formals_style_enum {
   ansi,
@@ -41,12 +40,12 @@ typedef enum formals_style_enum formals_style;
 
 static const char *data_type;
 
-static char *affix_data_type		PARAMS ((const char *)) ATTRIBUTE_MALLOC;
-static const char *gen_formal_list_for_type PARAMS ((tree, formals_style));
-static int   deserves_ellipsis		PARAMS ((tree));
-static const char *gen_formal_list_for_func_def PARAMS ((tree, formals_style));
-static const char *gen_type		PARAMS ((const char *, tree, formals_style));
-static const char *gen_decl		PARAMS ((tree, int, formals_style));
+static char *affix_data_type (const char *) ATTRIBUTE_MALLOC;
+static const char *gen_formal_list_for_type (tree, formals_style);
+static int   deserves_ellipsis (tree);
+static const char *gen_formal_list_for_func_def (tree, formals_style);
+static const char *gen_type (const char *, tree, formals_style);
+static const char *gen_decl (tree, int, formals_style);
 
 /* Given a string representing an entire type or an entire declaration
    which only lacks the actual "data-type" specifier (at its left end),
@@ -63,8 +62,7 @@ static const char *gen_decl		PARAMS ((tree, int, formals_style));
    that look as expected.  */
 
 static char *
-affix_data_type (param)
-     const char *param;
+affix_data_type (const char *param)
 {
   char *const type_or_decl = ASTRDUP (param);
   char *p = type_or_decl;
@@ -76,15 +74,15 @@ affix_data_type (param)
   for (;;)
     {
       if (!strncmp (p, "volatile ", 9))
-        {
-          p += 9;
-          continue;
-        }
+	{
+	  p += 9;
+	  continue;
+	}
       if (!strncmp (p, "const ", 6))
-        {
-          p += 6;
-          continue;
-        }
+	{
+	  p += 6;
+	  continue;
+	}
       break;
     }
 
@@ -110,9 +108,7 @@ affix_data_type (param)
    of empty parens here.  */
 
 static const char *
-gen_formal_list_for_type (fntype, style)
-     tree fntype;
-     formals_style style;
+gen_formal_list_for_type (tree fntype, formals_style style)
 {
   const char *formal_list = "";
   tree formal_type;
@@ -126,7 +122,7 @@ gen_formal_list_for_type (fntype, style)
       const char *this_type;
 
       if (*formal_list)
-        formal_list = concat (formal_list, ", ", NULL);
+	formal_list = concat (formal_list, ", ", NULL);
 
       this_type = gen_type ("", TREE_VALUE (formal_type), ansi);
       formal_list
@@ -170,18 +166,18 @@ gen_formal_list_for_type (fntype, style)
   if (!*formal_list)
     {
       if (TYPE_ARG_TYPES (fntype))
-        /* assert (TREE_VALUE (TYPE_ARG_TYPES (fntype)) == void_type_node);  */
-        formal_list = "void";
+	/* assert (TREE_VALUE (TYPE_ARG_TYPES (fntype)) == void_type_node);  */
+	formal_list = "void";
       else
-        formal_list = "/* ??? */";
+	formal_list = "/* ??? */";
     }
   else
     {
       /* If there were at least some parameters, and if the formals-types-list
-         petered out to a NULL (i.e. without being terminated by a
-         void_type_node) then we need to tack on an ellipsis.  */
+	 petered out to a NULL (i.e. without being terminated by a
+	 void_type_node) then we need to tack on an ellipsis.  */
       if (!formal_type)
-        formal_list = concat (formal_list, ", ...", NULL);
+	formal_list = concat (formal_list, ", ...", NULL);
     }
 
   return concat (" (", formal_list, ")", NULL);
@@ -194,8 +190,7 @@ gen_formal_list_for_type (fntype, style)
    if the "function type" parameter list should end with an ellipsis.  */
 
 static int
-deserves_ellipsis (fntype)
-     tree fntype;
+deserves_ellipsis (tree fntype)
 {
   tree formal_type;
 
@@ -230,9 +225,7 @@ deserves_ellipsis (fntype)
    function formal parameter list.  */
 
 static const char *
-gen_formal_list_for_func_def (fndecl, style)
-     tree fndecl;
-     formals_style style;
+gen_formal_list_for_func_def (tree fndecl, formals_style style)
 {
   const char *formal_list = "";
   tree formal_decl;
@@ -243,20 +236,20 @@ gen_formal_list_for_func_def (fndecl, style)
       const char *this_formal;
 
       if (*formal_list && ((style == ansi) || (style == k_and_r_names)))
-        formal_list = concat (formal_list, ", ", NULL);
+	formal_list = concat (formal_list, ", ", NULL);
       this_formal = gen_decl (formal_decl, 0, style);
       if (style == k_and_r_decls)
-        formal_list = concat (formal_list, this_formal, "; ", NULL);
+	formal_list = concat (formal_list, this_formal, "; ", NULL);
       else
-        formal_list = concat (formal_list, this_formal, NULL);
+	formal_list = concat (formal_list, this_formal, NULL);
       formal_decl = TREE_CHAIN (formal_decl);
     }
   if (style == ansi)
     {
       if (!DECL_ARGUMENTS (fndecl))
-        formal_list = concat (formal_list, "void", NULL);
+	formal_list = concat (formal_list, "void", NULL);
       if (deserves_ellipsis (TREE_TYPE (fndecl)))
-        formal_list = concat (formal_list, ", ...", NULL);
+	formal_list = concat (formal_list, ", ...", NULL);
     }
   if ((style == ansi) || (style == k_and_r_names))
     formal_list = concat (" (", formal_list, ")", NULL);
@@ -305,10 +298,7 @@ gen_formal_list_for_func_def (fndecl, style)
    string onto the returned "seed".  */
 
 static const char *
-gen_type (ret_val, t, style)
-     const char *ret_val;
-     tree t;
-     formals_style style;
+gen_type (const char *ret_val, tree t, formals_style style)
 {
   tree chain_p;
 
@@ -318,23 +308,23 @@ gen_type (ret_val, t, style)
   else
     {
       switch (TREE_CODE (t))
-        {
-        case POINTER_TYPE:
-          if (TYPE_READONLY (t))
-            ret_val = concat ("const ", ret_val, NULL);
-          if (TYPE_VOLATILE (t))
-            ret_val = concat ("volatile ", ret_val, NULL);
+	{
+	case POINTER_TYPE:
+	  if (TYPE_READONLY (t))
+	    ret_val = concat ("const ", ret_val, NULL);
+	  if (TYPE_VOLATILE (t))
+	    ret_val = concat ("volatile ", ret_val, NULL);
 
-          ret_val = concat ("*", ret_val, NULL);
+	  ret_val = concat ("*", ret_val, NULL);
 
 	  if (TREE_CODE (TREE_TYPE (t)) == ARRAY_TYPE || TREE_CODE (TREE_TYPE (t)) == FUNCTION_TYPE)
 	    ret_val = concat ("(", ret_val, ")", NULL);
 
-          ret_val = gen_type (ret_val, TREE_TYPE (t), style);
+	  ret_val = gen_type (ret_val, TREE_TYPE (t), style);
 
-          return ret_val;
+	  return ret_val;
 
-        case ARRAY_TYPE:
+	case ARRAY_TYPE:
 	  if (!COMPLETE_TYPE_P (t) || TREE_CODE (TYPE_SIZE (t)) != INTEGER_CST)
 	    ret_val = gen_type (concat (ret_val, "[]", NULL),
 				TREE_TYPE (t), style);
@@ -349,23 +339,23 @@ gen_type (ret_val, t, style)
 	      ret_val = gen_type (concat (ret_val, buff, NULL),
 				  TREE_TYPE (t), style);
 	    }
-          break;
+	  break;
 
-        case FUNCTION_TYPE:
-          ret_val = gen_type (concat (ret_val,
+	case FUNCTION_TYPE:
+	  ret_val = gen_type (concat (ret_val,
 				      gen_formal_list_for_type (t, style),
 				      NULL),
 			      TREE_TYPE (t), style);
-          break;
+	  break;
 
-        case IDENTIFIER_NODE:
-          data_type = IDENTIFIER_POINTER (t);
-          break;
+	case IDENTIFIER_NODE:
+	  data_type = IDENTIFIER_POINTER (t);
+	  break;
 
 	/* The following three cases are complicated by the fact that a
-           user may do something really stupid, like creating a brand new
-           "anonymous" type specification in a formal argument list (or as
-           part of a function return type specification).  For example:
+	   user may do something really stupid, like creating a brand new
+	   "anonymous" type specification in a formal argument list (or as
+	   part of a function return type specification).  For example:
 
 		int f (enum { red, green, blue } color);
 
@@ -373,7 +363,7 @@ gen_type (ret_val, t, style)
 	   to represent the (anonymous) type.  Thus, we have to generate the
 	   whole darn type specification.  Yuck!  */
 
-        case RECORD_TYPE:
+	case RECORD_TYPE:
 	  if (TYPE_NAME (t))
 	    data_type = IDENTIFIER_POINTER (TYPE_NAME (t));
 	  else
@@ -392,7 +382,7 @@ gen_type (ret_val, t, style)
 	  data_type = concat ("struct ", data_type, NULL);
 	  break;
 
-        case UNION_TYPE:
+	case UNION_TYPE:
 	  if (TYPE_NAME (t))
 	    data_type = IDENTIFIER_POINTER (TYPE_NAME (t));
 	  else
@@ -411,7 +401,7 @@ gen_type (ret_val, t, style)
 	  data_type = concat ("union ", data_type, NULL);
 	  break;
 
-        case ENUMERAL_TYPE:
+	case ENUMERAL_TYPE:
 	  if (TYPE_NAME (t))
 	    data_type = IDENTIFIER_POINTER (TYPE_NAME (t));
 	  else
@@ -431,33 +421,34 @@ gen_type (ret_val, t, style)
 	  data_type = concat ("enum ", data_type, NULL);
 	  break;
 
-        case TYPE_DECL:
-          data_type = IDENTIFIER_POINTER (DECL_NAME (t));
-          break;
- 
-        case INTEGER_TYPE:
-          data_type = IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (t)));
-          /* Normally, `unsigned' is part of the deal.  Not so if it comes
-    	     with a type qualifier.  */
-          if (TREE_UNSIGNED (t) && TYPE_QUALS (t))
-    	    data_type = concat ("unsigned ", data_type, NULL);
+	case TYPE_DECL:
+	  data_type = IDENTIFIER_POINTER (DECL_NAME (t));
 	  break;
 
-        case REAL_TYPE:
-          data_type = IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (t)));
-          break;
+	case INTEGER_TYPE:
+	case FIXED_POINT_TYPE:
+	  data_type = IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (t)));
+	  /* Normally, `unsigned' is part of the deal.  Not so if it comes
+	     with a type qualifier.  */
+	  if (TYPE_UNSIGNED (t) && TYPE_QUALS (t))
+	    data_type = concat ("unsigned ", data_type, NULL);
+	  break;
 
-        case VOID_TYPE:
-          data_type = "void";
-          break;
+	case REAL_TYPE:
+	  data_type = IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (t)));
+	  break;
+
+	case VOID_TYPE:
+	  data_type = "void";
+	  break;
 
 	case ERROR_MARK:
 	  data_type = "[ERROR]";
 	  break;
 
-        default:
-          abort ();
-        }
+	default:
+	  gcc_unreachable ();
+	}
     }
   if (TYPE_READONLY (t))
     ret_val = concat ("const ", ret_val, NULL);
@@ -479,10 +470,7 @@ gen_type (ret_val, t, style)
    an attached list of DECL nodes for function formal arguments is present.  */
 
 static const char *
-gen_decl (decl, is_func_definition, style)
-     tree decl;
-     int is_func_definition;
-     formals_style style;
+gen_decl (tree decl, int is_func_definition, formals_style style)
 {
   const char *ret_val;
 
@@ -530,11 +518,11 @@ gen_decl (decl, is_func_definition, style)
 			NULL);
 
       /* Since we have already added in the formals list stuff, here we don't
-         add the whole "type" of the function we are considering (which
-         would include its parameter-list info), rather, we only add in
-         the "type" of the "type" of the function, which is really just
-         the return-type of the function (and does not include the parameter
-         list info).  */
+	 add the whole "type" of the function we are considering (which
+	 would include its parameter-list info), rather, we only add in
+	 the "type" of the "type" of the function, which is really just
+	 the return-type of the function (and does not include the parameter
+	 list info).  */
 
       ret_val = gen_type (ret_val, TREE_TYPE (TREE_TYPE (decl)), style);
     }
@@ -543,7 +531,7 @@ gen_decl (decl, is_func_definition, style)
 
   ret_val = affix_data_type (ret_val);
 
-  if (TREE_CODE (decl) != FUNCTION_DECL && DECL_REGISTER (decl))
+  if (TREE_CODE (decl) != FUNCTION_DECL && C_DECL_REGISTER (decl))
     ret_val = concat ("register ", ret_val, NULL);
   if (TREE_PUBLIC (decl))
     ret_val = concat ("extern ", ret_val, NULL);
@@ -560,20 +548,18 @@ extern FILE *aux_info_file;
    function definition (even the implicit ones).  */
 
 void
-gen_aux_info_record (fndecl, is_definition, is_implicit, is_prototyped)
-     tree fndecl;
-     int is_definition;
-     int is_implicit;
-     int is_prototyped;
+gen_aux_info_record (tree fndecl, int is_definition, int is_implicit,
+		     int is_prototyped)
 {
   if (flag_gen_aux_info)
     {
       static int compiled_from_record = 0;
+      expanded_location xloc = expand_location (DECL_SOURCE_LOCATION (fndecl));
 
       /* Each output .X file must have a header line.  Write one now if we
 	 have not yet done so.  */
 
-      if (! compiled_from_record++)
+      if (!compiled_from_record++)
 	{
 	  /* The first line tells which directory file names are relative to.
 	     Currently, -aux-info works only for files in the working
@@ -584,8 +570,7 @@ gen_aux_info_record (fndecl, is_definition, is_implicit, is_prototyped)
       /* Write the actual line of auxiliary info.  */
 
       fprintf (aux_info_file, "/* %s:%d:%c%c */ %s;",
-	       DECL_SOURCE_FILE (fndecl),
-	       DECL_SOURCE_LINE (fndecl),
+	       xloc.file, xloc.line,
 	       (is_implicit) ? 'I' : (is_prototyped) ? 'N' : 'O',
 	       (is_definition) ? 'F' : 'C',
 	       gen_decl (fndecl, is_definition, ansi));

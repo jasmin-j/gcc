@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2000 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -26,10 +24,11 @@
 ------------------------------------------------------------------------------
 
 --  This package provides an Import to the C functions which provide
---  values related to types on the target system.  It is only needed for
+--  values related to types on the target system. It is only needed for
 --  exp_dbug and the elaboration of ttypes.
 
---  NOTE:  Any changes in this package must be reflected in jgettarg.ads!
+--  NOTE:  Any changes in this package must be reflected in jgettarg.ads
+--  and aa_getta.ads!
 
 --  Note that all these values return sizes of C types with corresponding
 --  names. This allows GNAT to define the corresponding Ada types to have
@@ -40,7 +39,7 @@
 with Types; use Types;
 
 package Get_Targ is
-pragma Preelaborate (Get_Targ);
+   pragma Preelaborate;
 
    function Get_Bits_Per_Unit return Pos;
    pragma Import (C, Get_Bits_Per_Unit, "get_target_bits_per_unit");
@@ -81,9 +80,6 @@ pragma Preelaborate (Get_Targ);
    function Get_Maximum_Alignment return Pos;
    pragma Import (C, Get_Maximum_Alignment, "get_target_maximum_alignment");
 
-   function Get_No_Dollar_In_Label return Boolean;
-   pragma Import (C, Get_No_Dollar_In_Label, "get_target_no_dollar_in_label");
-
    function Get_Float_Words_BE return Nat;
    pragma Import (C, Get_Float_Words_BE, "get_float_words_be");
 
@@ -98,6 +94,10 @@ pragma Preelaborate (Get_Targ);
 
    function Get_Strict_Alignment return Nat;
    pragma Import (C, Get_Strict_Alignment, "get_strict_alignment");
+
+   function Get_Max_Unaligned_Field return Pos;
+   --  Returns the maximum supported size in bits for a field that is
+   --  not aligned on a storage unit boundary.
 
    function Width_From_Size  (Size : Pos) return Pos;
    function Digits_From_Size (Size : Pos) return Pos;

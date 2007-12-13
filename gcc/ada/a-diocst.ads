@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --              A D A . D I R E C T _ I O . C _ S T R E A M S               --
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---     Copyright (C) 1992,1993,1994,1995 Free Software Foundation, Inc.     --
+--          Copyright (C) 1992-2005, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -48,9 +47,10 @@ package Ada.Direct_IO.C_Streams is
 
    procedure Open
      (File     : in out File_Type;
-      Mode     : in File_Mode;
-      C_Stream : in ICS.FILEs;
-      Form     : in String := "");
+      Mode     : File_Mode;
+      C_Stream : ICS.FILEs;
+      Form     : String := "";
+      Name     : String := "");
    --  Create new file from existing stream
 
 end Ada.Direct_IO.C_Streams;

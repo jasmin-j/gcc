@@ -1,5 +1,6 @@
-// Build don't link:
-// Special g++ Options: -w
+// { dg-do assemble  }
+// { dg-require-effective-target ilp32 } */
+// { dg-options "-w" }
 // prms-id: 784
 
 //# 1 "GctSymbol.GctSymbol.CHMap.cc"
@@ -18,7 +19,7 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
 PURPOSE.  See the GNU Library General Public License for more details.
 You should have received a copy of the GNU Library General Public
 License along with this library; if not, write to the Free Software
-Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
 
@@ -40,7 +41,7 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
 PURPOSE.  See the GNU Library General Public License for more details.
 You should have received a copy of the GNU Library General Public
 License along with this library; if not, write to the Free Software
-Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
 
@@ -66,7 +67,7 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
 PURPOSE.  See the GNU Library General Public License for more details.
 You should have received a copy of the GNU Library General Public
 License along with this library; if not, write to the Free Software
-Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
 
@@ -100,7 +101,7 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
 PURPOSE.  See the GNU Library General Public License for more details.
 You should have received a copy of the GNU Library General Public
 License along with this library; if not, write to the Free Software
-Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
 
@@ -150,7 +151,7 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
 PURPOSE.  See the GNU Library General Public License for more details.
 You should have received a copy of the GNU Library General Public
 License along with this library; if not, write to the Free Software
-Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
 
@@ -183,7 +184,7 @@ Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 //
 //    You should have received a copy of the GNU Library General Public
 //    License along with this library; if not, write to the Free
-//    Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+//    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 
 
@@ -208,7 +209,7 @@ Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 //
 //    You should have received a copy of the GNU Library General Public
 //    License along with this library; if not, write to the Free
-//    Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+//    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 
 
@@ -826,7 +827,7 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
 PURPOSE.  See the GNU Library General Public License for more details.
 You should have received a copy of the GNU Library General Public
 License along with this library; if not, write to the Free Software
-Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
 
@@ -1602,74 +1603,74 @@ inline void String:: operator +=(char y)
 
 
 
-inline String operator + (const String& x, const String& y) return r; // ERROR - 
+inline String operator + (const String& x, const String& y) return r; // { dg-error "" } 
 {
-  cat(x, y, r); // ERROR - 
+  cat(x, y, r); // { dg-error "" } 
 }
 
-inline String operator + (const String& x, const SubString& y) return r; // ERROR - 
+inline String operator + (const String& x, const SubString& y) return r; // { dg-error "" } 
 {
-  cat(x, y, r); // ERROR - 
+  cat(x, y, r); // { dg-error "" } 
 }
 
-inline String operator + (const String& x, const char* y) return r; // ERROR - 
+inline String operator + (const String& x, const char* y) return r; // { dg-error "" } 
 {
-  cat(x, y, r); // ERROR - 
+  cat(x, y, r); // { dg-error "" } 
 }
 
-inline String operator + (const String& x, char y) return r; // ERROR - 
+inline String operator + (const String& x, char y) return r; // { dg-error "" } 
 {
-  cat(x, y, r); // ERROR - 
+  cat(x, y, r); // { dg-error "" } 
 }
 
-inline String operator + (const SubString& x, const String& y) return r; // ERROR - 
+inline String operator + (const SubString& x, const String& y) return r; // { dg-error "" } 
 {
-  cat(x, y, r); // ERROR - 
+  cat(x, y, r); // { dg-error "" } 
 }
 
-inline String operator + (const SubString& x, const SubString& y) return r; // ERROR - 
+inline String operator + (const SubString& x, const SubString& y) return r; // { dg-error "" } 
 {
-  cat(x, y, r); // ERROR - 
+  cat(x, y, r); // { dg-error "" } 
 }
 
-inline String operator + (const SubString& x, const char* y) return r; // ERROR - 
+inline String operator + (const SubString& x, const char* y) return r; // { dg-error "" } 
 {
-  cat(x, y, r); // ERROR - 
+  cat(x, y, r); // { dg-error "" } 
 }
 
-inline String operator + (const SubString& x, char y) return r; // ERROR - 
+inline String operator + (const SubString& x, char y) return r; // { dg-error "" } 
 {
-  cat(x, y, r); // ERROR - 
+  cat(x, y, r); // { dg-error "" } 
 }
 
-inline String operator + (const char* x, const String& y) return r; // ERROR - 
+inline String operator + (const char* x, const String& y) return r; // { dg-error "" } 
 {
-  cat(x, y, r); // ERROR - 
+  cat(x, y, r); // { dg-error "" } 
 }
 
-inline String operator + (const char* x, const SubString& y) return r; // ERROR - 
+inline String operator + (const char* x, const SubString& y) return r; // { dg-error "" } 
 {
-  cat(x, y, r); // ERROR - 
+  cat(x, y, r); // { dg-error "" } 
 }
 
-inline String reverse(const String& x) return r; // ERROR - 
+inline String reverse(const String& x) return r; // { dg-error "" } 
 {
-  r.rep = Sreverse(x.rep, r.rep); // ERROR - 
+  r.rep = Sreverse(x.rep, r.rep); // { dg-error "" } 
 }
 
-inline String upcase(const String& x) return r; // ERROR - 
+inline String upcase(const String& x) return r; // { dg-error "" } 
 {
-  r.rep = Supcase(x.rep, r.rep); // ERROR - 
+  r.rep = Supcase(x.rep, r.rep); // { dg-error "" } 
 }
 
-inline String downcase(const String& x) return r; // ERROR - 
+inline String downcase(const String& x) return r; // { dg-error "" } 
 {
-  r.rep = Sdowncase(x.rep, r.rep); // ERROR - 
+  r.rep = Sdowncase(x.rep, r.rep); // { dg-error "" } 
 }
 
-inline String capitalize(const String& x) return r; // ERROR - 
+inline String capitalize(const String& x) return r; // { dg-error "" } 
 {
-  r.rep = Scapitalize(x.rep, r.rep); // ERROR - 
+  r.rep = Scapitalize(x.rep, r.rep); // { dg-error "" } 
 }
 
 //# 883 "/projects/gnu-cygnus/gnu-cygnus-8/common/g++-include/String.h"
@@ -2194,7 +2195,7 @@ inline SubString String::_substr(int first, int l)
 //
 //    You should have received a copy of the GNU Library General Public
 //    License along with this library; if not, write to the Free
-//    Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+//    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 
 
@@ -2217,7 +2218,7 @@ inline SubString String::_substr(int first, int l)
 //
 //    You should have received a copy of the GNU Library General Public
 //    License along with this library; if not, write to the Free
-//    Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+//    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 //# 210 "/projects/gnu-cygnus/gnu-cygnus-8/common/g++-include/iostream.h"
 
@@ -2282,7 +2283,7 @@ public:
     // This constructor defines cp as the buffer to use for the
     // stream (instead of one of its own devising); it does NOT
     // initialize the ostrstream to contain cp (of length n).
-  tostrstream(char *cp, int n, int mode=ios::out): ostrtream(cp, n, mode)	// ERROR - 
+  tostrstream(char *cp, int n, int mode=ios::out): ostrtream(cp, n, mode)	// { dg-error "" } 
 	{ }
     char *str()
 	{
@@ -2581,7 +2582,7 @@ extern const char *stringify(bool b);
 //
 //    You should have received a copy of the GNU Library General Public
 //    License along with this library; if not, write to the Free
-//    Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+//    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 //# 210 "/projects/gnu-cygnus/gnu-cygnus-8/common/g++-include/iostream.h"
 
@@ -2631,7 +2632,7 @@ extern const char *stringify(unit u);
 //
 //    You should have received a copy of the GNU Library General Public
 //    License along with this library; if not, write to the Free
-//    Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+//    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 //# 210 "/projects/gnu-cygnus/gnu-cygnus-8/common/g++-include/iostream.h"
 
@@ -2895,7 +2896,7 @@ protected:
 //
 //    You should have received a copy of the GNU Library General Public
 //    License along with this library; if not, write to the Free
-//    Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+//    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 //# 210 "/projects/gnu-cygnus/gnu-cygnus-8/common/g++-include/iostream.h"
 
@@ -2958,7 +2959,7 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
 PURPOSE.  See the GNU Library General Public License for more details.
 You should have received a copy of the GNU Library General Public
 License along with this library; if not, write to the Free Software
-Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
 
@@ -2982,7 +2983,7 @@ Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 //
 //    You should have received a copy of the GNU Library General Public
 //    License along with this library; if not, write to the Free
-//    Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+//    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 //# 210 "/projects/gnu-cygnus/gnu-cygnus-8/common/g++-include/iostream.h"
 
@@ -3279,7 +3280,7 @@ private:
 //
 //    You should have received a copy of the GNU Library General Public
 //    License along with this library; if not, write to the Free
-//    Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+//    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 //# 210 "/projects/gnu-cygnus/gnu-cygnus-8/common/g++-include/iostream.h"
 
@@ -3653,5 +3654,5 @@ GctSymbolGctSymbolCHMap::GctSymbolGctSymbolCHMap(GctSymbolGctSymbolCHMap& a) :Gc
   tab = (GctSymbolGctSymbolCHNode**)(new GctSymbolGctSymbolCHNodePtr[size = a.size]);
   for (unsigned int i = 0; i < size; ++i) tab[i] = index_to_CHptr(i+1);
   count = 0;
-  for (Pix p = a.first(); p; a.next(p)) (*this)[a.key(p)] = a.contents(p); // gets bogus error - type `GctSymbol' is derived from private `String'
+  for (Pix p = a.first(); p; a.next(p)) (*this)[a.key(p)] = a.contents(p); // { dg-bogus "" } type `GctSymbol' is derived from private `String'
 }

@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                 G N A T . S P E L L I N G _ C H E C K E R                --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---           Copyright (C) 1998-2001 Ada Core Technologies, Inc.            --
+--                     Copyright (C) 1998-2007, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -27,9 +26,14 @@
 -- however invalidate  any other reasons why  the executable file  might be --
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
--- GNAT is maintained by Ada Core Technologies Inc (http://www.gnat.com).   --
+-- GNAT was originally developed  by the GNAT team at  New York University. --
+-- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
+
+pragma Warnings (Off);
+pragma Compiler_Unit;
+pragma Warnings (On);
 
 package body GNAT.Spelling_Checker is
 
@@ -39,8 +43,7 @@ package body GNAT.Spelling_Checker is
 
    function Is_Bad_Spelling_Of
      (Found  : String;
-      Expect : String)
-      return   Boolean
+      Expect : String) return Boolean
    is
       FN : constant Natural := Found'Length;
       FF : constant Natural := Found'First;
@@ -60,9 +63,14 @@ package body GNAT.Spelling_Checker is
       elsif EN = 0 then
          return False;
 
-      --  If first character does not match, then definitely not misspelling
+         --  If first character does not match, then we consider that this is
+         --  definitely not a misspelling. An exception is when we expect a
+         --  letter O and found a zero.
 
-      elsif Found (FF) /= Expect (EF) then
+      elsif Found (FF) /= Expect (EF)
+        and then (Found (FF) /= '0'
+                    or else (Expect (EF) /= 'o' and then Expect (EF) /= 'O'))
+      then
          return False;
 
       --  Not a bad spelling if both strings are 1-2 characters long
@@ -133,7 +141,7 @@ package body GNAT.Spelling_Checker is
       --  Length is 1 too long. Execute loop to check for single insertion
 
       elsif FN = EN + 1 then
-         for J in 1 .. FN - 1 loop
+         for J in 1 .. EN - 1 loop
             if Found (FF + J) /= Expect (EF + J) then
                return Found (FF + J + 1 .. FL) = Expect (EF + J .. EL);
             end if;
@@ -149,7 +157,6 @@ package body GNAT.Spelling_Checker is
       else
          return False;
       end if;
-
    end Is_Bad_Spelling_Of;
 
 end GNAT.Spelling_Checker;

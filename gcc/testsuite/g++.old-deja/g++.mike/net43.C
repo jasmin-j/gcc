@@ -1,4 +1,5 @@
-// Build don't link:
+// { dg-do assemble  }
+// { dg-options "-ffriend-injection" }
 
 class foo {
  public:

@@ -1,12 +1,12 @@
 /* Utility macros to handle Java(TM) byte codes.
 
-   Copyright (C) 1996, 1998, 1999, 2003 Free Software Foundation, Inc.
+   Copyright (C) 1996, 1998, 1999, 2003, 2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  
 
 Java and all Java-based marks are trademarks or registered trademarks
 of Sun Microsystems, Inc. in the United States and other countries.
@@ -30,18 +29,40 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 
 typedef	unsigned char	uint8;
 #ifndef int16
+#if __SHRT_MAX__ == 32767
 #define int16 short
+#elif __INT_MAX__ == 32767
+#define int16 int
+#elif __LONG_MAX__ == 32767
+#define int16 long
+#else
+#define int16 short
+#endif
 #endif
 typedef unsigned int16	uint16;
 
 #ifndef int32
+#if __INT_MAX__ == 2147483647
+#define int32 int
+#elif __LONG_MAX__ == 2147483647
 #define int32 long
+#elif __SHRT_MAX__ == 2147483647
+#define int32 short
+#else
+#define int32 int
+#endif
 #endif
 typedef unsigned int32	uint32;
 
 /* A signed 64-bit (or more) integral type, suitable for Java's 'long'.  */
 #ifndef int64
+#if __LONG_MAX__ == 9223372036854775807LL
+#define int64 long
+#elif __LONG_LONG_MAX__ == 9223372036854775807LL
 #define int64 long long
+#else
+#define int64 long long
+#endif
 #endif
 /* An unsigned 64-bit (or more) integral type, same length as int64. */
 #ifndef uint64
@@ -55,21 +76,26 @@ typedef int32                   jint;
 typedef int64                   jlong;
 typedef void*                   jref;
 
-/* A 32-bit IEEE single-precision float. */
-#ifndef jfloat 
-#define jfloat float
-#endif
+/* A 32-bit big-endian IEEE single-precision float. */
+typedef struct _jfloat {
+  unsigned int negative : 1;
+  unsigned int exponent : 8;
+  unsigned int mantissa : 23;
+} jfloat;
+#define JFLOAT_FINITE(f) ((f).exponent != 0xFF)
+#define JFLOAT_QNAN_MASK 0x400000
+#define JFLOAT_EXP_BIAS 0x7f
 
-/* A 32-bit IEEE double-precision float. */
-#ifndef jdouble
-#define jdouble double
-#endif
-
-union Word {
-  jint i;
-  jfloat f;
-  void *p;
-};
+/* A 32-bit big-endian IEEE double-precision float. */
+typedef struct _jdouble {
+  unsigned int negative : 1;
+  unsigned int exponent : 11;
+  unsigned int mantissa0: 20;
+  unsigned int mantissa1: 32;
+} jdouble;
+#define JDOUBLE_FINITE(f) ((f).exponent != 0x7FF)
+#define JDOUBLE_QNAN_MASK 0x80000  /* apply to mantissa0 */
+#define JDOUBLE_EXP_BIAS 0x3ff
 
 /* A jword is an unsigned integral type big enough for a 32-bit jint
    or jfloat *or* a pointer.  It is the type appropriate for stack
@@ -77,7 +103,14 @@ union Word {
 
 
 #ifndef jword
+#if defined (__LP64__) || defined (__alpha__) || defined (__MMIX__) \
+    || (defined (_ARCH_PPC) && defined (__64BIT__)) \
+    || defined (__powerpc64__) || defined (__s390x__) || defined (__x86_64__) \
+    || defined (__sparcv9) || (defined (__sparc__) && defined (__arch64__))
+#define jword uint64
+#else
 #define jword uint32
+#endif
 #endif
 
 #ifndef IMMEDIATE_u1
@@ -102,9 +135,14 @@ union Word {
 
 static inline jfloat
 WORD_TO_FLOAT(jword w)
-{ union Word wu;
-  wu.i = w;
-  return wu.f;
+{
+  jfloat f;
+
+  f.negative = (w & 0x80000000) >> 31;
+  f.exponent = (w & 0x7f800000) >> 23;
+  f.mantissa = (w & 0x007fffff);
+
+  return f;
 } 
 
 /* Sign extend w.  If the host on which this cross-compiler runs uses
@@ -126,21 +164,17 @@ WORDS_TO_LONG(jword hi, jword lo)
   return ((jlong) hi << 32) | ((jlong)lo & (((jlong)1 << 32) -1));
 }
 
-union DWord {
-  jdouble d;
-  jlong l;
-  jword w[2];
-};
-
 static inline jdouble
 WORDS_TO_DOUBLE(jword hi, jword lo)
-{ union DWord wu;
-#if (1 == HOST_FLOAT_WORDS_BIG_ENDIAN)
-  wu.l = WORDS_TO_LONG(lo, hi);
-#else
-  wu.l = WORDS_TO_LONG(hi, lo);
-#endif
-  return wu.d;
+{
+  jdouble d;
+
+  d.negative  = (hi & 0x80000000) >> 31;
+  d.exponent  = (hi & 0x7ff00000) >> 20;
+  d.mantissa0 = (hi & 0x000fffff);
+  d.mantissa1 = lo;
+
+  return d;
 } 
 
 /* If PREFIX_CHAR is the first character of the Utf8 encoding of a character,

@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1996-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1996-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -37,7 +35,7 @@
 --  Map composition of renaming maps takes place for nested instantiations,
 --  for generic child units, and for formal packages.
 
---  For additional details, see the documentation in sem_ch12.
+--  For additional details, see the documentation in sem_ch12
 
 with Table;
 with Types; use Types;
@@ -59,24 +57,24 @@ package Sem_Maps is
    --  and New_Map (e2) = e3, then the image of e1 under the result is e3.
 
    function Copy (M : Map) return Map;
-   --  Full copy of contents and headers.
+   --  Full copy of contents and headers
 
    function Lookup (M : Map; E : Entity_Id) return Entity_Id;
-   --  Retrieve image of E under M, Empty if undefined.
+   --  Retrieve image of E under M, Empty if undefined
 
    procedure Add_Association
-     (M    : in out Map;
+     (M    : Map;
       O_Id : Entity_Id;
       N_Id : Entity_Id;
       Kind : Scope_Kind := S_Local);
-   --  Update M in place. On entry M (O_Id) must not be defined.
+   --  Update M in place. On entry M (O_Id) must not be defined
 
    procedure Update_Association
-     (M    : in out Map;
+     (M    : Map;
       O_Id : Entity_Id;
       N_Id : Entity_Id;
       Kind : Scope_Kind := S_Local);
-   --  Update the entry in M for O_Id.
+   --  Update the entry in M for O_Id
 
    function Build_Instance_Map (M : Map) return Map;
    --  Copy renaming map of generic, and create new entities for all the
@@ -141,7 +139,7 @@ private
       Table_Index_Type     => Map,
       Table_Low_Bound      => 0,
       Table_Initial        => 100,
-      Table_Increment      => 10,
+      Table_Increment      => 100,
       Table_Name           => "Maps_Table");
 
    --  All headers for hash tables are allocated in one global table. Each
@@ -152,7 +150,7 @@ private
       Table_Index_Type     => Header_Index,
       Table_Low_Bound      => 0,
       Table_Initial        => 1000,
-      Table_Increment      => 10,
+      Table_Increment      => 100,
       Table_Name           => "Headers_Table");
 
    --  All associations are allocated in one global table. Each map stores
@@ -163,7 +161,7 @@ private
       Table_Index_Type     => Assoc_Index,
       Table_Low_Bound      => 1,
       Table_Initial        => 1000,
-      Table_Increment      => 10,
+      Table_Increment      => 100,
       Table_Name           => "Associations_Table");
 
 end Sem_Maps;

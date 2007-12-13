@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                 S Y S T E M . S E Q U E N T I A L _ I O                  --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -33,7 +32,7 @@
 ------------------------------------------------------------------------------
 
 with System.File_IO;
-with Unchecked_Deallocation;
+with Ada.Unchecked_Deallocation;
 
 package body System.Sequential_IO is
 
@@ -46,8 +45,7 @@ package body System.Sequential_IO is
    -------------------
 
    function AFCB_Allocate
-     (Control_Block : Sequential_AFCB)
-      return          FCB.AFCB_Ptr
+     (Control_Block : Sequential_AFCB) return FCB.AFCB_Ptr
    is
       pragma Warnings (Off, Control_Block);
 
@@ -61,7 +59,7 @@ package body System.Sequential_IO is
 
    --  No special processing required for Sequential_IO close
 
-   procedure AFCB_Close (File : access Sequential_AFCB) is
+   procedure AFCB_Close (File : not null access Sequential_AFCB) is
       pragma Warnings (Off, File);
 
    begin
@@ -72,14 +70,14 @@ package body System.Sequential_IO is
    -- AFCB_Free --
    ---------------
 
-   procedure AFCB_Free (File : access Sequential_AFCB) is
+   procedure AFCB_Free (File : not null access Sequential_AFCB) is
 
       type FCB_Ptr is access all Sequential_AFCB;
 
       FT : FCB_Ptr := FCB_Ptr (File);
 
       procedure Free is new
-        Unchecked_Deallocation (Sequential_AFCB, FCB_Ptr);
+        Ada.Unchecked_Deallocation (Sequential_AFCB, FCB_Ptr);
 
    begin
       Free (FT);
@@ -91,21 +89,24 @@ package body System.Sequential_IO is
 
    procedure Create
      (File : in out File_Type;
-      Mode : in FCB.File_Mode := FCB.Out_File;
-      Name : in String := "";
-      Form : in String := "")
+      Mode : FCB.File_Mode := FCB.Out_File;
+      Name : String := "";
+      Form : String := "")
    is
-      File_Control_Block : Sequential_AFCB;
+      Dummy_File_Control_Block : Sequential_AFCB;
+      pragma Warnings (Off, Dummy_File_Control_Block);
+      --  Yes, we know this is never assigned a value, only the tag
+      --  is used for dispatching purposes, so that's expected.
 
    begin
       FIO.Open (File_Ptr  => AP (File),
-                Dummy_FCB => File_Control_Block,
-                Mode     => Mode,
-                Name     => Name,
-                Form     => Form,
-                Amethod  => 'Q',
-                Creat    => True,
-                Text     => False);
+                Dummy_FCB => Dummy_File_Control_Block,
+                Mode      => Mode,
+                Name      => Name,
+                Form      => Form,
+                Amethod   => 'Q',
+                Creat     => True,
+                Text      => False);
    end Create;
 
    ----------
@@ -114,15 +115,18 @@ package body System.Sequential_IO is
 
    procedure Open
      (File : in out File_Type;
-      Mode : in FCB.File_Mode;
-      Name : in String;
-      Form : in String := "")
+      Mode : FCB.File_Mode;
+      Name : String;
+      Form : String := "")
    is
-      File_Control_Block : Sequential_AFCB;
+      Dummy_File_Control_Block : Sequential_AFCB;
+      pragma Warnings (Off, Dummy_File_Control_Block);
+      --  Yes, we know this is never assigned a value, only the tag
+      --  is used for dispatching purposes, so that's expected.
 
    begin
       FIO.Open (File_Ptr  => AP (File),
-                Dummy_FCB => File_Control_Block,
+                Dummy_FCB => Dummy_File_Control_Block,
                 Mode      => Mode,
                 Name      => Name,
                 Form      => Form,
@@ -154,7 +158,7 @@ package body System.Sequential_IO is
 
    procedure Write
      (File : in out Sequential_AFCB;
-      Item : in Ada.Streams.Stream_Element_Array)
+      Item : Ada.Streams.Stream_Element_Array)
    is
    begin
       raise Program_Error;

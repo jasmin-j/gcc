@@ -6,32 +6,31 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---         Copyright (C) 1996-2001 Free Software Foundation, Inc.           --
+--          Copyright (C) 1996-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Types; use Types;
+--  Package containing the routines to process a list of discrete choices.
+--  Such lists can occur in two different constructs: case statements and
+--  record variants. We have factorized what used to be two very similar
+--  sets of routines in one place. These are not currently used for the
+--  aggregate case, since issues with nested aggregates make that case
+--  substantially different.
 
---  Package containing all the routines to process a list of discrete choices.
---  Such lists can occur in 3 different constructs: case statements, array
---  aggregates and record variants. We have factorized what used to be 3 very
---  similar sets of routines here. If you didn't figure it out already Choi
---  in the package name stands for Choices.
+with Types; use Types;
 
 package Sem_Case is
 
@@ -47,7 +46,7 @@ package Sem_Case is
 
    procedure No_OP (C : Node_Id);
    --  The no-operation routine. Does absolutely nothing. Can be used
-   --  in the following generic for the parameter Process_Empty_Choice.
+   --  in the following generic for the parameter Proces_Empty_Choice.
 
    generic
       with function Get_Alternatives (N : Node_Id) return List_Id;
@@ -63,10 +62,10 @@ package Sem_Case is
       --  to get to the actual list of discrete choices.
 
       with procedure Process_Empty_Choice (Choice : Node_Id);
-      --  Processing to carry out for an empty Choice.
+      --  Processing to carry out for an empty Choice
 
       with procedure Process_Non_Static_Choice (Choice : Node_Id);
-      --  Processing to carry out for a non static Choice.
+      --  Processing to carry out for a non static Choice
 
       with procedure Process_Associated_Node (A : Node_Id);
       --  Associated to each case alternative, aggregate component
@@ -84,7 +83,7 @@ package Sem_Case is
       procedure Analyze_Choices
         (N              : Node_Id;
          Subtyp         : Entity_Id;
-         Choice_Table   : in out Choice_Table_Type;
+         Choice_Table   : out Choice_Table_Type;
          Last_Choice    : out Nat;
          Raises_CE      : out Boolean;
          Others_Present : out Boolean);
@@ -93,14 +92,14 @@ package Sem_Case is
       --  Subtyp is the subtype of the discrete choices. The type against
       --  which the discrete choices must be resolved is its base type.
       --
-      --  On entry Choice_Table must be big enough to contain all the
-      --  discrete choices encountered.
+      --  On entry Choice_Table must be big enough to contain all the discrete
+      --  choices encountered. The lower bound of Choice_Table must be one.
       --
-      --  On exit Choice_Table contains all the static and non empty
-      --  discrete choices in sorted order. Last_Choice gives the position
-      --  of the last valid choice in Choice_Table, Choice_Table'First
-      --  contains the first. We can have Last_Choice < Choice_Table'Last
-      --  for one (or several) of the following reasons:
+      --  On exit Choice_Table contains all the static and non empty discrete
+      --  choices in sorted order. Last_Choice gives the position of the last
+      --  valid choice in Choice_Table, Choice_Table'First contains the first.
+      --  We can have Last_Choice < Choice_Table'Last for one (or several) of
+      --  the following reasons:
       --
       --    (a) The list of choices contained a non static choice
       --
@@ -113,8 +112,9 @@ package Sem_Case is
       --  In one of the bounds of a discrete choice raises a constraint
       --  error the flag Raise_CE is set.
       --
-      --  Finally Others_Present is set to True if an Others choice is
-      --  present in the list of choices.
+      --  Finally Others_Present is set to True if an Others choice is present
+      --  in the list of choices, and in this case the call also sets
+      --  Others_Discrete_Choices in the N_Others_Choice node.
 
    end Generic_Choices_Processing;
 

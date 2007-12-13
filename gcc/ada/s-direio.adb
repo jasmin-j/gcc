@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                     S Y S T E M . D I R E C T _ I O                      --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,12 +31,13 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.IO_Exceptions;         use Ada.IO_Exceptions;
-with Interfaces.C_Streams;      use Interfaces.C_Streams;
-with System;                    use System;
+with Ada.IO_Exceptions;      use Ada.IO_Exceptions;
+with Interfaces.C_Streams;   use Interfaces.C_Streams;
+with System;                 use System;
+with System.CRTL;
 with System.File_IO;
 with System.Soft_Links;
-with Unchecked_Deallocation;
+with Ada.Unchecked_Deallocation;
 
 package body System.Direct_IO is
 
@@ -47,11 +47,14 @@ package body System.Direct_IO is
    subtype AP is FCB.AFCB_Ptr;
    use type FCB.Shared_Status_Type;
 
+   use type System.CRTL.long;
+   use type System.CRTL.size_t;
+
    -----------------------
    -- Local Subprograms --
    -----------------------
 
-   procedure Set_Position (File : in File_Type);
+   procedure Set_Position (File : File_Type);
    --  Sets file position pointer according to value of current index
 
    -------------------
@@ -59,7 +62,7 @@ package body System.Direct_IO is
    -------------------
 
    function AFCB_Allocate (Control_Block : Direct_AFCB) return FCB.AFCB_Ptr is
-      pragma Warnings (Off, Control_Block);
+      pragma Unreferenced (Control_Block);
 
    begin
       return new Direct_AFCB;
@@ -71,8 +74,8 @@ package body System.Direct_IO is
 
    --  No special processing required for Direct_IO close
 
-   procedure AFCB_Close (File : access Direct_AFCB) is
-      pragma Warnings (Off, File);
+   procedure AFCB_Close (File : not null access Direct_AFCB) is
+      pragma Unreferenced (File);
 
    begin
       null;
@@ -82,14 +85,14 @@ package body System.Direct_IO is
    -- AFCB_Free --
    ---------------
 
-   procedure AFCB_Free (File : access Direct_AFCB) is
+   procedure AFCB_Free (File : not null access Direct_AFCB) is
 
       type FCB_Ptr is access all Direct_AFCB;
 
       FT : FCB_Ptr := FCB_Ptr (File);
 
       procedure Free is new
-        Unchecked_Deallocation (Direct_AFCB, FCB_Ptr);
+        Ada.Unchecked_Deallocation (Direct_AFCB, FCB_Ptr);
 
    begin
       Free (FT);
@@ -101,15 +104,18 @@ package body System.Direct_IO is
 
    procedure Create
      (File : in out File_Type;
-      Mode : in FCB.File_Mode := FCB.Inout_File;
-      Name : in String := "";
-      Form : in String := "")
+      Mode : FCB.File_Mode := FCB.Inout_File;
+      Name : String := "";
+      Form : String := "")
    is
-      File_Control_Block : Direct_AFCB;
+      Dummy_File_Control_Block : Direct_AFCB;
+      pragma Warnings (Off, Dummy_File_Control_Block);
+      --  Yes, we know this is never assigned a value, only the tag
+      --  is used for dispatching purposes, so that's expected.
 
    begin
       FIO.Open (File_Ptr  => AP (File),
-                Dummy_FCB => File_Control_Block,
+                Dummy_FCB => Dummy_File_Control_Block,
                 Mode      => Mode,
                 Name      => Name,
                 Form      => Form,
@@ -122,7 +128,7 @@ package body System.Direct_IO is
    -- End_Of_File --
    -----------------
 
-   function End_Of_File (File : in File_Type) return Boolean is
+   function End_Of_File (File : File_Type) return Boolean is
    begin
       FIO.Check_Read_Status (AP (File));
       return Count (File.Index) > Size (File);
@@ -132,7 +138,7 @@ package body System.Direct_IO is
    -- Index --
    -----------
 
-   function Index (File : in File_Type) return Positive_Count is
+   function Index (File : File_Type) return Positive_Count is
    begin
       FIO.Check_File_Open (AP (File));
       return Count (File.Index);
@@ -144,15 +150,18 @@ package body System.Direct_IO is
 
    procedure Open
      (File : in out File_Type;
-      Mode : in FCB.File_Mode;
-      Name : in String;
-      Form : in String := "")
+      Mode : FCB.File_Mode;
+      Name : String;
+      Form : String := "")
    is
-      File_Control_Block : Direct_AFCB;
+      Dummy_File_Control_Block : Direct_AFCB;
+      pragma Warnings (Off, Dummy_File_Control_Block);
+      --  Yes, we know this is never assigned a value, only the tag
+      --  is used for dispatching purposes, so that's expected.
 
    begin
       FIO.Open (File_Ptr  => AP (File),
-                Dummy_FCB => File_Control_Block,
+                Dummy_FCB => Dummy_File_Control_Block,
                 Mode      => Mode,
                 Name      => Name,
                 Form      => Form,
@@ -166,10 +175,10 @@ package body System.Direct_IO is
    ----------
 
    procedure Read
-     (File : in File_Type;
+     (File : File_Type;
       Item : Address;
-      Size : in Interfaces.C_Streams.size_t;
-      From : in Positive_Count)
+      Size : Interfaces.C_Streams.size_t;
+      From : Positive_Count)
    is
    begin
       Set_Index (File, From);
@@ -177,9 +186,9 @@ package body System.Direct_IO is
    end Read;
 
    procedure Read
-     (File : in File_Type;
+     (File : File_Type;
       Item : Address;
-      Size : in Interfaces.C_Streams.size_t)
+      Size : Interfaces.C_Streams.size_t)
    is
    begin
       FIO.Check_Read_Status (AP (File));
@@ -241,7 +250,7 @@ package body System.Direct_IO is
    -- Reset --
    -----------
 
-   procedure Reset (File : in out File_Type; Mode : in FCB.File_Mode) is
+   procedure Reset (File : in out File_Type; Mode : FCB.File_Mode) is
    begin
       FIO.Reset (AP (File), Mode);
       File.Index := 1;
@@ -259,7 +268,7 @@ package body System.Direct_IO is
    -- Set_Index --
    ---------------
 
-   procedure Set_Index (File : in File_Type; To : in Positive_Count) is
+   procedure Set_Index (File : File_Type; To : Positive_Count) is
    begin
       FIO.Check_File_Open (AP (File));
       File.Index := Count (To);
@@ -270,7 +279,7 @@ package body System.Direct_IO is
    -- Set_Position --
    ------------------
 
-   procedure Set_Position (File : in File_Type) is
+   procedure Set_Position (File : File_Type) is
    begin
       if fseek
            (File.Stream, long (File.Bytes) *
@@ -284,7 +293,7 @@ package body System.Direct_IO is
    -- Size --
    ----------
 
-   function Size (File : in File_Type) return Count is
+   function Size (File : File_Type) return Count is
    begin
       FIO.Check_File_Open (AP (File));
       File.Last_Op := Op_Other;
@@ -303,12 +312,16 @@ package body System.Direct_IO is
    procedure Write
      (File   : File_Type;
       Item   : Address;
-      Size   : in Interfaces.C_Streams.size_t;
+      Size   : Interfaces.C_Streams.size_t;
       Zeroes : System.Storage_Elements.Storage_Array)
 
    is
       procedure Do_Write;
       --  Do the actual write
+
+      --------------
+      -- Do_Write --
+      --------------
 
       procedure Do_Write is
       begin
@@ -371,7 +384,7 @@ package body System.Direct_IO is
 
    procedure Write
      (File : in out Direct_AFCB;
-      Item : in Ada.Streams.Stream_Element_Array)
+      Item : Ada.Streams.Stream_Element_Array)
    is
    begin
       raise Program_Error;

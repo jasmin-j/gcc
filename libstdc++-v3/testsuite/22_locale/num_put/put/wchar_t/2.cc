@@ -1,6 +1,6 @@
 // 2001-11-19 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2004 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.2.2.1  num_put members
@@ -29,40 +29,20 @@ void test02()
   using namespace std;
   typedef ostreambuf_iterator<wchar_t> iterator_type;
 
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   // basic construction
   locale loc_c = locale::classic();
-  locale loc_hk("en_HK");
-  locale loc_fr("fr_FR@euro");
-  locale loc_de("de_DE");
-  VERIFY( loc_c != loc_de );
-  VERIFY( loc_hk != loc_fr );
-  VERIFY( loc_hk != loc_de );
-  VERIFY( loc_de != loc_fr );
-
-  // cache the numpunct facets
-  const numpunct<wchar_t>& numpunct_c = use_facet<numpunct<wchar_t> >(loc_c); 
-  const numpunct<wchar_t>& numpunct_de = use_facet<numpunct<wchar_t> >(loc_de); 
-  const numpunct<wchar_t>& numpunct_hk = use_facet<numpunct<wchar_t> >(loc_hk); 
 
   // sanity check the data is correct.
   const wstring empty;
   wstring result1;
   wstring result2;
-  char c;
 
   bool b1 = true;
   bool b0 = false;
-  long l1 = 2147483647;
-  long l2 = -2147483647;
   unsigned long ul1 = 1294967294;
   unsigned long ul2 = 0;
-  double d1 =  1.7976931348623157e+308;
-  double d2 = 2.2250738585072014e-308;
-  long double ld1 = 1.7976931348623157e+308;
-  long double ld2 = 2.2250738585072014e-308;
-  const void* cv = &ld1;
 
   // cache the num_put facet
   wostringstream oss;
@@ -74,7 +54,7 @@ void test02()
   oss.str(empty);
   oss.width(20);
   oss.setf(ios_base::right, ios_base::adjustfield);
-  np.put(oss.rdbuf(), oss, '+', b0);
+  np.put(oss.rdbuf(), oss, L'+', b0);
   result1 = oss.str();
   VERIFY( result1 == L"+++++++++++++++++++0" );
 
@@ -82,7 +62,7 @@ void test02()
   oss.width(20);
   oss.setf(ios_base::left, ios_base::adjustfield);
   oss.setf(ios_base::boolalpha);
-  np.put(oss.rdbuf(), oss, '+', b1);
+  np.put(oss.rdbuf(), oss, L'+', b1);
   result2 = oss.str();
   VERIFY( result2 == L"true++++++++++++++++" );
 
@@ -90,7 +70,7 @@ void test02()
   oss.imbue(loc_c);
   oss.str(empty);
   oss.clear();
-  np.put(oss.rdbuf(), oss, '+', ul1);
+  np.put(oss.rdbuf(), oss, L'+', ul1);
   result1 = oss.str();
   VERIFY( result1 == L"1294967294" );
 
@@ -98,7 +78,7 @@ void test02()
   oss.clear();
   oss.width(20);
   oss.setf(ios_base::left, ios_base::adjustfield);
-  np.put(oss.rdbuf(), oss, '+', ul2);
+  np.put(oss.rdbuf(), oss, L'+', ul2);
   result1 = oss.str();
   VERIFY( result1 == L"0+++++++++++++++++++" );
 }
@@ -108,5 +88,3 @@ int main()
   test02();
   return 0;
 }
-
-

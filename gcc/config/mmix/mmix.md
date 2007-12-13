@@ -1,12 +1,13 @@
 ;; GCC machine description for MMIX
-;; Copyright (C) 2000, 2001, 2002 Free Software Foundation, Inc.
+;; Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2007
+;; Free Software Foundation, Inc.
 ;; Contributed by Hans-Peter Nilsson (hp@bitrange.com)
 
 ;; This file is part of GCC.
 
 ;; GCC is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation; either version 2, or (at your option)
+;; the Free Software Foundation; either version 3, or (at your option)
 ;; any later version.
 
 ;; GCC is distributed in the hope that it will be useful,
@@ -15,9 +16,8 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GCC; see the file COPYING.  If not, write to
-;; the Free Software Foundation, 59 Temple Place - Suite 330,
-;; Boston, MA 02111-1307, USA.
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.
 
 ;; The original PO technology requires these to be ordered by speed,
 ;; so that assigner will pick the fastest.
@@ -39,7 +39,11 @@
    (MMIX_rR_REGNUM 260)
    (MMIX_fp_rO_OFFSET -24)]
 )
+
+;; Operand and operator predicates.
 
+(include "predicates.md")
+
 ;; FIXME: Can we remove the reg-to-reg for smaller modes?  Shouldn't they
 ;; be synthesized ok?
 (define_insn "movqi"
@@ -130,6 +134,55 @@
    LDO %0,%1
    STOU %1,%0
    %r0%I1")
+
+;; We need to be able to move around the values used as condition codes.
+;; First spotted as reported in
+;; <URL:http://gcc.gnu.org/ml/gcc-bugs/2003-03/msg00008.html> due to
+;; changes in loop optimization.  The file machmode.def says they're of
+;; size 4 QI.  Valid bit-patterns correspond to integers -1, 0 and 1, so
+;; we treat them as signed entities; see mmix-modes.def.  The following
+;; expanders should cover all MODE_CC modes, and expand for this pattern.
+(define_insn "*movcc_expanded"
+  [(set (match_operand 0 "nonimmediate_operand" "=r,x,r,r,m")
+	(match_operand 1 "nonimmediate_operand"  "r,r,x,m,r"))]
+  "GET_MODE_CLASS (GET_MODE (operands[0])) == MODE_CC
+   && GET_MODE_CLASS (GET_MODE (operands[1])) == MODE_CC"
+  "@
+   SET %0,%1
+   PUT %0,%1
+   GET %0,%1
+   LDT %0,%1
+   STT %1,%0")
+
+(define_expand "movcc"
+  [(set (match_operand:CC 0 "nonimmediate_operand" "")
+	(match_operand:CC 1 "nonimmediate_operand" ""))]
+  ""
+  "")
+
+(define_expand "movcc_uns"
+  [(set (match_operand:CC_UNS 0 "nonimmediate_operand" "")
+	(match_operand:CC_UNS 1 "nonimmediate_operand" ""))]
+  ""
+  "")
+
+(define_expand "movcc_fp"
+  [(set (match_operand:CC_FP 0 "nonimmediate_operand" "")
+	(match_operand:CC_FP 1 "nonimmediate_operand" ""))]
+  ""
+  "")
+
+(define_expand "movcc_fpeq"
+  [(set (match_operand:CC_FPEQ 0 "nonimmediate_operand" "")
+	(match_operand:CC_FPEQ 1 "nonimmediate_operand" ""))]
+  ""
+  "")
+
+(define_expand "movcc_fun"
+  [(set (match_operand:CC_FUN 0 "nonimmediate_operand" "")
+	(match_operand:CC_FUN 1 "nonimmediate_operand" ""))]
+  ""
+  "")
 
 (define_insn "adddi3"
   [(set (match_operand:DI 0 "register_operand"	"=r,r,r")
@@ -428,7 +481,8 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
 	 (const_int 0)))]
   ;; FIXME: Can we test equivalence any other way?
   ;; FIXME: Can we fold any other way?
-  "REGNO (operands[1]) == REGNO (operands[0])"
+  "REG_P (operands[0]) && REG_P (operands[1])
+   && REGNO (operands[1]) == REGNO (operands[0])"
   "%% folded: cmp %0,%1,0")
 
 (define_insn "*cmpcc"
@@ -683,7 +737,7 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
 				     mmix_compare_op1);
   if (cc_reg == NULL_RTX)
     FAIL;
-  operands[1] = gen_rtx (code, VOIDmode, cc_reg, const0_rtx);
+  operands[1] = gen_rtx_fmt_ee (code, VOIDmode, cc_reg, const0_rtx);
 }")
 
 (define_expand "movdicc"
@@ -700,7 +754,7 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
 				     mmix_compare_op1);
   if (cc_reg == NULL_RTX)
     FAIL;
-  operands[1] = gen_rtx (code, VOIDmode, cc_reg, const0_rtx);
+  operands[1] = gen_rtx_fmt_ee (code, VOIDmode, cc_reg, const0_rtx);
 }")
 
 ;; FIXME: Is this the right way to do "folding" of CCmode -> DImode?
@@ -708,7 +762,7 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
 	(if_then_else:DI
 	 (match_operator 2 "mmix_foldable_comparison_operator"
-			 [(match_operand 3 "register_operand" "r,r,r,r")
+			 [(match_operand:DI 3 "register_operand" "r,r,r,r")
 			  (const_int 0)])
 	 (match_operand:DI 1 "mmix_reg_or_8bit_operand" "rI,0 ,rI,GM")
 	 (match_operand:DI 4 "mmix_reg_or_8bit_operand" "0 ,rI,GM,rI")))]
@@ -719,7 +773,7 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
    ZS%d2 %0,%3,%1
    ZS%D2 %0,%3,%4")
 
-(define_insn "*movdicc_real"
+(define_insn "*movdicc_real_reversible"
   [(set
     (match_operand:DI 0 "register_operand"	   "=r ,r ,r ,r")
     (if_then_else:DI
@@ -729,12 +783,27 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
       (const_int 0)])
      (match_operand:DI 1 "mmix_reg_or_8bit_operand" "rI,0 ,rI,GM")
      (match_operand:DI 4 "mmix_reg_or_8bit_operand" "0 ,rI,GM,rI")))]
-  ""
+  "REVERSIBLE_CC_MODE (GET_MODE (operands[3]))"
   "@
    CS%d2 %0,%3,%1
    CS%D2 %0,%3,%4
    ZS%d2 %0,%3,%1
    ZS%D2 %0,%3,%4")
+
+(define_insn "*movdicc_real_nonreversible"
+  [(set
+    (match_operand:DI 0 "register_operand"	   "=r ,r")
+    (if_then_else:DI
+     (match_operator
+      2 "mmix_comparison_operator"
+      [(match_operand 3 "mmix_reg_cc_operand"	    "r ,r")
+      (const_int 0)])
+     (match_operand:DI 1 "mmix_reg_or_8bit_operand" "rI,rI")
+     (match_operand:DI 4 "mmix_reg_or_0_operand" "0 ,GM")))]
+  "!REVERSIBLE_CC_MODE (GET_MODE (operands[3]))"
+  "@
+   CS%d2 %0,%3,%1
+   ZS%d2 %0,%3,%1")
 
 (define_insn "*movdfcc_real_foldable"
   [(set
@@ -742,7 +811,7 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
     (if_then_else:DF
      (match_operator
       2 "mmix_foldable_comparison_operator"
-      [(match_operand 3 "register_operand"	 "r  ,r  ,r  ,r")
+      [(match_operand:DI 3 "register_operand"	 "r  ,r  ,r  ,r")
       (const_int 0)])
      (match_operand:DF 1 "mmix_reg_or_0_operand" "rGM,0  ,rGM,GM")
      (match_operand:DF 4 "mmix_reg_or_0_operand" "0  ,rGM,GM ,rGM")))]
@@ -753,7 +822,7 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
    ZS%d2 %0,%3,%1
    ZS%D2 %0,%3,%4")
 
-(define_insn "*movdfcc_real"
+(define_insn "*movdfcc_real_reversible"
   [(set
     (match_operand:DF 0 "register_operand"	"=r  ,r  ,r  ,r")
     (if_then_else:DF
@@ -763,12 +832,27 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
       (const_int 0)])
      (match_operand:DF 1 "mmix_reg_or_0_operand" "rGM,0  ,rGM,GM")
      (match_operand:DF 4 "mmix_reg_or_0_operand" "0  ,rGM,GM ,rGM")))]
-  ""
+  "REVERSIBLE_CC_MODE (GET_MODE (operands[3]))"
   "@
    CS%d2 %0,%3,%1
    CS%D2 %0,%3,%4
    ZS%d2 %0,%3,%1
    ZS%D2 %0,%3,%4")
+
+(define_insn "*movdfcc_real_nonreversible"
+  [(set
+    (match_operand:DF 0 "register_operand"	"=r  ,r")
+    (if_then_else:DF
+     (match_operator
+      2 "mmix_comparison_operator"
+      [(match_operand 3 "mmix_reg_cc_operand"	 "r  ,r")
+      (const_int 0)])
+     (match_operand:DF 1 "mmix_reg_or_0_operand" "rGM,rGM")
+     (match_operand:DF 4 "mmix_reg_or_0_operand" "0  ,GM")))]
+  "!REVERSIBLE_CC_MODE (GET_MODE (operands[3]))"
+  "@
+   CS%d2 %0,%3,%1
+   ZS%d2 %0,%3,%1")
 
 ;; FIXME: scc patterns will probably help, I just skip them
 ;; right now.  Revisit.
@@ -821,7 +905,7 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
     = mmix_gen_compare_reg (LE, mmix_compare_op0, mmix_compare_op1);
 
   /* The head comment of optabs.c:can_compare_p says we're required to
-     implement this, so we have to clean up the mess here. */
+     implement this, so we have to clean up the mess here.  */
   if (operands[1] == NULL_RTX)
     {
       /* FIXME: Watch out for sharing/unsharing of rtx:es.  */
@@ -843,7 +927,7 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
     = mmix_gen_compare_reg (GE, mmix_compare_op0, mmix_compare_op1);
 
   /* The head comment of optabs.c:can_compare_p says we're required to
-     implement this, so we have to clean up the mess here. */
+     implement this, so we have to clean up the mess here.  */
   if (operands[1] == NULL_RTX)
     {
       /* FIXME: Watch out for sharing/unsharing of rtx:es.  */
@@ -948,7 +1032,7 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
   [(set (pc)
 	(if_then_else
 	 (match_operator 1 "mmix_foldable_comparison_operator"
-			 [(match_operand 2 "register_operand" "r")
+			 [(match_operand:DI 2 "register_operand" "r")
 			  (const_int 0)])
 	 (label_ref (match_operand 0 "" ""))
 	 (pc)))]
@@ -970,7 +1054,7 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
   [(set (pc)
 	(if_then_else
 	 (match_operator 1 "mmix_foldable_comparison_operator"
-			 [(match_operand 2 "register_operand" "r")
+			 [(match_operand:DI 2 "register_operand" "r")
 			  (const_int 0)])
 		      (pc)
 		      (label_ref (match_operand 0 "" ""))))]
@@ -998,6 +1082,16 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
   ""
   "
 {
+  /* The caller checks that the operand is generally valid as an
+     address, but at -O0 nothing makes sure that it's also a valid
+     call address for a *call*; a mmix_symbolic_or_address_operand.
+     Force into a register if it isn't.  */
+  if (!mmix_symbolic_or_address_operand (XEXP (operands[0], 0),
+					 GET_MODE (XEXP (operands[0], 0))))
+    operands[0]
+      = replace_equiv_address (operands[0],
+			       force_reg (Pmode, XEXP (operands[0], 0)));
+
   /* Since the epilogue 'uses' the return address, and it is clobbered
      in the call, and we set it back after every call (all but one setting
      will be optimized away), integrity is maintained.  */
@@ -1025,6 +1119,16 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
   ""
   "
 {
+  /* The caller checks that the operand is generally valid as an
+     address, but at -O0 nothing makes sure that it's also a valid
+     call address for a *call*; a mmix_symbolic_or_address_operand.
+     Force into a register if it isn't.  */
+  if (!mmix_symbolic_or_address_operand (XEXP (operands[1], 0),
+					 GET_MODE (XEXP (operands[1], 0))))
+    operands[1]
+      = replace_equiv_address (operands[1],
+			       force_reg (Pmode, XEXP (operands[1], 0)));
+
   /* Since the epilogue 'uses' the return address, and it is clobbered
      in the call, and we set it back after every call (all but one setting
      will be optimized away), integrity is maintained.  */
@@ -1045,7 +1149,7 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
 
 ;; Don't use 'p' here.  A 'p' must stand first in constraints, or reload
 ;; messes up, not registering the address for reload.  Several C++
-;; test-cases, including g++.brendan/crash40.C.  FIXME: This is arguably a
+;; testcases, including g++.brendan/crash40.C.  FIXME: This is arguably a
 ;; bug in gcc.  Note line ~2612 in reload.c, that does things on the
 ;; condition <<else if (constraints[i][0] == 'p')>> and the comment on
 ;; ~3017 that says:
@@ -1136,7 +1240,7 @@ DIVU %1,%1,%2\;GET %0,:rR\;NEGU %2,0,%0\;CSNN %0,$255,%2")
 ;; the frame-pointer would be located).
 ;; In the nonlocal goto receiver, we unwind the register stack by a series
 ;; of "pop 0,0" until rO equals the saved value.  (If it goes lower, we
-;; should call abort.)
+;; should die with a trap.)
 (define_expand "nonlocal_goto_receiver"
   [(parallel [(unspec_volatile [(const_int 0)] 1)
 	      (clobber (scratch:DI))

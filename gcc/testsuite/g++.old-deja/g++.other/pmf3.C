@@ -1,14 +1,15 @@
+// { dg-do assemble  }
 // Submitted by Nathan Sidwell <nathan@acm.org>
 // Bug: g++ was crashing after giving errors.
 
 template<class T>
   void connect_to_method(
     T *receiver,
-    void (T::*method)())
+    void (T::*method)()) // { dg-error "candidates are" }
   {}
 
 class Gtk_Base
-{ 
+{
 public:
   void expose();
   void show();
@@ -19,6 +20,6 @@ public:
 
 Gtk_Base::Gtk_Base()
 {
-  connect_to_method(this,&show);   // ERROR - invalid pmf expression
-  connect_to_method(this,&expose); // ERROR - invalid pmf expression
+  connect_to_method(this,&show);   // { dg-error "" } invalid pmf expression
+  connect_to_method(this,&expose); // { dg-error "" } invalid pmf expression
 }

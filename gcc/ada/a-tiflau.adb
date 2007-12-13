@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -34,8 +33,8 @@
 
 with Ada.Text_IO.Generic_Aux; use Ada.Text_IO.Generic_Aux;
 
-with System.Img_Real;  use System.Img_Real;
-with System.Val_Real;  use System.Val_Real;
+with System.Img_Real; use System.Img_Real;
+with System.Val_Real; use System.Val_Real;
 
 package body Ada.Text_IO.Float_Aux is
 
@@ -44,9 +43,9 @@ package body Ada.Text_IO.Float_Aux is
    ---------
 
    procedure Get
-     (File  : in File_Type;
+     (File  : File_Type;
       Item  : out Long_Long_Float;
-      Width : in Field)
+      Width : Field)
    is
       Buf  : String (1 .. Field'Last);
       Stop : Integer := 0;
@@ -70,7 +69,7 @@ package body Ada.Text_IO.Float_Aux is
    ----------
 
    procedure Gets
-     (From : in String;
+     (From : String;
       Item : out Long_Long_Float;
       Last : out Positive)
    is
@@ -83,7 +82,6 @@ package body Ada.Text_IO.Float_Aux is
 
    exception
       when Constraint_Error =>
-         Last := Pos - 1;
          raise Data_Error;
    end Gets;
 
@@ -92,7 +90,7 @@ package body Ada.Text_IO.Float_Aux is
    ---------------
 
    procedure Load_Real
-     (File : in File_Type;
+     (File : File_Type;
       Buf  : out String;
       Ptr  : in out Natural)
    is
@@ -140,6 +138,7 @@ package body Ada.Text_IO.Float_Aux is
 
             if Loaded then
                Load_Extended_Digits (File, Buf, Ptr);
+               Load (File, Buf, Ptr, '#', ':');
 
             --  Case of nnn#xxx.[xxx]# or nnn#xxx#
 
@@ -160,6 +159,13 @@ package body Ada.Text_IO.Float_Aux is
          --  Case of nnn.[nnn] or nnn
 
          else
+            --  Prevent the potential processing of '.' in cases where the
+            --  initial digits have a trailing underscore.
+
+            if Buf (Ptr) = '_' then
+               return;
+            end if;
+
             Load (File, Buf, Ptr, '.', Loaded);
 
             if Loaded then
@@ -183,11 +189,11 @@ package body Ada.Text_IO.Float_Aux is
    ---------
 
    procedure Put
-     (File : in File_Type;
-      Item : in Long_Long_Float;
-      Fore : in Field;
-      Aft  : in Field;
-      Exp  : in Field)
+     (File : File_Type;
+      Item : Long_Long_Float;
+      Fore : Field;
+      Aft  : Field;
+      Exp  : Field)
    is
       Buf : String (1 .. 3 * Field'Last + 2);
       Ptr : Natural := 0;
@@ -203,9 +209,9 @@ package body Ada.Text_IO.Float_Aux is
 
    procedure Puts
      (To   : out String;
-      Item : in Long_Long_Float;
-      Aft  : in Field;
-      Exp  : in Field)
+      Item : Long_Long_Float;
+      Aft  : Field;
+      Exp  : Field)
    is
       Buf : String (1 .. 3 * Field'Last + 2);
       Ptr : Natural := 0;

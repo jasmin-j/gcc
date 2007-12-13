@@ -1,11 +1,12 @@
 /* Variables and structures for declaration processing.
-   Copyright (C) 1993, 2000, 2002 Free Software Foundation, Inc.
+   Copyright (C) 1993, 2000, 2002, 2004, 2005, 2007
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -14,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* In grokdeclarator, distinguish syntactic contexts of declarators.  */
 enum decl_context
@@ -31,19 +31,6 @@ enum decl_context
 };
 
 /* We need this in here to get the decl_context definition.  */
-extern tree grokdeclarator (tree, tree, enum decl_context, int, tree*);
-
-/* Parsing a function declarator leaves a list of parameter names
-   or a chain or parameter decls here.  */
-extern GTY(()) tree last_function_parms;
-
-/* A list of objects which have constructors or destructors
-   which reside in the global scope.  The decl is stored in
-   the TREE_VALUE slot and the initializer is stored
-   in the TREE_PURPOSE slot.  */
-extern GTY(()) tree static_aggregates;
-
-#ifdef DEBUG_CP_BINDING_LEVELS
-/* Purely for debugging purposes.  */
-extern int debug_bindings_indentation;
-#endif
+extern tree grokdeclarator (const cp_declarator *,
+			    const cp_decl_specifier_seq *,
+			    enum decl_context, int, tree*);

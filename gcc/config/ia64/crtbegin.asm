@@ -1,20 +1,29 @@
-/* Copyright (C) 2000, 2001 Free Software Foundation, Inc.
+/* Copyright (C) 2000, 2001, 2003, 2005 Free Software Foundation, Inc.
    Contributed by Jes Sorensen, <Jes.Sorensen@cern.ch>
 
-   The GNU C Library is free software; you can redistribute it and/or
-   modify it under the terms of the GNU Library General Public License as
-   published by the Free Software Foundation; either version 2 of the
-   License, or (at your option) any later version.
+   This file is part of GCC.
 
-   The GNU C Library is distributed in the hope that it will be useful,
+   GCC is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   GCC is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-   Library General Public License for more details.
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-   You should have received a copy of the GNU Library General Public
-   License along with the GNU C Library; see the file COPYING.LIB.  If not,
-   write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-   Boston, MA 02111-1307, USA.  */
+   You should have received a copy of the GNU General Public License
+   along with GCC; see the file COPYING.  If not, write to
+   the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+   Boston, MA 02110-1301, USA.  */
+
+/* As a special exception, if you link this library with other files,
+   some of which are compiled with GCC, to produce an executable,
+   this library does not by itself cause the resulting executable
+   to be covered by the GNU General Public License.
+   This exception does not however invalidate any other reasons why
+   the executable file might be covered by the GNU General Public License.  */
 
 #include "auto-host.h"
 
@@ -33,34 +42,36 @@ __DTOR_LIST__:
 __JCR_LIST__:
 
 .section .sdata
-	.type dtor_ptr#,@object
-	.size dtor_ptr#,8
+	.type dtor_ptr,@object
+	.size dtor_ptr,8
 dtor_ptr:
-	data8	@gprel(__DTOR_LIST__# + 8)
+	data8	@gprel(__DTOR_LIST__ + 8)
 
 	/* A handle for __cxa_finalize to manage c++ local destructors.  */
-	.global __dso_handle#
-	.type __dso_handle#,@object
-	.size __dso_handle#,8
+	.global __dso_handle
+	.type __dso_handle,@object
+	.size __dso_handle,8
 #ifdef SHARED
 	.section .data
 __dso_handle:
-	data8	__dso_handle#
+	data8	__dso_handle
 #else
 	.section .bss
+	.align 8
 __dso_handle:
-	data8	0
+	.skip	8
 #endif
-	.hidden __dso_handle#
+	.hidden __dso_handle
 
 
 #ifdef HAVE_INITFINI_ARRAY
 
-.section .fini_array,"a","progbits"
+.section .fini_array, "a"
 	data8 @fptr(__do_global_dtors_aux)
 
-.section .init_array,"a","progbits"
+.section .init_array, "a"
 	data8 @fptr(__do_jv_register_classes)
+	data8 @fptr(__do_global_ctors_aux)
 
 #else /* !HAVE_INITFINI_ARRAY */
 /*
@@ -78,7 +89,7 @@ __dso_handle:
  */
 .section .fini,"ax","progbits"
 	{ .mlx
-	  movl r2 = @pcrel(__do_global_dtors_aux# - 16)
+	  movl r2 = @pcrel(__do_global_dtors_aux - 16)
 	}
 	{ .mii
 	  mov r3 = ip
@@ -87,16 +98,16 @@ __dso_handle:
 	  ;;
 	}
 	{ .mib
+	  nop 0
 	  mov b6 = r2
 	  br.call.sptk.many b0 = b6
-	  ;;
 	}
 
 /* Likewise for _init.  */
 
 .section .init,"ax","progbits"
 	{ .mlx
-	  movl r2 = @pcrel(__do_jv_register_classes# - 16)
+	  movl r2 = @pcrel(__do_jv_register_classes - 16)
 	}
 	{ .mii
 	  mov r3 = ip
@@ -105,63 +116,64 @@ __dso_handle:
 	  ;;
 	}
 	{ .mib
+	  nop 0
 	  mov b6 = r2
 	  br.call.sptk.many b0 = b6
-	  ;;
 	}
 #endif /* !HAVE_INITFINI_ARRAY */
 
 .section .text
-	.align	16
-	.proc	__do_global_dtors_aux#
+	.align	32
+	.proc	__do_global_dtors_aux
 __do_global_dtors_aux:
+	.prologue
 #ifndef SHARED
-	{ .mii
-	  alloc loc3 = ar.pfs, 0, 4, 1, 0
-	  addl loc0 = @gprel(dtor_ptr#), gp
-	  mov loc1 = b0
-	}
-	{ .mib
-	  mov loc2 = gp
-	  br.sptk.few 1f
-	  ;;
-	}
+	.save ar.pfs, r35
+	alloc loc3 = ar.pfs, 0, 4, 1, 0
+	addl loc0 = @gprel(dtor_ptr), gp
+	.save rp, loc1
+	mov loc1 = rp
+	.body
+
+	mov loc2 = gp
+	nop 0
+	br.sptk.many .entry
 #else
 	/*
 		if (__cxa_finalize)
 		  __cxa_finalize(__dso_handle)
 	*/
-	{ .mii
-	  alloc loc3 = ar.pfs, 0, 4, 1, 0
-	  addl loc0 = @gprel(dtor_ptr#), gp
-	  addl r16 = @ltoff(@fptr(__cxa_finalize#)), gp
-	  ;;
-	}
-	{ .mmi
-	  ld8 r16 = [r16]
-	  ;;
-	  addl out0 = @ltoff(__dso_handle#), gp
-	  cmp.ne p7, p0 = r0, r16
-	  ;;
-	}
-	{ .mmi
-	  ld8 out0 = [out0]
-(p7)	  ld8 r18 = [r16], 8
-	  mov loc1 = b0
-	  ;;
-	}
-	{ .mfi
-	  mov loc2 = gp
-(p7)	  mov b6 = r18
-	}
-	{
-	  .mfb
-(p7)	  ld8 gp = [r16]
-(p7)	  br.call.sptk.many b0 = b6
-	}
-	{ .mfb
-	  br.sptk.few 1f
-	}
+	.save ar.pfs, r35
+	alloc loc3 = ar.pfs, 0, 4, 1, 0
+	addl loc0 = @gprel(dtor_ptr), gp
+	addl r16 = @ltoff(@fptr(__cxa_finalize)), gp
+	;;
+
+	ld8 r16 = [r16]
+	;;
+	addl out0 = @ltoff(__dso_handle), gp
+	cmp.ne p7, p0 = r0, r16
+	;;
+
+	ld8 out0 = [out0]
+(p7)	ld8 r18 = [r16], 8
+	.save rp, loc1
+	mov loc1 = rp
+	.body
+	;;
+
+	mov loc2 = gp
+(p7)	ld8 gp = [r16]
+(p7)	mov b6 = r18
+
+	nop 0
+	nop 0
+(p7)	br.call.sptk.many rp = b6
+	;;
+
+	nop 0
+	nop 0
+	br.sptk.many .entry
 #endif
 	/*
 		do {
@@ -169,90 +181,77 @@ __do_global_dtors_aux:
 		  (*(dtor_ptr-1)) ();
 		} while (dtor_ptr);
 	*/
-0:
-	{ .mmi
-	  st8 [loc0] = r15
-	  ld8 r17 = [r16], 8
-	  ;;
-	}
-	{ .mib
-	  ld8 gp = [r16]
-	  mov b6 = r17
-	  br.call.sptk.many b0 = b6
-	}
-1:
-	{ .mmi
-	  ld8 r15 = [loc0]
-	  ;;
-	  add r16 = r15, loc2
-	  adds r15 = 8, r15
-	  ;;
-	}
-	{ .mmi
-	  ld8 r16 = [r16]
-	  mov gp = loc2
-	  mov b0 = loc1
-	  ;;
-	}
-	{ .mib
-	  cmp.ne p6, p0 = r0, r16
-	  mov ar.pfs = loc3
-(p6)	  br.cond.sptk.few 0b
-	}
-	{ .bbb
-	  br.ret.sptk.many b0
-	  ;;
-	}
-	.endp	__do_global_dtors_aux#
+.loop:
+	st8 [loc0] = r15		// update dtor_ptr (in memory)
+	ld8 r17 = [r16], 8		// r17 <- dtor's entry-point
+	nop 0
+	;;
 
-	.align	16
-	.proc	__do_jv_register_classes#
+	ld8 gp = [r16]			// gp <- dtor's gp
+	mov b6 = r17
+	br.call.sptk.many rp = b6
+
+.entry:	ld8 r15 = [loc0]		// r15 <- dtor_ptr (gp-relative)
+	;;
+	add r16 = r15, loc2		// r16 <- dtor_ptr (absolute)
+	adds r15 = 8, r15
+	;;
+
+	ld8 r16 = [r16]			// r16 <- pointer to dtor's fdesc
+	mov rp = loc1
+	mov ar.pfs = loc3
+	;;
+
+	cmp.ne p6, p0 = r0, r16
+(p6)	br.cond.sptk.few .loop
+	br.ret.sptk.many rp
+	.endp __do_global_dtors_aux
+
+	.align	32
+	.proc	__do_jv_register_classes
 __do_jv_register_classes:
-	{ .mlx
-	  alloc loc2 = ar.pfs, 0, 3, 1, 0
-	  movl out0 = @gprel(__JCR_LIST__)
-	  ;;
-	}
-	{ .mmi
-	  addl r14 = @ltoff(@fptr(_Jv_RegisterClasses)), gp
-	  add out0 = out0, gp
-	  ;;
-	}
-	{ .mmi
-	  ld8 r14 = [r14]
-	  ld8 r15 = [out0]
-	  cmp.ne p6, p0 = r0, r0
-	  ;;
-	}
-	{ .mib
-	  cmp.eq.or p6, p0 = r0, r14
-	  cmp.eq.or p6, p0 = r0, r15
-(p6)	  br.ret.sptk.many b0
-	}
-	{ .mii
-	  ld8 r15 = [r14], 8
-	  mov loc0 = b0
-	  mov loc1 = gp
-	  ;;
-	}
-	{ .mib
-	  ld8 gp = [r14]
-	  mov b6 = r15
-	  br.call.sptk.many b0 = b6
-	  ;;
-	}
-	{ .mii
-	  mov gp = loc1
-	  mov b0 = loc0
-	  mov ar.pfs = loc2
-	}
-	{ .bbb
-	  br.ret.sptk.many b0
-	  ;;
-	}
-	.endp	__do_jv_register_classes#
+	.prologue
+	.save ar.pfs, r33
+	alloc loc1 = ar.pfs, 0, 3, 1, 0
+	movl out0 = @gprel(__JCR_LIST__)
+	;;
+
+	addl r14 = @ltoff(@fptr(_Jv_RegisterClasses)), gp
+	add out0 = out0, gp
+	.save rp, loc0
+	mov loc0 = rp
+	.body
+	;;
+
+	ld8 r14 = [r14]
+	ld8 r15 = [out0]
+	cmp.ne p6, p0 = r0, r0
+	;;
+
+	cmp.eq.or p6, p0 = r0, r14
+	cmp.eq.or p6, p0 = r0, r15
+(p6)	br.ret.sptk.many rp
+
+	ld8 r15 = [r14], 8
+	;;
+	nop 0
+	mov b6 = r15
+
+	mov loc2 = gp
+	ld8 gp = [r14]
+	br.call.sptk.many rp = b6
+	;;
+
+	mov gp = loc2
+	mov rp = loc0
+	mov ar.pfs = loc1
+
+	nop 0
+	nop 0
+	br.ret.sptk.many rp
+	.endp	__do_jv_register_classes
 
 #ifdef SHARED
-.weak __cxa_finalize#
+.weak __cxa_finalize
 #endif
 .weak _Jv_RegisterClasses

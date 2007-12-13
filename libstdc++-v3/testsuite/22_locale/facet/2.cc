@@ -1,6 +1,8 @@
+// { dg-require-namedlocale "" }
+
 // 2000-08-31 Benjamin Kosnik <bkoz@redhat.com>
 
-// Copyright (C) 2000, 2002, 2003 Free Software Foundation
+// Copyright (C) 2000, 2002, 2003, 2005 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.1.1.1.2 - class locale::facet [lib.locale.facet]
@@ -46,7 +48,7 @@ typedef surf facet_type;
 void test02()
 {
   using namespace std;
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   // 1: Destroyed when out of scope.
   VERIFY( counter == 0 );
@@ -83,7 +85,7 @@ void test02()
   // 4: Named locale should destroy facets when it goes out of scope.
   // Not quite sure how to test for this w/o valgrind at the moment.
   {
-    locale loc03("es_MX");
+    locale loc03 = locale("es_MX");
   }
 }
 

@@ -1,6 +1,6 @@
-// Build don't link:
-// Special g++ Options:
-// excess errors test - XFAIL xstormy16-*-*
+// { dg-do assemble }
+// { dg-xfail-if "" { xstormy16-*-* } { "*" } { "" } }
+// { dg-options "" }
 
 extern "C" void qsort(void *base, __SIZE_TYPE__ nmemb, __SIZE_TYPE__ size,
               int (*compar)(const void *, const void *));

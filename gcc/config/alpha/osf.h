@@ -1,24 +1,23 @@
 /* Definitions of target machine for GNU compiler, for DEC Alpha on OSF/1.
-   Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 2001
-   Free Software Foundation, Inc.
+   Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 2001, 2002, 2003,
+   2004, 2007 Free Software Foundation, Inc.
    Contributed by Richard Kenner (kenner@vlsi1.ultra.nyu.edu)
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* As of OSF 4.0, as can subtract adjacent labels.  */
 
@@ -32,29 +31,37 @@ Boston, MA 02111-1307, USA.  */
 
 /* Names to predefine in the preprocessor for this target machine.  */
 
-#define TARGET_OS_CPP_BUILTINS()		\
-    do {					\
-	builtin_define_std ("unix");		\
-	builtin_define_std ("SYSTYPE_BSD");	\
-	builtin_define ("_SYSTYPE_BSD");	\
-	builtin_define ("__osf__");		\
-	builtin_define ("_LONGLONG");		\
-	builtin_define ("__EXTERN_PREFIX");	\
-	builtin_assert ("system=unix");		\
-	builtin_assert ("system=xpg4");		\
-	/* Tru64 UNIX V5 has a 16 byte long	\
-	   double type and requires __X_FLOAT	\
-	   to be defined for <math.h>.  */	\
-        if (LONG_DOUBLE_TYPE_SIZE == 128)	\
-          builtin_define ("__X_FLOAT");		\
+#define TARGET_OS_CPP_BUILTINS()			\
+    do {						\
+	builtin_define_std ("unix");			\
+	builtin_define_std ("SYSTYPE_BSD");		\
+	builtin_define ("_SYSTYPE_BSD");		\
+	builtin_define ("__osf__");			\
+	builtin_define ("__digital__");			\
+	builtin_define ("__arch64__");			\
+	builtin_define ("_LONGLONG");			\
+	builtin_assert ("system=unix");			\
+	builtin_assert ("system=xpg4");			\
+	/* Tru64 UNIX V5 has a 16 byte long		\
+	   double type and requires __X_FLOAT		\
+	   to be defined for <math.h>.  */		\
+        if (LONG_DOUBLE_TYPE_SIZE == 128)		\
+          builtin_define ("__X_FLOAT");			\
+							\
+	/* Tru64 UNIX V4/V5 provide several ISO C94	\
+	   features protected by the corresponding	\
+	   __STDC_VERSION__ macro.  libstdc++ v3	\
+	   needs them as well.  */			\
+	if (c_dialect_cxx ())				\
+	  builtin_define ("__STDC_VERSION__=199409L");	\
     } while (0)
 
 /* Accept DEC C flags for multithreaded programs.  We use _PTHREAD_USE_D4
    instead of PTHREAD_USE_D4 since both have the same effect and the former
    doesn't invade the users' namespace.  */
 
-#undef CPP_SUBTARGET_SPEC
-#define CPP_SUBTARGET_SPEC \
+#undef CPP_SPEC
+#define CPP_SPEC \
 "%{pthread|threads:-D_REENTRANT} %{threads:-D_PTHREAD_USE_D4}"
 
 /* Under OSF4, -p and -pg require -lprof1, and -lprof1 requires -lpdf.  */
@@ -81,22 +88,6 @@ Boston, MA 02111-1307, USA.  */
   "%{ffast-math|funsafe-math-optimizations:crtfastmath.o%s}"
 
 #define MD_STARTFILE_PREFIX "/usr/lib/cmplrs/cc/"
-
-#define ASM_FILE_START(FILE)					\
-{								\
-  alpha_write_verstamp (FILE);					\
-  fprintf (FILE, "\t.set noreorder\n");				\
-  fprintf (FILE, "\t.set volatile\n");                          \
-  fprintf (FILE, "\t.set noat\n");				\
-  if (TARGET_SUPPORT_ARCH)					\
-    fprintf (FILE, "\t.arch %s\n",				\
-             TARGET_CPU_EV6 ? "ev6"				\
-	     : (TARGET_CPU_EV5					\
-		? (TARGET_MAX ? "pca56" : TARGET_BWX ? "ev56" : "ev5") \
-		: "ev4"));					\
-								\
-  ASM_OUTPUT_SOURCE_FILENAME (FILE, main_input_filename);	\
-}
 
 /* Tru64 UNIX V5.1 requires a special as flag.  Empty by default.  */
 
@@ -129,7 +120,7 @@ Boston, MA 02111-1307, USA.  */
 		%{K: -I %b.o~} \
 		%{!K: %{save-temps: -I %b.o~}} \
 		%{c:%W{o*}%{!o*:-o %b.o}}%{!c:-o %U.o} \
-		%{.s:%i} %{!.s:%g.s}}}"
+		%{,assembler:%i;:%g.s}}}"
 
 #else
 #define ASM_FINAL_SPEC "\
@@ -138,28 +129,25 @@ Boston, MA 02111-1307, USA.  */
 		%{K: -I %b.o~} \
 		%{!K: %{save-temps: -I %b.o~}} \
 		%{c:%W{o*}%{!o*:-o %b.o}}%{!c:-o %U.o} \
-		%{.s:%i} %{!.s:%g.s}}}"
+		%{,assembler:%i;:%g.s}}}"
 
 #endif
 
-#undef SUBTARGET_EXTRA_SPECS
-#define SUBTARGET_EXTRA_SPECS { "asm_oldas", ASM_OLDAS_SPEC }
+#undef EXTRA_SPECS
+#define EXTRA_SPECS { "asm_oldas", ASM_OLDAS_SPEC }
 
 /* Indicate that we have a stamp.h to use.  */
-#ifndef CROSS_COMPILE
+#ifndef CROSS_DIRECTORY_STRUCTURE
 #define HAVE_STAMP_H 1
 #endif
 
 /* Attempt to turn on access permissions for the stack.  */
 
-#define TRANSFER_FROM_TRAMPOLINE					\
-extern void __enable_execute_stack PARAMS ((void *));			\
-									\
+#define ENABLE_EXECUTE_STACK						\
 void									\
-__enable_execute_stack (addr)						\
-     void *addr;							\
+__enable_execute_stack (void *addr)					\
 {									\
-  extern int mprotect PARAMS ((const void *, size_t, int));		\
+  extern int mprotect (const void *, size_t, int);			\
   long size = getpagesize ();						\
   long mask = ~(size-1);						\
   char *page = (char *) (((long) addr) & mask);				\
@@ -178,6 +166,10 @@ __enable_execute_stack (addr)						\
 #define HAS_INIT_SECTION
 #define LD_INIT_SWITCH "-init"
 #define LD_FINI_SWITCH "-fini"
+
+/* The linker needs a space after "-o".  This allows -oldstyle_liblookup to
+   be passed to ld.  */
+#define SWITCHES_NEED_SPACES "o"
 
 /* Select a format to encode pointers in exception handling data.  CODE
    is 0 for data, 1 for code labels, 2 for function pointers.  GLOBAL is
@@ -217,4 +209,4 @@ __enable_execute_stack (addr)						\
 
 /* Handle #pragma extern_prefix.  Technically only needed for Tru64 5.x,
    but easier to manipulate preprocessor bits from here.  */
-#define HANDLE_PRAGMA_EXTERN_PREFIX 1
+#define TARGET_HANDLE_PRAGMA_EXTERN_PREFIX 1

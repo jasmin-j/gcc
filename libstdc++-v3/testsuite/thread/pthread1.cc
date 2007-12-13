@@ -1,6 +1,7 @@
 // 2002-01-23  Loren J. Rittle <rittle@labs.mot.com> <ljrittle@acm.org>
 //
-// Copyright (C) 2002 Free Software Foundation, Inc.
+// Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,11 +16,11 @@
 //
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
-// { dg-do run { target *-*-freebsd* *-*-netbsd* *-*-linux* *-*-solaris* *-*-cygwin } }
-// { dg-options "-pthread" { target *-*-freebsd* *-*-netbsd* *-*-linux* } }
+// { dg-do run { target *-*-freebsd* *-*-netbsd* *-*-linux* *-*-solaris* *-*-cygwin *-*-darwin* alpha*-*-osf* mips-sgi-irix6* } }
+// { dg-options "-pthread" { target *-*-freebsd* *-*-netbsd* *-*-linux* alpha*-*-osf* mips-sgi-irix6* } }
 // { dg-options "-pthreads" { target *-*-solaris* } }
 
 // This multi-threading C++/STL/POSIX code adheres to rules outlined here:
@@ -30,11 +31,9 @@
 // if the STL threading support is fubar'd).
 
 #include <list>
+#include <cstdlib>
+#include <pthread.h>
 
-// Do not include <pthread.h> explicitly; if threads are properly
-// configured for the port, then it is picked up free from STL headers.
-
-#if __GTHREADS
 using namespace std;
 
 const int thread_cycles = 10;
@@ -100,14 +99,14 @@ consume (void* t)
 }
 
 int
-main (int argc, char** argv)
+main ()
 {
   pthread_t prod[thread_pairs];
   pthread_t cons[thread_pairs];
 
   task_queue* tq[thread_pairs];
 
-#if defined(__sun) && defined(__svr4__)
+#if defined(__sun) && defined(__svr4__) && _XOPEN_VERSION >= 500
   pthread_setconcurrency (thread_pairs * 2);
 #endif
 
@@ -124,20 +123,9 @@ main (int argc, char** argv)
 	{
 	  pthread_join (prod[i], NULL);
 	  pthread_join (cons[i], NULL);
-#if defined(__FreeBSD__) && __FreeBSD__ < 5
-	  // These lines are not required by POSIX since a successful
-	  // join is suppose to detach as well...
-	  pthread_detach (prod[i]);
-	  pthread_detach (cons[i]);
-	  // ...but they are according to the FreeBSD 4.X code base
-	  // or else you get a memory leak.
-#endif
 	  delete tq[i];
 	}
     }
 
   return 0;
 }
-#else
-int main (void) {}
-#endif

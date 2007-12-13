@@ -1,6 +1,7 @@
+// { dg-do run { target i?86-*-* x86_64-*-* } }
+// { dg-require-effective-target ilp32 }
 // Test for proper handling of attributes in template instantiation.
 // Contributed by Jason Merrill <jason@cygnus.com>
-// Skip if not target: i?86-*-*
 
 template <class T>
 struct A {

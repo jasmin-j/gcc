@@ -1,13 +1,13 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                         A D A . R E A L _ T I M E                        --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---            Copyright (C) 1991-2002, Florida State University             --
+--             Copyright (C) 1991-1994, Florida State University            --
+--                     Copyright (C) 1995-2006, AdaCore                     --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +17,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -27,13 +27,10 @@
 -- however invalidate  any other reasons why  the executable file  might be --
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
--- GNARL was developed by the GNARL team at Florida State University. It is --
--- now maintained by Ada Core Technologies, Inc. (http://www.gnat.com).     --
+-- GNARL was developed by the GNARL team at Florida State University.       --
+-- Extensive contributions were provided by Ada Core Technologies, Inc.     --
 --                                                                          --
 ------------------------------------------------------------------------------
-
-with System.Task_Primitives.Operations;
---  used for Monotonic_Clock
 
 package body Ada.Real_Time is
 
@@ -154,6 +151,15 @@ package body Ada.Real_Time is
       return Time_Span_Unit * MS * 1_000_000;
    end Milliseconds;
 
+   -------------
+   -- Minutes --
+   -------------
+
+   function Minutes (M : Integer) return Time_Span is
+   begin
+      return Milliseconds (M) * Integer'(60_000);
+   end Minutes;
+
    -----------------
    -- Nanoseconds --
    -----------------
@@ -162,6 +168,15 @@ package body Ada.Real_Time is
    begin
       return Time_Span_Unit * NS;
    end Nanoseconds;
+
+   -------------
+   -- Seconds --
+   -------------
+
+   function Seconds (S : Integer) return Time_Span is
+   begin
+      return Milliseconds (S) * Integer'(1000);
+   end Seconds;
 
    -----------
    -- Split --
@@ -180,12 +195,12 @@ package body Ada.Real_Time is
          T_Val := abs (T);
       end if;
 
-      --  Extract the integer part of T, truncating towards zero.
+      --  Extract the integer part of T, truncating towards zero
 
       if T_Val < 0.5 then
          SC := 0;
       else
-         SC := Seconds_Count (Time_Span' (T_Val - 0.5));
+         SC := Seconds_Count (Time_Span'(T_Val - 0.5));
       end if;
 
       if T < 0.0 then
@@ -226,6 +241,11 @@ package body Ada.Real_Time is
 
    function To_Time_Span (D : Duration) return Time_Span is
    begin
+      --  Note regarding AI-00432 requiring range checking on this conversion.
+      --  In almost all versions of GNAT (and all to which this version of the
+      --  Ada.Real_Time package apply), the range of Time_Span and Duration are
+      --  the same, so there is no issue of overflow.
+
       return Time_Span (D);
    end To_Time_Span;
 

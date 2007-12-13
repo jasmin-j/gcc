@@ -1,4 +1,4 @@
-// Build don't link: 
+// { dg-do assemble  }
 // GROUPS passed error-messages
 #include <fstream>
 #include <iomanip>
@@ -10,7 +10,7 @@
 class test{
 public:
 	int	flags;
-	test()	{};
+	test()	{}
 	};
 
 int main()

@@ -1,3 +1,4 @@
+// { dg-do run  }
 template <class INT>
 class b
 {
@@ -10,7 +11,7 @@ private:
     } val;
     val.i = x;
     return val.c;
-  };
+  }
 
 public:
   b()  {

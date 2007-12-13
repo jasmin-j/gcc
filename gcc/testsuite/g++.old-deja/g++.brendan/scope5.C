@@ -1,4 +1,4 @@
-// Build don't link: 
+// { dg-do assemble  }
 // GROUPS passed scoping
 class Integer {
 public:
@@ -6,7 +6,7 @@ public:
 };
 
 class Type {
-    enum Class { ENUM, INTEGER };
+    enum Klasse { ENUM, INTEGER };
 
     class Description {
     public:

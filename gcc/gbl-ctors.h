@@ -2,7 +2,7 @@
    for getting g++ file-scope static objects constructed.  This file
    will get included either by libgcc2.c (for systems that don't support
    a .init section) or by crtstuff.c (for those that do).
-   Copyright (C) 1991, 1995, 1996, 1998, 1999, 2000
+   Copyright (C) 1991, 1995, 1996, 1998, 1999, 2000, 2003
    Free Software Foundation, Inc.
    Contributed by Ron Guilmette (rfg@segfault.us.com)
 
@@ -20,8 +20,15 @@ for more details.
 
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301, USA.  */
+
+/* As a special exception, if you link this library with other files,
+   some of which are compiled with GCC, to produce an executable,
+   this library does not by itself cause the resulting executable
+   to be covered by the GNU General Public License.
+   This exception does not however invalidate any other reasons why
+   the executable file might be covered by the GNU General Public License.  */
 
 /*	This file contains definitions and declarations of things
 	relating to the normal start-up-time invocation of C++
@@ -30,10 +37,6 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 
 	Note that this file should only be compiled with GCC.
 */
-
-#ifdef NEED_ATEXIT
-extern int atexit (void (*) (void));
-#endif
 
 /*  Declare a pointer to void function type.  */
 

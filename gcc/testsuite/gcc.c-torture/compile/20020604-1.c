@@ -1,3 +1,8 @@
+/* { dg-do assemble } */
+/* { dg-xfail-if "The array is too big" { "m6811-*-* m6812-*-*" } { "*" } { "" } } */
+/* { dg-xfail-if "The array too big" { "h8300-*-*" } { "-mno-h" "-mn" } { "" } } */
+/* { dg-skip-if "" { m32c-*-* } { } { } } */
+
 /* PR c/6957
    This testcase ICEd at -O2 on IA-32, because
    (insn 141 139 142 (set (subreg:SF (reg:QI 72) 0)

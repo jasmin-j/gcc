@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                     A D A . C O M M A N D _ L I N E                      --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,7 +31,8 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with System;
+with System;                 use System;
+
 package body Ada.Command_Line is
 
    function Arg_Count return Natural;
@@ -44,11 +44,20 @@ package body Ada.Command_Line is
    function Len_Arg (Arg_Num : Integer) return Integer;
    pragma Import (C, Len_Arg, "__gnat_len_arg");
 
+   -----------------------
+   -- Local Subprograms --
+   -----------------------
+
+   function Initialized return Boolean;
+   --  Checks to ensure that gnat_argc and gnat_argv have been properly
+   --  initialized.  Returns false if not, or if argv / argc are
+   --  unsupported on the target (e.g. VxWorks).
+
    --------------
    -- Argument --
    --------------
 
-   function Argument (Number : in Positive) return String is
+   function Argument (Number : Positive) return String is
       Num : Positive;
 
    begin
@@ -77,6 +86,11 @@ package body Ada.Command_Line is
 
    function Argument_Count return Natural is
    begin
+      if not Initialized then
+         --  RM A.15 (11)
+         return 0;
+      end if;
+
       if Remove_Args = null then
          return Arg_Count - 1;
       else
@@ -84,16 +98,35 @@ package body Ada.Command_Line is
       end if;
    end Argument_Count;
 
+   -----------------
+   -- Initialized --
+   -----------------
+
+   function Initialized return Boolean is
+      gnat_argv : System.Address;
+      pragma Import (C, gnat_argv, "gnat_argv");
+
+   begin
+      return gnat_argv /= System.Null_Address;
+   end Initialized;
+
    ------------------
    -- Command_Name --
    ------------------
 
    function Command_Name return String is
-      Arg : aliased String (1 .. Len_Arg (0));
-
    begin
-      Fill_Arg (Arg'Address, 0);
-      return Arg;
+      if not Initialized then
+         return "";
+      end if;
+
+      declare
+         Arg : aliased String (1 .. Len_Arg (0));
+
+      begin
+         Fill_Arg (Arg'Address, 0);
+         return Arg;
+      end;
    end Command_Name;
 
 end Ada.Command_Line;

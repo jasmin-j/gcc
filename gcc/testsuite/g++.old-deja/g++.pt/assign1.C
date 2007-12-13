@@ -1,8 +1,8 @@
-// Build don't link:
+// { dg-do compile  }
 // Origin: Mark Mitchell <mark@codesourcery.com>
 
 template <class T>
-struct S {
+struct S { // { dg-error "assignment" }
   S();
   T t;
 };
@@ -10,5 +10,5 @@ struct S {
 void f()
 {
   S<const int> s;
-  s = s; // ERROR - generated assignment operator is illegal
+  s = s; // { dg-error "synthesized" }
 }

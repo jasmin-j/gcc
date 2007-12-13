@@ -6,8 +6,7 @@
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *                                                                          *
- *         Copyright (C) 1992-2001 Free Software Foundation, Inc.           *
+ *         Copyright (C) 1992-2007, Free Software Foundation, Inc.           *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -17,8 +16,8 @@
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
  * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
+ * Boston, MA 02110-1301, USA.                                              *
  *                                                                          *
  * As a  special  exception,  if you  link  this file  with other  files to *
  * produce an executable,  this file does not by itself cause the resulting *
@@ -62,29 +61,39 @@ int gnat_argc = 0;
 const char **gnat_argv = (const char **) 0;
 const char **gnat_envp = (const char **) 0;
 
+#ifdef _WIN32
+/* Note that on Windows environment the environ point to a buffer that could
+   be reallocated if needed. It means that gnat_envp needs to be updated
+   before using gnat_envp to point to the right environment space */
+#include <stdlib.h>
+/* for the environ variable definition */
+#define gnat_envp (environ)
+#endif
+
 int
-__gnat_arg_count ()
+__gnat_arg_count (void)
 {
   return gnat_argc;
 }
 
 int
-__gnat_len_arg (arg_num)
-   int arg_num;
+__gnat_len_arg (int arg_num)
 {
-  return strlen (gnat_argv[arg_num]);
+  if (gnat_argv != NULL)
+    return strlen (gnat_argv[arg_num]);
+  else
+    return 0;
 }
 
 void
-__gnat_fill_arg (a, i)
-   char *a;
-   int i;
+__gnat_fill_arg (char *a, int i)
 {
-  strncpy (a, gnat_argv[i], strlen(gnat_argv[i]));
+  if (gnat_argv != NULL)
+    strncpy (a, gnat_argv[i], strlen(gnat_argv[i]));
 }
 
 int
-__gnat_env_count ()
+__gnat_env_count (void)
 {
   int i;
 
@@ -94,16 +103,17 @@ __gnat_env_count ()
 }
 
 int
-__gnat_len_env (env_num)
-   int env_num;
+__gnat_len_env (int env_num)
 {
-  return strlen (gnat_envp[env_num]);
+  if (gnat_envp != NULL)
+    return strlen (gnat_envp[env_num]);
+  else
+    return 0;
 }
 
 void
-__gnat_fill_env (a, i)
-   char *a;
-   int i;
+__gnat_fill_env (char *a, int i)
 {
-  strncpy (a, gnat_envp[i], strlen (gnat_envp[i]));
+  if (gnat_envp != NULL)
+    strncpy (a, gnat_envp[i], strlen (gnat_envp[i]));
 }

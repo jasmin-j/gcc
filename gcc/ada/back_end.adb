@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -31,7 +29,6 @@ with Elists;    use Elists;
 with Lib;       use Lib;
 with Osint;     use Osint;
 with Opt;       use Opt;
-with Osint;     use Osint;
 with Osint.C;   use Osint.C;
 with Namet;     use Namet;
 with Nlists;    use Nlists;
@@ -51,19 +48,16 @@ package body Back_End is
 
    procedure Call_Back_End (Mode : Back_End_Mode_Type) is
 
-      --  The File_Record type has a lot of components that are meaningless
-      --  to the back end, so a new record is created here to contain the
-      --  needed information for each file.
+      --  The Source_File_Record type has a lot of components that are
+      --  meaningless to the back end, so a new record type is created
+      --  here to contain the needed information for each file.
 
-      type Needed_File_Info_Type is record
+      type File_Info_Type is record
          File_Name        : File_Name_Type;
-         First_Sloc       : Source_Ptr;
-         Last_Sloc        : Source_Ptr;
          Num_Source_Lines : Nat;
       end record;
 
-      File_Info_Array :
-        array (Main_Unit .. Last_Unit) of Needed_File_Info_Type;
+      File_Info_Array : array (1 .. Last_Source_File) of File_Info_Type;
 
       procedure gigi (
          gnat_root                     : Int;
@@ -79,7 +73,7 @@ package body Back_End is
          strings_ptr                   : Address;
          string_chars_ptr              : Address;
          list_headers_ptr              : Address;
-         number_units                  : Int;
+         number_file                   : Nat;
 
          file_info_ptr                 : Address;
          gigi_standard_integer         : Entity_Id;
@@ -89,8 +83,6 @@ package body Back_End is
 
       pragma Import (C, gigi);
 
-      S : Source_File_Index;
-
    begin
       --  Skip call if in -gnatdH mode
 
@@ -98,12 +90,9 @@ package body Back_End is
          return;
       end if;
 
-      for J in Main_Unit .. Last_Unit loop
-         S := Source_Index (J);
-         File_Info_Array (J).File_Name        := File_Name (S);
-         File_Info_Array (J).First_Sloc       := Source_Text (S)'First;
-         File_Info_Array (J).Last_Sloc        := Source_Text (S)'Last;
-         File_Info_Array (J).Num_Source_Lines := Num_Source_Lines (S);
+      for I in 1 .. Last_Source_File loop
+         File_Info_Array (I).File_Name        := Full_Debug_Name (I);
+         File_Info_Array (I).Num_Source_Lines := Num_Source_Lines (I);
       end loop;
 
       gigi (
@@ -120,7 +109,7 @@ package body Back_End is
          strings_ptr        => Strings_Address,
          string_chars_ptr   => String_Chars_Address,
          list_headers_ptr   => Lists_Address,
-         number_units       => Num_Units,
+         number_file        => Num_Source_Files,
 
          file_info_ptr                 => File_Info_Array'Address,
          gigi_standard_integer         => Standard_Integer,
@@ -143,7 +132,7 @@ package body Back_End is
       type Arg_Array is array (Nat) of BSP;
       type Arg_Array_Ptr is access Arg_Array;
 
-      --  Import flag_stack_check from toplev.c.
+      --  Import flag_stack_check from toplev.c
 
       flag_stack_check : Int;
       pragma Import (C, flag_stack_check); -- Import from toplev.c
@@ -208,11 +197,12 @@ package body Back_End is
             Last := Last - 1;
          end if;
 
-         --  For dumpbase and o, skip following argument and do not
+         --  For these switches, skip following argument and do not
          --  store either the switch or the following argument
 
          if Switch_Chars (First .. Last) = "o"
             or else Switch_Chars (First .. Last) = "dumpbase"
+            or else Switch_Chars (First .. Last) = "-param"
 
          then
             Next_Arg := Next_Arg + 1;
@@ -239,11 +229,10 @@ package body Back_End is
       --  Loop through command line arguments, storing them for later access
 
       while Next_Arg < save_argc loop
-
          Look_At_Arg : declare
-            Argv_Ptr  : constant BSP := save_argv (Next_Arg);
-            Argv_Len  : constant Nat := Len_Arg (Next_Arg);
-            Argv      : String := Argv_Ptr (1 .. Natural (Argv_Len));
+            Argv_Ptr : constant BSP    := save_argv (Next_Arg);
+            Argv_Len : constant Nat    := Len_Arg (Next_Arg);
+            Argv     : constant String := Argv_Ptr (1 .. Natural (Argv_Len));
 
          begin
             --  If the previous switch has set the Output_File_Name_Present
@@ -261,6 +250,18 @@ package body Back_End is
                   Output_File_Name_Seen := True;
                end if;
 
+               --  If the previous switch has set the Search_Directory_Present
+               --  flag (that is if we have just seen -I), then the next
+               --  argument is a search directory path.
+
+            elsif Search_Directory_Present then
+               if Is_Switch (Argv) then
+                  Fail ("search directory missing after -I");
+               else
+                  Add_Src_Search_Dir (Argv);
+                  Search_Directory_Present := False;
+               end if;
+
             elsif not Is_Switch (Argv) then -- must be a file name
                Add_File (Argv);
 
@@ -270,6 +271,12 @@ package body Back_End is
             elsif Argv (Argv'First + 1 .. Argv'Last) = "nostdinc" then
                Opt.No_Stdinc := True;
                Scan_Back_End_Switches (Argv);
+
+            --  We must recognize -nostdlib to suppress visibility on the
+            --  standard GNAT RTL objects.
+
+            elsif Argv (Argv'First + 1 .. Argv'Last) = "nostdlib" then
+               Opt.No_Stdlib := True;
 
             elsif Is_Front_End_Switch (Argv) then
                Scan_Front_End_Switches (Argv);

@@ -1,5 +1,8 @@
-/* { dg-do compile { target i?86-*-* sparc*-*-* } } */
+/* { dg-do compile { target i?86-*-* sparc*-*-* x86_64-*-* } } */
 /* { dg-options "-O2" } */
+
+extern void abort (void);
+extern void exit (int);
 
 typedef enum { false, true } __attribute__ ((packed)) boolean;
 typedef struct {

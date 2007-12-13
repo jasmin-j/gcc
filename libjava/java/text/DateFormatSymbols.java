@@ -1,5 +1,5 @@
-/* ChoiceFormat.java -- Format over a range of numbers
-   Copyright (C) 1998, 1999, 2000, 2001 Free Software Foundation, Inc.
+/* DateFormatSymbols.java -- Format over a range of numbers
+   Copyright (C) 1998, 1999, 2000, 2001, 2003, 2005, 2006  Free Software Foundation, Inc.
 
 This file is part of GNU Classpath.
 
@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -38,14 +38,25 @@ exception statement from your version. */
 
 package java.text;
 
+import gnu.java.locale.LocaleHelper;
+
+import java.text.spi.DateFormatSymbolsProvider;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
+import java.util.ServiceLoader;
+import java.util.TimeZone;
+ 
+import java.util.spi.TimeZoneNameProvider;
 
 /**
  * This class acts as container for locale specific date/time formatting
  * information such as the days of the week and the months of the year.
- * @author Per Bothner <bothner@cygnus.com>
+ * @author Per Bothner (bothner@cygnus.com)
+ *
  * @date October 24, 1998.
  */
 /* Written using "Java Class Libraries", 2nd edition, ISBN 0-201-31002-3.
@@ -60,6 +71,15 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
   String[] shortMonths;
   String[] shortWeekdays;
   String[] weekdays;
+
+  /**
+   * The timezone strings supplied by the runtime.
+   */
+  private String[][] runtimeZoneStrings;
+
+  /**
+   * Custom timezone strings supplied by {@link #setZoneStrings()}.
+   */
   private String[][] zoneStrings;
 
   private static final long serialVersionUID = -5987973545549424702L;
@@ -91,14 +111,22 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
   /**
    * This method initializes a new instance of <code>DateFormatSymbols</code>
    * by loading the date format information for the specified locale.
+   * This constructor only obtains instances using the runtime's resources;
+   * to also include {@link java.text.spi.DateFormatSymbolsProvider} instances,
+   * call {@link #getInstance(java.util.Locale)} instead.
    *
    * @param locale The locale for which date formatting symbols should
    *               be loaded. 
+   * @throws MissingResourceException if the resources for the specified
+   *                                  locale could not be found or loaded.
+   * @see #getInstance(java.util.Locale)
    */
-  public DateFormatSymbols (Locale locale) throws MissingResourceException
+  public DateFormatSymbols (Locale locale)
+    throws MissingResourceException
   {
     ResourceBundle res
-      = ResourceBundle.getBundle("gnu.java.locale.LocaleInformation", locale);
+      = ResourceBundle.getBundle("gnu.java.locale.LocaleInformation", locale,
+      				 ClassLoader.getSystemClassLoader());
 
     ampms = res.getStringArray ("ampms");
     eras = res.getStringArray ("eras");
@@ -115,9 +143,16 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
 
   /**
    * This method loads the format symbol information for the default
-   * locale.
+   * locale. This constructor only obtains instances using the runtime's resources;
+   * to also include {@link java.text.spi.DateFormatSymbolsProvider} instances,
+   * call {@link #getInstance()} instead.
+   *
+   * @throws MissingResourceException if the resources for the default
+   *                                  locale could not be found or loaded.
+   * @see #getInstance()
    */
-  public DateFormatSymbols () throws MissingResourceException
+  public DateFormatSymbols() 
+    throws MissingResourceException
   {
     this (Locale.getDefault());
   }
@@ -156,24 +191,24 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
     * locale):
     * <p>
     * <ul>
-    * <li>0 - era (G)
-    * <li>1 - year (y)
-    * <li>2 - month (M)
-    * <li 3 - day of month (d)
-    * <li>4 - hour out of 12, from 1-12 (h)
-    * <li>5 - hour out of 24, from 0-23 (H)
-    * <li>6 - minute (m)
-    * <li>7 - second (s)
-    * <li>8 - millisecond (S)
-    * <li>9 - date of week (E)
-    * <li>10 - date of year (D)
-    * <li>11 - day of week in month, eg. "4th Thur in Nov" (F)
-    * <li>12 - week in year (w)
-    * <li>13 - week in month (W)
-    * <li>14 - am/pm (a)
-    * <li>15 - hour out of 24, from 1-24 (k)
-    * <li>16 - hour out of 12, from 0-11 (K)
-    * <li>17 - time zone (z)
+    * <li>0 - era (G)</li>
+    * <li>1 - year (y)</li>
+    * <li>2 - month (M)</li>
+    * <li>3 - day of month (d)</li>
+    * <li>4 - hour out of 12, from 1-12 (h)</li>
+    * <li>5 - hour out of 24, from 0-23 (H)</li>
+    * <li>6 - minute (m)</li>
+    * <li>7 - second (s)</li>
+    * <li>8 - millisecond (S)</li>
+    * <li>9 - date of week (E)</li>
+    * <li>10 - date of year (D)</li>
+    * <li>11 - day of week in month, eg. "4th Thur in Nov" (F)</li>
+    * <li>12 - week in year (w)</li>
+    * <li>13 - week in month (W)</li>
+    * <li>14 - am/pm (a)</li>
+    * <li>15 - hour out of 24, from 1-24 (k)</li>
+    * <li>16 - hour out of 12, from 0-11 (K)</li>
+    * <li>17 - time zone (z)</li>
     * </ul>
     *
     * @return The format patter characters
@@ -245,11 +280,12 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
    * the array contains five values:
    * <P>
    * <ul>
-   * <li>0 - The non-localized time zone id string.
-   * <li>1 - The long name of the time zone (standard time).
-   * <li>2 - The short name of the time zone (standard time).
-   * <li>3 - The long name of the time zone (daylight savings time).
-   * <li>4 - the short name of the time zone (daylight savings time).
+   * <li>0 - The non-localized time zone id string.</li>
+   * <li>1 - The long name of the time zone (standard time).</li>
+   * <li>2 - The short name of the time zone (standard time).</li>
+   * <li>3 - The long name of the time zone (daylight savings time).</li>
+   * <li>4 - the short name of the time zone (daylight savings time).</li>
+   * </ul>
    *
    * @return The list of time zone display strings.
    */
@@ -264,7 +300,7 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
    * This is a two element <code>String</code> array indexed by
    * <code>Calendar.AM</code> and <code>Calendar.PM</code>
    *
-   * @param ampms The new list of AM/PM display strings.
+   * @param value The new list of AM/PM display strings.
    */
   public void setAmPmStrings (String[] value)
   {
@@ -277,11 +313,11 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
    * This is a two element <code>String</code>
    * array indexed by <code>Calendar.BC</code> and <code>Calendar.AD</code>.
    *
-   * @param eras The new list of era disply strings.
+   * @param labels The new list of era display strings.
    */
-  public void setEras (String[] value)
+  public void setEras (String[] labels)
   {
-    eras = value;
+    eras = labels;
   }
 
   /**
@@ -295,31 +331,31 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
     * locale):
     * <p>
     * <ul>
-    * <li>0 - era (G)
-    * <li>1 - year (y)
-    * <li>2 - month (M)
-    * <li 3 - day of month (d)
-    * <li>4 - hour out of 12, from 1-12 (h)
-    * <li>5 - hour out of 24, from 0-23 (H)
-    * <li>6 - minute (m)
-    * <li>7 - second (s)
-    * <li>8 - millisecond (S)
-    * <li>9 - date of week (E)
-    * <li>10 - date of year (D)
-    * <li>11 - day of week in month, eg. "4th Thur in Nov" (F)
-    * <li>12 - week in year (w)
-    * <li>13 - week in month (W)
-    * <li>14 - am/pm (a)
-    * <li>15 - hour out of 24, from 1-24 (k)
-    * <li>16 - hour out of 12, from 0-11 (K)
-    * <li>17 - time zone (z)
+    * <li>0 - era (G)</li>
+    * <li>1 - year (y)</li>
+    * <li>2 - month (M)</li>
+    * <li>3 - day of month (d)</li>
+    * <li>4 - hour out of 12, from 1-12 (h)</li>
+    * <li>5 - hour out of 24, from 0-23 (H)</li>
+    * <li>6 - minute (m)</li>
+    * <li>7 - second (s)</li>
+    * <li>8 - millisecond (S)</li>
+    * <li>9 - date of week (E)</li>
+    * <li>10 - date of year (D)</li>
+    * <li>11 - day of week in month, eg. "4th Thur in Nov" (F)</li>
+    * <li>12 - week in year (w)</li>
+    * <li>13 - week in month (W)</li>
+    * <li>14 - am/pm (a)</li>
+    * <li>15 - hour out of 24, from 1-24 (k)</li>
+    * <li>16 - hour out of 12, from 0-11 (K)</li>
+    * <li>17 - time zone (z)</li>
     * </ul>
     *
-    * @param localPatternChars The new format patter characters
+    * @param chars The new format pattern characters
     */
-  public void setLocalPatternChars (String value)
+  public void setLocalPatternChars (String chars)
   {
-    localPatternChars = value;
+    localPatternChars = chars;
   }
 
   /**
@@ -329,11 +365,11 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
     * <code>Calendar.UNDECEMBER</code>.  Note that there are thirteen
     * elements because some calendars have thriteen months.
     *
-    * @param months The list of month display strings.
+    * @param labels The list of month display strings.
     */
-  public void setMonths (String[] value)
+  public void setMonths (String[] labels)
   {
-    months = value;
+    months = labels;
   }
 
   /**
@@ -344,11 +380,11 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
    * through <code>Calendar.UNDECEMBER</code>.  Note that there are thirteen
    * elements because some calendars have thirteen months.
    *
-   * @param shortMonths The new list of abbreviated month display strings.
+   * @param labels The new list of abbreviated month display strings.
    */
-  public void setShortMonths (String[] value)
+  public void setShortMonths (String[] labels)
   {
-    shortMonths = value;
+    shortMonths = labels;
   }
 
   /**
@@ -359,11 +395,11 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
    * through <code>Calendar.SATURDAY</code>.  Note that the first element
    * of this array is ignored.
    *
-   * @param shortWeekdays This list of abbreviated weekday display strings.
+   * @param labels This list of abbreviated weekday display strings.
    */
-  public void setShortWeekdays (String[] value)
+  public void setShortWeekdays (String[] labels)
   {
-    shortWeekdays = value;
+    shortWeekdays = labels;
   }
 
   /**
@@ -373,11 +409,11 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
    * through <code>Calendar.SATURDAY</code>.  Note that the first element
    * of this array is ignored.
    *
-   * @param weekdays This list of weekday display strings.
+   * @param labels This list of weekday display strings.
    */
-  public void setWeekdays (String[] value)
+  public void setWeekdays (String[] labels)
   {
-    weekdays = value;
+    weekdays = labels;
   }
 
   /**
@@ -386,17 +422,18 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
    * the array contains five values:
    * <P>
    * <ul>
-   * <li>0 - The non-localized time zone id string.
-   * <li>1 - The long name of the time zone (standard time).
-   * <li>2 - The short name of the time zone (standard time).
-   * <li>3 - The long name of the time zone (daylight savings time).
-   * <li>4 - the short name of the time zone (daylight savings time).
+   * <li>0 - The non-localized time zone id string.</li>
+   * <li>1 - The long name of the time zone (standard time).</li>
+   * <li>2 - The short name of the time zone (standard time).</li>
+   * <li>3 - The long name of the time zone (daylight savings time).</li>
+   * <li>4 - the short name of the time zone (daylight savings time).</li>
+   * </ul>
    *
-   * @return The list of time zone display strings.
+   * @params zones The list of time zone display strings.
    */
-  public void setZoneStrings (String[][] value)
+  public void setZoneStrings (String[][] zones)
   {
-    zoneStrings = value;
+    zoneStrings = zones;
   }
 
   /* Does a "deep" equality test - recurses into arrays. */
@@ -438,15 +475,15 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
    * This will be true if and only if the specified object:
    * <p>
    * <ul>
-   * <li> Is not <code>null</code>.
-   * <li> Is an instance of <code>DateFormatSymbols</code>.
-   * <li> Contains identical formatting symbols to this object.
+   * <li> Is not <code>null</code>.</li>
+   * <li> Is an instance of <code>DateFormatSymbols</code>.</li>
+   * <li> Contains identical formatting symbols to this object.</li>
    * </ul>
    * 
    * @param obj The <code>Object</code> to test for equality against.
    *
    * @return <code>true</code> if the specified object is equal to this one,
-   * </code>false</code> otherwise.
+   * <code>false</code> otherwise.
    */
   public boolean equals (Object obj)
   {
@@ -466,7 +503,7 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
   /**
    * Returns a new copy of this object.
    *
-   * @param A copy of this object
+   * @return A copy of this object
    */
   public Object clone ()
   {
@@ -496,4 +533,65 @@ public class DateFormatSymbols implements java.io.Serializable, Cloneable
 	    ^ hashCode(weekdays)
 	    ^ hashCode(zoneStrings));
   }
+
+  /**
+   * Returns a {@link DateFormatSymbols} instance for the
+   * default locale obtained from either the runtime itself
+   * or one of the installed
+   * {@link java.text.spi.DateFormatSymbolsProvider} instances.
+   * This is equivalent to calling
+   * <code>getInstance(Locale.getDefault())</code>.
+   * 
+   * @return a {@link DateFormatSymbols} instance for the default
+   *         locale.
+   * @since 1.6
+   */
+  public static final DateFormatSymbols getInstance()
+  {
+    return getInstance(Locale.getDefault());
+  }
+
+  /**
+   * Returns a {@link DateFormatSymbols} instance for the
+   * specified locale obtained from either the runtime itself
+   * or one of the installed
+   * {@link java.text.spi.DateFormatSymbolsProvider} instances.
+   * 
+   * @param locale the locale for which an instance should be
+   *               returned.
+   * @return a {@link DateFormatSymbols} instance for the specified
+   *         locale.
+   * @throws NullPointerException if <code>locale</code> is
+   *                              <code>null</code>.
+   * @since 1.6
+   */
+  public static final DateFormatSymbols getInstance(Locale locale)
+  {
+    try
+      {
+	DateFormatSymbols syms = new DateFormatSymbols(locale);
+	return syms;
+      }
+    catch (MissingResourceException e)
+      {
+	/* This means runtime support for the locale
+	 * is not available, so we check providers. */
+      }
+    for (DateFormatSymbolsProvider p :
+	   ServiceLoader.load(DateFormatSymbolsProvider.class))
+      {
+	for (Locale loc : p.getAvailableLocales())
+	  {
+	    if (loc.equals(locale))
+	      {
+		DateFormatSymbols syms = p.getInstance(locale);
+		if (syms != null)
+		  return syms;
+		break;
+	      }
+	  }
+      }
+    return getInstance(LocaleHelper.getFallbackLocale(locale));
+  }
+
 }

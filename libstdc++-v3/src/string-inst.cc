@@ -1,6 +1,6 @@
 // Components for manipulating sequences of characters -*- C++ -*-
 
-// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002
+// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006
 // Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
@@ -16,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -42,25 +42,15 @@
 # define C char
 #endif
 
-namespace std 
-{
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
   typedef basic_string<C> S;
 
   template class basic_string<C>;
   template S operator+(const C*, const S&);
   template S operator+(C, const S&);
   template S operator+(const S&, const S&);
-} // namespace std
 
-namespace __gnu_cxx
-{
-  using std::S;
-  template bool operator==(const S::iterator&, const S::iterator&);
-  template bool operator==(const S::const_iterator&, const S::const_iterator&);
-}
-
-namespace std
-{
   // Only one template keyword allowed here. 
   // See core issue #46 (NAD)
   // http://anubis.dkuug.dk/jtc1/sc22/wg21/docs/cwg_closed.html#46
@@ -74,52 +64,8 @@ namespace std
     S::basic_string(S::iterator, S::iterator, const allocator<C>&);
 
   template 
-    S::basic_string(S::const_iterator, S::const_iterator, const allocator<C>&);
-
-  template 
-    S& 
-    S::_M_replace(S::iterator, S::iterator, S::iterator, S::iterator, 
-		  input_iterator_tag);
-
-  template 
-    S& 
-    S::_M_replace(S::iterator, S::iterator, S::const_iterator, 
-		  S::const_iterator, input_iterator_tag);
-
-  template
-    S&
-    S::_M_replace(S::iterator, S::iterator, C*, C*, input_iterator_tag); 
-
-  template
-    S&
-    S::_M_replace(S::iterator, S::iterator, const C*, const C*, 
-		  input_iterator_tag);  
-
-  template 
-    S& 
-    S::_M_replace_safe(S::iterator, S::iterator, S::iterator, S::iterator);
-
-  template 
-    S& 
-    S::_M_replace_safe(S::iterator, S::iterator, S::const_iterator, 
-		  S::const_iterator);
-
-  template
-    S&
-    S::_M_replace_safe(S::iterator, S::iterator, C*, C*); 
-
-  template
-    S&
-    S::_M_replace_safe(S::iterator, S::iterator, const C*, const C*);  
-
-  template 
     C* 
     S::_S_construct(S::iterator, S::iterator, 
-		    const allocator<C>&, forward_iterator_tag);
-
-  template 
-    C* 
-    S::_S_construct(S::const_iterator, S::const_iterator, 
 		    const allocator<C>&, forward_iterator_tag);
 
   template
@@ -131,7 +77,12 @@ namespace std
     S::_S_construct(const C*, const C*, const allocator<C>&,
 		    forward_iterator_tag);
 
-  template
-    void
-    __destroy_aux<S*>(S*, S*, __false_type);
-} // namespace std
+_GLIBCXX_END_NAMESPACE
+
+_GLIBCXX_BEGIN_NAMESPACE(__gnu_cxx)
+
+  using std::S;
+  template bool operator==(const S::iterator&, const S::iterator&);
+  template bool operator==(const S::const_iterator&, const S::const_iterator&);
+
+_GLIBCXX_END_NAMESPACE

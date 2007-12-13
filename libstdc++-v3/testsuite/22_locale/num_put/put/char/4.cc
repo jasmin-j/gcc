@@ -1,6 +1,6 @@
 // 2001-11-19 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2004 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.2.2.1  num_put members
@@ -27,19 +27,17 @@
 void test04()
 {
   using namespace std;
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   // Check num_put works with other iterators besides streambuf
   // output iterators. (As long as output_iterator requirements are met.)
   typedef string::iterator iter_type;
   typedef char_traits<char> traits;
   typedef num_put<char, iter_type> num_put_type;
-  const ios_base::iostate goodbit = ios_base::goodbit;
-  const ios_base::iostate eofbit = ios_base::eofbit;
   const locale loc_c = locale::classic();
   const string str("1798 Lady Elgin");
-  const string str2("0 true 0xbffff74c Mary Nisbet");
-  const string x(15, 'x'); // have to have allocated string!
+  const string x(18, 'x'); // have to have allocated string!
+                           // allow for "0x" + 16 hex digits (64-bit pointer)
   string res;
 
   ostringstream oss; 
@@ -58,7 +56,7 @@ void test04()
   res = x;
   iter_type ret1 = tp.put(res.begin(), oss, ' ', l);
   string sanity1(res.begin(), ret1);
-  VERIFY( res == "1798xxxxxxxxxxx" );
+  VERIFY( res == "1798xxxxxxxxxxxxxx" );
   VERIFY( sanity1 == "1798" );
 
   // 02 put(long double)
@@ -66,7 +64,7 @@ void test04()
   res = x;
   iter_type ret2 = tp.put(res.begin(), oss, ' ', ld);
   string sanity2(res.begin(), ret2);
-  VERIFY( res == "1798xxxxxxxxxxx" );
+  VERIFY( res == "1798xxxxxxxxxxxxxx" );
   VERIFY( sanity2 == "1798" );
 
   // 03 put(bool)
@@ -74,7 +72,7 @@ void test04()
   res = x;
   iter_type ret3 = tp.put(res.begin(), oss, ' ', b);
   string sanity3(res.begin(), ret3);
-  VERIFY( res == "1xxxxxxxxxxxxxx" );
+  VERIFY( res == "1xxxxxxxxxxxxxxxxx" );
   VERIFY( sanity3 == "1" );
 
   b = 0;
@@ -82,7 +80,7 @@ void test04()
   oss.setf(ios_base::boolalpha);
   iter_type ret4 = tp.put(res.begin(), oss, ' ', b);
   string sanity4(res.begin(), ret4);
-  VERIFY( res == "falsexxxxxxxxxx" );
+  VERIFY( res == "falsexxxxxxxxxxxxx" );
   VERIFY( sanity4 == "false" );
 
   // 04 put(void*)

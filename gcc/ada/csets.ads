@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2002 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2005, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -33,7 +32,7 @@
 ------------------------------------------------------------------------------
 
 package Csets is
-pragma Elaborate_Body (Csets);
+   pragma Elaborate_Body;
 
    --  This package contains character tables for the various character
    --  sets that are supported for source representation. Character and
@@ -52,9 +51,9 @@ pragma Elaborate_Body (Csets);
    --  do NOT pack this table, since we don't want the extra overhead of
    --  accessing a packed bit string.
 
-   -----------------------------------------------
-   --  Character Tables For Current Compilation --
-   -----------------------------------------------
+   ----------------------------------------------
+   -- Character Tables For Current Compilation --
+   ----------------------------------------------
 
    procedure Initialize;
    --  Routine to initialize following character tables, whose content depends

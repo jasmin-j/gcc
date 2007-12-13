@@ -1,6 +1,6 @@
 // -fno-exceptions Support -*- C++ -*-
 
-// Copyright (C) 2001 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2003 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -31,6 +31,13 @@
 // ISO C++ 14882: 19.1  Exception classes
 //
 
+/** @file exception_defines.h
+ *  This is a Standard C++ Library header.
+ */
+
+#ifndef _EXCEPTION_DEFINES_H
+#define _EXCEPTION_DEFINES_H 1
+
 #ifndef __EXCEPTIONS
 // Iff -fno-exceptions, transform error handling code to work without it.
 # define try      if (true)
@@ -39,4 +46,6 @@
 #else
 // Else proceed normally.
 # define __throw_exception_again throw
+#endif
+
 #endif

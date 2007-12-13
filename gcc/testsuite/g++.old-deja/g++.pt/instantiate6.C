@@ -1,5 +1,7 @@
+// { dg-do link }
+// { dg-options "-frepo" }
+// { dg-require-host-local "" }
 // Build then link:
-// Special g++ Options: -frepo
 
 // Simplified from testcase by Erez Louidor Lior <s3824888@techst02.technion.ac.il>
 
@@ -23,3 +25,5 @@ int main() {
   foo<int> f;
   f.g();
 }
+
+// { dg-final { cleanup-repo-files } }

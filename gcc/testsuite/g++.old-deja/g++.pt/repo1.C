@@ -1,8 +1,11 @@
+// { dg-do link }
+// { dg-options "-frepo" }
+// { dg-require-host-local "" }
+
 // Bug: g++ complains about duplicate explicit instantiations with -frepo.
 // From Jason Merrill <jason@cygnus.com>
 
 // Build then link:
-// Special g++ Options: -frepo
 
 template <class T> struct A {
   virtual ~A () { }
@@ -16,3 +19,5 @@ int main ()
 {
   g (42);
 }
+
+// { dg-final { cleanup-repo-files } }

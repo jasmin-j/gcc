@@ -1,3 +1,4 @@
+// { dg-do run  }
 extern "C" int printf (const char *, ...);
 
 template <class T>
@@ -15,7 +16,7 @@ void frob<T>::print () {
 }
 
   static int x[10];
-  frob<char> fc ("hello");
+  frob<const char> fc ("hello");
   frob<int> fi (x);
 
 int main () {

@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---   Copyright (C) 1992,1993,1994,1995,1996 Free Software Foundation, Inc.  --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,7 +31,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with GNAT.Heap_Sort_A; use GNAT.Heap_Sort_A;
+with GNAT.Heap_Sort_G;
 
 separate (Lib)
 procedure Sort (Tbl : in out Unit_Ref_Table) is
@@ -44,10 +43,12 @@ procedure Sort (Tbl : in out Unit_Ref_Table) is
    --  even though we have to copy Tbl back and forth.
 
    function Lt_Uname (C1, C2 : Natural) return Boolean;
-   --  Comparison routine for comparing Unames. Needed by the sorting routine.
+   --  Comparison routine for comparing Unames. Needed by the sorting routine
 
    procedure Move_Uname (From : Natural; To : Natural);
-   --  Move routine needed by the sorting routine below.
+   --  Move routine needed by the sorting routine below
+
+   package Sorting is new GNAT.Heap_Sort_G (Move_Uname, Lt_Uname);
 
    --------------
    -- Lt_Uname --
@@ -55,9 +56,21 @@ procedure Sort (Tbl : in out Unit_Ref_Table) is
 
    function Lt_Uname (C1, C2 : Natural) return Boolean is
    begin
-      return
-        Uname_Lt
-          (Units.Table (T (C1)).Unit_Name, Units.Table (T (C2)).Unit_Name);
+      --  Preprocessing data and definition files are not sorted, they are
+      --  at the bottom of the list. They are recognized because they are
+      --  the only ones without a Unit_Name.
+
+      if Units.Table (T (C1)).Unit_Name = No_Unit_Name then
+         return False;
+
+      elsif Units.Table (T (C2)).Unit_Name = No_Unit_Name then
+         return True;
+
+      else
+         return
+           Uname_Lt
+             (Units.Table (T (C1)).Unit_Name, Units.Table (T (C2)).Unit_Name);
+      end if;
    end Lt_Uname;
 
    ----------------
@@ -77,8 +90,7 @@ begin
          T (I) := Tbl (Int (I) - 1 + Tbl'First);
       end loop;
 
-      Sort (T'Last,
-        Move_Uname'Unrestricted_Access, Lt_Uname'Unrestricted_Access);
+      Sorting.Sort (T'Last);
 
    --  Sort is complete, copy result back into place
 

@@ -1,24 +1,23 @@
 ;;- Machine description for the pdp11 for GNU C compiler
-;; Copyright (C) 1994, 1995, 1997, 1998, 1999, 2000, 2001
-;; Free Software Foundation, Inc.
+;; Copyright (C) 1994, 1995, 1997, 1998, 1999, 2000, 2001, 2004, 2005
+;; 2007 Free Software Foundation, Inc.
 ;; Contributed by Michael K. Gschwind (mike@vlsivie.tuwien.ac.at).
 
-;; This file is part of GNU CC.
+;; This file is part of GCC.
 
-;; GNU CC is free software; you can redistribute it and/or modify
+;; GCC is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation; either version 2, or (at your option)
+;; the Free Software Foundation; either version 3, or (at your option)
 ;; any later version.
 
-;; GNU CC is distributed in the hope that it will be useful,
+;; GCC is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU CC; see the file COPYING.  If not, write to
-;; the Free Software Foundation, 59 Temple Place - Suite 330,
-;; Boston, MA 02111-1307, USA.
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.
 
 
 ;; HI is 16 bit
@@ -124,8 +123,7 @@
   rtx br_insn = NEXT_INSN (insn);
   RTX_CODE br_code;
 
-  if (GET_CODE (br_insn) != JUMP_INSN)
-    abort();
+  gcc_assert (GET_CODE (br_insn) == JUMP_INSN);
   br_code =  GET_CODE (XEXP (XEXP (PATTERN (br_insn), 1), 0));
   
   switch(br_code)
@@ -148,7 +146,7 @@
 
     default:
 
-      abort();
+      gcc_unreachable ();
   }
 }"
   [(set_attr "length" "4")])
@@ -688,7 +686,7 @@
 ;; maybe fiddle a bit with move_ratio, then 
 ;; let constraints only accept a register ...
 
-(define_expand "movstrhi"
+(define_expand "movmemhi"
   [(parallel [(set (match_operand:BLK 0 "general_operand" "=g,g")
 		   (match_operand:BLK 1 "general_operand" "g,g"))
 	      (use (match_operand:HI 2 "arith_operand" "n,&mr"))
@@ -712,7 +710,7 @@
 }")
 
 
-(define_insn "" ; "movstrhi"
+(define_insn "" ; "movmemhi"
   [(set (mem:BLK (match_operand:HI 0 "general_operand" "=r,r"))
 	(mem:BLK (match_operand:HI 1 "general_operand" "r,r")))
    (use (match_operand:HI 2 "arith_operand" "n,&r"))
@@ -872,7 +870,7 @@
 
     default:
 
-      abort();
+      gcc_unreachable ();
   }
 }"
   [(set_attr "length" "5,3,3")])
@@ -1131,8 +1129,7 @@
   ""
   "*
 {
-  if (GET_CODE (operands[2]) == CONST_INT)
-    abort();
+  gcc_assert (GET_CODE (operands[2]) != CONST_INT);
 
   return \"sub %2, %0\";
 }"
@@ -1145,8 +1142,7 @@
   ""
   "*
 {
-  if (GET_CODE (operands[2]) == CONST_INT)
-    abort();
+  gcc_assert (GET_CODE (operands[2]) != CONST_INT);
 
   return \"sub %2, %0\";
 }"

@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1998-2002, Free Software Foundation, Inc.         --
+--          Copyright (C) 1998-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -29,7 +27,6 @@
 --  information.
 
 with Einfo; use Einfo;
-with Types; use Types;
 
 package Lib.Xref is
 
@@ -55,7 +52,7 @@ package Lib.Xref is
 
    --  The lines following the header look like
 
-   --     line type col level entity renameref typeref ref  ref  ref
+   --  line type col level entity renameref instref typeref overref ref  ref
 
    --        line is the line number of the referenced entity. The name of
    --        the entity starts in column col. Columns are numbered from one,
@@ -72,7 +69,8 @@ package Lib.Xref is
 
    --        level is a single character that separates the col and
    --        entity fields. It is an asterisk for a top level library
-   --        entity that is publicly visible, and space otherwise.
+   --        entity that is publicly visible, as well for an entity declared
+   --        in the visible part of a generic package, and space otherwise.
 
    --        entity is the name of the referenced entity, with casing in
    --        the canical casing for the source file where it is defined.
@@ -93,21 +91,48 @@ package Lib.Xref is
    --        reference is a complex expressions, then renameref is omitted.
    --        Here line/col give line/column as defined above.
 
+   --        instref is only present for package and subprogram instances.
+   --        The information in instref is the location of the point of
+   --        declaration of the generic parent unit. This part has the form:
+
+   --            [file|line]
+
+   --        without column information, on the reasonable assumption that
+   --        there is only one unit per line (the same assumption is made
+   --        in references to entities that are declared within instances,
+   --        see below).
+
    --        typeref is the reference for a related type. This part is
    --        optional. It is present for the following cases:
 
    --          derived types (points to the parent type)   LR=<>
    --          access types (points to designated type)    LR=()
+   --          array types (points to component type)      LR=()
    --          subtypes (points to ancestor type)          LR={}
    --          functions (points to result type)           LR={}
    --          enumeration literals (points to enum type)  LR={}
    --          objects and components (points to type)     LR={}
 
+   --          For a type that implements multiple interfaces, there is an
+   --          entry of the form  LR=<> for each of the interfaces appearing
+   --          in the type declaration. In the data structures of ali.ads,
+   --          the type that the entity extends (or the first interface if
+   --          there is no such type) is stored in Xref_Entity_Record.Tref*,
+   --          additional interfaces are stored in the list of references
+   --          with a special type of Interface_Reference.
+
+   --          For an array type, there is an entry of the form LR=<> for
+   --          each of the index types appearing in the type declaration.
+   --          The index types follow the entry for the component type.
+   --          In the data structures of ali.ads, however, the list of index
+   --          types are output in the list of references with a special
+   --          Rtype set to Array_Index_Reference.
+
    --          In the above list LR shows the brackets used in the output,
    --          which has one of the two following forms:
 
    --            L file | line type col R      user entity
-   --            L name-in-lower-case   R      standard entity
+   --            L name-in-lower-case R        standard entity
 
    --          For the form for a user entity, file is the dependency number
    --          of the file containing the declaration of the related type.
@@ -117,6 +142,17 @@ package Lib.Xref is
    --          specify the location of the relevant type declaration in the
    --          referenced file. For the standard entity form, the name between
    --          the brackets is the normal name of the entity in lower case.
+
+   --        overref is present for overriding operations (procedures and
+   --        functions), and provides information on the operation that it
+   --        overrides. This information has the format:
+
+   --        '<' file | line 'o' col '>'
+
+   --           file is the dependency number of the file containing the
+   --           declaration of the overridden operation. It and the following
+   --           vertical bar are omitted if the file is the same as that of
+   --           the overriding operation.
 
    --     There may be zero or more ref entries on each line
 
@@ -129,19 +165,30 @@ package Lib.Xref is
 
    --           line is the line number of the reference
 
-   --           col is the column number of the reference, as defined above.
+   --           col is the column number of the reference, as defined above
 
    --           type is one of
    --              b = body entity
    --              c = completion of private or incomplete type
+   --              d = discriminant of type
    --              e = end of spec
+   --              H = abstract type
    --              i = implicit reference
-   --              l = label on end line
+   --              k = implicit reference to parent unit in child unit
+   --              l = label on END line
    --              m = modification
    --              p = primitive operation
+   --              P = overriding primitive operation
    --              r = reference
+   --              R = subprogram reference in dispatching call
    --              t = end of body
+   --              w = WITH line
    --              x = type extension
+   --              z = generic formal parameter
+   --              > = subprogram IN parameter
+   --              = = subprogram IN OUT parameter
+   --              < = subprogram OUT parameter
+   --              > = subprogram ACCESS parameter
 
    --           b is used for spec entities that are repeated in a body,
    --           including the unit (subprogram, package, task, protected
@@ -156,6 +203,13 @@ package Lib.Xref is
    --           private or incomplete type. As with b, the completion is not
    --           regarded as a separate definition, but rather a reference to
    --           the initial declaration, marked with this special type.
+
+   --           d is used to identify a discriminant of a type. If this is
+   --           an incomplete or private type with discriminants, the entry
+   --           denotes the occurrence of the discriminant in the partial view
+   --           which is also the point of definition of the discriminant.
+   --           The occurrence of the same discriminant in the full view is
+   --           a regular reference to it.
 
    --           e is used to identify the end of a construct in the following
    --           cases:
@@ -183,6 +237,9 @@ package Lib.Xref is
    --           source node that generates the implicit reference, and it is
    --           useful to record this one.
 
+   --           k is used to denote a reference to the parent unit, in the
+   --           cross-reference line for a child unit.
+
    --           l is used to identify the occurrence in the source of the
    --           name on an end line. This is just a syntactic reference
    --           which can be ignored for semantic purposes (such as call
@@ -200,6 +257,14 @@ package Lib.Xref is
    --           source unit (main unit itself, its separate spec (if any).
    --           and all subunits (considered recursively).
 
+   --           If the primitive operation overrides an inherited primitive
+   --           operation of the parent type, the letter 'P' is used in the
+   --           corresponding entry.
+
+   --           R is used to mark a dispatching call. The reference is to
+   --           the specification of the primitive operation of the root
+   --           type when the call has a controlling argument in its class.
+
    --           t is similar to e. It identifies the end of a corresponding
    --           body (such a reference always links up with a b reference)
 
@@ -216,6 +281,16 @@ package Lib.Xref is
    --           x is used to identify the reference as the entity from which
    --           a tagged type is extended. This allows immediate access to
    --           the parent of a tagged type.
+
+   --           z is used on the cross-reference line for a generic unit, to
+   --           mark the definition of a generic formal of the unit.
+   --           This entry type is similar to 'k' and 'p' in that it is an
+   --           implicit reference for an entity with a different name.
+
+   --           The characters >, <. =, and ^ are used on the cross-reference
+   --           line for a subprogram, to denote formal parameters and their
+   --           modes. As with the 'z' and 'p' entries, each such entry is
+   --           an implicit reference to an entity with a different name.
 
    --           [..] is used for generic instantiation references. These
    --           references are present only if the entity in question is
@@ -261,7 +336,7 @@ package Lib.Xref is
    --              the END line of the body has an explict reference to
    --              the name of the procedure at line 12, column 13.
 
-   --              the body ends at line 12, column 15, just past this label.
+   --              the body ends at line 12, column 15, just past this label
 
    --        16I9*My_Type<2|4I9> 18r8
 
@@ -315,93 +390,103 @@ package Lib.Xref is
    --  For private types, the character + appears in the table. In this
    --  case the kind of the underlying type is used, if available, to
    --  determine the character to use in the xref listing. The listing
-   --  will still include a '+' for a generic private type, for example.
+   --  will still include a '+' for a generic private type, for example,
+   --  but will retain the '*' for an object or formal parameter of such
+   --  a type.
 
-   Xref_Entity_Letters : array (Entity_Kind) of Character := (
-      E_Void                             => ' ',
-      E_Variable                         => '*',
-      E_Component                        => '*',
-      E_Constant                         => '*',
-      E_Discriminant                     => '*',
+   --  For subprograms, the characters 'U' and 'V' appear in the table,
+   --  indicating procedures and functions. If the operation is abstract,
+   --  these letters are replaced in the xref by 'x' and 'y' respectively.
 
-      E_Loop_Parameter                   => '*',
-      E_In_Parameter                     => '*',
-      E_Out_Parameter                    => '*',
-      E_In_Out_Parameter                 => '*',
-      E_Generic_In_Out_Parameter         => '*',
+   Xref_Entity_Letters : array (Entity_Kind) of Character :=
+     (E_Void                                       => ' ',
+      E_Variable                                   => '*',
+      E_Component                                  => '*',
+      E_Constant                                   => '*',
+      E_Discriminant                               => '*',
 
-      E_Generic_In_Parameter             => '*',
-      E_Named_Integer                    => 'N',
-      E_Named_Real                       => 'N',
-      E_Enumeration_Type                 => 'E',  -- B for boolean
-      E_Enumeration_Subtype              => 'E',  -- B for boolean
+      E_Loop_Parameter                             => '*',
+      E_In_Parameter                               => '*',
+      E_Out_Parameter                              => '*',
+      E_In_Out_Parameter                           => '*',
+      E_Generic_In_Out_Parameter                   => '*',
 
-      E_Signed_Integer_Type              => 'I',
-      E_Signed_Integer_Subtype           => 'I',
-      E_Modular_Integer_Type             => 'M',
-      E_Modular_Integer_Subtype          => 'M',
-      E_Ordinary_Fixed_Point_Type        => 'O',
+      E_Generic_In_Parameter                       => '*',
+      E_Named_Integer                              => 'N',
+      E_Named_Real                                 => 'N',
+      E_Enumeration_Type                           => 'E',  -- B for boolean
+      E_Enumeration_Subtype                        => 'E',  -- B for boolean
 
-      E_Ordinary_Fixed_Point_Subtype     => 'O',
-      E_Decimal_Fixed_Point_Type         => 'D',
-      E_Decimal_Fixed_Point_Subtype      => 'D',
-      E_Floating_Point_Type              => 'F',
-      E_Floating_Point_Subtype           => 'F',
+      E_Signed_Integer_Type                        => 'I',
+      E_Signed_Integer_Subtype                     => 'I',
+      E_Modular_Integer_Type                       => 'M',
+      E_Modular_Integer_Subtype                    => 'M',
+      E_Ordinary_Fixed_Point_Type                  => 'O',
 
-      E_Access_Type                      => 'P',
-      E_Access_Subtype                   => 'P',
-      E_Access_Attribute_Type            => 'P',
-      E_Allocator_Type                   => ' ',
-      E_General_Access_Type              => 'P',
+      E_Ordinary_Fixed_Point_Subtype               => 'O',
+      E_Decimal_Fixed_Point_Type                   => 'D',
+      E_Decimal_Fixed_Point_Subtype                => 'D',
+      E_Floating_Point_Type                        => 'F',
+      E_Floating_Point_Subtype                     => 'F',
 
-      E_Access_Subprogram_Type           => 'P',
-      E_Access_Protected_Subprogram_Type => 'P',
-      E_Anonymous_Access_Type            => ' ',
-      E_Array_Type                       => 'A',
-      E_Array_Subtype                    => 'A',
+      E_Access_Type                                => 'P',
+      E_Access_Subtype                             => 'P',
+      E_Access_Attribute_Type                      => 'P',
+      E_Allocator_Type                             => ' ',
+      E_General_Access_Type                        => 'P',
 
-      E_String_Type                      => 'S',
-      E_String_Subtype                   => 'S',
-      E_String_Literal_Subtype           => ' ',
-      E_Class_Wide_Type                  => 'C',
+      E_Access_Subprogram_Type                     => 'P',
+      E_Access_Protected_Subprogram_Type           => 'P',
+      E_Anonymous_Access_Subprogram_Type           => ' ',
+      E_Anonymous_Access_Protected_Subprogram_Type => ' ',
+      E_Anonymous_Access_Type                      => ' ',
 
-      E_Class_Wide_Subtype               => 'C',
-      E_Record_Type                      => 'R',
-      E_Record_Subtype                   => 'R',
-      E_Record_Type_With_Private         => 'R',
-      E_Record_Subtype_With_Private      => 'R',
+      E_Array_Type                                 => 'A',
+      E_Array_Subtype                              => 'A',
+      E_String_Type                                => 'S',
+      E_String_Subtype                             => 'S',
+      E_String_Literal_Subtype                     => ' ',
 
-      E_Private_Type                     => '+',
-      E_Private_Subtype                  => '+',
-      E_Limited_Private_Type             => '+',
-      E_Limited_Private_Subtype          => '+',
-      E_Incomplete_Type                  => '+',
+      E_Class_Wide_Type                            => 'C',
+      E_Class_Wide_Subtype                         => 'C',
+      E_Record_Type                                => 'R',
+      E_Record_Subtype                             => 'R',
+      E_Record_Type_With_Private                   => 'R',
 
-      E_Task_Type                        => 'T',
-      E_Task_Subtype                     => 'T',
-      E_Protected_Type                   => 'W',
-      E_Protected_Subtype                => 'W',
-      E_Exception_Type                   => ' ',
+      E_Record_Subtype_With_Private                => 'R',
+      E_Private_Type                               => '+',
+      E_Private_Subtype                            => '+',
+      E_Limited_Private_Type                       => '+',
+      E_Limited_Private_Subtype                    => '+',
 
-      E_Subprogram_Type                  => ' ',
-      E_Enumeration_Literal              => 'n',
-      E_Function                         => 'V',
-      E_Operator                         => 'V',
-      E_Procedure                        => 'U',
+      E_Incomplete_Type                            => '+',
+      E_Incomplete_Subtype                         => '+',
+      E_Task_Type                                  => 'T',
+      E_Task_Subtype                               => 'T',
+      E_Protected_Type                             => 'W',
 
-      E_Entry                            => 'Y',
-      E_Entry_Family                     => 'Y',
-      E_Block                            => 'q',
-      E_Entry_Index_Parameter            => '*',
-      E_Exception                        => 'X',
+      E_Protected_Subtype                          => 'W',
+      E_Exception_Type                             => ' ',
+      E_Subprogram_Type                            => ' ',
+      E_Enumeration_Literal                        => 'n',
+      E_Function                                   => 'V',
 
-      E_Generic_Function                 => 'v',
-      E_Generic_Package                  => 'k',
-      E_Generic_Procedure                => 'u',
-      E_Label                            => 'L',
-      E_Loop                             => 'l',
+      E_Operator                                   => 'V',
+      E_Procedure                                  => 'U',
+      E_Entry                                      => 'Y',
+      E_Entry_Family                               => 'Y',
+      E_Block                                      => 'q',
 
-      E_Package                          => 'K',
+      E_Entry_Index_Parameter                      => '*',
+      E_Exception                                  => 'X',
+      E_Generic_Function                           => 'v',
+      E_Generic_Package                            => 'k',
+      E_Generic_Procedure                          => 'u',
+
+      E_Label                                      => 'L',
+      E_Loop                                       => 'l',
+      E_Return_Statement                           => ' ',
+      E_Package                                    => 'K',
 
       --  The following entities are not ones to which we gather
       --  cross-references, since it does not make sense to do so
@@ -409,11 +494,11 @@ package Lib.Xref is
       --  Indeed the occurrence of the body entity is considered to
       --  be a reference to the spec entity.
 
-      E_Package_Body                     => ' ',
-      E_Protected_Object                 => ' ',
-      E_Protected_Body                   => ' ',
-      E_Task_Body                        => ' ',
-      E_Subprogram_Body                  => ' ');
+      E_Package_Body                               => ' ',
+      E_Protected_Object                           => ' ',
+      E_Protected_Body                             => ' ',
+      E_Task_Body                                  => ' ',
+      E_Subprogram_Body                            => ' ');
 
    --  The following table is for information purposes. It shows the
    --  use of each character appearing as an entity type.
@@ -427,7 +512,7 @@ package Lib.Xref is
    --    e     non-Boolean enumeration object  non_Boolean enumeration type
    --    f     floating-point object           floating-point type
    --    g     (unused)                        (unused)
-   --    h     (unused)                        (unused)
+   --    h     Interface (Ada 2005)            Abstract type
    --    i     signed integer object           signed integer type
    --    j     (unused)                        (unused)
    --    k     generic package                 package
@@ -443,9 +528,26 @@ package Lib.Xref is
    --    u     generic procedure               procedure
    --    v     generic function or operator    function or operator
    --    w     protected object                protected type
-   --    x     (unused)                        exception
-   --    y     (unused)                        entry or entry family
-   --    z     (unused)                        (unused)
+   --    x     abstract procedure              exception
+   --    y     abstract function               entry or entry family
+   --    z     generic formal parameter        (unused)
+
+   --------------------------------------
+   -- Handling of Imported Subprograms --
+   --------------------------------------
+
+   --  If a pragma Import or Interface applies to a subprogram, the
+   --  pragma is the completion of the subprogram. This is noted in
+   --  the ALI file by making the occurrence of the subprogram in the
+   --  pragma into a body reference ('b') and by including the external
+   --  name of the subprogram and its language, bracketed by '<' and '>'
+   --  in that reference. For example:
+   --
+   --     3U13*elsewhere 4b<c,there>21
+   --
+   --  indicates that procedure elsewhere, declared at line 3, has a
+   --  pragma Import at line 4, that its body is in C, and that the link
+   --  name as given in the pragma is "there".
 
    -----------------
    -- Subprograms --
@@ -454,17 +556,23 @@ package Lib.Xref is
    procedure Generate_Definition (E : Entity_Id);
    --  Records the definition of an entity
 
-   procedure Generate_Operator_Reference (N : Node_Id);
+   procedure Generate_Operator_Reference
+     (N : Node_Id;
+      T : Entity_Id);
    --  Node N is an operator node, whose entity has been set. If this entity
    --  is a user defined operator (i.e. an operator not defined in package
    --  Standard), then a reference to the operator is recorded at node N.
+   --  T is the operand type of of the operator. A reference to the operator
+   --  is an implicit reference to the type, and that needs to be recorded
+   --  to avoid spurious warnings on unused entities, when the operator is
+   --  a renaming of a predefined operator.
 
    procedure Generate_Reference
-     (E       : Entity_Id;
-      N       : Node_Id;
-      Typ     : Character := 'r';
-      Set_Ref : Boolean   := True;
-      Force   : Boolean   := False);
+     (E             : Entity_Id;
+      N             : Node_Id;
+      Typ           : Character := 'r';
+      Set_Ref       : Boolean   := True;
+      Force         : Boolean   := False);
    --  This procedure is called to record a reference. N is the location
    --  of the reference and E is the referenced entity. Typ is one of:
    --
@@ -504,24 +612,35 @@ package Lib.Xref is
    --    the node N is not an identifier, defining identifier, or expanded name
    --    the type is 'p' and the entity is not in the extended main source
    --
-   --  If all these conditions are met, then the Is_Referenced flag of E
-   --  is set (unless Set_Ref is False) and a cross-reference entry is
-   --  recorded for later output when Output_References is called.
+   --  If all these conditions are met, then the Is_Referenced flag of E is set
+   --  (unless Set_Ref is False) and a cross-reference entry is recorded for
+   --  later output when Output_References is called.
    --
    --  Note: the dummy space entry is for the convenience of some callers,
    --  who find it easier to pass a space to suppress the entry than to do
    --  a specific test. The call has no effect if the type is a space.
    --
-   --  The parameter Set_Ref is normally True, and indicates that in
-   --  addition to generating a cross-reference, the Referenced flag
-   --  of the specified entity should be set. If this parameter is
-   --  False, then setting of the Referenced flag is inhibited.
+   --  The parameter Set_Ref is normally True, and indicates that in addition
+   --  to generating a cross-reference, the Referenced flag of the specified
+   --  entity should be set. If this parameter is False, then setting of the
+   --  Referenced flag is inhibited.
    --
-   --  The parameter Force is set to True to force a reference to be
-   --  generated even if Comes_From_Source is false. This is used for
-   --  certain implicit references, and also for end label references.
+   --  The parameter Force is set to True to force a reference to be generated
+   --  even if Comes_From_Source is false. This is used for certain implicit
+   --  references, and also for end label references.
+
+   procedure Generate_Reference_To_Formals (E : Entity_Id);
+   --  Add a reference to the definition of each formal on the line for
+   --  a subprogram.
+
+   procedure Generate_Reference_To_Generic_Formals (E : Entity_Id);
+   --  Add a reference to the definition of each generic formal on the line
+   --  for a generic unit.
 
    procedure Output_References;
    --  Output references to the current ali file
+
+   procedure Initialize;
+   --  Initialize internal tables
 
 end Lib.Xref;

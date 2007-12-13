@@ -1,6 +1,7 @@
 // 2000-08-17 Benjamin Kosnik <bkoz@cygnus.com>
 
-// Copyright (C) 2000, 2002, 2003 Free Software Foundation
+// Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,12 +16,13 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.1.5 - Template class codecvt [lib.locale.codecvt]
 
 #include <locale>
+#include <cstring>
 #include <testsuite_hooks.h>
 
 // Required instantiation, degenerate conversion.
@@ -31,10 +33,10 @@ void test01()
   typedef codecvt_base::result			result;
   typedef codecvt<char, char, mbstate_t> 	c_codecvt;
 
-  bool 			test = true;
+  bool test __attribute__((unused)) = true;
   const char* 		c_lit = "black pearl jasmine tea";
   const char* 	        from_next;
-  int 			size = 25;
+  int 			size = 23;
   char* 		c_arr = new char[size];
   char*                 c_ref = new char[size];
   char*			to_next;

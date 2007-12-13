@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                       A D A . S T O R A G E _ I O                        --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---        Copyright (C) 1992,1993,1994 Free Software Foundation, Inc.       --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,32 +31,32 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with System.Address_To_Access_Conversions;
+with Ada.Unchecked_Conversion;
 
 package body Ada.Storage_IO is
 
-   package Element_Ops is new
-     System.Address_To_Access_Conversions (Element_Type);
+   type Buffer_Ptr is access all Buffer_Type;
+   type Elmt_Ptr   is access all Element_Type;
+
+   function To_Buffer_Ptr is
+     new Ada.Unchecked_Conversion (Elmt_Ptr, Buffer_Ptr);
 
    ----------
    -- Read --
    ----------
 
-   procedure Read (Buffer : in  Buffer_Type; Item : out Element_Type) is
+   procedure Read (Buffer : Buffer_Type; Item : out Element_Type) is
    begin
-      Element_Ops.To_Pointer (Item'Address).all :=
-        Element_Ops.To_Pointer (Buffer'Address).all;
+      To_Buffer_Ptr (Item'Unrestricted_Access).all := Buffer;
    end Read;
-
 
    -----------
    -- Write --
    -----------
 
-   procedure Write (Buffer : out Buffer_Type; Item : in  Element_Type) is
+   procedure Write (Buffer : out Buffer_Type; Item : Element_Type) is
    begin
-      Element_Ops.To_Pointer (Buffer'Address).all :=
-        Element_Ops.To_Pointer (Item'Address).all;
+      Buffer := To_Buffer_Ptr (Item'Unrestricted_Access).all;
    end Write;
 
 end Ada.Storage_IO;

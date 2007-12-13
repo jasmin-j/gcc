@@ -1,6 +1,8 @@
+// { dg-require-namedlocale "" }
+
 // 2001-07-17 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2004, 2005 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.7.1.1 messages members
@@ -29,25 +31,20 @@ void test03()
   typedef std::messages<char>::catalog catalog;
   typedef std::messages<char>::string_type string_type;
 
-  bool test = true;
-  // This is exported through RUNTESTFLAGS in testsuite/Makefile.am.
+  bool test __attribute__((unused)) = true;
+  // This is defined through CXXFLAGS in scripts/testsuite_flags[.in].
   const char* dir = LOCALEDIR;
 
   // basic construction
   locale loc_c = locale::classic();
-  locale loc_us("en_US");
-  locale loc_fr("fr_FR");
-  locale loc_de("de_DE");
-  VERIFY( loc_c != loc_de );
+  locale loc_us = locale("en_US");
+  locale loc_fr = locale("fr_FR");
+  VERIFY( loc_c != loc_us );
   VERIFY( loc_us != loc_fr );
-  VERIFY( loc_us != loc_de );
-  VERIFY( loc_de != loc_fr );
 
   // cache the messages facets
-  const messages<char>& mssg_c = use_facet<messages<char> >(loc_c); 
   const messages<char>& mssg_us = use_facet<messages<char> >(loc_us); 
   const messages<char>& mssg_fr = use_facet<messages<char> >(loc_fr); 
-  const messages<char>& mssg_de = use_facet<messages<char> >(loc_de); 
 
   // catalog open(const string&, const locale&) const;
   // string_type get(catalog, int, int, const string_type& ) const; 

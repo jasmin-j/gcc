@@ -13,7 +13,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -35,19 +35,12 @@ class gnu_ctype: public std::ctype<char_type> { };
 
 void test01()
 {
-  bool test = true;
+  bool test __attribute__((unused)) = true;
   const char_type strlit00[] = L"manilla, cebu, tandag PHILIPPINES";
   const char_type strlit01[] = L"MANILLA, CEBU, TANDAG PHILIPPINES";
   const char_type strlit02[] = L"manilla, cebu, tandag philippines";
   const char_type c00 = L'S';
   const char_type c10 = L's';
-  const char_type c20 = L'9';
-  const char_type c30 = L' ';
-  const char_type c40 = L'!';
-  const char_type c50 = L'F';
-  const char_type c60 = L'f';
-  const char_type c70 = L'X';
-  const char_type c80 = L'x';
 
   gnu_ctype gctype;
   char_type c100;
@@ -66,7 +59,6 @@ void test01()
   int i09 = std::ctype_base::graph;
   int i10 = std::ctype_base::print;
   int i11 = std::ctype_base::cntrl;
-  int i12 = sizeof(std::ctype_base::mask);
   VERIFY ( i01 != i02);
   VERIFY ( i02 != i03);
   VERIFY ( i03 != i04);

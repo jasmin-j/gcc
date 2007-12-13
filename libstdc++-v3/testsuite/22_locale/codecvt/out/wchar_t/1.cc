@@ -1,6 +1,7 @@
 // 2000-08-17 Benjamin Kosnik <bkoz@cygnus.com>
 
-// Copyright (C) 2000, 2002, 2003 Free Software Foundation
+// Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,12 +16,13 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.1.5 - Template class codecvt [lib.locale.codecvt]
 
 #include <locale>
+#include <cstring>
 #include <testsuite_hooks.h>
 
 // Need to explicitly set the state(mbstate_t) to zero.
@@ -45,19 +47,18 @@ void test01()
   typedef codecvt_base::result			result;
   typedef wchar_t				int_type;
   typedef char					ext_type;
-  typedef char_traits<wchar_t>			int_traits;
   typedef char_traits<char>			ext_traits;
 
-  bool 			test = true;
+  bool test __attribute__((unused)) = true;
   const ext_type* 	e_lit = "black pearl jasmine tea";
-  const ext_type*       efrom_next;
   const int_type* 	i_lit = L"black pearl jasmine tea";
   const int_type*       ifrom_next;
   int 			size = strlen(e_lit);
   ext_type* 		e_arr = new ext_type[size + 1];
+  ext_type* 		e_ref = new ext_type[size + 1];
+  memset(e_arr, 0xf0, size + 1);
+  memset(e_ref, 0xf0, size + 1);
   ext_type*		eto_next;
-  int_type* 		i_arr = new int_type[size + 1];
-  int_type*		ito_next;
 
   locale 		loc;
   const w_codecvt* 	cvt = &use_facet<w_codecvt>(loc); 
@@ -68,12 +69,13 @@ void test01()
   result r2 = cvt->out(state02, i_lit, i_lit + size, ifrom_next, 
 		       e_arr, e_arr + size, eto_next);
   VERIFY( r2 == codecvt_base::ok );
-  VERIFY( !ext_traits::compare(e_arr, e_lit, size) ); 
   VERIFY( ifrom_next == i_lit + size );
   VERIFY( eto_next == e_arr + size );
+  VERIFY( !ext_traits::compare(e_arr, e_lit, size) );
+  VERIFY( !ext_traits::compare(eto_next, e_ref, 1) );
 
   delete [] e_arr;
-  delete [] i_arr;
+  delete [] e_ref;
 }
 
 int main ()

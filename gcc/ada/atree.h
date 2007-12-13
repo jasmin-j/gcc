@@ -6,19 +6,17 @@
  *                                                                          *
  *                              C Header File                               *
  *                                                                          *
- *                                                                          *
- *          Copyright (C) 1992-2001, Free Software Foundation, Inc.         *
+ *          Copyright (C) 1992-2007, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
- * ware  Foundation;  either version 2,  or (at your option) any later ver- *
+ * ware  Foundation;  either version 3,  or (at your option) any later ver- *
  * sion.  GNAT is distributed in the hope that it will be useful, but WITH- *
  * OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY *
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
- * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * Public License  distributed with GNAT; see file COPYING3.  If not, go to *
+ * http://www.gnu.org/licenses for a complete copy of the license.          *
  *                                                                          *
  * GNAT was originally developed  by the GNAT team at  New York University. *
  * Extensive contributions were provided by Ada Core Technologies Inc.      *
@@ -27,7 +25,7 @@
 
 /* This is the C header corresponding to the Ada package specification for
    Atree. It also contains the implementations of inlined functions from the
-   package body for Tree.  It was generated manually from atree.ads and
+   package body for Atree.  It was generated manually from atree.ads and
    atree.adb and must be kept synchronized with changes in these files.
 
    Note that only routines for reading the tree are included, since the tree
@@ -217,6 +215,86 @@ struct Flag_Word3
   Boolean      flag183	    :  1;
 };
 
+/* Structure used for extra flags in fifth component overlaying Field11 */
+struct Flag_Word4
+{
+  Boolean      flag184	    :  1;
+  Boolean      flag185	    :  1;
+  Boolean      flag186	    :  1;
+  Boolean      flag187	    :  1;
+  Boolean      flag188	    :  1;
+  Boolean      flag189	    :  1;
+  Boolean      flag190	    :  1;
+  Boolean      flag191	    :  1;
+
+  Boolean      flag192	    :  1;
+  Boolean      flag193	    :  1;
+  Boolean      flag194	    :  1;
+  Boolean      flag195	    :  1;
+  Boolean      flag196	    :  1;
+  Boolean      flag197	    :  1;
+  Boolean      flag198	    :  1;
+  Boolean      flag199	    :  1;
+
+  Boolean      flag200	    :  1;
+  Boolean      flag201	    :  1;
+  Boolean      flag202	    :  1;
+  Boolean      flag203	    :  1;
+  Boolean      flag204	    :  1;
+  Boolean      flag205	    :  1;
+  Boolean      flag206	    :  1;
+  Boolean      flag207	    :  1;
+
+  Boolean      flag208      :  1;
+  Boolean      flag209	    :  1;
+  Boolean      flag210	    :  1;
+  Boolean      flag211	    :  1;
+  Boolean      flag212	    :  1;
+  Boolean      flag213	    :  1;
+  Boolean      flag214	    :  1;
+  Boolean      flag215	    :  1;
+};
+
+/* Structure used for extra flags in fifth component overlaying Field12 */
+struct Flag_Word5
+{
+  Boolean      flag216	    :  1;
+  Boolean      flag217	    :  1;
+  Boolean      flag218	    :  1;
+  Boolean      flag219	    :  1;
+  Boolean      flag220	    :  1;
+  Boolean      flag221	    :  1;
+  Boolean      flag222	    :  1;
+  Boolean      flag223	    :  1;
+
+  Boolean      flag224	    :  1;
+  Boolean      flag225	    :  1;
+  Boolean      flag226	    :  1;
+  Boolean      flag227	    :  1;
+  Boolean      flag228	    :  1;
+  Boolean      flag229	    :  1;
+  Boolean      flag230	    :  1;
+  Boolean      flag231	    :  1;
+
+  Boolean      flag232	    :  1;
+  Boolean      flag233	    :  1;
+  Boolean      flag234	    :  1;
+  Boolean      flag235	    :  1;
+  Boolean      flag236	    :  1;
+  Boolean      flag237	    :  1;
+  Boolean      flag238	    :  1;
+  Boolean      flag239	    :  1;
+
+  Boolean      flag240      :  1;
+  Boolean      flag241	    :  1;
+  Boolean      flag242	    :  1;
+  Boolean      flag243	    :  1;
+  Boolean      flag244	    :  1;
+  Boolean      flag245	    :  1;
+  Boolean      flag246	    :  1;
+  Boolean      flag247	    :  1;
+};
+
 struct Non_Extended
 {
   Source_Ptr   sloc;
@@ -236,17 +314,19 @@ struct Extended
   Int	       field8;
   Int	       field9;
   Int	       field10;
-  union     
+  union
     {
       Int      field11;
-      struct Flag_Word3 fw3;
+      struct   Flag_Word3 fw3;
+      struct   Flag_Word4 fw4;
     } X;
 
   union
     {
       Int      field12;
-      struct Flag_Word fw;
-      struct Flag_Word2 fw2;
+      struct   Flag_Word fw;
+      struct   Flag_Word2 fw2;
+      struct   Flag_Word5 fw5;
     } U;
 };
 
@@ -273,9 +353,8 @@ struct Node
    that Node_Id values can be used as subscripts.  */
 extern struct Node *Nodes_Ptr;
 
-
 #define Parent atree__parent
-extern Node_Id Parent PARAMS((Node_Id));
+extern Node_Id Parent (Node_Id);
 
 /* Overloaded Functions:
 
@@ -288,24 +367,22 @@ typedef Int Tree_Id;
 /* These two functions can only be used for Node_Id and List_Id values and
    they work in the C version because Empty = No_List = 0.  */
 
-static Boolean No	PARAMS ((Tree_Id));
-static Boolean Present	PARAMS ((Tree_Id));
+static Boolean No	(Tree_Id);
+static Boolean Present	(Tree_Id);
 
 INLINE Boolean
-No (N)
-     Tree_Id N;
+No (Tree_Id N)
 {
   return N == Empty;
 }
 
 INLINE Boolean
-Present (N)
-     Tree_Id N;
+Present (Tree_Id N)
 {
   return N != Empty;
 }
 
-extern Node_Id Parent		PARAMS((Tree_Id));
+extern Node_Id Parent		(Tree_Id);
 
 #define Current_Error_Node atree__current_error_node
 extern Node_Id Current_Error_Node;
@@ -341,6 +418,11 @@ extern Node_Id Current_Error_Node;
 #define Field21(N)    (Nodes_Ptr[(N) - First_Node_Id + 3].V.EX.field8)
 #define Field22(N)    (Nodes_Ptr[(N) - First_Node_Id + 3].V.EX.field9)
 #define Field23(N)    (Nodes_Ptr[(N) - First_Node_Id + 3].V.EX.field10)
+#define Field24(N)    (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.field6)
+#define Field25(N)    (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.field7)
+#define Field26(N)    (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.field8)
+#define Field27(N)    (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.field9)
+#define Field28(N)    (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.field10)
 
 #define Node1(N)      Field1  (N)
 #define Node2(N)      Field2  (N)
@@ -365,6 +447,11 @@ extern Node_Id Current_Error_Node;
 #define Node21(N)     Field21 (N)
 #define Node22(N)     Field22 (N)
 #define Node23(N)     Field23 (N)
+#define Node24(N)     Field24 (N)
+#define Node25(N)     Field25 (N)
+#define Node26(N)     Field26 (N)
+#define Node27(N)     Field27 (N)
+#define Node28(N)     Field28 (N)
 
 #define List1(N)      Field1  (N)
 #define List2(N)      Field2  (N)
@@ -374,15 +461,18 @@ extern Node_Id Current_Error_Node;
 #define List10(N)     Field10 (N)
 #define List14(N)     Field14 (N)
 
+#define Elist1(N)     Field1  (N)
 #define Elist2(N)     Field2  (N)
 #define Elist3(N)     Field3  (N)
 #define Elist4(N)     Field4  (N)
 #define Elist8(N)     Field8  (N)
 #define Elist13(N)    Field13 (N)
 #define Elist15(N)    Field15 (N)
+#define Elist16(N)    Field16 (N)
 #define Elist18(N)    Field18 (N)
 #define Elist21(N)    Field21 (N)
 #define Elist23(N)    Field23 (N)
+#define Elist25(N)    Field25 (N)
 
 #define Name1(N)      Field1  (N)
 #define Name2(N)      Field2  (N)
@@ -391,6 +481,7 @@ extern Node_Id Current_Error_Node;
 
 #define Str3(N)       Field3  (N)
 
+#define Uint2(N)      ((Field2  (N) == 0) ? Uint_0 : Field2  (N))
 #define Uint3(N)      ((Field3  (N) == 0) ? Uint_0 : Field3  (N))
 #define Uint4(N)      ((Field4  (N) == 0) ? Uint_0 : Field4  (N))
 #define Uint5(N)      ((Field5  (N) == 0) ? Uint_0 : Field5  (N))
@@ -602,3 +693,51 @@ extern Node_Id Current_Error_Node;
 #define Flag181(N)     (Nodes_Ptr[(N) - First_Node_Id + 3].V.EX.X.fw3.flag181)
 #define Flag182(N)     (Nodes_Ptr[(N) - First_Node_Id + 3].V.EX.X.fw3.flag182)
 #define Flag183(N)     (Nodes_Ptr[(N) - First_Node_Id + 3].V.EX.X.fw3.flag183)
+
+#define Flag184(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag184)
+#define Flag185(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag185)
+#define Flag186(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag186)
+#define Flag187(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag187)
+#define Flag188(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag188)
+#define Flag189(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag189)
+#define Flag190(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag190)
+#define Flag191(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag191)
+#define Flag192(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag192)
+#define Flag193(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag193)
+#define Flag194(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag194)
+#define Flag195(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag195)
+#define Flag196(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag196)
+#define Flag197(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag197)
+#define Flag198(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag198)
+#define Flag199(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag199)
+#define Flag200(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag200)
+#define Flag201(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag201)
+#define Flag202(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag202)
+#define Flag203(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag203)
+#define Flag204(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag204)
+#define Flag205(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag205)
+#define Flag206(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag206)
+#define Flag207(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag207)
+#define Flag208(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag208)
+#define Flag209(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag209)
+#define Flag210(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag210)
+#define Flag211(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag211)
+#define Flag212(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag212)
+#define Flag213(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag213)
+#define Flag214(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag214)
+#define Flag215(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.X.fw4.flag215)
+#define Flag216(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag216)
+#define Flag217(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag217)
+#define Flag218(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag218)
+#define Flag219(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag219)
+#define Flag220(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag220)
+#define Flag221(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag221)
+#define Flag222(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag222)
+#define Flag223(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag223)
+#define Flag224(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag224)
+#define Flag225(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag225)
+#define Flag226(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag226)
+#define Flag227(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag227)
+#define Flag228(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag228)
+#define Flag229(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag229)
+#define Flag230(N)     (Nodes_Ptr[(N) - First_Node_Id + 4].V.EX.U.fw5.flag230)

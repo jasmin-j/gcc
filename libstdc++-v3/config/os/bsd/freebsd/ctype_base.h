@@ -1,6 +1,6 @@
 // Locale support -*- C++ -*-
 
-// Copyright (C) 2000 Free Software Foundation, Inc.
+// Copyright (C) 2000, 2003 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -35,6 +35,9 @@
 // 4.0 and all versions of the CVS managed file at:
 // :pserver:anoncvs@anoncvs.freebsd.org:/home/ncvs/src/include/ctype.h
   
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
+  /// @brief  Base class for ctype.
   struct ctype_base
   {
     // Non-standard typedefs.
@@ -52,7 +55,7 @@
     static const mask xdigit 	= _CTYPE_X;
     static const mask space 	= _CTYPE_S;
     static const mask print 	= _CTYPE_R;
-    static const mask graph 	= _CTYPE_G;
+    static const mask graph 	= _CTYPE_A | _CTYPE_D | _CTYPE_P;
     static const mask cntrl 	= _CTYPE_C;
     static const mask punct 	= _CTYPE_P;
     static const mask alnum 	= _CTYPE_A | _CTYPE_D;
@@ -65,12 +68,11 @@
     static const mask xdigit 	= _X;
     static const mask space 	= _S;
     static const mask print 	= _R;
-    static const mask graph 	= _G;
+    static const mask graph 	= _A | _D | _P;
     static const mask cntrl 	= _C;
     static const mask punct 	= _P;
     static const mask alnum 	= _A | _D;
 #endif
   };
 
-
-
+_GLIBCXX_END_NAMESPACE

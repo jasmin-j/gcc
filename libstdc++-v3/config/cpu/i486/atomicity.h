@@ -1,6 +1,6 @@
 // Low-level functions for atomic operations: x86, x >= 4 version  -*- C++ -*-
 
-// Copyright (C) 1999, 2000, 2001 Free Software Foundation, Inc.
+// Copyright (C) 1999, 2000, 2001, 2004, 2005 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -27,31 +27,28 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
-#ifndef _BITS_ATOMICITY_H
-#define _BITS_ATOMICITY_H	1
+#include <ext/atomicity.h>
 
-typedef int _Atomic_word;
+_GLIBCXX_BEGIN_NAMESPACE(__gnu_cxx)
 
-static inline _Atomic_word 
-__attribute__ ((__unused__))
-__exchange_and_add (volatile _Atomic_word *__mem, int __val)
-{
-  register _Atomic_word __result;
-  __asm__ __volatile__ ("lock; xaddl %0,%1"
-			: "=r" (__result), "+m" (*__mem) 
-                        : "0" (__val)
-                        : "memory");
-  return __result;
-}
+  _Atomic_word 
+  __attribute__ ((__unused__))
+  __exchange_and_add(volatile _Atomic_word* __mem, int __val)
+  {
+    register _Atomic_word __result;
+    __asm__ __volatile__ ("lock; xadd{l} {%0,%1|%1,%0}"
+			  : "=r" (__result), "=m" (*__mem) 
+			  : "0" (__val), "m" (*__mem));
+    return __result;
+  }
+  
+  void
+  __attribute__ ((__unused__))
+  __atomic_add(volatile _Atomic_word* __mem, int __val)
+  {
+    __asm__ __volatile__ ("lock; add{l} {%1,%0|%0,%1}"
+			  : "=m" (*__mem) : "ir" (__val), "m" (*__mem));
+  }
 
-static inline void
-__attribute__ ((__unused__))
-__atomic_add (volatile _Atomic_word* __mem, int __val)
-{
-  __asm__ __volatile__ ("lock; addl %1,%0"
-			: "+m" (*__mem) : "ir" (__val) : "memory");
-}
-
-#endif /* atomicity.h */
-
+_GLIBCXX_END_NAMESPACE
 

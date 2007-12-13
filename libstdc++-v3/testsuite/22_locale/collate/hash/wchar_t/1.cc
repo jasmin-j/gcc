@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.4.1.1 collate members
@@ -28,7 +28,7 @@ void test01()
 {
   using namespace std;
   typedef std::collate<wchar_t>::string_type string_type;
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   string_type str1(L"fffff");
   string_type str2(L"ffffffffffff");

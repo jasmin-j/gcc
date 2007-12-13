@@ -1,6 +1,7 @@
 // Pair implementation -*- C++ -*-
 
-// Copyright (C) 2001 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -58,100 +59,206 @@
  *  You should not attempt to use it directly.
  */
 
-#ifndef __GLIBCPP_INTERNAL_PAIR_H
-#define __GLIBCPP_INTERNAL_PAIR_H
+#ifndef _STL_PAIR_H
+#define _STL_PAIR_H 1
 
-namespace std
-{
+#include <bits/stl_move.h> // for std::move / std::forward, std::decay, and
+                           // std::swap
 
-/// pair holds two objects of arbitrary type.
-template <class _T1, class _T2>
-struct pair {
-  typedef _T1 first_type;    ///<  @c first_type is the first bound type
-  typedef _T2 second_type;   ///<  @c second_type is the second bound type
+_GLIBCXX_BEGIN_NAMESPACE(std)
 
-  _T1 first;                 ///< @c first is a copy of the first object
-  _T2 second;                ///< @c second is a copy of the second object
-#ifdef _GLIBCPP_RESOLVE_LIB_DEFECTS
-//265.  std::pair::pair() effects overly restrictive
-  /** The default constructor creates @c first and @c second using their
-   *  respective default constructors.  */
-  pair() : first(), second() {}
-#else
-  pair() : first(_T1()), second(_T2()) {}
+  /// pair holds two objects of arbitrary type.
+  template<class _T1, class _T2>
+    struct pair
+    {
+      typedef _T1 first_type;    ///<  @c first_type is the first bound type
+      typedef _T2 second_type;   ///<  @c second_type is the second bound type
+
+      _T1 first;                 ///< @c first is a copy of the first object
+      _T2 second;                ///< @c second is a copy of the second object
+
+      // _GLIBCXX_RESOLVE_LIB_DEFECTS
+      // 265.  std::pair::pair() effects overly restrictive
+      /** The default constructor creates @c first and @c second using their
+       *  respective default constructors.  */
+      pair()
+      : first(), second() { }
+
+      /** Two objects may be passed to a @c pair constructor to be copied.  */
+      pair(const _T1& __a, const _T2& __b)
+      : first(__a), second(__b) { }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      template<class _U1, class _U2>
+        pair(_U1&& __x, _U2&& __y)
+	: first(std::forward<_U1>(__x)),
+	  second(std::forward<_U2>(__y)) { }
+
+      pair(pair&& __p)
+      : first(std::move(__p.first)),
+	second(std::move(__p.second)) { }
 #endif
-  /** Two objects may be passed to a @c pair constructor to be copied.  */
-  pair(const _T1& __a, const _T2& __b) : first(__a), second(__b) {}
 
-  /** There is also a templated copy ctor for the @c pair class itself.  */
-  template <class _U1, class _U2>
-  pair(const pair<_U1, _U2>& __p) : first(__p.first), second(__p.second) {}
-};
+      /** There is also a templated copy ctor for the @c pair class itself.  */
+      template<class _U1, class _U2>
+        pair(const pair<_U1, _U2>& __p)
+	: first(__p.first),
+	  second(__p.second) { }
 
-/// Two pairs of the same type are equal iff their members are equal.
-template <class _T1, class _T2>
-inline bool operator==(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y)
-{ 
-  return __x.first == __y.first && __x.second == __y.second; 
-}
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      template<class _U1, class _U2>
+        pair(pair<_U1, _U2>&& __p)
+	: first(std::move(__p.first)),
+	  second(std::move(__p.second)) { }
 
-/// <http://gcc.gnu.org/onlinedocs/libstdc++/20_util/howto.html#pairlt>
-template <class _T1, class _T2>
-inline bool operator<(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y)
-{ 
-  return __x.first < __y.first || 
-         (!(__y.first < __x.first) && __x.second < __y.second); 
-}
+      // http://gcc.gnu.org/ml/libstdc++/2007-08/msg00052.html
+      template<class _U1, class _Arg0, class... _Args>
+        pair(_U1&& __x, _Arg0&& __arg0, _Args&&... __args)
+	: first(std::forward<_U1>(__x)),
+	  second(std::forward<_Arg0>(__arg0),
+		 std::forward<_Args>(__args)...) { }
 
-/// Uses @c operator== to find the result.
-template <class _T1, class _T2>
-inline bool operator!=(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y) {
-  return !(__x == __y);
-}
+      pair&
+      operator=(pair&& __p)
+      { 
+	first = std::move(__p.first);
+	second = std::move(__p.second);
+	return *this;
+      }
 
-/// Uses @c operator< to find the result.
-template <class _T1, class _T2>
-inline bool operator>(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y) {
-  return __y < __x;
-}
+      template<class _U1, class _U2>
+        pair&
+        operator=(pair<_U1, _U2>&& __p)
+	{
+	  first = std::move(__p.first);
+	  second = std::move(__p.second);
+	  return *this;
+	}
 
-/// Uses @c operator< to find the result.
-template <class _T1, class _T2>
-inline bool operator<=(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y) {
-  return !(__y < __x);
-}
-
-/// Uses @c operator< to find the result.
-template <class _T1, class _T2>
-inline bool operator>=(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y) {
-  return !(__x < __y);
-}
-
-/**
- *  @brief A convenience wrapper for creating a pair from two objects.
- *  @param  x  The first object.
- *  @param  y  The second object.
- *  @return   A newly-constructed pair<> object of the appropriate type.
- *
- *  The standard requires that the objects be passed by reference-to-const,
- *  but LWG issue #181 says they should be passed by const value.  We follow
- *  the LWG by default.
-*/
-template <class _T1, class _T2>
-#ifdef _GLIBCPP_RESOLVE_LIB_DEFECTS
-//181.  make_pair() unintended behavior
-inline pair<_T1, _T2> make_pair(_T1 __x, _T2 __y)
-#else
-inline pair<_T1, _T2> make_pair(const _T1& __x, const _T2& __y)
+      void
+      swap(pair&& __p)
+      {
+	using std::swap;
+	swap(first, __p.first);
+	swap(second, __p.second);	
+      }
 #endif
-{
-  return pair<_T1, _T2>(__x, __y);
-}
+    };
 
-} // namespace std
+  /// Two pairs of the same type are equal iff their members are equal.
+  template<class _T1, class _T2>
+    inline bool
+    operator==(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y)
+    { return __x.first == __y.first && __x.second == __y.second; }
 
-#endif /* __GLIBCPP_INTERNAL_PAIR_H */
+  /// <http://gcc.gnu.org/onlinedocs/libstdc++/20_util/howto.html#pairlt>
+  template<class _T1, class _T2>
+    inline bool
+    operator<(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y)
+    { return __x.first < __y.first
+	     || (!(__y.first < __x.first) && __x.second < __y.second); }
 
-// Local Variables:
-// mode:C++
-// End:
+  /// Uses @c operator== to find the result.
+  template<class _T1, class _T2>
+    inline bool
+    operator!=(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y)
+    { return !(__x == __y); }
+
+  /// Uses @c operator< to find the result.
+  template<class _T1, class _T2>
+    inline bool
+    operator>(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y)
+    { return __y < __x; }
+
+  /// Uses @c operator< to find the result.
+  template<class _T1, class _T2>
+    inline bool
+    operator<=(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y)
+    { return !(__y < __x); }
+
+  /// Uses @c operator< to find the result.
+  template<class _T1, class _T2>
+    inline bool
+    operator>=(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y)
+    { return !(__x < __y); }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+  /// See std::pair::swap().
+  template<class _T1, class _T2>
+    inline void
+    swap(pair<_T1, _T2>& __x, pair<_T1, _T2>& __y)
+    { __x.swap(__y); }
+
+  template<class _T1, class _T2>
+    inline void
+    swap(pair<_T1, _T2>&& __x, pair<_T1, _T2>& __y)
+    { __x.swap(__y); }
+
+  template<class _T1, class _T2>
+    inline void
+    swap(pair<_T1, _T2>& __x, pair<_T1, _T2>&& __y)
+    { __x.swap(__y); }
+#endif
+
+  /**
+   *  @brief A convenience wrapper for creating a pair from two objects.
+   *  @param  x  The first object.
+   *  @param  y  The second object.
+   *  @return   A newly-constructed pair<> object of the appropriate type.
+   *
+   *  The standard requires that the objects be passed by reference-to-const,
+   *  but LWG issue #181 says they should be passed by const value.  We follow
+   *  the LWG by default.
+   */
+  // _GLIBCXX_RESOLVE_LIB_DEFECTS
+  // 181.  make_pair() unintended behavior
+#ifndef __GXX_EXPERIMENTAL_CXX0X__
+  template<class _T1, class _T2>
+    inline pair<_T1, _T2>
+    make_pair(_T1 __x, _T2 __y)
+    { return pair<_T1, _T2>(__x, __y); }
+#else
+  template<typename _Tp>
+    class reference_wrapper;
+
+  // Helper which adds a reference to a type when given a reference_wrapper
+  template<typename _Tp>
+    struct __strip_reference_wrapper
+    {
+      typedef _Tp __type;
+    };
+
+  template<typename _Tp>
+    struct __strip_reference_wrapper<reference_wrapper<_Tp> >
+    {
+      typedef _Tp& __type;
+    };
+
+  template<typename _Tp>
+    struct __strip_reference_wrapper<const reference_wrapper<_Tp> >
+    {
+      typedef _Tp& __type;
+    };
+
+  template<typename _Tp>
+    struct __decay_and_strip
+    {
+      typedef typename __strip_reference_wrapper<
+	typename decay<_Tp>::type>::__type __type;
+    };
+
+  // NB: DR 706.
+  template<class _T1, class _T2>
+    inline pair<typename __decay_and_strip<_T1>::__type,
+		typename __decay_and_strip<_T2>::__type>
+    make_pair(_T1&& __x, _T2&& __y)
+    {
+      return pair<typename __decay_and_strip<_T1>::__type,
+	          typename __decay_and_strip<_T2>::__type>
+	(std::forward<_T1>(__x), std::forward<_T2>(__y));
+    }
+#endif
+
+_GLIBCXX_END_NAMESPACE
+
+#endif /* _STL_PAIR_H */

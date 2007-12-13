@@ -1,3 +1,4 @@
+// { dg-do run  }
 // Bug: obj gets destroyed twice because the fixups for the return are
 // inside its cleanup region.
 
@@ -12,7 +13,7 @@ struct myExcRaiser {
 };
 
 struct stackObj {
-  ~stackObj() { ++d; printf ("stackObj::~stackObj()\n"); };
+  ~stackObj() { ++d; printf ("stackObj::~stackObj()\n"); }
 };
 
 int test()

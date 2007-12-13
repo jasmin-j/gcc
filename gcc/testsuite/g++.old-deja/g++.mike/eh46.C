@@ -1,6 +1,6 @@
-// Build don't link:
-// Special g++ Options: -fexceptions
-// excess errors test - XFAIL arm-*-pe
+// { dg-do assemble }
+// { dg-xfail-if "" { arm-*-pe } { "*" } { "" } }
+// { dg-options "-fexceptions" }
 
 int atoi(const char *);
 

@@ -1,5 +1,5 @@
-/* DWARF2 exception handling and frame unwind runtime interface routines.
-   Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002
+/* SJLJ exception handling and frame unwind runtime interface routines.
+   Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2006
    Free Software Foundation, Inc.
 
    This file is part of GCC.
@@ -9,6 +9,15 @@
    the Free Software Foundation; either version 2, or (at your option)
    any later version.
 
+   In addition to the permissions in the GNU General Public License, the
+   Free Software Foundation gives you unlimited permission to link the
+   compiled version of this file into combinations with other programs,
+   and to distribute those combinations without any restriction coming
+   from the use of this file.  (The General Public License restrictions
+   do apply in other respects; for example, they cover modification of
+   the file, and distribution when not linked into a combined
+   executable.)
+
    GCC is distributed in the hope that it will be useful, but WITHOUT
    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
    or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
@@ -16,8 +25,8 @@
 
    You should have received a copy of the GNU General Public License
    along with GCC; see the file COPYING.  If not, write to the Free
-   Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-   02111-1307, USA.  */
+   Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+   02110-1301, USA.  */
 
 #include "tconfig.h"
 #include "tsystem.h"
@@ -36,9 +45,13 @@ typedef void *jmp_buf[JMP_BUF_SIZE];
 extern void longjmp(jmp_buf, int) __attribute__((noreturn));
 #endif
 #else
-#define setjmp __builtin_setjmp
 #define longjmp __builtin_longjmp
 #endif
+
+/* The setjmp side is dealt with in the except.c file.  */
+#undef setjmp
+#define setjmp setjmp_should_not_be_used_in_this_file
+
 
 /* This structure is allocated on the stack of the target function.
    This must match the definition created in except.c:init_eh.  */
@@ -170,6 +183,27 @@ _Unwind_GetGR (struct _Unwind_Context *context, int index)
   return context->fc->data[index];
 }
 
+/* Get the value of the CFA as saved in CONTEXT.  */
+
+_Unwind_Word
+_Unwind_GetCFA (struct _Unwind_Context *context __attribute__((unused)))
+{
+  /* ??? Ideally __builtin_setjmp places the CFA in the jmpbuf.  */
+
+#ifndef DONT_USE_BUILTIN_SETJMP
+  /* This is a crude imitation of the CFA: the saved stack pointer.
+     This is roughly the CFA of the frame before CONTEXT.  When using the
+     DWARF-2 unwinder _Unwind_GetCFA returns the CFA of the frame described
+     by CONTEXT instead; but for DWARF-2 the cleanups associated with
+     CONTEXT have already been run, and for SJLJ they have not yet been.  */
+  if (context->fc != NULL)
+    return (_Unwind_Word) context->fc->jbuf[2];
+#endif
+
+  /* Otherwise we're out of luck for now.  */
+  return (_Unwind_Word) 0;
+}
+
 void
 _Unwind_SetGR (struct _Unwind_Context *context, int index, _Unwind_Word val)
 {
@@ -182,6 +216,16 @@ _Unwind_Ptr
 _Unwind_GetIP (struct _Unwind_Context *context)
 {
   return context->fc->call_site + 1;
+}
+
+_Unwind_Ptr
+_Unwind_GetIPInfo (struct _Unwind_Context *context, int *ip_before_insn)
+{
+  *ip_before_insn = 0;
+  if (context->fc != NULL)
+    return context->fc->call_site + 1;
+  else
+    return 0;
 }
 
 /* Set the return landing pad index in CONTEXT.  */
@@ -205,7 +249,7 @@ _Unwind_GetRegionStart (struct _Unwind_Context *context __attribute__((unused)) 
 }
 
 void *
-_Unwind_FindEnclosingFunction (void *pc)
+_Unwind_FindEnclosingFunction (void *pc __attribute__((unused)))
 {
   return NULL;
 }
@@ -246,22 +290,26 @@ uw_update_context (struct _Unwind_Context *context,
   context->fc = context->fc->prev;
 }
 
+static void
+uw_advance_context (struct _Unwind_Context *context, _Unwind_FrameState *fs)
+{
+  _Unwind_SjLj_Unregister (context->fc);
+  uw_update_context (context, fs);
+}
+
 static inline void
 uw_init_context (struct _Unwind_Context *context)
 {
   context->fc = _Unwind_SjLj_GetContext ();
 }
 
-/* ??? There appear to be bugs in integrate.c wrt __builtin_longjmp and
-   virtual-stack-vars.  An inline version of this segfaults on SPARC.  */
-#define uw_install_context(CURRENT, TARGET)		\
-  do							\
-    {							\
-      _Unwind_SjLj_SetContext ((TARGET)->fc);		\
-      longjmp ((TARGET)->fc->jbuf, 1);			\
-    }							\
-  while (0)
-
+static void __attribute__((noreturn))
+uw_install_context (struct _Unwind_Context *current __attribute__((unused)),
+                    struct _Unwind_Context *target)
+{
+  _Unwind_SjLj_SetContext (target->fc);
+  longjmp (target->fc->jbuf, 1);
+}
 
 static inline _Unwind_Ptr
 uw_identify_context (struct _Unwind_Context *context)
@@ -276,6 +324,7 @@ uw_identify_context (struct _Unwind_Context *context)
 #define _Unwind_RaiseException		_Unwind_SjLj_RaiseException
 #define _Unwind_ForcedUnwind		_Unwind_SjLj_ForcedUnwind
 #define _Unwind_Resume			_Unwind_SjLj_Resume
+#define _Unwind_Resume_or_Rethrow	_Unwind_SjLj_Resume_or_Rethrow
 
 #include "unwind.inc"
 

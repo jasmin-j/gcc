@@ -1,22 +1,21 @@
-/* Configuration for GNU C-compiler for PA-RISC.
-   Copyright (C) 1999, 2000 Free Software Foundation, Inc.
+/* Configuration for GCC-compiler for PA-RISC.
+   Copyright (C) 1999, 2000, 2003, 2004, 2007 Free Software Foundation, Inc.
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* Standard register usage.
 
@@ -31,7 +30,7 @@ Boston, MA 02111-1307, USA.  */
    HP-PA 2.0w has 32 fullword registers and 32 floating point
    registers. However, the floating point registers behave
    differently: the left and right halves of registers are addressable
-   as 32 bit registers.
+   as 32-bit registers.
 
    Due to limitations within GCC itself, we do not expose the left/right
    half addressability when in wide mode.  This is not a major performance
@@ -106,7 +105,7 @@ Boston, MA 02111-1307, USA.  */
   int i;					\
   if (TARGET_DISABLE_FPREGS || TARGET_SOFT_FLOAT)\
     {						\
-      for (i = FP_REG_FIRST; i < FP_REG_LAST; i++)\
+      for (i = FP_REG_FIRST; i <= FP_REG_LAST; i++)\
 	fixed_regs[i] = call_used_regs[i] = 1; 	\
     }						\
   if (flag_pic)					\
@@ -118,22 +117,18 @@ Boston, MA 02111-1307, USA.  */
    registers will generally not be allocated across a call).
 
    Experimentation has shown slightly better results by allocating
-   FP registers first.  
-
-   FP registers are ordered so that all L registers are selected before
-   R registers.  This works around a false dependency interlock on the
-   PA8000 when accessing the high and low parts of an FP register
-   independently.  */
+   FP registers first.  We allocate the caller-saved registers more
+   or less in reverse order to their allocation as arguments.  */
 
 #define REG_ALLOC_ORDER \
  {					\
   /* caller-saved fp regs.  */		\
   50, 51, 52, 53, 54, 55, 56, 57,	\
-  58, 59, 36, 37, 38, 39, 32, 33,	\
-  34, 35,				\
+  58, 59, 39, 38, 37, 36, 35, 34,	\
+  33, 32,				\
   /* caller-saved general regs.  */	\
-  19, 20, 21, 22, 23, 24, 25, 26,	\
-  27, 28, 29, 31,  2,			\
+  28, 31, 19, 20, 21, 22, 23, 24,	\
+  25, 26, 29,  2,			\
   /* callee-saved fp regs.  */		\
   40, 41, 42, 43, 44, 45, 46, 47,	\
   48, 49,				\
@@ -141,7 +136,7 @@ Boston, MA 02111-1307, USA.  */
    3,  4,  5,  6,  7,  8,  9, 10, 	\
   11, 12, 13, 14, 15, 16, 17, 18,	\
   /* special registers.  */		\
-   1, 30,  0, 60}
+   1, 27, 30,  0, 60}
 
 
 /* Return number of consecutive hard regs needed starting at reg REGNO
@@ -149,11 +144,19 @@ Boston, MA 02111-1307, USA.  */
    This is ordinarily the length in words of a value of mode MODE
    but can be less for certain modes in special long registers.
 
-   For PA64, GPRs and FPRs hold 64 bits worth (we ignore the 32bit
-   addressability of the FPRs).  ie, we pretend each register holds
-   precisely WORD_SIZE bits.  */
+   For PA64, GPRs and FPRs hold 64 bits worth.  We ignore the 32-bit
+   addressability of the FPRs and pretend each register holds precisely
+   WORD_SIZE bits.  Note that SCmode values are placed in a single FPR.
+   Thus, any patterns defined to operate on these values would have to
+   use the 32-bit addressability of the FPR registers.  */
 #define HARD_REGNO_NREGS(REGNO, MODE)					\
-   ((GET_MODE_SIZE (MODE) + UNITS_PER_WORD - 1) / UNITS_PER_WORD)
+  ((GET_MODE_SIZE (MODE) + UNITS_PER_WORD - 1) / UNITS_PER_WORD)
+
+/* These are the valid FP modes.  */
+#define VALID_FP_MODE_P(MODE)						\
+  ((MODE) == SFmode || (MODE) == DFmode					\
+   || (MODE) == SCmode || (MODE) == DCmode				\
+   || (MODE) == SImode || (MODE) == DImode)
 
 /* Value is 1 if hard register REGNO can hold a value of machine-mode MODE.
    On the HP-PA, the cpu registers can hold any mode.  We
@@ -162,20 +165,26 @@ Boston, MA 02111-1307, USA.  */
   ((REGNO) == 0								\
    ? (MODE) == CCmode || (MODE) == CCFPmode				\
    /* Make wide modes be in aligned registers.  */			\
+   : FP_REGNO_P (REGNO)							\
+     ? (VALID_FP_MODE_P (MODE)						\
+	&& (GET_MODE_SIZE (MODE) <= 8					\
+	    || (GET_MODE_SIZE (MODE) == 16 && ((REGNO) & 1) == 0)	\
+	    || (GET_MODE_SIZE (MODE) == 32 && ((REGNO) & 3) == 0)))	\
    : (GET_MODE_SIZE (MODE) <= UNITS_PER_WORD				\
-      || (GET_MODE_SIZE (MODE) <= 2 * UNITS_PER_WORD && ((REGNO) & 1) == 0)))
+      || (GET_MODE_SIZE (MODE) == 2 * UNITS_PER_WORD			\
+	  && ((((REGNO) & 1) == 1 && (REGNO) <= 25) || (REGNO) == 28))	\
+      || (GET_MODE_SIZE (MODE) == 4 * UNITS_PER_WORD			\
+	  && ((REGNO) & 3) == 3 && (REGNO) <= 23)))
 
 /* How to renumber registers for dbx and gdb.
 
    Registers 0  - 31 remain unchanged.
 
-   Registers 32 - 60 are mapped to 72, 74, 76 ...
+   Registers 32 - 59 are mapped to 72, 74, 76 ...
 
-   Register 88 is mapped to 32.  */
-
+   Register 60 is mapped to 32.  */
 #define DBX_REGISTER_NUMBER(REGNO) \
-  ((REGNO) <= 31 ? (REGNO) :						\
-   ((REGNO) > 31 && (REGNO) <= 60 ? (REGNO - 32) * 2 + 72 : 32))
+  ((REGNO) <= 31 ? (REGNO) : ((REGNO) < 60 ? (REGNO - 32) * 2 + 72 : 32))
 
 /* We must not use the DBX register numbers for the DWARF 2 CFA column
    numbers because that maps to numbers beyond FIRST_PSEUDO_REGISTER.
@@ -211,7 +220,7 @@ enum reg_class { NO_REGS, R1_REGS, GENERAL_REGS, FPUPPER_REGS, FP_REGS,
 
 #define N_REG_CLASSES (int) LIM_REG_CLASSES
 
-/* Give names of register classes as strings for dump file.   */
+/* Give names of register classes as strings for dump file.  */
 
 #define REG_CLASS_NAMES \
   {"NO_REGS", "R1_REGS", "GENERAL_REGS", "FPUPPER_REGS", "FP_REGS", \
@@ -232,17 +241,10 @@ enum reg_class { NO_REGS, R1_REGS, GENERAL_REGS, FPUPPER_REGS, FP_REGS,
   {0x00000000, 0x10000000},	/* SHIFT_REGS */		\
   {0xfffffffe, 0x1fffffff}}	/* ALL_REGS */
 
-/* Defines invalid mode changes.
+/* Defines invalid mode changes.  */
 
-   SImode loads to floating-point registers are not zero-extended.
-   The definition for LOAD_EXTEND_OP specifies that integer loads
-   narrower than BITS_PER_WORD will be zero-extended.  As a result,
-   we inhibit changes from SImode unless they are to a mode that is
-   identical in size.  */
-
-#define CANNOT_CHANGE_MODE_CLASS(FROM, TO)			\
-  ((FROM) == SImode && GET_MODE_SIZE (FROM) != GET_MODE_SIZE (TO)       \
-   ? FP_REGS : NO_REGS)
+#define CANNOT_CHANGE_MODE_CLASS(FROM, TO, CLASS) \
+  pa_cannot_change_mode_class (FROM, TO, CLASS)
 
 /* Return the class number of the smallest class containing
    reg number REGNO.  This could be a conditional expression
@@ -254,18 +256,6 @@ enum reg_class { NO_REGS, R1_REGS, GENERAL_REGS, FPUPPER_REGS, FP_REGS,
    : (REGNO) < 32 ? GENERAL_REGS					\
    : (REGNO) < 60 ? FP_REGS						\
    : SHIFT_REGS)
-
-
-/* Get reg_class from a letter such as appears in the machine description.  */
-/* Keep 'x' for backward compatibility with user asm.   */
-#define REG_CLASS_FROM_LETTER(C) \
-  ((C) == 'f' ? FP_REGS :					\
-   (C) == 'y' ? FP_REGS :					\
-   (C) == 'x' ? FP_REGS :					\
-   (C) == 'q' ? SHIFT_REGS :					\
-   (C) == 'a' ? R1_REGS :					\
-   (C) == 'Z' ? ALL_REGS : NO_REGS)
-
 
 /* Return the maximum number of consecutive registers
    needed to represent mode MODE in a register of class CLASS.  */
@@ -292,7 +282,7 @@ enum reg_class { NO_REGS, R1_REGS, GENERAL_REGS, FPUPPER_REGS, FP_REGS,
  "%fr28", "%fr29",  "%fr30", "%fr31", "SAR"}
 
 #define ADDITIONAL_REGISTER_NAMES \
- {{"%cr11",88}}
+ {{"%cr11",60}}
 
 #define FP_SAVED_REG_LAST 49
 #define FP_SAVED_REG_FIRST 40

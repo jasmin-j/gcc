@@ -1,22 +1,22 @@
 // -*- C++ -*- std::terminate handler
-// Copyright (C) 2002 Free Software Foundation
+// Copyright (C) 2002, 2003 Free Software Foundation
 //
-// This file is part of GNU CC.
+// This file is part of GCC.
 //
-// GNU CC is free software; you can redistribute it and/or modify
+// GCC is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation; either version 2, or (at your option)
 // any later version.
 //
-// GNU CC is distributed in the hope that it will be useful,
+// GCC is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with GNU CC; see the file COPYING.  If not, write to
-// the Free Software Foundation, 59 Temple Place - Suite 330,
-// Boston, MA 02111-1307, USA. 
+// along with GCC; see the file COPYING.  If not, write to
+// the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+// Boston, MA 02110-1301, USA. 
 
 // As a special exception, you may use this file as part of a free software
 // library without restriction.  Specifically, if other files instantiate
@@ -27,15 +27,25 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
+#include <bits/c++config.h>
 #include "unwind-cxx.h"
 
-/* We default to the talkative, informative handler.  This pulls in the
-   demangler, the dyn-string utilities, and elements of the I/O library.
-   For a low-memory environment, you can return to the earlier "silent death"
-   handler by including <cstdlib>, initializg to "std::abort", and rebuilding
-   the library.  */
+/* We default to the talkative, informative handler in a normal hosted
+   library.  This pulls in the demangler, the dyn-string utilities, and
+   elements of the I/O library.  For a low-memory environment, you can return
+   to the earlier "silent death" handler by including <cstdlib>, initializing
+   to "std::abort", and rebuilding the library.  In a freestanding mode, we
+   default to this latter approach.  */
+
+#if ! _GLIBCXX_HOSTED
+# include <cstdlib>
+#endif
 
 /* The current installed user handler.  */
 std::terminate_handler __cxxabiv1::__terminate_handler =
-                                       __gnu_cxx::__verbose_terminate_handler;
+#if _GLIBCXX_HOSTED
+	__gnu_cxx::__verbose_terminate_handler;
+#else
+	std::abort;
+#endif
 

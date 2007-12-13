@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -144,8 +142,8 @@ package Ttypef is
    IEEEL_Safe_First        : constant := -16#0.FFFF_FFFF_FFFF_F8#E+256;
    IEEEX_Safe_First        : constant := -16#0.FFFF_FFFF_FFFF_FFFF#E+4096;
    VAXFF_Safe_First        : constant := -16#0.7FFF_FF8#E+32;
-   VAXDF_Safe_First        : constant := -16#0.7FFF_FFFF_FFFF_FF8#E-38;
-   VAXGF_Safe_First        : constant := -16#0.7FFF_FFFF_FFFF_FC#E-256;
+   VAXDF_Safe_First        : constant := -16#0.7FFF_FFFF_FFFF_FC0#E+32;
+   VAXGF_Safe_First        : constant := -16#0.7FFF_FFFF_FFFF_FC#E+256;
    AAMPS_Safe_First        : constant := -16#0.7FFF_FF8#E+32;
    AAMPL_Safe_First        : constant := -16#0.7FFF_FFFF_FF8#E+32;
 

@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -173,6 +171,10 @@ package body Ch5 is
       procedure Test_Statement_Required;
       --  Flag error if Statement_Required flag set
 
+      ----------------------
+      -- Junk_Declaration --
+      ----------------------
+
       procedure Junk_Declaration is
       begin
          if (not Declaration_Found) or All_Errors_Mode then
@@ -182,6 +184,10 @@ package body Ch5 is
 
          Skip_Declaration (Statement_List);
       end Junk_Declaration;
+
+      -----------------------------
+      -- Test_Statement_Required --
+      -----------------------------
 
       procedure Test_Statement_Required is
       begin
@@ -203,7 +209,9 @@ package body Ch5 is
          end loop;
 
          begin
-            if Style_Check then Style.Check_Indentation; end if;
+            if Style_Check then
+               Style.Check_Indentation;
+            end if;
 
             --  Deal with reserved identifier (in assignment or call)
 
@@ -595,8 +603,8 @@ package body Ch5 is
                         Statement_Required := False;
 
                      --  A slash following an identifier or a selected
-                     --  component in this situation is most likely a
-                     --  period (have a look at the keyboard :-)
+                     --  component in this situation is most likely a period
+                     --  (see location of keys on keyboard).
 
                      elsif Token = Tok_Slash
                        and then (Nkind (Name_Node) = N_Identifier
@@ -900,8 +908,9 @@ package body Ch5 is
 
       if Nkind (Name_Node) = N_Indexed_Component then
          declare
-            Prefix_Node : Node_Id := Prefix (Name_Node);
-            Exprs_Node  : List_Id := Expressions (Name_Node);
+            Prefix_Node : constant Node_Id := Prefix (Name_Node);
+            Exprs_Node  : constant List_Id := Expressions (Name_Node);
+
          begin
             Change_Node (Name_Node, N_Procedure_Call_Statement);
             Set_Name (Name_Node, Prefix_Node);
@@ -913,8 +922,9 @@ package body Ch5 is
 
       elsif Nkind (Name_Node) = N_Function_Call then
          declare
-            Fname_Node  : Node_Id := Name (Name_Node);
-            Params_List : List_Id := Parameter_Associations (Name_Node);
+            Fname_Node  : constant Node_Id := Name (Name_Node);
+            Params_List : constant List_Id :=
+                            Parameter_Associations (Name_Node);
 
          begin
             Change_Node (Name_Node, N_Procedure_Call_Statement);
@@ -980,7 +990,7 @@ package body Ch5 is
 
    --  LABEL ::= <<label_STATEMENT_IDENTIFIER>>
 
-   --  STATEMENT_IDENTIFIER ::= DIRECT_NAME
+   --  STATEMENT_INDENTIFIER ::= DIRECT_NAME
 
    --  The IDENTIFIER of a STATEMENT_IDENTIFIER shall be an identifier
    --  (not an OPERATOR_SYMBOL)
@@ -995,7 +1005,7 @@ package body Ch5 is
    begin
       Label_Node := New_Node (N_Label, Token_Ptr);
       Scan; -- past <<
-      Set_Identifier (Label_Node, P_Identifier);
+      Set_Identifier (Label_Node, P_Identifier (C_Greater_Greater));
       T_Greater_Greater;
       Append_Elmt (Label_Node, Label_List);
       return Label_Node;
@@ -1112,7 +1122,10 @@ package body Ch5 is
       begin
          if Token_Is_At_Start_Of_Line and then Token = Tok_Then then
             Check_If_Column;
-            if Style_Check then Style.Check_Then (Loc); end if;
+
+            if Style_Check then
+               Style.Check_Then (Loc);
+            end if;
          end if;
       end Check_Then_Column;
 
@@ -1206,7 +1219,7 @@ package body Ch5 is
                --  Here we have an else that really is an else
 
                if Present (Else_Statements (If_Node)) then
-                  Error_Msg_SP ("Only one ELSE part allowed");
+                  Error_Msg_SP ("only one ELSE part allowed");
                   Append_List
                     (P_Sequence_Of_Statements (SS_Eftm_Eltm_Sreq),
                      Else_Statements (If_Node));
@@ -1247,13 +1260,28 @@ package body Ch5 is
       --  to reconstruct the tree correctly in this case, but we do at least
       --  give an accurate error message.
 
-      while Token = Tok_Colon_Equal loop
-         Error_Msg_SC (""":="" should be ""=""");
-         Scan; -- past junk :=
-         Discard_Junk_Node (P_Expression_No_Right_Paren);
-      end loop;
+      if Token = Tok_Colon_Equal then
+         while Token = Tok_Colon_Equal loop
+            Error_Msg_SC (""":="" should be ""=""");
+            Scan; -- past junk :=
+            Discard_Junk_Node (P_Expression_No_Right_Paren);
+         end loop;
 
-      return Cond;
+         return Cond;
+
+      --  Otherwise check for redundant parens
+
+      else
+         if Style_Check
+           and then Paren_Count (Cond) > 0
+         then
+            Style.Check_Xtra_Parens (First_Sloc (Cond));
+         end if;
+
+         --  And return the result
+
+         return Cond;
+      end if;
    end P_Condition;
 
    -------------------------
@@ -1373,7 +1401,10 @@ package body Ch5 is
       Case_Alt_Node : Node_Id;
 
    begin
-      if Style_Check then Style.Check_Indentation; end if;
+      if Style_Check then
+         Style.Check_Indentation;
+      end if;
+
       Case_Alt_Node := New_Node (N_Case_Statement_Alternative, Token_Ptr);
       T_When; -- past WHEN (or give error in OTHERS case)
       Set_Discrete_Choices (Case_Alt_Node, P_Discrete_Choice_List);
@@ -1411,7 +1442,8 @@ package body Ch5 is
    --  Error recovery : cannot raise Error_Resync
 
    function P_Loop_Statement (Loop_Name : Node_Id := Empty) return Node_Id is
-      Loop_Node : Node_Id;
+      Loop_Node    : Node_Id;
+      Created_Name : Node_Id;
 
    begin
       Push_Scope_Stack;
@@ -1424,15 +1456,18 @@ package body Ch5 is
       TF_Loop;
 
       if No (Loop_Name) then
+         Created_Name :=
+           Make_Identifier (Sloc (Loop_Node),
+             Chars => Set_Loop_Block_Name ('L'));
+         Set_Comes_From_Source (Created_Name, False);
          Set_Has_Created_Identifier (Loop_Node, True);
-         Set_Identifier (Loop_Node,
-           Make_Identifier (Sloc (Loop_Node), Set_Loop_Block_Name ('L')));
+         Set_Identifier (Loop_Node, Created_Name);
+         Scope.Table (Scope.Last).Labl := Created_Name;
       else
          Set_Identifier (Loop_Node, Loop_Name);
       end if;
 
       Append_Elmt (Loop_Node, Label_List);
-
       Set_Statements (Loop_Node, P_Sequence_Of_Statements (SS_Sreq));
       End_Statements (Loop_Node);
       return Loop_Node;
@@ -1454,6 +1489,7 @@ package body Ch5 is
       Loop_Node        : Node_Id;
       Iter_Scheme_Node : Node_Id;
       Loop_For_Flag    : Boolean;
+      Created_Name     : Node_Id;
 
    begin
       Push_Scope_Stack;
@@ -1484,24 +1520,26 @@ package body Ch5 is
 
       else
          Loop_Node := New_Node (N_Loop_Statement, Token_Ptr);
-         TF_Loop;
-         Set_Statements (Loop_Node, P_Sequence_Of_Statements (SS_Sreq));
-         End_Statements (Loop_Node);
-         Set_Iteration_Scheme (Loop_Node, Iter_Scheme_Node);
 
          if No (Loop_Name) then
+            Created_Name :=
+              Make_Identifier (Sloc (Loop_Node),
+                Chars => Set_Loop_Block_Name ('L'));
+            Set_Comes_From_Source (Created_Name, False);
             Set_Has_Created_Identifier (Loop_Node, True);
-            Set_Identifier (Loop_Node,
-              Make_Identifier (Sloc (Loop_Node), Set_Loop_Block_Name ('L')));
+            Set_Identifier (Loop_Node, Created_Name);
+            Scope.Table (Scope.Last).Labl := Created_Name;
          else
             Set_Identifier (Loop_Node, Loop_Name);
          end if;
 
+         TF_Loop;
+         Set_Statements (Loop_Node, P_Sequence_Of_Statements (SS_Sreq));
+         End_Statements (Loop_Node);
+         Set_Iteration_Scheme (Loop_Node, Iter_Scheme_Node);
          Append_Elmt (Loop_Node, Label_List);
-
          return Loop_Node;
       end if;
-
    end P_For_Statement;
 
    --  P_While_Statement
@@ -1518,6 +1556,7 @@ package body Ch5 is
       Loop_Node        : Node_Id;
       Iter_Scheme_Node : Node_Id;
       Loop_While_Flag  : Boolean;
+      Created_Name     : Node_Id;
 
    begin
       Push_Scope_Stack;
@@ -1548,23 +1587,25 @@ package body Ch5 is
       else
          Loop_Node := New_Node (N_Loop_Statement, Token_Ptr);
          TF_Loop;
-         Set_Statements (Loop_Node, P_Sequence_Of_Statements (SS_Sreq));
-         End_Statements (Loop_Node);
-         Set_Iteration_Scheme (Loop_Node, Iter_Scheme_Node);
 
          if No (Loop_Name) then
+            Created_Name :=
+              Make_Identifier (Sloc (Loop_Node),
+                Chars => Set_Loop_Block_Name ('L'));
+            Set_Comes_From_Source (Created_Name, False);
             Set_Has_Created_Identifier (Loop_Node, True);
-            Set_Identifier (Loop_Node,
-              Make_Identifier (Sloc (Loop_Node), Set_Loop_Block_Name ('L')));
+            Set_Identifier (Loop_Node, Created_Name);
+            Scope.Table (Scope.Last).Labl := Created_Name;
          else
             Set_Identifier (Loop_Node, Loop_Name);
          end if;
 
+         Set_Statements (Loop_Node, P_Sequence_Of_Statements (SS_Sreq));
+         End_Statements (Loop_Node);
+         Set_Iteration_Scheme (Loop_Node, Iter_Scheme_Node);
          Append_Elmt (Loop_Node, Label_List);
-
          return Loop_Node;
       end if;
-
    end P_While_Statement;
 
    ---------------------------------------
@@ -1587,7 +1628,7 @@ package body Ch5 is
         New_Node (N_Loop_Parameter_Specification, Token_Ptr);
 
       Save_Scan_State (Scan_State);
-      ID_Node := P_Defining_Identifier;
+      ID_Node := P_Defining_Identifier (C_In);
       Set_Defining_Identifier (Loop_Param_Specification_Node, ID_Node);
 
       if Token = Tok_Left_Paren then
@@ -1637,7 +1678,7 @@ package body Ch5 is
 
    --  This function parses a block statement with DECLARE present
 
-   --  The caller has checked that the initial token is DECLARE.
+   --  The caller has checked that the initial token is DECLARE
 
    --  Error recovery: cannot raise Error_Resync
 
@@ -1645,7 +1686,8 @@ package body Ch5 is
      (Block_Name : Node_Id := Empty)
       return       Node_Id
    is
-      Block_Node : Node_Id;
+      Block_Node   : Node_Id;
+      Created_Name : Node_Id;
 
    begin
       Block_Node := New_Node (N_Block_Statement, Token_Ptr);
@@ -1660,9 +1702,13 @@ package body Ch5 is
       Scan; -- past DECLARE
 
       if No (Block_Name) then
+         Created_Name :=
+           Make_Identifier (Sloc (Block_Node),
+             Chars => Set_Loop_Block_Name ('B'));
+         Set_Comes_From_Source (Created_Name, False);
          Set_Has_Created_Identifier (Block_Node, True);
-         Set_Identifier (Block_Node,
-           Make_Identifier (Sloc (Block_Node), Set_Loop_Block_Name ('B')));
+         Set_Identifier (Block_Node, Created_Name);
+         Scope.Table (Scope.Last).Labl := Created_Name;
       else
          Set_Identifier (Block_Node, Block_Name);
       end if;
@@ -1684,7 +1730,8 @@ package body Ch5 is
      (Block_Name : Node_Id := Empty)
       return       Node_Id
    is
-      Block_Node : Node_Id;
+      Block_Node   : Node_Id;
+      Created_Name : Node_Id;
 
    begin
       Block_Node := New_Node (N_Block_Statement, Token_Ptr);
@@ -1697,9 +1744,13 @@ package body Ch5 is
       Scope.Table (Scope.Last).Sloc := Token_Ptr;
 
       if No (Block_Name) then
+         Created_Name :=
+           Make_Identifier (Sloc (Block_Node),
+             Chars => Set_Loop_Block_Name ('B'));
+         Set_Comes_From_Source (Created_Name, False);
          Set_Has_Created_Identifier (Block_Node, True);
-         Set_Identifier (Block_Node,
-           Make_Identifier (Sloc (Block_Node), Set_Loop_Block_Name ('B')));
+         Set_Identifier (Block_Node, Created_Name);
+         Scope.Table (Scope.Last).Labl := Created_Name;
       else
          Set_Identifier (Block_Node, Block_Name);
       end if;
@@ -1740,6 +1791,10 @@ package body Ch5 is
       --  is a missing semicolon. It is called with Token pointing to the
       --  WHEN token, and returns True if a semicolon is missing before
       --  the WHEN as in the above example.
+
+      -------------------------------
+      -- Missing_Semicolon_On_Exit --
+      -------------------------------
 
       function Missing_Semicolon_On_Exit return Boolean is
          State : Saved_Scan_State;
@@ -1782,8 +1837,9 @@ package body Ch5 is
          Check_No_Exit_Name :
          for J in reverse 1 .. Scope.Last loop
             if Scope.Table (J).Etyp = E_Loop then
-               if Present (Scope.Table (J).Labl) then
-
+               if Present (Scope.Table (J).Labl)
+                 and then Comes_From_Source (Scope.Table (J).Labl)
+               then
                   --  Innermost loop in fact had a name, style check fails
 
                   Style.No_Exit_Name (Scope.Table (J).Labl);
@@ -1828,6 +1884,7 @@ package body Ch5 is
       Goto_Node := New_Node (N_Goto_Statement, Token_Ptr);
       Scan; -- past GOTO (or TO)
       Set_Name (Goto_Node, P_Qualified_Simple_Name_Resync);
+      Append_Elmt (Goto_Node, Goto_List);
       No_Constraint;
       TF_Semicolon;
       return Goto_Node;
@@ -1930,7 +1987,7 @@ package body Ch5 is
 
       --  Check for misplacement of later vs basic declarations in Ada 83
 
-      if Ada_83 then
+      if Ada_Version = Ada_83 then
          Decl := First (Decls);
 
          --  Loop through sequence of basic declarative items
@@ -1953,7 +2010,7 @@ package body Ch5 is
                   if Nkind (Decl) not in N_Later_Decl_Item
                     and then Nkind (Decl) /= N_Pragma
                   then
-                     if Ada_83 then
+                     if Ada_Version = Ada_83 then
                         Error_Msg_Sloc := Body_Sloc;
                         Error_Msg_N
                           ("(Ada 83) decl cannot appear after body#", Decl);
@@ -2019,7 +2076,9 @@ package body Ch5 is
          Set_Declarations (Parent, Decls);
 
          if Token = Tok_Begin then
-            if Style_Check then Style.Check_Indentation; end if;
+            if Style_Check then
+               Style.Check_Indentation;
+            end if;
 
             Error_Msg_Col := Scope.Table (Scope.Last).Ecol;
 

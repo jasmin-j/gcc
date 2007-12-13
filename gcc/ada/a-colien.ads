@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --         A D A . C O M M A N D _ L I N E . E N V I R O N M E N T          --
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---         Copyright (C) 1996-2001 Free Software Foundation, Inc.           --
+--          Copyright (C) 1996-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,6 +31,12 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+--  Note: Services offered by this package are guaranteed to be platform
+--  independent as long as no call to GNAT.OS_Lib.Setenv or to C putenv
+--  routine is done. On some platforms the services below will report new
+--  environment variables (e.g. Windows) on some others it will not
+--  (e.g. GNU/Linux and Solaris).
+
 package Ada.Command_Line.Environment is
 
    function Environment_Count return Natural;
@@ -40,7 +45,7 @@ package Ada.Command_Line.Environment is
    --  variables in the environment of the program invoking the function.
    --  Otherwise it returns 0.  And that's a lot of environment.
 
-   function Environment_Value (Number : in Positive) return String;
+   function Environment_Value (Number : Positive) return String;
    --  If the external execution environment supports passing the environment
    --  to a program, then Environment_Value returns an implementation-defined
    --  value corresponding to the value at relative position Number. If Number

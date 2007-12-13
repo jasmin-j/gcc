@@ -1,25 +1,24 @@
 /* Definitions of target machine for GNU compiler, for DEC Alpha on Cray
    T3E running Unicos/Mk.
-   Copyright (C) 2001, 2002
+   Copyright (C) 2001, 2002, 2004, 2005, 2007
    Free Software Foundation, Inc.
    Contributed by Roman Lechtchinsky (rl@cs.tu-berlin.de)
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #undef TARGET_ABI_UNICOSMK
 #define TARGET_ABI_UNICOSMK 1
@@ -96,13 +95,11 @@ Boston, MA 02111-1307, USA.  */
 
 /* The stack frame grows downward.  */
 
-#define FRAME_GROWS_DOWNWARD
+#define FRAME_GROWS_DOWNWARD 1
 
 /* Define the offset between two registers, one to be eliminated, and the
    other its replacement, at the start of a routine. This is somewhat
    complicated on the T3E which is why we use a function.  */
-
-extern int unicosmk_initial_elimination_offset PARAMS ((int, int));
 
 #undef INITIAL_ELIMINATION_OFFSET
 #define INITIAL_ELIMINATION_OFFSET(FROM, TO, OFFSET)			\
@@ -118,22 +115,13 @@ extern int unicosmk_initial_elimination_offset PARAMS ((int, int));
    in registers) are allocated.  */
 
 #define REG_PARM_STACK_SPACE(DECL) 48
-#define OUTGOING_REG_PARM_STACK_SPACE
+#define OUTGOING_REG_PARM_STACK_SPACE 1
 
 /* If an argument can't be passed in registers even though not all argument
    registers have been used yet, it is passed on the stack in the space 
    preallocated for these registers.  */
 
 #define STACK_PARMS_IN_REG_PARM_AREA
-
-/* This evaluates to nonzero if we do not know how to pass TYPE solely in
-   registers. This is the case for all arguments that do not fit in two
-   registers.  */
-
-#define MUST_PASS_IN_STACK(MODE,TYPE)					\
-  ((TYPE) != 0                                          		\
-   && (TREE_CODE (TYPE_SIZE (TYPE)) != INTEGER_CST      		\
-       || (TREE_ADDRESSABLE (TYPE) || ALPHA_ARG_SIZE (MODE, TYPE, 0) > 2)))
 
 /* Define a data type for recording info about an argument list
    during the scan of that argument list.  This data type should
@@ -178,7 +166,7 @@ typedef struct {
    function whose data type is FNTYPE.  For a library call, FNTYPE is 0.  */
 
 #undef INIT_CUMULATIVE_ARGS
-#define INIT_CUMULATIVE_ARGS(CUM,FNTYPE,LIBNAME,INDIRECT)	\
+#define INIT_CUMULATIVE_ARGS(CUM, FNTYPE, LIBNAME, INDIRECT, N_NAMED_ARGS) \
   do { (CUM).num_args = 0;					\
        (CUM).num_arg_words = 0;					\
        (CUM).num_reg_words = 0;					\
@@ -200,8 +188,9 @@ do {								\
 								\
   size = ALPHA_ARG_SIZE (MODE, TYPE, NAMED);			\
                                                                 \
-  if (size > 2 || MUST_PASS_IN_STACK (MODE, TYPE)		\
-      || (CUM).num_reg_words + size > 6)			\
+  if (size > 2							\
+      || (CUM).num_reg_words + size > 6				\
+      || targetm.calls.must_pass_in_stack (MODE, TYPE))		\
     (CUM).force_stack = 1;					\
                                                                 \
   if (! (CUM).force_stack)					\
@@ -219,41 +208,6 @@ do {								\
   (CUM).num_arg_words += size;					\
   ++(CUM).num_args;						\
 } while(0)
-
-/* We want the default definition for this.
-   ??? In fact, we should delete the definition from alpha.h as it
-   corresponds to the default definition for little-endian machines.  */
-
-#undef FUNCTION_ARG_PADDING
-
-/* An argument is passed either entirely in registers or entirely on stack.  */
- 
-#undef FUNCTION_ARG_PARTIAL_NREGS
-/* #define FUNCTION_ARG_PARTIAL_NREGS(CUM,MODE,TYPE,NAMED) 0 */
-
-/* Perform any needed actions needed for a function that is receiving a
-   variable number of arguments.
-
-   On Unicos/Mk, the standard subroutine __T3E_MISMATCH stores all register
-   arguments on the stack. Unfortunately, it doesn't always store the first
-   one (i.e. the one that arrives in $16 or $f16). This is not a problem
-   with stdargs as we always have at least one named argument there.  */
-
-#undef SETUP_INCOMING_VARARGS
-#define SETUP_INCOMING_VARARGS(CUM,MODE,TYPE,PRETEND_SIZE,NO_RTL)	\
-{ if ((CUM).num_reg_words < 6)						\
-    {									\
-      if (! (NO_RTL))							\
-        {								\
-	  int start = (CUM).num_reg_words + 1;				\
-									\
-          emit_insn (gen_umk_mismatch_args (GEN_INT (start)));		\
-	  emit_insn (gen_arg_home_umk ());				\
-        }								\
-									\
-      PRETEND_SIZE = 0;							\
-    }									\
-}
 
 /* This ensures that $15 increments/decrements in leaf functions won't get
    eliminated.  */
@@ -275,7 +229,7 @@ do { fprintf (FILE, "\tbr $1,0\n");			\
 /* We don't support nested functions (yet).  */
 
 #undef TRAMPOLINE_TEMPLATE
-#define TRAMPOLINE_TEMPLATE(FILE) abort ()
+#define TRAMPOLINE_TEMPLATE(FILE) gcc_unreachable ()
 
 /* Specify the machine mode that this machine uses for the index in the
    tablejump instruction. On Unicos/Mk, we don't support relative case
@@ -289,63 +243,11 @@ do { fprintf (FILE, "\tbr $1,0\n");			\
 /* Define this as 1 if `char' should by default be signed; else as 0.  */
 /* #define DEFAULT_SIGNED_CHAR 1 */
 
-/* The Cray assembler is really weird with respect to sections. It has only
-   named sections and you can't reopen a section once it has been closed.
-   This means that we have to generate unique names whenever we want to
-   reenter the text or the data section. The following is a rather bad hack
-   as TEXT_SECTION_ASM_OP and DATA_SECTION_ASM_OP are supposed to be
-   constants.  */
-
-#undef TEXT_SECTION_ASM_OP
-#define TEXT_SECTION_ASM_OP unicosmk_text_section ()
-
-#undef DATA_SECTION_ASM_OP
-#define DATA_SECTION_ASM_OP unicosmk_data_section ()
-
 /* There are no read-only sections on Unicos/Mk.  */
 
 #undef READONLY_DATA_SECTION_ASM_OP
-#define READONLY_DATA_SECTION data_section
 
-/* Define extra sections for common data and SSIBs (static subroutine
-   information blocks). The actual section header is output by the callers
-   of these functions.  */
-
-#undef EXTRA_SECTIONS
-#undef EXTRA_SECTION_FUNCTIONS
-
-#define EXTRA_SECTIONS in_common, in_ssib
-#define EXTRA_SECTION_FUNCTIONS	\
-COMMON_SECTION			\
-SSIB_SECTION	
-
-extern void common_section PARAMS ((void));
-#define COMMON_SECTION		\
-void				\
-common_section ()		\
-{				\
-  in_section = in_common;	\
-}
-
-extern void ssib_section PARAMS ((void));
-#define SSIB_SECTION		\
-void				\
-ssib_section ()			\
-{				\
-  in_section = in_ssib;		\
-}
-
-/* This outputs text to go at the start of an assembler file.  */
-
-#undef ASM_FILE_START
-#define ASM_FILE_START(FILE)	unicosmk_asm_file_start (FILE)
-
-/* This outputs text to go at the end of an assembler file.  */
-
-#undef ASM_FILE_END
-#define ASM_FILE_END(FILE)	unicosmk_asm_file_end (FILE)
-
-/* We take care of that in ASM_FILE_START.  */
+/* We take care of this in unicosmk_file_start.  */
 
 #undef ASM_OUTPUT_SOURCE_FILENAME
 
@@ -429,7 +331,7 @@ ssib_section ()			\
    (Unicos/Mk does not use such vectors yet).  */
 
 #undef ASM_OUTPUT_ADDR_DIFF_ELT
-#define ASM_OUTPUT_ADDR_DIFF_ELT(FILE, BODY, VALUE, REL) abort ()
+#define ASM_OUTPUT_ADDR_DIFF_ELT(FILE, BODY, VALUE, REL) gcc_unreachable ()
 
 /* We can't output case vectors in the same section as the function code
    because CAM doesn't allow data definitions in code sections. Thus, we
@@ -439,7 +341,7 @@ ssib_section ()			\
 #define ASM_OUTPUT_ADDR_VEC(LAB,VEC) \
   unicosmk_defer_case_vector ((LAB),(VEC))
 
-#define ASM_OUTPUT_ADDR_DIFF_VEC(LAB,VEC) abort ()
+#define ASM_OUTPUT_ADDR_DIFF_VEC(LAB,VEC) gcc_unreachable ()
 
 /* This is how to output an assembler line that says to advance the location
    counter to a multiple of 2**LOG bytes. Annoyingly, CAM always uses zeroes
@@ -453,7 +355,8 @@ ssib_section ()			\
 
 #undef ASM_OUTPUT_SKIP
 #define ASM_OUTPUT_SKIP(STREAM,SIZE)			\
-  fprintf ((STREAM), "\t.byte\t0:%d\n", (SIZE));
+  fprintf ((STREAM), "\t.byte\t0:"HOST_WIDE_INT_PRINT_UNSIGNED"\n",\
+	   (SIZE));
 
 /* This says how to output an assembler line to define a global common
    symbol. We need the alignment information because it has to be supplied
@@ -467,10 +370,10 @@ ssib_section ()			\
 
 #undef ASM_OUTPUT_LOCAL
 #define ASM_OUTPUT_ALIGNED_LOCAL(FILE, NAME, SIZE, ALIGN) \
-  do { data_section ();					\
+  do { switch_to_section (data_section);		\
        fprintf (FILE, "\t.align\t%d\n", floor_log2 ((ALIGN) / BITS_PER_UNIT));\
        ASM_OUTPUT_LABEL ((FILE), (NAME));		\
-       fprintf (FILE, "\t.byte 0:%d\n", SIZE);		\
+       fprintf (FILE, "\t.byte 0:"HOST_WIDE_INT_PRINT_UNSIGNED"\n",(SIZE));\
   } while (0)
 
 /* CAM does not allow us to declare a symbol as external first and then
@@ -501,13 +404,9 @@ ssib_section ()			\
          }						\
   } while(0)
 
-/*
-#define ASM_OUTPUT_SECTION_NAME(STREAM, DECL, NAME, RELOC)	\
-  unicosmk_output_section_name ((STREAM), (DECL), (NAME), (RELOC))
-*/
-
 /* Switch into a generic section.  */
 #define TARGET_ASM_NAMED_SECTION unicosmk_asm_named_section
+#define TARGET_ASM_INIT_SECTIONS unicosmk_init_sections
 
 #undef ASM_OUTPUT_MAX_SKIP_ALIGN
 #define ASM_OUTPUT_MAX_SKIP_ALIGN(STREAM,POWER,MAXSKIP)
@@ -521,29 +420,10 @@ ssib_section ()			\
 #undef SDB_DEBUGGING_INFO
 #undef MIPS_DEBUGGING_INFO
 #undef DBX_DEBUGGING_INFO
-#undef DWARF_DEBUGGING_INFO
 #undef DWARF2_DEBUGGING_INFO
 #undef DWARF2_UNWIND_INFO
 #undef INCOMING_RETURN_ADDR_RTX
-
-
-/* We use the functions provided by the system library for integer
-   division.  */
-
-#undef UDIVDI3_LIBCALL
-#undef DIVDI3_LIBCALL
-#define UDIVDI3_LIBCALL	"$uldiv"
-#define DIVDI3_LIBCALL "$sldiv"
-
-/* This is necessary to prevent gcc from generating calls to __divsi3.  */
-
-#define INIT_TARGET_OPTABS					\
-  do {								\
-    sdiv_optab->handlers[(int) SImode].libfunc = NULL_RTX;	\
-    udiv_optab->handlers[(int) SImode].libfunc = NULL_RTX;	\
-  } while (0)
-
-#undef ASM_OUTPUT_SOURCE_LINE
+#undef PREFERRED_DEBUGGING_TYPE
 
 /* We don't need a start file.  */
 
@@ -554,9 +434,5 @@ ssib_section ()			\
    ??? The Craylibs directory should be autoconfed.  */
 #undef LIB_SPEC
 #define LIB_SPEC "-L/opt/ctl/craylibs/craylibs -lu -lm -lc -lsma"
-
-#undef BUILD_VA_LIST_TYPE
-#undef EXPAND_BUILTIN_VA_START
-#undef EXPAND_BUILTIN_VA_ARG
 
 #define EH_FRAME_IN_DATA_SECTION 1

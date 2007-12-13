@@ -1,26 +1,25 @@
 /* Subroutines for the C front end on the TMS320C[34]x
-   Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001
-   Free Software Foundation, Inc.
+   Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001,
+   2007 Free Software Foundation, Inc.
 
    Contributed by Michael Hayes (m.hayes@elec.canterbury.ac.nz)
               and Herman Ten Brugge (Haj.Ten.Brugge@net.HCC.nl).
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -32,7 +31,7 @@ Boston, MA 02111-1307, USA.  */
 #include "c-pragma.h"
 #include "tm_p.h"
 
-static int c4x_parse_pragma PARAMS ((const char *, tree *, tree *));
+static int c4x_parse_pragma (const char *, tree *, tree *);
 
 /* Handle machine specific pragmas for compatibility with existing
    compilers for the C3x/C4x.
@@ -57,44 +56,41 @@ static int c4x_parse_pragma PARAMS ((const char *, tree *, tree *));
    the STRING_CST node of the string.  If SECT is null, then this
    pragma doesn't take a section string.  Returns 0 for a good pragma,
    -1 for a malformed pragma.  */
-#define BAD(msgid, arg) do { warning (msgid, arg); return -1; } while (0)
+#define BAD(gmsgid, arg) \
+  do { warning (OPT_Wpragmas, gmsgid, arg); return -1; } while (0)
 
 static int
-c4x_parse_pragma (name, func, sect)
-     const char *name;
-     tree *func;
-     tree *sect;
+c4x_parse_pragma (const char *name, tree *func, tree *sect)
 {
   tree f, s, x;
 
-  if (c_lex (&x) != CPP_OPEN_PAREN)
+  if (pragma_lex (&x) != CPP_OPEN_PAREN)
     BAD ("missing '(' after '#pragma %s' - ignored", name);
 
-  if (c_lex (&f) != CPP_NAME)
+  if (pragma_lex (&f) != CPP_NAME)
     BAD ("missing function name in '#pragma %s' - ignored", name);
 
   if (sect)
     {
-      if (c_lex (&x) != CPP_COMMA)
+      if (pragma_lex (&x) != CPP_COMMA)
 	BAD ("malformed '#pragma %s' - ignored", name);
-      if (c_lex (&s) != CPP_STRING)
+      if (pragma_lex (&s) != CPP_STRING)
 	BAD ("missing section name in '#pragma %s' - ignored", name);
       *sect = s;
     }
 
-  if (c_lex (&x) != CPP_CLOSE_PAREN)
+  if (pragma_lex (&x) != CPP_CLOSE_PAREN)
     BAD ("missing ')' for '#pragma %s' - ignored", name);
 
-  if (c_lex (&x) != CPP_EOF)
-    warning ("junk at end of '#pragma %s'", name);
+  if (pragma_lex (&x) != CPP_EOF)
+    warning (OPT_Wpragmas, "junk at end of '#pragma %s'", name);
 
   *func = f;
   return 0;
 }
 
 void
-c4x_pr_CODE_SECTION (pfile)
-     cpp_reader *pfile ATTRIBUTE_UNUSED;
+c4x_pr_CODE_SECTION (cpp_reader *pfile ATTRIBUTE_UNUSED)
 {
   tree func, sect;
 
@@ -106,8 +102,7 @@ c4x_pr_CODE_SECTION (pfile)
 }
 
 void
-c4x_pr_DATA_SECTION (pfile)
-     cpp_reader *pfile ATTRIBUTE_UNUSED;
+c4x_pr_DATA_SECTION (cpp_reader *pfile ATTRIBUTE_UNUSED)
 {
   tree func, sect;
 
@@ -119,8 +114,7 @@ c4x_pr_DATA_SECTION (pfile)
 }
 
 void
-c4x_pr_FUNC_IS_PURE (pfile)
-     cpp_reader *pfile ATTRIBUTE_UNUSED;
+c4x_pr_FUNC_IS_PURE (cpp_reader *pfile ATTRIBUTE_UNUSED)
 {
   tree func;
 
@@ -130,8 +124,7 @@ c4x_pr_FUNC_IS_PURE (pfile)
 }
 
 void
-c4x_pr_FUNC_NEVER_RETURNS (pfile)
-     cpp_reader *pfile ATTRIBUTE_UNUSED;
+c4x_pr_FUNC_NEVER_RETURNS (cpp_reader *pfile ATTRIBUTE_UNUSED)
 {
   tree func;
 
@@ -141,8 +134,7 @@ c4x_pr_FUNC_NEVER_RETURNS (pfile)
 }
 
 void
-c4x_pr_INTERRUPT (pfile)
-     cpp_reader *pfile ATTRIBUTE_UNUSED;
+c4x_pr_INTERRUPT (cpp_reader *pfile ATTRIBUTE_UNUSED)
 {
   tree func;
 
@@ -154,7 +146,6 @@ c4x_pr_INTERRUPT (pfile)
 /* Used for FUNC_CANNOT_INLINE, FUNC_EXT_CALLED, FUNC_IS_SYSTEM,
    FUNC_NO_GLOBAL_ASG, and FUNC_NO_IND_ASG.  */
 void
-c4x_pr_ignored (pfile)
-     cpp_reader *pfile ATTRIBUTE_UNUSED;
+c4x_pr_ignored (cpp_reader *pfile ATTRIBUTE_UNUSED)
 {
 }

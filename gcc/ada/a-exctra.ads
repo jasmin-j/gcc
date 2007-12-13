@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1999-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1999-2005, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -21,8 +20,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -36,20 +35,23 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This package is part of the support for tracebacks on exceptions. It is
---  used ONLY from GNAT.Traceback.Symbolic and is provided to get access to
---  the tracebacks in an exception occurrence. It may not be used directly
---  from the Ada hierarchy (since it references GNAT.Traceback).
+--  This package is part of the support for tracebacks on exceptions
 
-with GNAT.Traceback;
+with System.Traceback_Entries;
 
 package Ada.Exceptions.Traceback is
 
-   function Tracebacks
-     (E    : Exception_Occurrence)
-      return GNAT.Traceback.Tracebacks_Array;
+   package TBE renames System.Traceback_Entries;
+
+   subtype Code_Loc is System.Address;
+   --  Code location in executing program
+
+   type Tracebacks_Array is array (Positive range <>) of TBE.Traceback_Entry;
+   --  A traceback array is an array of traceback entries
+
+   function Tracebacks (E : Exception_Occurrence) return Tracebacks_Array;
    --  This function extracts the traceback information from an exception
    --  occurrence, and returns it formatted in the manner required for
-   --  processing in GNAT.Traceback. See g-traceb.ads for details.
+   --  processing in GNAT.Traceback. See g-traceb.ads for further details.
 
 end Ada.Exceptions.Traceback;

@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1998-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1998-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,12 +31,16 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This package manages the shared/persistent storage required for
+--  This package manages the shared/persistant storage required for
 --  full implementation of variables in Shared_Passive packages, more
 --  precisely variables whose enclosing dynamic scope is a shared
 --  passive package. This implementation is specific to GNAT and GLADE
 --  provides a more general implementation not dedicated to file
 --  storage.
+
+--  This unit (and shared passive partitions) are supported on all
+--  GNAT implementations except on OpenVMS (where problems arise from
+--  trying to share files, and with version numbers of files)
 
 --  --------------------------
 --  -- Shared Storage Model --
@@ -195,7 +198,7 @@ package System.Shared_Storage is
    --  value. The storage is created by this call if it does not
    --  already exist.
 
-   procedure Shared_Var_Close (Var : in SIO.Stream_Access);
+   procedure Shared_Var_Close (Var : SIO.Stream_Access);
    --  This routine signals the end of a read/assign operation. It can
    --  be useful to embrace a read/write operation between a call to
    --  open and a call to close which protect the whole operation.

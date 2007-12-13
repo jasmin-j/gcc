@@ -1,3 +1,4 @@
+// { dg-do run  }
 // GROUPS passed copy-ctors
 extern "C" int printf (const char *, ...);
 extern "C" void exit (int);
@@ -7,7 +8,7 @@ void die () { printf ("FAIL\n"); exit (1); }
 class B {
 public:
   B() {}
-  B(const B &) { printf ("PASS\n"); exit (0); };
+  B(const B &) { printf ("PASS\n"); exit (0); }
 private:
     int x;
 };

@@ -1,3 +1,4 @@
+// { dg-do run  }
 // GROUPS passed ptolemy-bugs
 #include <iostream>
 
@@ -16,7 +17,7 @@ public:
 typedef int (PTcl::*InterpFuncP)(int,char**);
 
 struct InterpTableEntry {
-	char* name;
+	const char* name;
 	InterpFuncP func;
 };
 

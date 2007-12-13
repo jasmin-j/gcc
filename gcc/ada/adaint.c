@@ -4,10 +4,9 @@
  *                                                                          *
  *                               A D A I N T                                *
  *                                                                          *
- *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *          Copyright (C) 1992-2002, Free Software Foundation, Inc.         *
+ *          Copyright (C) 1992-2007, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -17,8 +16,8 @@
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
  * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
+ * Boston, MA 02110-1301, USA.                                              *
  *                                                                          *
  * As a  special  exception,  if you  link  this file  with other  files to *
  * produce an executable,  this file does not by itself cause the resulting *
@@ -51,12 +50,22 @@
 
 #endif /* VxWorks */
 
+#ifdef VMS
+#define _POSIX_EXIT 1
+#define HOST_EXECUTABLE_SUFFIX ".exe"
+#define HOST_OBJECT_SUFFIX ".obj"
+#endif
+
 #ifdef IN_RTS
 #include "tconfig.h"
 #include "tsystem.h"
+
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <time.h>
+#ifdef VMS
+#include <unixio.h>
+#endif
 
 /* We don't have libiberty, so use malloc.  */
 #define xmalloc(S) malloc (S)
@@ -64,21 +73,62 @@
 #else
 #include "config.h"
 #include "system.h"
+#include "version.h"
 #endif
+
+#if defined (__MINGW32__)
+
+#include "mingw32.h"
+#include <sys/utime.h>
+#include <ctype.h>
+
+#elif defined (__Lynx__)
+
+/* Lynx utime.h only defines the entities of interest to us if
+   defined (VMOS_DEV), so ... */
+#define VMOS_DEV
+#include <utime.h>
+#undef VMOS_DEV
+
+#elif !defined (VMS)
+#include <utime.h>
+#endif
+
+/* wait.h processing */
+#ifdef __MINGW32__
+#if OLD_MINGW
 #include <sys/wait.h>
+#endif
+#elif defined (__vxworks) && defined (__RTP__)
+#include <wait.h>
+#elif defined (__Lynx__)
+/* ??? We really need wait.h and it includes resource.h on Lynx.  GCC
+   has a resource.h header as well, included instead of the lynx
+   version in our setup, causing lots of errors.  We don't really need
+   the lynx contents of this file, so just workaround the issue by
+   preventing the inclusion of the GCC header from doing anything.  */
+#define GCC_RESOURCE_H
+#include <sys/wait.h>
+#elif defined (__nucleus__)
+/* No wait() or waitpid() calls available */
+#else
+/* Default case */
+#include <sys/wait.h>
+#endif
 
 #if defined (__EMX__) || defined (MSDOS) || defined (_WIN32)
 #elif defined (VMS)
 
 /* Header files and definitions for __gnat_set_file_time_name.  */
 
-#include <rms.h>
-#include <atrdef.h>
-#include <fibdef.h>
-#include <stsdef.h>
-#include <iodef.h>
+#define __NEW_STARLET 1
+#include <vms/rms.h>
+#include <vms/atrdef.h>
+#include <vms/fibdef.h>
+#include <vms/stsdef.h>
+#include <vms/iodef.h>
 #include <errno.h>
-#include <descrip.h>
+#include <vms/descrip.h>
 #include <string.h>
 #include <unixlib.h>
 
@@ -90,17 +140,18 @@
     Y = tmptime * 10000000 + reftime; }
 
 /* descrip.h doesn't have everything ... */
+typedef struct fibdef* __fibdef_ptr32 __attribute__ (( mode (SI) ));
 struct dsc$descriptor_fib
 {
-  unsigned long fib$l_len;
-  struct fibdef *fib$l_addr;
+  unsigned int fib$l_len;
+  __fibdef_ptr32 fib$l_addr;
 };
 
 /* I/O Status Block.  */
 struct IOSB
-{ 
+{
   unsigned short status, count;
-  unsigned long devdep;
+  unsigned int devdep;
 };
 
 static char *tryfile;
@@ -123,6 +174,8 @@ struct vstring
 #if defined (_WIN32)
 #include <dir.h>
 #include <windows.h>
+#undef DIR_SEPARATOR
+#define DIR_SEPARATOR '\\'
 #endif
 
 #include "adaint.h"
@@ -163,6 +216,13 @@ struct vstring
 
 #ifndef DIR_SEPARATOR
 #define DIR_SEPARATOR '/'
+#endif
+
+/* Check for cross-compilation */
+#ifdef CROSS_DIRECTORY_STRUCTURE
+int __gnat_is_cross_compiler = 1;
+#else
+int __gnat_is_cross_compiler = 0;
 #endif
 
 char __gnat_dir_separator = DIR_SEPARATOR;
@@ -213,34 +273,99 @@ const int __gnat_vmsp = 1;
 const int __gnat_vmsp = 0;
 #endif
 
-/* This variable is used to export the maximum length of a path name to
-   Ada code.  */
-
 #ifdef __EMX__
-int __gnat_max_path_len = _MAX_PATH;
+#define GNAT_MAX_PATH_LEN MAX_PATH
 
 #elif defined (VMS)
-int __gnat_max_path_len = 4096; /* PATH_MAX */
+#define GNAT_MAX_PATH_LEN 256 /* PATH_MAX */
 
-#elif defined (__vxworks) || defined (__OPENNT)
-int __gnat_max_path_len = PATH_MAX;
+#elif defined (__vxworks) || defined (__OPENNT) || defined(__nucleus__)
+#define GNAT_MAX_PATH_LEN PATH_MAX
+
+#else
+
+#if defined (__MINGW32__)
+#include "mingw32.h"
+
+#if OLD_MINGW
+#include <sys/param.h>
+#endif
 
 #else
 #include <sys/param.h>
-int __gnat_max_path_len = MAXPATHLEN;
+#endif
+
+#ifdef MAXPATHLEN
+#define GNAT_MAX_PATH_LEN MAXPATHLEN
+#else
+#define GNAT_MAX_PATH_LEN 256
+#endif
 
 #endif
+
+/* The __gnat_max_path_len variable is used to export the maximum
+   length of a path name to Ada code. max_path_len is also provided
+   for compatibility with older GNAT versions, please do not use
+   it. */
+
+int __gnat_max_path_len = GNAT_MAX_PATH_LEN;
+int max_path_len = GNAT_MAX_PATH_LEN;
 
 /* The following macro HAVE_READDIR_R should be defined if the
    system provides the routine readdir_r.  */
 #undef HAVE_READDIR_R
 
+#if defined(VMS) && defined (__LONG_POINTERS)
+
+/* Return a 32 bit pointer to an array of 32 bit pointers
+   given a 64 bit pointer to an array of 64 bit pointers */
+
+typedef __char_ptr32 *__char_ptr_char_ptr32 __attribute__ ((mode (SI)));
+
+static __char_ptr_char_ptr32
+to_ptr32 (char **ptr64)
+{
+  int argc;
+  __char_ptr_char_ptr32 short_argv;
+
+  for (argc=0; ptr64[argc]; argc++);
+
+  /* Reallocate argv with 32 bit pointers. */
+  short_argv = (__char_ptr_char_ptr32) decc$malloc
+    (sizeof (__char_ptr32) * (argc + 1));
+
+  for (argc=0; ptr64[argc]; argc++)
+    short_argv[argc] = (__char_ptr32) decc$strdup (ptr64[argc]);
+
+  short_argv[argc] = (__char_ptr32) 0;
+  return short_argv;
+
+}
+#define MAYBE_TO_PTR32(argv) to_ptr32 (argv)
+#else
+#define MAYBE_TO_PTR32(argv) argv
+#endif
+
+OS_Time
+__gnat_current_time
+  (void)
+{
+  time_t res = time (NULL);
+  return (OS_Time) res;
+}
+
 void
-__gnat_to_gm_time (p_time, p_year, p_month, p_day, p_hours, p_mins, p_secs)
-     int *p_time, *p_year, *p_month, *p_day, *p_hours, *p_mins, *p_secs;
+__gnat_to_gm_time
+  (OS_Time *p_time,
+   int *p_year,
+   int *p_month,
+   int *p_day,
+   int *p_hours,
+   int *p_mins,
+   int *p_secs)
 {
   struct tm *res;
-  time_t time = *p_time;
+  time_t time = (time_t) *p_time;
 
 #ifdef _WIN32
   /* On Windows systems, the time is sometimes rounded up to the nearest
@@ -249,7 +374,11 @@ __gnat_to_gm_time (p_time, p_year, p_month, p_day, p_hours, p_mins, p_secs)
     time++;
 #endif
 
+#ifdef VMS
+  res = localtime (&time);
+#else
   res = gmtime (&time);
+#endif
 
   if (res)
     {
@@ -266,40 +395,32 @@ __gnat_to_gm_time (p_time, p_year, p_month, p_day, p_hours, p_mins, p_secs)
 
 /* Place the contents of the symbolic link named PATH in the buffer BUF,
    which has size BUFSIZ.  If PATH is a symbolic link, then return the number
-   of characters of its content in BUF.  Otherwise, return -1.  For Windows,
-   OS/2 and vxworks, always return -1.  */
+   of characters of its content in BUF.  Otherwise, return -1.
+   For systems not supporting symbolic links, always return -1.  */
 
-int    
-__gnat_readlink (path, buf, bufsiz)
-     char *path;
-     char *buf;
-     size_t bufsiz;
+int
+__gnat_readlink (char *path ATTRIBUTE_UNUSED,
+		 char *buf ATTRIBUTE_UNUSED,
+		 size_t bufsiz ATTRIBUTE_UNUSED)
 {
-#if defined (MSDOS) || defined (_WIN32) || defined (__EMX__)
-  return -1;
-#elif defined (__INTERIX) || defined (VMS)
-  return -1;
-#elif defined (__vxworks)
+#if defined (MSDOS) || defined (_WIN32) || defined (__EMX__) \
+  || defined (VMS) || defined(__vxworks) || defined (__nucleus__)
   return -1;
 #else
   return readlink (path, buf, bufsiz);
 #endif
 }
 
-/* Creates a symbolic link named NEWPATH which contains the string OLDPATH.  If
-   NEWPATH exists it will NOT be overwritten.  For Windows, OS/2, VxWorks,
-   Interix and VMS, always return -1. */
+/* Creates a symbolic link named NEWPATH which contains the string OLDPATH.
+   If NEWPATH exists it will NOT be overwritten.
+   For systems not supporting symbolic links, always return -1.  */
 
 int
-__gnat_symlink (oldpath, newpath)
-     char *oldpath;
-     char *newpath;
+__gnat_symlink (char *oldpath ATTRIBUTE_UNUSED,
+		char *newpath ATTRIBUTE_UNUSED)
 {
-#if defined (MSDOS) || defined (_WIN32) || defined (__EMX__)
-  return -1;
-#elif defined (__INTERIX) || defined (VMS)
-  return -1;
-#elif defined (__vxworks)
+#if defined (MSDOS) || defined (_WIN32) || defined (__EMX__) \
+  || defined (VMS) || defined(__vxworks) || defined (__nucleus__)
   return -1;
 #else
   return symlink (oldpath, newpath);
@@ -308,20 +429,31 @@ __gnat_symlink (oldpath, newpath)
 
 /* Try to lock a file, return 1 if success.  */
 
-#if defined (__vxworks) || defined (MSDOS) || defined (_WIN32)
+#if defined (__vxworks) || defined (__nucleus__) || defined (MSDOS) || defined (_WIN32)
 
 /* Version that does not use link. */
 
 int
-__gnat_try_lock (dir, file)
-     char *dir;
-     char *file;
+__gnat_try_lock (char *dir, char *file)
 {
-  char full_path[256];
   int fd;
+#ifdef __MINGW32__
+  TCHAR wfull_path[GNAT_MAX_PATH_LEN];
+  TCHAR wfile[GNAT_MAX_PATH_LEN];
+  TCHAR wdir[GNAT_MAX_PATH_LEN];
+
+  S2WSU (wdir, dir, GNAT_MAX_PATH_LEN);
+  S2WSU (wfile, file, GNAT_MAX_PATH_LEN);
+
+  _stprintf (wfull_path, _T("%s%c%s"), wdir, _T(DIR_SEPARATOR), wfile);
+  fd = _topen (wfull_path, O_CREAT | O_EXCL, 0600);
+#else
+  char full_path[256];
 
   sprintf (full_path, "%s%c%s", dir, DIR_SEPARATOR, file);
   fd = open (full_path, O_CREAT | O_EXCL, 0600);
+#endif
+
   if (fd < 0)
     return 0;
 
@@ -335,15 +467,14 @@ __gnat_try_lock (dir, file)
    line problem ??? */
 
 int
-__gnat_try_lock (dir, file)
-     char *dir;
-     char *file;
+__gnat_try_lock (char *dir, char *file)
 {
   char full_path[256];
   int fd;
 
   sprintf (full_path, "%s%c%s", dir, DIR_SEPARATOR, file);
   fd = open (full_path, O_CREAT | O_EXCL, 0600);
+
   if (fd < 0)
     return 0;
 
@@ -354,11 +485,10 @@ __gnat_try_lock (dir, file)
 #else
 
 /* Version using link(), more secure over NFS.  */
+/* See TN 6913-016 for discussion ??? */
 
 int
-__gnat_try_lock (dir, file)
-     char *dir;
-     char *file;
+__gnat_try_lock (char *dir, char *file)
 {
   char full_path[256];
   char temp_file[256];
@@ -366,7 +496,8 @@ __gnat_try_lock (dir, file)
   int fd;
 
   sprintf (full_path, "%s%c%s", dir, DIR_SEPARATOR, file);
-  sprintf (temp_file, "%s-%d-%d", dir, getpid(), getppid ());
+  sprintf (temp_file, "%s%cTMP-%ld-%ld",
+           dir, DIR_SEPARATOR, (long)getpid(), (long)getppid ());
 
   /* Create the temporary file and write the process number.  */
   fd = open (temp_file, O_CREAT | O_WRONLY, 0600);
@@ -389,7 +520,7 @@ __gnat_try_lock (dir, file)
 /* Return the maximum file name length.  */
 
 int
-__gnat_get_maximum_file_name_length ()
+__gnat_get_maximum_file_name_length (void)
 {
 #if defined (MSDOS)
   return 8;
@@ -406,7 +537,7 @@ __gnat_get_maximum_file_name_length ()
 /* Return nonzero if file names are case sensitive.  */
 
 int
-__gnat_get_file_names_case_sensitive ()
+__gnat_get_file_names_case_sensitive (void)
 {
 #if defined (__EMX__) || defined (MSDOS) || defined (VMS) || defined (WINNT)
   return 0;
@@ -416,7 +547,7 @@ __gnat_get_file_names_case_sensitive ()
 }
 
 char
-__gnat_get_default_identifier_character_set ()
+__gnat_get_default_identifier_character_set (void)
 {
 #if defined (__EMX__) || defined (MSDOS)
   return 'p';
@@ -428,11 +559,16 @@ __gnat_get_default_identifier_character_set ()
 /* Return the current working directory.  */
 
 void
-__gnat_get_current_dir (dir, length)
-     char *dir;
-     int *length;
+__gnat_get_current_dir (char *dir, int *length)
 {
-#ifdef VMS
+#if defined (__MINGW32__)
+  TCHAR wdir[GNAT_MAX_PATH_LEN];
+
+  _tgetcwd (wdir, *length);
+
+  WS2SU (dir, wdir, GNAT_MAX_PATH_LEN);
+
+#elif defined (VMS)
    /* Force Unix style, which is what GNAT uses internally.  */
    getcwd (dir, *length, 0);
 #else
@@ -441,17 +577,18 @@ __gnat_get_current_dir (dir, length)
 
    *length = strlen (dir);
 
-   dir[*length] = DIR_SEPARATOR;
-   ++*length;
+   if (dir [*length - 1] != DIR_SEPARATOR)
+     {
+       dir [*length] = DIR_SEPARATOR;
+       ++(*length);
+     }
    dir[*length] = '\0';
 }
 
 /* Return the suffix for object files.  */
 
 void
-__gnat_get_object_suffix_ptr (len, value)
-     int *len;
-     const char **value;
+__gnat_get_object_suffix_ptr (int *len, const char **value)
 {
   *value = HOST_OBJECT_SUFFIX;
 
@@ -466,9 +603,7 @@ __gnat_get_object_suffix_ptr (len, value)
 /* Return the suffix for executable files.  */
 
 void
-__gnat_get_executable_suffix_ptr (len, value)
-     int *len;
-     const char **value;
+__gnat_get_executable_suffix_ptr (int *len, const char **value)
 {
   *value = HOST_EXECUTABLE_SUFFIX;
   if (!*value)
@@ -483,9 +618,7 @@ __gnat_get_executable_suffix_ptr (len, value)
    executable extension.  */
 
 void
-__gnat_get_debuggable_suffix_ptr (len, value)
-     int *len;
-     const char **value;
+__gnat_get_debuggable_suffix_ptr (int *len, const char **value)
 {
 #ifndef MSDOS
   *value = HOST_EXECUTABLE_SUFFIX;
@@ -502,10 +635,71 @@ __gnat_get_debuggable_suffix_ptr (len, value)
   return;
 }
 
+/* Returns the OS filename and corresponding encoding.  */
+
+void
+__gnat_os_filename (char *filename, char *w_filename,
+		    char *os_name, int *o_length,
+		    char *encoding, int *e_length)
+{
+#if defined (_WIN32) && ! defined (__vxworks) && ! defined (CROSS_DIRECTORY_STRUCTURE)
+  WS2SU (os_name, (TCHAR *)w_filename, o_length);
+  *o_length = strlen (os_name);
+  strcpy (encoding, "encoding=utf8");
+  *e_length = strlen (encoding);
+#else
+  strcpy (os_name, filename);
+  *o_length = strlen (filename);
+  *e_length = 0;
+#endif
+}
+
+FILE *
+__gnat_fopen (char *path, char *mode, int encoding)
+{
+#if defined (_WIN32) && ! defined (__vxworks) && ! defined (CROSS_DIRECTORY_STRUCTURE)
+  TCHAR wpath[GNAT_MAX_PATH_LEN];
+  TCHAR wmode[10];
+
+  S2WS (wmode, mode, 10);
+
+  if (encoding == Encoding_UTF8)
+    S2WSU (wpath, path, GNAT_MAX_PATH_LEN);
+  else
+    S2WS (wpath, path, GNAT_MAX_PATH_LEN);
+
+  return _tfopen (wpath, wmode);
+#elif defined (VMS)
+  return decc$fopen (path, mode);
+#else
+  return fopen (path, mode);
+#endif
+}
+
+FILE *
+__gnat_freopen (char *path, char *mode, FILE *stream, int encoding)
+{
+#if defined (_WIN32) && ! defined (__vxworks) && ! defined (CROSS_DIRECTORY_STRUCTURE)
+  TCHAR wpath[GNAT_MAX_PATH_LEN];
+  TCHAR wmode[10];
+
+  S2WS (wmode, mode, 10);
+
+  if (encoding == Encoding_UTF8)
+    S2WSU (wpath, path, GNAT_MAX_PATH_LEN);
+  else
+    S2WS (wpath, path, GNAT_MAX_PATH_LEN);
+
+  return _tfreopen (wpath, wmode, stream);
+#elif defined (VMS)
+  return decc$freopen (path, mode, stream);
+#else
+  return freopen (path, mode, stream);
+#endif
+}
+
 int
-__gnat_open_read (path, fmode)
-     char *path;
-     int fmode;
+__gnat_open_read (char *path, int fmode)
 {
   int fd;
   int o_fmode = O_BINARY;
@@ -519,6 +713,13 @@ __gnat_open_read (path, fmode)
              "mbc=16", "deq=64", "fop=tef");
 #elif defined (__vxworks)
   fd = open (path, O_RDONLY | o_fmode, 0444);
+#elif defined (__MINGW32__)
+ {
+   TCHAR wpath[GNAT_MAX_PATH_LEN];
+
+   S2WSU (wpath, path, GNAT_MAX_PATH_LEN);
+   fd = _topen (wpath, O_RDONLY | o_fmode, 0444);
+ }
 #else
   fd = open (path, O_RDONLY | o_fmode);
 #endif
@@ -526,16 +727,23 @@ __gnat_open_read (path, fmode)
   return fd < 0 ? -1 : fd;
 }
 
-#if defined (__EMX__)
+#if defined (__EMX__) || defined (__MINGW32__)
 #define PERM (S_IREAD | S_IWRITE)
+#elif defined (VMS)
+/* Excerpt from DECC C RTL Reference Manual:
+   To create files with OpenVMS RMS default protections using the UNIX
+   system-call functions umask, mkdir, creat, and open, call mkdir, creat,
+   and open with a file-protection mode argument of 0777 in a program
+   that never specifically calls umask. These default protections include
+   correctly establishing protections based on ACLs, previous versions of
+   files, and so on. */
+#define PERM 0777
 #else
 #define PERM (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
 #endif
 
 int
-__gnat_open_rw (path, fmode)
-     char *path;
-     int  fmode;
+__gnat_open_rw (char *path, int fmode)
 {
   int fd;
   int o_fmode = O_BINARY;
@@ -546,6 +754,13 @@ __gnat_open_rw (path, fmode)
 #if defined (VMS)
   fd = open (path, O_RDWR | o_fmode, PERM,
              "mbc=16", "deq=64", "fop=tef");
+#elif defined (__MINGW32__)
+  {
+    TCHAR wpath[GNAT_MAX_PATH_LEN];
+
+    S2WSU (wpath, path, GNAT_MAX_PATH_LEN);
+    fd = _topen (wpath, O_RDWR | o_fmode, PERM);
+  }
 #else
   fd = open (path, O_RDWR | o_fmode, PERM);
 #endif
@@ -554,9 +769,7 @@ __gnat_open_rw (path, fmode)
 }
 
 int
-__gnat_open_create (path, fmode)
-     char *path;
-     int  fmode;
+__gnat_open_create (char *path, int fmode)
 {
   int fd;
   int o_fmode = O_BINARY;
@@ -567,6 +780,13 @@ __gnat_open_create (path, fmode)
 #if defined (VMS)
   fd = open (path, O_WRONLY | O_CREAT | O_TRUNC | o_fmode, PERM,
              "mbc=16", "deq=64", "fop=tef");
+#elif defined (__MINGW32__)
+  {
+    TCHAR wpath[GNAT_MAX_PATH_LEN];
+
+    S2WSU (wpath, path, GNAT_MAX_PATH_LEN);
+    fd = _topen (wpath, O_WRONLY | O_CREAT | O_TRUNC | o_fmode, PERM);
+  }
 #else
   fd = open (path, O_WRONLY | O_CREAT | O_TRUNC | o_fmode, PERM);
 #endif
@@ -575,9 +795,29 @@ __gnat_open_create (path, fmode)
 }
 
 int
-__gnat_open_append (path, fmode)
-     char *path;
-     int  fmode;
+__gnat_create_output_file (char *path)
+{
+  int fd;
+#if defined (VMS)
+  fd = open (path, O_WRONLY | O_CREAT | O_TRUNC | O_TEXT, PERM,
+             "rfm=stmlf", "ctx=rec", "rat=none", "rop=nlk",
+             "shr=del,get,put,upd");
+#elif defined (__MINGW32__)
+  {
+    TCHAR wpath[GNAT_MAX_PATH_LEN];
+
+    S2WSU (wpath, path, GNAT_MAX_PATH_LEN);
+    fd = _topen (wpath, O_WRONLY | O_CREAT | O_TRUNC | O_TEXT, PERM);
+  }
+#else
+  fd = open (path, O_WRONLY | O_CREAT | O_TRUNC | O_TEXT, PERM);
+#endif
+
+  return fd < 0 ? -1 : fd;
+}
+
+int
+__gnat_open_append (char *path, int fmode)
 {
   int fd;
   int o_fmode = O_BINARY;
@@ -588,6 +828,13 @@ __gnat_open_append (path, fmode)
 #if defined (VMS)
   fd = open (path, O_WRONLY | O_CREAT | O_APPEND | o_fmode, PERM,
              "mbc=16", "deq=64", "fop=tef");
+#elif defined (__MINGW32__)
+  {
+    TCHAR wpath[GNAT_MAX_PATH_LEN];
+
+    S2WSU (wpath, path, GNAT_MAX_PATH_LEN);
+    fd = _topen (wpath, O_WRONLY | O_CREAT | O_APPEND | o_fmode, PERM);
+  }
 #else
   fd = open (path, O_WRONLY | O_CREAT | O_APPEND | o_fmode, PERM);
 #endif
@@ -598,9 +845,7 @@ __gnat_open_append (path, fmode)
 /*  Open a new file.  Return error (-1) if the file already exists.  */
 
 int
-__gnat_open_new (path, fmode)
-     char *path;
-     int fmode;
+__gnat_open_new (char *path, int fmode)
 {
   int fd;
   int o_fmode = O_BINARY;
@@ -611,6 +856,13 @@ __gnat_open_new (path, fmode)
 #if defined (VMS)
   fd = open (path, O_WRONLY | O_CREAT | O_EXCL | o_fmode, PERM,
              "mbc=16", "deq=64", "fop=tef");
+#elif defined (__MINGW32__)
+  {
+    TCHAR wpath[GNAT_MAX_PATH_LEN];
+
+    S2WSU (wpath, path, GNAT_MAX_PATH_LEN);
+    fd = _topen (wpath, O_WRONLY | O_CREAT | O_EXCL | o_fmode, PERM);
+  }
 #else
   fd = open (path, O_WRONLY | O_CREAT | O_EXCL | o_fmode, PERM);
 #endif
@@ -623,19 +875,19 @@ __gnat_open_new (path, fmode)
    processes, however they really slow down output.  Used in gnatchop.  */
 
 int
-__gnat_open_new_temp (path, fmode)
-     char *path;
-     int fmode;
+__gnat_open_new_temp (char *path, int fmode)
 {
   int fd;
   int o_fmode = O_BINARY;
 
   strcpy (path, "GNAT-XXXXXX");
 
-#if defined (linux) && !defined (__vxworks)
+#if (defined (__FreeBSD__) || defined (linux)) && !defined (__vxworks)
   return mkstemp (path);
 #elif defined (__Lynx__)
   mktemp (path);
+#elif defined (__nucleus__)
+  return -1;
 #else
   if (mktemp (path) == NULL)
     return -1;
@@ -658,8 +910,7 @@ __gnat_open_new_temp (path, fmode)
 /* Return the number of bytes in the specified file.  */
 
 long
-__gnat_file_length (fd)
-     int fd;
+__gnat_file_length (int fd)
 {
   int ret;
   struct stat statbuf;
@@ -671,12 +922,26 @@ __gnat_file_length (fd)
   return (statbuf.st_size);
 }
 
+/* Return the number of bytes in the specified named file.  */
+
+long
+__gnat_named_file_length (char *name)
+{
+  int ret;
+  struct stat statbuf;
+
+  ret = __gnat_stat (name, &statbuf);
+  if (ret || !S_ISREG (statbuf.st_mode))
+    return 0;
+
+  return (statbuf.st_size);
+}
+
 /* Create a temporary filename and put it in string pointed to by
    TMP_FILENAME.  */
 
 void
-__gnat_tmp_name (tmp_filename)
-     char *tmp_filename;
+__gnat_tmp_name (char *tmp_filename)
 {
 #ifdef __MINGW32__
   {
@@ -689,10 +954,16 @@ __gnat_tmp_name (tmp_filename)
 
     pname = (char *) tempnam ("c:\\temp", "gnat-");
 
+    /* if pname is NULL, the file was not created properly, the disk is full
+       or there is no more free temporary files */
+
+    if (pname == NULL)
+      *tmp_filename = '\0';
+
     /* If pname start with a back slash and not path information it means that
        the filename is valid for the current working directory.  */
 
-    if (pname[0] == '\\')
+    else if (pname[0] == '\\')
       {
 	strcpy (tmp_filename, ".\\");
 	strcat (tmp_filename, pname+1);
@@ -703,13 +974,16 @@ __gnat_tmp_name (tmp_filename)
     free (pname);
   }
 
-#elif defined (linux)
+#elif defined (linux) || defined (__FreeBSD__)
+#define MAX_SAFE_PATH 1000
   char *tmpdir = getenv ("TMPDIR");
 
-  if (tmpdir == NULL)
+  /* If tmpdir is longer than MAX_SAFE_PATH, revert to default value to avoid
+     a buffer overflow.  */
+  if (tmpdir == NULL || strlen (tmpdir) > MAX_SAFE_PATH)
     strcpy (tmp_filename, "/tmp/gnat-XXXXXX");
   else
-    sprintf (tmp_filename, "%.200s/gnat-XXXXXX", tmpdir);
+    sprintf (tmp_filename, "%s/gnat-XXXXXX", tmpdir);
 
   close (mkstemp(tmp_filename));
 #else
@@ -717,27 +991,57 @@ __gnat_tmp_name (tmp_filename)
 #endif
 }
 
+/*  Open directory and returns a DIR pointer.  */
+
+DIR* __gnat_opendir (char *name)
+{
+#ifdef __MINGW32__
+  TCHAR wname[GNAT_MAX_PATH_LEN];
+
+  S2WSU (wname, name, GNAT_MAX_PATH_LEN);
+  return (DIR*)_topendir (wname);
+
+#else
+  return opendir (name);
+#endif
+}
+
 /* Read the next entry in a directory.  The returned string points somewhere
    in the buffer.  */
 
 char *
-__gnat_readdir (dirp, buffer)
-     DIR *dirp;
-     char* buffer;
+__gnat_readdir (DIR *dirp, char *buffer, int *len)
 {
+#if defined (__MINGW32__)
+  struct _tdirent *dirent = _treaddir ((_TDIR*)dirp);
+
+  if (dirent != NULL)
+    {
+      WS2SU (buffer, dirent->d_name, GNAT_MAX_PATH_LEN);
+      *len = strlen (buffer);
+
+      return buffer;
+    }
+  else
+    return NULL;
+
+#elif defined (HAVE_READDIR_R)
   /* If possible, try to use the thread-safe version.  */
-#ifdef HAVE_READDIR_R
   if (readdir_r (dirp, buffer) != NULL)
-    return ((struct dirent*) buffer)->d_name;
+    {
+      *len = strlen (((struct dirent*) buffer)->d_name);
+      return ((struct dirent*) buffer)->d_name;
+    }
   else
     return NULL;
 
 #else
-  struct dirent *dirent = readdir (dirp);
+  struct dirent *dirent = (struct dirent *) readdir (dirp);
 
   if (dirent != NULL)
     {
       strcpy (buffer, dirent->d_name);
+      *len = strlen (buffer);
       return buffer;
     }
   else
@@ -746,10 +1050,22 @@ __gnat_readdir (dirp, buffer)
 #endif
 }
 
+/* Close a directory entry.  */
+
+int __gnat_closedir (DIR *dirp)
+{
+#ifdef __MINGW32__
+  return _tclosedir ((_TDIR*)dirp);
+
+#else
+  return closedir (dirp);
+#endif
+}
+
 /* Returns 1 if readdir is thread safe, 0 otherwise.  */
 
 int
-__gnat_readdir_is_thread_safe ()
+__gnat_readdir_is_thread_safe (void)
 {
 #ifdef HAVE_READDIR_R
   return 1;
@@ -759,6 +1075,8 @@ __gnat_readdir_is_thread_safe ()
 }
 
 #ifdef _WIN32
+/* Number of seconds between <Jan 1st 1601> and <Jan 1st 1970>.  */
+static const unsigned long long w32_epoch_offset = 11644473600ULL;
 
 /* Returns the file modification timestamp using Win32 routines which are
    immune against daylight saving time change. It is in fact not possible to
@@ -766,70 +1084,71 @@ __gnat_readdir_is_thread_safe ()
    stat structure.  */
 
 static time_t
-win32_filetime (h)
-     HANDLE h;
+win32_filetime (HANDLE h)
 {
-  BOOL res;
-  FILETIME t_create;
-  FILETIME t_access;
-  FILETIME t_write;
-  unsigned long long timestamp;
-
-  /* Number of seconds between <Jan 1st 1601> and <Jan 1st 1970>.  */
-  unsigned long long offset = 11644473600;
+  union
+  {
+    FILETIME ft_time;
+    unsigned long long ull_time;
+  } t_write;
 
   /* GetFileTime returns FILETIME data which are the number of 100 nanosecs
      since <Jan 1st 1601>. This function must return the number of seconds
      since <Jan 1st 1970>.  */
 
-  res = GetFileTime (h, &t_create, &t_access, &t_write);
-
-  timestamp = (((long long) t_write.dwHighDateTime << 32) 
-	       + t_write.dwLowDateTime);
-
-  timestamp = timestamp / 10000000 - offset;
-
-  return (time_t) timestamp;
+  if (GetFileTime (h, NULL, NULL, &t_write.ft_time))
+    return (time_t) (t_write.ull_time / 10000000ULL - w32_epoch_offset);
+  return (time_t) 0;
 }
 #endif
 
 /* Return a GNAT time stamp given a file name.  */
 
-time_t
-__gnat_file_time_name (name)
-     char *name;
+OS_Time
+__gnat_file_time_name (char *name)
 {
-  struct stat statbuf;
 
 #if defined (__EMX__) || defined (MSDOS)
   int fd = open (name, O_RDONLY | O_BINARY);
   time_t ret = __gnat_file_time_fd (fd);
   close (fd);
-  return ret;
+  return (OS_Time)ret;
 
 #elif defined (_WIN32)
-  HANDLE h = CreateFile (name, GENERIC_READ, FILE_SHARE_READ, 0,
-			 OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
-  time_t ret = win32_filetime (h);
-  CloseHandle (h);
-  return ret;
-#else
+  time_t ret = -1;
+  TCHAR wname[GNAT_MAX_PATH_LEN];
 
-  (void) __gnat_stat (name, &statbuf);
-#ifdef VMS
-  /* VMS has file versioning.  */
-  return statbuf.st_ctime;
+  S2WSU (wname, name, GNAT_MAX_PATH_LEN);
+
+  HANDLE h = CreateFile
+    (wname, GENERIC_READ, FILE_SHARE_READ, 0,
+     OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+
+  if (h != INVALID_HANDLE_VALUE)
+    {
+      ret = win32_filetime (h);
+      CloseHandle (h);
+    }
+  return (OS_Time) ret;
 #else
-  return statbuf.st_mtime;
+  struct stat statbuf;
+  if (__gnat_stat (name, &statbuf) != 0) {
+     return (OS_Time)-1;
+  } else {
+#ifdef VMS
+     /* VMS has file versioning.  */
+     return (OS_Time)statbuf.st_ctime;
+#else
+     return (OS_Time)statbuf.st_mtime;
 #endif
+  }
 #endif
 }
 
 /* Return a GNAT time stamp given a file descriptor.  */
 
-time_t
-__gnat_file_time_fd (fd)
-     int fd;
+OS_Time
+__gnat_file_time_fd (int fd)
 {
   /* The following workaround code is due to the fact that under EMX and
      DJGPP fstat attempts to convert time values to GMT rather than keep the
@@ -896,38 +1215,62 @@ __gnat_file_time_fd (fd)
   tot_secs += file_hour * 3600;
   tot_secs += file_min * 60;
   tot_secs += file_tsec * 2;
-  return tot_secs;
+  return (OS_Time) tot_secs;
 
 #elif defined (_WIN32)
   HANDLE h = (HANDLE) _get_osfhandle (fd);
   time_t ret = win32_filetime (h);
-  return ret;
+  return (OS_Time) ret;
 
 #else
   struct stat statbuf;
 
-  (void) fstat (fd, &statbuf);
-
+  if (fstat (fd, &statbuf) != 0) {
+     return (OS_Time) -1;
+  } else {
 #ifdef VMS
-  /* VMS has file versioning.  */
-  return statbuf.st_ctime;
+     /* VMS has file versioning.  */
+     return (OS_Time) statbuf.st_ctime;
 #else
-  return statbuf.st_mtime;
+     return (OS_Time) statbuf.st_mtime;
 #endif
+  }
 #endif
 }
 
 /* Set the file time stamp.  */
 
 void
-__gnat_set_file_time_name (name, time_stamp)
-     char *name;
-     time_t time_stamp;
+__gnat_set_file_time_name (char *name, time_t time_stamp)
 {
-#if defined (__EMX__) || defined (MSDOS) || defined (_WIN32) \
-    || defined (__vxworks)
+#if defined (__EMX__) || defined (MSDOS) || defined (__vxworks)
 
 /* Code to implement __gnat_set_file_time_name for these systems.  */
+
+#elif defined (_WIN32)
+  union
+  {
+    FILETIME ft_time;
+    unsigned long long ull_time;
+  } t_write;
+  TCHAR wname[GNAT_MAX_PATH_LEN];
+
+  S2WSU (wname, name, GNAT_MAX_PATH_LEN);
+
+  HANDLE h  = CreateFile
+    (wname, GENERIC_WRITE, FILE_SHARE_WRITE, NULL,
+     OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS,
+     NULL);
+  if (h == INVALID_HANDLE_VALUE)
+    return;
+  /* Add number of seconds between <Jan 1st 1601> and <Jan 1st 1970> */
+  t_write.ull_time = ((unsigned long long)time_stamp + w32_epoch_offset);
+  /*  Convert to 100 nanosecond units  */
+  t_write.ull_time *= 10000000ULL;
+
+  SetFileTime(h, NULL, NULL, &t_write.ft_time);
+  CloseHandle (h);
+  return;
 
 #elif defined (VMS)
   struct FAB fab;
@@ -936,7 +1279,7 @@ __gnat_set_file_time_name (name, time_stamp)
   struct
     {
       unsigned long long backup, create, expire, revise;
-      unsigned long uic;
+      unsigned int uic;
       union
 	{
 	  unsigned short value;
@@ -984,7 +1327,13 @@ __gnat_set_file_time_name (name, time_stamp)
   struct dsc$descriptor_s resultdsc
     = {NAM$C_MAXRSS, DSC$K_DTYPE_VT, DSC$K_CLASS_VS, (void *) result.string};
 
-  tryfile = (char *) __gnat_to_host_dir_spec (name, 0);
+  /* Convert parameter name (a file spec) to host file form. Note that this
+     is needed on VMS to prepare for subsequent calls to VMS RMS library
+     routines. Note that it would not work to call __gnat_to_host_dir_spec
+     as was done in a previous version, since this fails silently unless
+     the feature logical DECC$EFS_CHARSET is enabled, in which case a DNF
+     (directory not found) condition is signalled.  */
+  tryfile = (char *) __gnat_to_host_file_spec (name);
 
   /* Allocate and initialize a FAB and NAM structures.  */
   fab = cc$rms_fab;
@@ -1051,18 +1400,14 @@ __gnat_set_file_time_name (name, time_stamp)
 
   {
     time_t t;
-    struct tm *ts;
-
-    ts = localtime (&time_stamp);
 
     /* Set creation time to requested time.  */
-    unix_time_to_vms (time_stamp + ts->tm_gmtoff, newtime);
+    unix_time_to_vms (time_stamp, newtime);
 
     t = time ((time_t) 0);
-    ts = localtime (&t);
 
     /* Set revision time to now in local time.  */
-    unix_time_to_vms (t + ts->tm_gmtoff, revtime);
+    unix_time_to_vms (t, revtime);
   }
 
   /* Reopen the file, modify the times and then close.  */
@@ -1104,118 +1449,6 @@ __gnat_set_file_time_name (name, time_stamp)
 #endif
 }
 
-void
-__gnat_get_env_value_ptr (name, len, value)
-     char *name;
-     int *len;
-     char **value;
-{
-  *value = getenv (name);
-  if (!*value)
-    *len = 0;
-  else
-    *len = strlen (*value);
-
-  return;
-}
-
-/* VMS specific declarations for set_env_value.  */
-
-#ifdef VMS
-
-static char *to_host_path_spec PARAMS ((char *));
-
-struct descriptor_s
-{
-  unsigned short len, mbz;
-  char *adr;
-};
-
-typedef struct _ile3
-{
-  unsigned short len, code;
-  char *adr;
-  unsigned short *retlen_adr;
-} ile_s;
-
-#endif
-
-void
-__gnat_set_env_value (name, value)
-     char *name;
-     char *value;
-{
-#ifdef MSDOS
-
-#elif defined (VMS)
-  struct descriptor_s name_desc;
-  /* Put in JOB table for now, so that the project stuff at least works.  */
-  struct descriptor_s table_desc = {7, 0, "LNM$JOB"};
-  char *host_pathspec = to_host_path_spec (value);
-  char *copy_pathspec;
-  int num_dirs_in_pathspec = 1;
-  char *ptr;
-
-  if (*host_pathspec == 0)
-    return;
-
-  name_desc.len = strlen (name);
-  name_desc.mbz = 0;
-  name_desc.adr = name;
-
-  ptr = host_pathspec;
-  while (*ptr++)
-    if (*ptr == ',')
-      num_dirs_in_pathspec++;
-
-  {
-    int i, status;
-    ile_s *ile_array = alloca (sizeof (ile_s) * (num_dirs_in_pathspec + 1));
-    char *copy_pathspec = alloca (strlen (host_pathspec) + 1);
-    char *curr, *next;
-
-    strcpy (copy_pathspec, host_pathspec);
-    curr = copy_pathspec;
-    for (i = 0; i < num_dirs_in_pathspec; i++)
-      {
-	next = strchr (curr, ',');
-	if (next == 0)
-	  next = strchr (curr, 0);
-
-	*next = 0;
-	ile_array[i].len = strlen (curr);
-
-	/* Code 2 from lnmdef.h means its a string.  */
-	ile_array[i].code = 2;
-	ile_array[i].adr = curr;
-
-	/* retlen_adr is ignored.  */
-	ile_array[i].retlen_adr = 0;
-	curr = next + 1;
-      }
-
-    /* Terminating item must be zero.  */
-    ile_array[i].len = 0;
-    ile_array[i].code = 0;
-    ile_array[i].adr = 0;
-    ile_array[i].retlen_adr = 0;
-
-    status = LIB$SET_LOGICAL (&name_desc, 0, &table_desc, 0, ile_array);
-    if ((status & 1) != 1)
-      LIB$SIGNAL (status);
-  }
-
-#else
-  int size = strlen (name) + strlen (value) + 2;
-  char *expression;
-
-  expression = (char *) xmalloc (size * sizeof (char));
-
-  sprintf (expression, "%s=%s", name, value);
-  putenv (expression);
-#endif
-}
-
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -1225,11 +1458,11 @@ __gnat_set_env_value (name, value)
    key.  */
 
 char *
-__gnat_get_libraries_from_registry ()
+__gnat_get_libraries_from_registry (void)
 {
   char *result = (char *) "";
 
-#if defined (_WIN32) && ! defined (__vxworks) && ! defined (CROSS_COMPILE)
+#if defined (_WIN32) && ! defined (__vxworks) && ! defined (CROSS_DIRECTORY_STRUCTURE)
 
   HKEY reg_key;
   DWORD name_size, value_size;
@@ -1257,8 +1490,8 @@ __gnat_get_libraries_from_registry ()
   for (index = 0; res == ERROR_SUCCESS; index++)
     {
       value_size = name_size = 256;
-      res = RegEnumValue (reg_key, index, name, &name_size, 0,
-                          &type, value, &value_size);
+      res = RegEnumValueA (reg_key, index, (TCHAR*)name, &name_size, 0,
+                           &type, (LPBYTE)value, &value_size);
 
       if (res == ERROR_SUCCESS && type == REG_SZ)
         {
@@ -1280,30 +1513,36 @@ __gnat_get_libraries_from_registry ()
 }
 
 int
-__gnat_stat (name, statbuf)
-     char *name;
-     struct stat *statbuf;
+__gnat_stat (char *name, struct stat *statbuf)
 {
-#ifdef _WIN32
+#ifdef __MINGW32__
   /* Under Windows the directory name for the stat function must not be
      terminated by a directory separator except if just after a drive name.  */
-  int name_len  = strlen (name);
-  char last_char = name[name_len - 1];
-  char win32_name[4096];
+  TCHAR wname [GNAT_MAX_PATH_LEN + 2];
+  int name_len;
+  TCHAR last_char;
 
-  strcpy (win32_name, name);
+  S2WSU (wname, name, GNAT_MAX_PATH_LEN + 2);
+  name_len = _tcslen (wname);
 
-  while (name_len > 1 && (last_char == '\\' || last_char == '/'))
+  if (name_len > GNAT_MAX_PATH_LEN)
+    return -1;
+
+  last_char = wname[name_len - 1];
+
+  while (name_len > 1 && (last_char == _T('\\') || last_char == _T('/')))
     {
-      win32_name[name_len - 1] = '\0';
+      wname[name_len - 1] = _T('\0');
       name_len--;
-      last_char = win32_name[name_len - 1];
+      last_char = wname[name_len - 1];
     }
 
-  if (name_len == 2 && win32_name[1] == ':')
-    strcat (win32_name, "\\");
+  /* Only a drive letter followed by ':', we must add a directory separator
+     for the stat routine to work properly.  */
+  if (name_len == 2 && wname[1] == _T(':'))
+    _tcscat (wname, _T("\\"));
 
-  return stat (win32_name, statbuf);
+  return _tstat (wname, statbuf);
 
 #else
   return stat (name, statbuf);
@@ -1311,28 +1550,60 @@ __gnat_stat (name, statbuf)
 }
 
 int
-__gnat_file_exists (name)
-     char *name;
+__gnat_file_exists (char *name)
 {
+#ifdef __MINGW32__
+  /*  On Windows do not use __gnat_stat() because a bug in Microsoft
+  _stat() routine. When the system time-zone is set with a negative
+  offset the _stat() routine fails on specific files like CON:  */
+  TCHAR wname [GNAT_MAX_PATH_LEN + 2];
+
+  S2WSU (wname, name, GNAT_MAX_PATH_LEN + 2);
+  return GetFileAttributes (wname) != INVALID_FILE_ATTRIBUTES;
+#else
   struct stat statbuf;
 
   return !__gnat_stat (name, &statbuf);
-}
-
-int    
-__gnat_is_absolute_path (name)
-     char *name;
-{
-  return (*name == '/' || *name == DIR_SEPARATOR
-#if defined (__EMX__) || defined (MSDOS) || defined (WINNT)
-      || strlen (name) > 1 && isalpha (name[0]) && name[1] == ':'
 #endif
-	  );
 }
 
 int
-__gnat_is_regular_file (name)
-     char *name;
+__gnat_is_absolute_path (char *name, int length)
+{
+#ifdef __vxworks
+  /* On VxWorks systems, an absolute path can be represented (depending on
+     the host platform) as either /dir/file, or device:/dir/file, or
+     device:drive_letter:/dir/file. */
+
+  int index;
+
+  if (name[0] == '/')
+    return 1;
+
+  for (index = 0; index < length; index++)
+    {
+      if (name[index] == ':' &&
+          ((name[index + 1] == '/') ||
+           (isalpha (name[index + 1]) && index + 2 <= length &&
+            name[index + 2] == '/')))
+        return 1;
+
+      else if (name[index] == '/')
+        return 0;
+    }
+  return 0;
+#else
+  return (length != 0) &&
+     (*name == '/' || *name == DIR_SEPARATOR
+#if defined (__EMX__) || defined (MSDOS) || defined (WINNT)
+      || (length > 1 && isalpha (name[0]) && name[1] == ':')
+#endif
+	  );
+#endif
+}
+
+int
+__gnat_is_regular_file (char *name)
 {
   int ret;
   struct stat statbuf;
@@ -1342,8 +1613,7 @@ __gnat_is_regular_file (name)
 }
 
 int
-__gnat_is_directory (name)
-     char *name;
+__gnat_is_directory (char *name)
 {
   int ret;
   struct stat statbuf;
@@ -1353,8 +1623,19 @@ __gnat_is_directory (name)
 }
 
 int
-__gnat_is_writable_file (name)
-     char *name;
+__gnat_is_readable_file (char *name)
+{
+  int ret;
+  int mode;
+  struct stat statbuf;
+
+  ret = __gnat_stat (name, &statbuf);
+  mode = statbuf.st_mode & S_IRUSR;
+  return (!ret && mode);
+}
+
+int
+__gnat_is_writable_file (char *name)
 {
   int ret;
   int mode;
@@ -1365,11 +1646,65 @@ __gnat_is_writable_file (name)
   return (!ret && mode);
 }
 
-#ifdef VMS
-/* Defined in VMS header files. */
-#define fork() (decc$$alloc_vfork_blocks() >= 0 ? \
-               LIB$GET_CURRENT_INVO_CONTEXT (decc$$get_vfork_jmpbuf()) : -1)
+void
+__gnat_set_writable (char *name)
+{
+#if ! defined (__vxworks) && ! defined(__nucleus__)
+  struct stat statbuf;
+
+  if (stat (name, &statbuf) == 0)
+  {
+    statbuf.st_mode = statbuf.st_mode | S_IWUSR;
+    chmod (name, statbuf.st_mode);
+  }
 #endif
+}
+
+void
+__gnat_set_executable (char *name)
+{
+#if ! defined (__vxworks) && ! defined(__nucleus__)
+  struct stat statbuf;
+
+  if (stat (name, &statbuf) == 0)
+  {
+    statbuf.st_mode = statbuf.st_mode | S_IXUSR;
+    chmod (name, statbuf.st_mode);
+  }
+#endif
+}
+
+void
+__gnat_set_readonly (char *name)
+{
+#if ! defined (__vxworks) && ! defined(__nucleus__)
+  struct stat statbuf;
+
+  if (stat (name, &statbuf) == 0)
+  {
+    statbuf.st_mode = statbuf.st_mode & 07577;
+    chmod (name, statbuf.st_mode);
+  }
+#endif
+}
+
+int
+__gnat_is_symbolic_link (char *name ATTRIBUTE_UNUSED)
+{
+#if defined (__vxworks) || defined (__nucleus__)
+  return 0;
+
+#elif defined (_AIX) || defined (__APPLE__) || defined (__unix__)
+  int ret;
+  struct stat statbuf;
+
+  ret = lstat (name, &statbuf);
+  return (!ret && S_ISLNK (statbuf.st_mode));
+
+#else
+  return 0;
+#endif
+}
 
 #if defined (sun) && defined (__SVR4)
 /* Using fork on Solaris will duplicate all the threads. fork1, which
@@ -1379,21 +1714,32 @@ __gnat_is_writable_file (name)
 #endif
 
 int
-__gnat_portable_spawn (args)
-    char *args[];
+__gnat_portable_spawn (char *args[])
 {
   int status = 0;
-  int finished;
-  int pid;
+  int finished ATTRIBUTE_UNUSED;
+  int pid ATTRIBUTE_UNUSED;
 
 #if defined (MSDOS) || defined (_WIN32)
-  status = spawnvp (P_WAIT, args[0], args);
+  /* args[0] must be quotes as it could contain a full pathname with spaces */
+  char *args_0 = args[0];
+  args[0] = (char *)xmalloc (strlen (args_0) + 3);
+  strcpy (args[0], "\"");
+  strcat (args[0], args_0);
+  strcat (args[0], "\"");
+
+  status = spawnvp (P_WAIT, args_0, (const char* const*)args);
+
+  /* restore previous value */
+  free (args[0]);
+  args[0] = (char *)args_0;
+
   if (status < 0)
     return -1;
   else
     return status;
 
-#elif defined (__vxworks)
+#elif defined (__vxworks) || defined(__nucleus__)
   return -1;
 #else
 
@@ -1410,7 +1756,7 @@ __gnat_portable_spawn (args)
   if (pid == 0)
     {
       /* The child. */
-      if (execv (args[0], args) != 0)
+      if (execv (args[0], MAYBE_TO_PTR32 (args)) != 0)
 #if defined (VMS)
 	return -1; /* execv is in parent context on VMS.  */
 #else
@@ -1431,6 +1777,36 @@ __gnat_portable_spawn (args)
   return 0;
 }
 
+/* Create a copy of the given file descriptor.
+   Return -1 if an error occurred.  */
+
+int
+__gnat_dup (int oldfd)
+{
+#if defined (__vxworks) && !defined (__RTP__)
+  /* Not supported on VxWorks 5.x, but supported on VxWorks 6.0 when using
+     RTPs. */
+  return -1;
+#else
+  return dup (oldfd);
+#endif
+}
+
+/* Make newfd be the copy of oldfd, closing newfd first if necessary.
+   Return -1 if an error occurred.  */
+
+int
+__gnat_dup2 (int oldfd, int newfd)
+{
+#if defined (__vxworks) && !defined (__RTP__)
+  /* Not supported on VxWorks 5.x, but supported on VxWorks 6.0 when using
+     RTPs.  */
+  return -1;
+#else
+  return dup2 (oldfd, newfd);
+#endif
+}
+
 /* WIN32 code to implement a wait call that wait for any child process.  */
 
 #ifdef _WIN32
@@ -1440,19 +1816,19 @@ __gnat_portable_spawn (args)
 static CRITICAL_SECTION plist_cs;
 
 void
-__gnat_plist_init ()
+__gnat_plist_init (void)
 {
   InitializeCriticalSection (&plist_cs);
 }
 
 static void
-plist_enter ()
+plist_enter (void)
 {
   EnterCriticalSection (&plist_cs);
 }
 
 static void
-plist_leave ()
+plist_leave (void)
 {
   LeaveCriticalSection (&plist_cs);
 }
@@ -1468,8 +1844,7 @@ static Process_List *PLIST = NULL;
 static int plist_length = 0;
 
 static void
-add_handle (h)
-     HANDLE h;
+add_handle (HANDLE h)
 {
   Process_List *pl;
 
@@ -1487,10 +1862,11 @@ add_handle (h)
   plist_leave();
 }
 
-void remove_handle (h)
-     HANDLE h;
+static void
+remove_handle (HANDLE h)
 {
-  Process_List *pl, *prev;
+  Process_List *pl;
+  Process_List *prev = NULL;
 
   plist_enter();
 
@@ -1521,9 +1897,7 @@ void remove_handle (h)
 }
 
 static int
-win32_no_block_spawn (command, args)
-     char *command;
-     char *args[];
+win32_no_block_spawn (char *command, char *args[])
 {
   BOOL result;
   STARTUPINFO SI;
@@ -1570,10 +1944,20 @@ win32_no_block_spawn (command, args)
       k++;
     }
 
-  result = CreateProcess (NULL, (char *) full_command, &SA, NULL, TRUE,
-                          NORMAL_PRIORITY_CLASS, NULL, NULL, &SI, &PI);
+  {
+    int wsize = csize * 2;
+    TCHAR *wcommand = (TCHAR *) xmalloc (wsize);
 
-  free (full_command);
+    S2WSU (wcommand, full_command, wsize);
+
+    free (full_command);
+
+    result = CreateProcess
+      (NULL, wcommand, &SA, NULL, TRUE,
+       GetPriorityClass (GetCurrentProcess()), NULL, NULL, &SI, &PI);
+
+    free (wcommand);
+  }
 
   if (result == TRUE)
     {
@@ -1586,8 +1970,7 @@ win32_no_block_spawn (command, args)
 }
 
 static int
-win32_wait (status)
-     int *status;
+win32_wait (int *status)
 {
   DWORD exitcode;
   HANDLE *hl;
@@ -1634,8 +2017,7 @@ win32_wait (status)
 #endif
 
 int
-__gnat_portable_no_block_spawn (args)
-    char *args[];
+__gnat_portable_no_block_spawn (char *args[])
 {
   int pid = 0;
 
@@ -1657,7 +2039,7 @@ __gnat_portable_no_block_spawn (args)
   pid = win32_no_block_spawn (args[0], args);
   return pid;
 
-#elif defined (__vxworks)
+#elif defined (__vxworks) || defined (__nucleus__)
   return -1;
 
 #else
@@ -1666,10 +2048,10 @@ __gnat_portable_no_block_spawn (args)
   if (pid == 0)
     {
       /* The child.  */
-      if (execv (args[0], args) != 0)
+      if (execv (args[0], MAYBE_TO_PTR32 (args)) != 0)
 #if defined (VMS)
 	return -1; /* execv is in parent context on VMS. */
-#else   
+#else
 	_exit (1);
 #endif
     }
@@ -1680,8 +2062,7 @@ __gnat_portable_no_block_spawn (args)
 }
 
 int
-__gnat_portable_wait (process_status)
-    int *process_status;
+__gnat_portable_wait (int *process_status)
 {
   int status = 0;
   int pid = 0;
@@ -1693,7 +2074,7 @@ __gnat_portable_wait (process_status)
 #elif defined (__EMX__) || defined (MSDOS)
   /* ??? See corresponding comment in portable_no_block_spawn.  */
 
-#elif defined (__vxworks)
+#elif defined (__vxworks) || defined (__nucleus__)
   /* Not sure what to do here, so do same as __EMX__ case, i.e., nothing but
      return zero.  */
 #else
@@ -1706,59 +2087,60 @@ __gnat_portable_wait (process_status)
   return pid;
 }
 
-int
-__gnat_waitpid (pid)
-    int pid;
-{
-  int status = 0;
-
-#if defined (_WIN32)
-  cwait (&status, pid, _WAIT_CHILD);
-#elif defined (__EMX__) || defined (MSDOS) || defined (__vxworks)
-  /* Status is already zero, so nothing to do.  */
-#else
-  waitpid (pid, &status, 0);
-  status =  WEXITSTATUS (status);
-#endif
-
-  return status;
-}
-
 void
-__gnat_os_exit (status)
-     int status;
+__gnat_os_exit (int status)
 {
-#ifdef VMS
-  /* Exit without changing 0 to 1.  */
-  __posix_exit (status);
-#else
   exit (status);
-#endif
 }
 
 /* Locate a regular file, give a Path value.  */
 
 char *
-__gnat_locate_regular_file (file_name, path_val)
-     char *file_name;
-     char *path_val;
+__gnat_locate_regular_file (char *file_name, char *path_val)
 {
   char *ptr;
+  char *file_path = alloca (strlen (file_name) + 1);
+  int absolute;
+
+  /* Return immediately if file_name is empty */
+
+  if (*file_name == '\0')
+    return 0;
+
+  /* Remove quotes around file_name if present */
+
+  ptr = file_name;
+  if (*ptr == '"')
+    ptr++;
+
+  strcpy (file_path, ptr);
+
+  ptr = file_path + strlen (file_path) - 1;
+
+  if (*ptr == '"')
+    *ptr = '\0';
 
   /* Handle absolute pathnames.  */
+
+  absolute = __gnat_is_absolute_path (file_path, strlen (file_name));
+
+  if (absolute)
+    {
+     if (__gnat_is_regular_file (file_path))
+       return xstrdup (file_path);
+
+      return 0;
+    }
+
+  /* If file_name include directory separator(s), try it first as
+     a path name relative to the current directory */
   for (ptr = file_name; *ptr && *ptr != '/' && *ptr != DIR_SEPARATOR; ptr++)
     ;
 
-  if (*ptr != 0
-#if defined (__EMX__) || defined (MSDOS) || defined (WINNT)
-      || isalpha (file_name[0]) && file_name[1] == ':'
-#endif
-     )
+  if (*ptr != 0)
     {
       if (__gnat_is_regular_file (file_name))
         return xstrdup (file_name);
-
-      return 0;
     }
 
   if (path_val == 0)
@@ -1776,10 +2158,21 @@ __gnat_locate_regular_file (file_name, path_val)
       if (*path_val == 0)
         return 0;
 
+      /* Skip the starting quote */
+
+      if (*path_val == '"')
+	path_val++;
+
       for (ptr = file_path; *path_val && *path_val != PATH_SEPARATOR; )
-        *ptr++ = *path_val++;
+	*ptr++ = *path_val++;
 
       ptr--;
+
+      /* Skip the ending quote */
+
+      if (*ptr == '"')
+	ptr--;
+
       if (*ptr != '/' && *ptr != DIR_SEPARATOR)
         *++ptr = DIR_SEPARATOR;
 
@@ -1798,10 +2191,9 @@ __gnat_locate_regular_file (file_name, path_val)
    instead.  */
 
 char *
-__gnat_locate_exec (exec_name, path_val)
-     char *exec_name;
-     char *path_val;
+__gnat_locate_exec (char *exec_name, char *path_val)
 {
+  char *ptr;
   if (!strstr (exec_name, HOST_EXECUTABLE_SUFFIX))
     {
       char *full_exec_name
@@ -1809,7 +2201,11 @@ __gnat_locate_exec (exec_name, path_val)
 
       strcpy (full_exec_name, exec_name);
       strcat (full_exec_name, HOST_EXECUTABLE_SUFFIX);
-      return __gnat_locate_regular_file (full_exec_name, path_val);
+      ptr = __gnat_locate_regular_file (full_exec_name, path_val);
+
+      if (ptr == 0)
+         return __gnat_locate_regular_file (exec_name, path_val);
+      return ptr;
     }
   else
     return __gnat_locate_regular_file (exec_name, path_val);
@@ -1818,18 +2214,46 @@ __gnat_locate_exec (exec_name, path_val)
 /* Locate an executable using the Systems default PATH.  */
 
 char *
-__gnat_locate_exec_on_path (exec_name)
-     char *exec_name;
+__gnat_locate_exec_on_path (char *exec_name)
 {
+  char *apath_val;
+
+#ifdef _WIN32
+  TCHAR *wpath_val = _tgetenv (_T("PATH"));
+  TCHAR *wapath_val;
+  /* In Win32 systems we expand the PATH as for XP environment
+     variables are not automatically expanded. We also prepend the
+     ".;" to the path to match normal NT path search semantics */
+
+  #define EXPAND_BUFFER_SIZE 32767
+
+  wapath_val = alloca (EXPAND_BUFFER_SIZE);
+
+  wapath_val [0] = '.';
+  wapath_val [1] = ';';
+
+  DWORD res = ExpandEnvironmentStrings
+    (wpath_val, &wapath_val[2], EXPAND_BUFFER_SIZE - 2);
+
+  if (!res) wapath_val [0] = _T('\0');
+
+  apath_val = alloca (EXPAND_BUFFER_SIZE);
+
+  WS2SU (apath_val, wapath_val, EXPAND_BUFFER_SIZE);
+  return __gnat_locate_exec (exec_name, apath_val);
+
+#else
+
 #ifdef VMS
   char *path_val = "/VAXC$PATH";
 #else
   char *path_val = getenv ("PATH");
 #endif
-  char *apath_val = alloca (strlen (path_val) + 1);
-
+  if (path_val == NULL) return NULL;
+  apath_val = alloca (strlen (path_val) + 1);
   strcpy (apath_val, path_val);
   return __gnat_locate_exec (exec_name, apath_val);
+#endif
 }
 
 #ifdef VMS
@@ -1837,32 +2261,33 @@ __gnat_locate_exec_on_path (exec_name)
 /* These functions are used to translate to and from VMS and Unix syntax
    file, directory and path specifications.  */
 
+#define MAXPATH  256
 #define MAXNAMES 256
 #define NEW_CANONICAL_FILELIST_INCREMENT 64
 
-static char new_canonical_dirspec[255];
-static char new_canonical_filespec[255];
-static char new_canonical_pathspec[MAXNAMES*255];
+static char new_canonical_dirspec [MAXPATH];
+static char new_canonical_filespec [MAXPATH];
+static char new_canonical_pathspec [MAXNAMES*MAXPATH];
 static unsigned new_canonical_filelist_index;
 static unsigned new_canonical_filelist_in_use;
 static unsigned new_canonical_filelist_allocated;
 static char **new_canonical_filelist;
-static char new_host_pathspec[MAXNAMES*255];
-static char new_host_dirspec[255];
-static char new_host_filespec[255];
+static char new_host_pathspec [MAXNAMES*MAXPATH];
+static char new_host_dirspec [MAXPATH];
+static char new_host_filespec [MAXPATH];
 
 /* Routine is called repeatedly by decc$from_vms via
-   __gnat_to_canonical_file_list_init until it returns 0 or the expansion runs
-   out.  */
+   __gnat_to_canonical_file_list_init until it returns 0 or the expansion
+   runs out. */
 
 static int
-wildcard_translate_unix (name)
-     char *name;
+wildcard_translate_unix (char *name)
 {
   char *ver;
-  char buff[256];
+  char buff [MAXPATH];
 
-  strcpy (buff, name);
+  strncpy (buff, name, MAXPATH);
+  buff [MAXPATH - 1] = (char) 0;
   ver = strrchr (buff, '.');
 
   /* Chop off the version.  */
@@ -1888,19 +2313,19 @@ wildcard_translate_unix (name)
    one at a time (_next). If onlydirs set, only expand directory files.  */
 
 int
-__gnat_to_canonical_file_list_init (filespec, onlydirs)
-     char *filespec;
-     int onlydirs;
+__gnat_to_canonical_file_list_init (char *filespec, int onlydirs)
 {
   int len;
-  char buff[256];
+  char buff [MAXPATH];
 
   len = strlen (filespec);
-  strcpy (buff, filespec);
+  strncpy (buff, filespec, MAXPATH);
 
-  /* Only look for directories.  */
-  if (onlydirs && !strstr (&buff[len - 5], "*.dir"))
-    strcat (buff, "*.dir");
+  /* Only look for directories */
+  if (onlydirs && !strstr (&buff [len-5], "*.dir"))
+    strncat (buff, "*.dir", MAXPATH);
+
+  buff [MAXPATH - 1] = (char) 0;
 
   decc$from_vms (buff, wildcard_translate_unix, 1);
 
@@ -1947,15 +2372,144 @@ __gnat_to_canonical_file_list_free ()
   new_canonical_filelist = 0;
 }
 
+/* The functional equivalent of decc$translate_vms routine.
+   Designed to produce the same output, but is protected against
+   malformed paths (original version ACCVIOs in this case) and
+   does not require VMS-specific DECC RTL */
+
+#define NAM$C_MAXRSS 1024
+
+char *
+__gnat_translate_vms (char *src)
+{
+  static char retbuf [NAM$C_MAXRSS+1];
+  char *srcendpos, *pos1, *pos2, *retpos;
+  int disp, path_present = 0;
+
+  if (!src) return NULL;
+
+  srcendpos = strchr (src, '\0');
+  retpos = retbuf;
+
+  /* Look for the node and/or device in front of the path */
+  pos1 = src;
+  pos2 = strchr (pos1, ':');
+
+  if (pos2 && (pos2 < srcendpos) && (*(pos2 + 1) == ':')) {
+    /* There is a node name. "node_name::" becomes "node_name!" */
+    disp = pos2 - pos1;
+    strncpy (retbuf, pos1, disp);
+    retpos [disp] = '!';
+    retpos = retpos + disp + 1;
+    pos1 = pos2 + 2;
+    pos2 = strchr (pos1, ':');
+  }
+
+  if (pos2) {
+    /* There is a device name. "dev_name:" becomes "/dev_name/" */
+    *(retpos++) = '/';
+    disp = pos2 - pos1;
+    strncpy (retpos, pos1, disp);
+    retpos = retpos + disp;
+    pos1 = pos2 + 1;
+    *(retpos++) = '/';
+  }
+  else
+    /* No explicit device; we must look ahead and prepend /sys$disk/ if
+       the path is absolute */
+    if ((*pos1 == '[' || *pos1 == '<') && (pos1 < srcendpos)
+        && !strchr (".-]>", *(pos1 + 1))) {
+      strncpy (retpos, "/sys$disk/", 10);
+      retpos += 10;
+    }
+
+  /* Process the path part */
+  while (*pos1 == '[' || *pos1 == '<') {
+    path_present++;
+    pos1++;
+    if (*pos1 == ']' || *pos1 == '>') {
+      /* Special case, [] translates to '.' */
+      *(retpos++) = '.';
+      pos1++;
+    }
+    else {
+      /* '[000000' means root dir. It can be present in the middle of
+         the path due to expansion of logical devices, in which case
+         we skip it */
+      if (!strncmp (pos1, "000000", 6) && path_present > 1 &&
+         (*(pos1 + 6) == ']' || *(pos1 + 6) == '>' || *(pos1 + 6) == '.')) {
+          pos1 += 6;
+          if (*pos1 == '.') pos1++;
+        }
+      else if (*pos1 == '.') {
+        /* Relative path */
+        *(retpos++) = '.';
+      }
+
+      /* There is a qualified path */
+      while (*pos1 && *pos1 != ']' && *pos1 != '>') {
+        switch (*pos1) {
+          case '.':
+            /* '.' is used to separate directories. Replace it with '/' but
+               only if there isn't already '/' just before */
+            if (*(retpos - 1) != '/') *(retpos++) = '/';
+            pos1++;
+            if (pos1 + 1 < srcendpos && *pos1 == '.' && *(pos1 + 1) == '.') {
+              /* ellipsis refers to entire subtree; replace with '**' */
+              *(retpos++) = '*'; *(retpos++) = '*'; *(retpos++) = '/';
+              pos1 += 2;
+            }
+            break;
+          case '-' :
+            /* When after '.' '[' '<' is equivalent to Unix ".." but there
+            may be several in a row */
+            if (*(pos1 - 1) == '.' || *(pos1 - 1) == '[' ||
+                *(pos1 - 1) == '<') {
+              while (*pos1 == '-') {
+                pos1++;
+                *(retpos++) = '.'; *(retpos++) = '.'; *(retpos++) = '/';
+              }
+              retpos--;
+              break;
+            }
+            /* otherwise fall through to default */
+          default:
+            *(retpos++) = *(pos1++);
+        }
+      }
+      pos1++;
+    }
+  }
+
+  if (pos1 < srcendpos) {
+    /* Now add the actual file name, until the version suffix if any */
+    if (path_present) *(retpos++) = '/';
+    pos2 = strchr (pos1, ';');
+    disp = pos2? (pos2 - pos1) : (srcendpos - pos1);
+    strncpy (retpos, pos1, disp);
+    retpos += disp;
+    if (pos2 && pos2 < srcendpos) {
+      /* There is a non-empty version suffix. ";<ver>" becomes ".<ver>" */
+      *retpos++ = '.';
+      disp = srcendpos - pos2 - 1;
+      strncpy (retpos, pos2 + 1, disp);
+      retpos += disp;
+    }
+  }
+
+  *retpos = '\0';
+
+  return retbuf;
+
+}
+
 /* Translate a VMS syntax directory specification in to Unix syntax.  If
    PREFIXFLAG is set, append an underscore "/". If no indicators of VMS syntax
    found, return input string. Also translate a dirname that contains no
    slashes, in case it's a logical name.  */
 
 char *
-__gnat_to_canonical_dir_spec (dirspec, prefixflag)
-     char *dirspec;
-     int prefixflag;
+__gnat_to_canonical_dir_spec (char *dirspec, int prefixflag)
 {
   int len;
 
@@ -1965,33 +2519,68 @@ __gnat_to_canonical_dir_spec (dirspec, prefixflag)
       char *dirspec1;
 
       if (strchr (dirspec, ']') || strchr (dirspec, ':'))
-        strcpy (new_canonical_dirspec, (char *) decc$translate_vms (dirspec));
+	{
+	  strncpy (new_canonical_dirspec,
+		   __gnat_translate_vms (dirspec),
+		   MAXPATH);
+	}
       else if (!strchr (dirspec, '/') && (dirspec1 = getenv (dirspec)) != 0)
-        strcpy (new_canonical_dirspec, (char *) decc$translate_vms (dirspec1));
+	{
+	  strncpy (new_canonical_dirspec,
+		  __gnat_translate_vms (dirspec1),
+		  MAXPATH);
+	}
       else
-        strcpy (new_canonical_dirspec, dirspec);
+	{
+	  strncpy (new_canonical_dirspec, dirspec, MAXPATH);
+	}
     }
 
   len = strlen (new_canonical_dirspec);
-  if (prefixflag && new_canonical_dirspec[len - 1] != '/')
-    strcat (new_canonical_dirspec, "/");
+  if (prefixflag && new_canonical_dirspec [len-1] != '/')
+    strncat (new_canonical_dirspec, "/", MAXPATH);
+
+  new_canonical_dirspec [MAXPATH - 1] = (char) 0;
 
   return new_canonical_dirspec;
 
 }
 
 /* Translate a VMS syntax file specification into Unix syntax.
-   If no indicators of VMS syntax found, return input string.  */
+   If no indicators of VMS syntax found, check if it's an uppercase
+   alphanumeric_ name and if so try it out as an environment
+   variable (logical name). If all else fails return the
+   input string.  */
 
 char *
-__gnat_to_canonical_file_spec (filespec)
-     char *filespec;
+__gnat_to_canonical_file_spec (char *filespec)
 {
-  strcpy (new_canonical_filespec, "");
+  char *filespec1;
+
+  strncpy (new_canonical_filespec, "", MAXPATH);
+
   if (strchr (filespec, ']') || strchr (filespec, ':'))
-    strcpy (new_canonical_filespec, (char *) decc$translate_vms (filespec));
+    {
+      char *tspec = (char *) __gnat_translate_vms (filespec);
+
+      if (tspec != (char *) -1)
+	strncpy (new_canonical_filespec, tspec, MAXPATH);
+    }
+  else if ((strlen (filespec) == strspn (filespec,
+	    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"))
+	&& (filespec1 = getenv (filespec)))
+    {
+      char *tspec = (char *) __gnat_translate_vms (filespec1);
+
+      if (tspec != (char *) -1)
+	strncpy (new_canonical_filespec, tspec, MAXPATH);
+    }
   else
-    strcpy (new_canonical_filespec, filespec);
+    {
+      strncpy (new_canonical_filespec, filespec, MAXPATH);
+    }
+
+  new_canonical_filespec [MAXPATH - 1] = (char) 0;
 
   return new_canonical_filespec;
 }
@@ -2000,10 +2589,9 @@ __gnat_to_canonical_file_spec (filespec)
    If no indicators of VMS syntax found, return input string.  */
 
 char *
-__gnat_to_canonical_path_spec (pathspec)
-     char *pathspec;
+__gnat_to_canonical_path_spec (char *pathspec)
 {
-  char *curr, *next, buff[256];
+  char *curr, *next, buff [MAXPATH];
 
   if (pathspec == 0)
     return pathspec;
@@ -2035,37 +2623,38 @@ __gnat_to_canonical_path_spec (pathspec)
               char *next_dir;
 
               next_dir = __gnat_to_canonical_file_list_next ();
-              strcat (new_canonical_pathspec, next_dir);
+              strncat (new_canonical_pathspec, next_dir, MAXPATH);
 
               /* Don't append the separator after the last expansion.  */
               if (i+1 < dirs)
-                strcat (new_canonical_pathspec, ":");
+                strncat (new_canonical_pathspec, ":", MAXPATH);
             }
 
 	  __gnat_to_canonical_file_list_free ();
         }
       else
-	strcat (new_canonical_pathspec,
-		__gnat_to_canonical_dir_spec (buff, 0));
+	strncat (new_canonical_pathspec,
+		__gnat_to_canonical_dir_spec (buff, 0), MAXPATH);
 
       if (*next == 0)
         break;
 
-      strcat (new_canonical_pathspec, ":");
+      strncat (new_canonical_pathspec, ":", MAXPATH);
       curr = next + 1;
     }
+
+  new_canonical_pathspec [MAXPATH - 1] = (char) 0;
 
   return new_canonical_pathspec;
 }
 
-static char filename_buff[256];
+static char filename_buff [MAXPATH];
 
 static int
-translate_unix (name, type)
-     char *name;
-     int type;
+translate_unix (char *name, int type)
 {
-  strcpy (filename_buff, name);
+  strncpy (filename_buff, name, MAXPATH);
+  filename_buff [MAXPATH - 1] = (char) 0;
   return 0;
 }
 
@@ -2073,10 +2662,9 @@ translate_unix (name, type)
    directories.  */
 
 static char *
-to_host_path_spec (pathspec)
-     char *pathspec;
+to_host_path_spec (char *pathspec)
 {
-  char *curr, *next, buff[256];
+  char *curr, *next, buff [MAXPATH];
 
   if (pathspec == 0)
     return pathspec;
@@ -2097,12 +2685,14 @@ to_host_path_spec (pathspec)
       strncpy (buff, curr, next - curr);
       buff[next - curr] = 0;
 
-      strcat (new_host_pathspec, __gnat_to_host_dir_spec (buff, 0));
+      strncat (new_host_pathspec, __gnat_to_host_dir_spec (buff, 0), MAXPATH);
       if (*next == 0)
         break;
-      strcat (new_host_pathspec, ",");
+      strncat (new_host_pathspec, ",", MAXPATH);
       curr = next + 1;
     }
+
+  new_host_pathspec [MAXPATH - 1] = (char) 0;
 
   return new_host_pathspec;
 }
@@ -2113,13 +2703,12 @@ to_host_path_spec (pathspec)
    string. */
 
 char *
-__gnat_to_host_dir_spec (dirspec, prefixflag)
-     char *dirspec;
-     int prefixflag ATTRIBUTE_UNUSED;
+__gnat_to_host_dir_spec (char *dirspec, int prefixflag ATTRIBUTE_UNUSED)
 {
   int len = strlen (dirspec);
 
-  strcpy (new_host_dirspec, dirspec);
+  strncpy (new_host_dirspec, dirspec, MAXPATH);
+  new_host_dirspec [MAXPATH - 1] = (char) 0;
 
   if (strchr (new_host_dirspec, ']') || strchr (new_host_dirspec, ':'))
     return new_host_dirspec;
@@ -2131,27 +2720,30 @@ __gnat_to_host_dir_spec (dirspec, prefixflag)
     }
 
   decc$to_vms (new_host_dirspec, translate_unix, 1, 2);
-  strcpy (new_host_dirspec, filename_buff);
+  strncpy (new_host_dirspec, filename_buff, MAXPATH);
+  new_host_dirspec [MAXPATH - 1] = (char) 0;
 
   return new_host_dirspec;
-
 }
 
 /* Translate a Unix syntax file specification into VMS syntax.
    If indicators of VMS syntax found, return input string.  */
 
 char *
-__gnat_to_host_file_spec (filespec)
-     char *filespec;
+__gnat_to_host_file_spec (char *filespec)
 {
-  strcpy (new_host_filespec, "");
+  strncpy (new_host_filespec, "", MAXPATH);
   if (strchr (filespec, ']') || strchr (filespec, ':'))
-    strcpy (new_host_filespec, filespec);
+    {
+      strncpy (new_host_filespec, filespec, MAXPATH);
+    }
   else
     {
       decc$to_vms (filespec, translate_unix, 1, 1);
-      strcpy (new_host_filespec, filename_buff);
+      strncpy (new_host_filespec, filename_buff, MAXPATH);
     }
+
+  new_host_filespec [MAXPATH - 1] = (char) 0;
 
   return new_host_filespec;
 }
@@ -2162,68 +2754,60 @@ __gnat_adjust_os_resource_limits ()
   SYS$ADJWSL (131072, 0);
 }
 
-#else
+#else /* VMS */
 
 /* Dummy functions for Osint import for non-VMS systems.  */
 
 int
-__gnat_to_canonical_file_list_init (dirspec, onlydirs)
-     char *dirspec ATTRIBUTE_UNUSED;
-     int onlydirs ATTRIBUTE_UNUSED;
+__gnat_to_canonical_file_list_init
+  (char *dirspec ATTRIBUTE_UNUSED, int onlydirs ATTRIBUTE_UNUSED)
 {
   return 0;
 }
 
 char *
-__gnat_to_canonical_file_list_next ()
+__gnat_to_canonical_file_list_next (void)
 {
   return (char *) "";
 }
 
 void
-__gnat_to_canonical_file_list_free ()
+__gnat_to_canonical_file_list_free (void)
 {
 }
 
 char *
-__gnat_to_canonical_dir_spec (dirspec, prefixflag)
-     char *dirspec;
-     int prefixflag ATTRIBUTE_UNUSED;
+__gnat_to_canonical_dir_spec (char *dirspec, int prefixflag ATTRIBUTE_UNUSED)
 {
   return dirspec;
 }
 
 char *
-__gnat_to_canonical_file_spec (filespec)
-     char *filespec;
+__gnat_to_canonical_file_spec (char *filespec)
 {
   return filespec;
 }
 
 char *
-__gnat_to_canonical_path_spec (pathspec)
-     char *pathspec;
+__gnat_to_canonical_path_spec (char *pathspec)
 {
   return pathspec;
 }
 
 char *
-__gnat_to_host_dir_spec (dirspec, prefixflag)
-     char *dirspec;
-     int prefixflag ATTRIBUTE_UNUSED;
+__gnat_to_host_dir_spec (char *dirspec, int prefixflag ATTRIBUTE_UNUSED)
 {
   return dirspec;
 }
 
 char *
-__gnat_to_host_file_spec (filespec)
-        char *filespec;
+__gnat_to_host_file_spec (char *filespec)
 {
   return filespec;
 }
 
 void
-__gnat_adjust_os_resource_limits ()
+__gnat_adjust_os_resource_limits (void)
 {
 }
 
@@ -2238,29 +2822,37 @@ void __dummy () {}
 #endif
 
 #if defined (__mips_vxworks)
-int _flush_cache()
+int
+_flush_cache()
 {
    CACHE_USER_FLUSH (0, ENTIRE_CACHE);
 }
 #endif
 
-#if defined (CROSS_COMPILE)  \
-  || (! (defined (sparc) && defined (sun) && defined (__SVR4)) \
-      && ! defined (linux) \
-      && ! defined (hpux) \
+#if defined (CROSS_DIRECTORY_STRUCTURE)  \
+  || (! ((defined (sparc) || defined (i386)) && defined (sun) \
+      && defined (__SVR4)) \
+      && ! (defined (linux) && (defined (i386) || defined (__x86_64__))) \
+      && ! (defined (linux) && defined (__ia64__)) \
+      && ! defined (__FreeBSD__) \
+      && ! defined (__hpux__) \
+      && ! defined (__APPLE__) \
+      && ! defined (_AIX) \
       && ! (defined (__alpha__)  && defined (__osf__)) \
-      && ! defined (__MINGW32__))
+      && ! defined (VMS) \
+      && ! defined (__MINGW32__) \
+      && ! (defined (__mips) && defined (__sgi)))
 
-/* Dummy function to satisfy g-trasym.o.  Currently Solaris sparc, HP/UX,
-   GNU/Linux, Tru64 & Windows provide a non-dummy version of this procedure in
-   libaddr2line.a.  */
+/* Dummy function to satisfy g-trasym.o. See the preprocessor conditional
+   just above for a list of native platforms that provide a non-dummy
+   version of this procedure in libaddr2line.a.  */
 
 void
-convert_addresses (addrs, n_addr, buf, len)
-     void *addrs ATTRIBUTE_UNUSED;
-     int n_addr ATTRIBUTE_UNUSED;
-     void *buf ATTRIBUTE_UNUSED;
-     int *len;
+convert_addresses (const char *file_name ATTRIBUTE_UNUSED,
+		   void *addrs ATTRIBUTE_UNUSED,
+		   int n_addr ATTRIBUTE_UNUSED,
+		   void *buf ATTRIBUTE_UNUSED,
+		   int *len ATTRIBUTE_UNUSED)
 {
   *len = 0;
 }
@@ -2271,3 +2863,130 @@ int __gnat_argument_needs_quote = 1;
 #else
 int __gnat_argument_needs_quote = 0;
 #endif
+
+/* This option is used to enable/disable object files handling from the
+   binder file by the GNAT Project module. For example, this is disabled on
+   Windows (prior to GCC 3.4) as it is already done by the mdll module.
+   Stating with GCC 3.4 the shared libraries are not based on mdll
+   anymore as it uses the GCC's -shared option  */
+#if defined (_WIN32) \
+    && ((__GNUC__ < 3) || ((__GNUC__ == 3) && (__GNUC_MINOR__ < 4)))
+int __gnat_prj_add_obj_files = 0;
+#else
+int __gnat_prj_add_obj_files = 1;
+#endif
+
+/* char used as prefix/suffix for environment variables */
+#if defined (_WIN32)
+char __gnat_environment_char = '%';
+#else
+char __gnat_environment_char = '$';
+#endif
+
+/* This functions copy the file attributes from a source file to a
+   destination file.
+
+   mode = 0  : In this mode copy only the file time stamps (last access and
+               last modification time stamps).
+
+   mode = 1  : In this mode, time stamps and read/write/execute attributes are
+               copied.
+
+   Returns 0 if operation was successful and -1 in case of error. */
+
+int
+__gnat_copy_attribs (char *from, char *to, int mode)
+{
+#if defined (VMS) || defined (__vxworks) || defined (__nucleus__)
+  return -1;
+#else
+  struct stat fbuf;
+  struct utimbuf tbuf;
+
+  if (stat (from, &fbuf) == -1)
+    {
+      return -1;
+    }
+
+  tbuf.actime = fbuf.st_atime;
+  tbuf.modtime = fbuf.st_mtime;
+
+  if (utime (to, &tbuf) == -1)
+    {
+      return -1;
+    }
+
+  if (mode == 1)
+    {
+      if (chmod (to, fbuf.st_mode) == -1)
+	{
+	  return -1;
+	}
+    }
+
+  return 0;
+#endif
+}
+
+int
+__gnat_lseek (int fd, long offset, int whence)
+{
+  return (int) lseek (fd, offset, whence);
+}
+
+/* This function returns the major version number of GCC being used.  */
+int
+get_gcc_version (void)
+{
+#ifdef IN_RTS
+  return __GNUC__;
+#else
+  return (int) (version_string[0] - '0');
+#endif
+}
+
+int
+__gnat_set_close_on_exec (int fd ATTRIBUTE_UNUSED,
+                        int close_on_exec_p ATTRIBUTE_UNUSED)
+{
+#if defined (F_GETFD) && defined (FD_CLOEXEC) && ! defined (__vxworks)
+  int flags = fcntl (fd, F_GETFD, 0);
+  if (flags < 0)
+    return flags;
+  if (close_on_exec_p)
+    flags |= FD_CLOEXEC;
+  else
+    flags &= ~FD_CLOEXEC;
+  return fcntl (fd, F_SETFD, flags | FD_CLOEXEC);
+#else
+  return -1;
+  /* For the Windows case, we should use SetHandleInformation to remove
+     the HANDLE_INHERIT property from fd. This is not implemented yet,
+     but for our purposes (support of GNAT.Expect) this does not matter,
+     as by default handles are *not* inherited. */
+#endif
+}
+
+/* Indicates if platforms supports automatic initialization through the
+   constructor mechanism */
+int
+__gnat_binder_supports_auto_init ()
+{
+#ifdef VMS
+   return 0;
+#else
+   return 1;
+#endif
+}
+
+/* Indicates that Stand-Alone Libraries are automatically initialized through
+   the constructor mechanism */
+int
+__gnat_sals_init_using_constructors ()
+{
+#if defined (__vxworks) || defined (__Lynx__) || defined (VMS)
+   return 0;
+#else
+   return 1;
+#endif
+}

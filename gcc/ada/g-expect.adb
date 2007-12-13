@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---           Copyright (C) 2000-2002 Ada Core Technologies, Inc.            --
+--                     Copyright (C) 2000-2007, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -27,18 +26,19 @@
 -- however invalidate  any other reasons why  the executable file  might be --
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
--- GNAT is maintained by Ada Core Technologies Inc (http://www.gnat.com).   --
+-- GNAT was originally developed  by the GNAT team at  New York University. --
+-- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with System;        use System;
-with Ada.Calendar;  use Ada.Calendar;
+with System;       use System;
+with Ada.Calendar; use Ada.Calendar;
 
 with GNAT.IO;
-with GNAT.OS_Lib;   use GNAT.OS_Lib;
-with GNAT.Regpat;   use GNAT.Regpat;
+with GNAT.OS_Lib;  use GNAT.OS_Lib;
+with GNAT.Regpat;  use GNAT.Regpat;
 
-with Unchecked_Deallocation;
+with Ada.Unchecked_Deallocation;
 
 package body GNAT.Expect is
 
@@ -66,8 +66,11 @@ package body GNAT.Expect is
    --  Reinitialize the internal buffer.
    --  The buffer is deleted up to the end of the last match.
 
-   procedure Free is new Unchecked_Deallocation
+   procedure Free is new Ada.Unchecked_Deallocation
      (Pattern_Matcher, Pattern_Matcher_Access);
+
+   procedure Free is new Ada.Unchecked_Deallocation
+     (Filter_List_Elem, Filter_List);
 
    procedure Call_Filters
      (Pid       : Process_Descriptor'Class;
@@ -86,33 +89,12 @@ package body GNAT.Expect is
    procedure Dup2 (Old_Fd, New_Fd : File_Descriptor);
    pragma Import (C, Dup2);
 
-   procedure Kill (Pid : Process_Id; Sig_Num : Integer);
-   pragma Import (C, Kill);
+   procedure Kill (Pid : Process_Id; Sig_Num : Integer; Close : Integer);
+   pragma Import (C, Kill, "__gnat_kill");
+   --  if Close is set to 1 all OS resources used by the Pid must be freed
 
-   function Create_Pipe (Pipe : access Pipe_Type) return Integer;
+   function Create_Pipe (Pipe : not null access Pipe_Type) return Integer;
    pragma Import (C, Create_Pipe, "__gnat_pipe");
-
-   function Read
-     (Fd   : File_Descriptor;
-      A    : System.Address;
-      N    : Integer)
-      return Integer;
-   pragma Import (C, Read, "read");
-   --  Read N bytes to address A from file referenced by FD. Returned value
-   --  is count of bytes actually read, which can be less than N at EOF.
-
-   procedure Close (Fd : File_Descriptor);
-   pragma Import (C, Close);
-   --  Close a file given its file descriptor.
-
-   function Write
-     (Fd   : File_Descriptor;
-      A    : System.Address;
-      N    : Integer)
-      return Integer;
-   pragma Import (C, Write, "write");
-   --  Read N bytes to address A from file referenced by FD. Returned value
-   --  is count of bytes actually read, which can be less than N at EOF.
 
    function Poll
      (Fds     : System.Address;
@@ -129,7 +111,7 @@ package body GNAT.Expect is
 
    function Waitpid (Pid : Process_Id) return Integer;
    pragma Import (C, Waitpid, "__gnat_waitpid");
-   --  Wait for a specific process id, and return its exit code.
+   --  Wait for a specific process id, and return its exit code
 
    ---------
    -- "+" --
@@ -145,8 +127,7 @@ package body GNAT.Expect is
    ---------
 
    function "+"
-     (P    : GNAT.Regpat.Pattern_Matcher)
-      return Pattern_Matcher_Access
+     (P : GNAT.Regpat.Pattern_Matcher) return Pattern_Matcher_Access
    is
    begin
       return new GNAT.Regpat.Pattern_Matcher'(P);
@@ -225,6 +206,9 @@ package body GNAT.Expect is
      (Descriptor : in out Process_Descriptor;
       Status     : out Integer)
    is
+      Current_Filter : Filter_List;
+      Next_Filter    : Filter_List;
+
    begin
       Close (Descriptor.Input_Fd);
 
@@ -235,16 +219,36 @@ package body GNAT.Expect is
       Close (Descriptor.Output_Fd);
 
       --  ??? Should have timeouts for different signals
-      Kill (Descriptor.Pid, 9);
+
+      if Descriptor.Pid > 0 then  --  see comment in Send_Signal
+         Kill (Descriptor.Pid, Sig_Num => 9, Close => 0);
+      end if;
 
       GNAT.OS_Lib.Free (Descriptor.Buffer);
       Descriptor.Buffer_Size := 0;
 
-      Status := Waitpid (Descriptor.Pid);
+      Current_Filter := Descriptor.Filters;
+
+      while Current_Filter /= null loop
+         Next_Filter := Current_Filter.Next;
+         Free (Current_Filter);
+         Current_Filter := Next_Filter;
+      end loop;
+
+      Descriptor.Filters := null;
+
+      --  Check process id (see comment in Send_Signal)
+
+      if Descriptor.Pid > 0 then
+         Status := Waitpid (Descriptor.Pid);
+      else
+         raise Invalid_Process;
+      end if;
    end Close;
 
    procedure Close (Descriptor : in out Process_Descriptor) is
       Status : Integer;
+      pragma Unreferenced (Status);
    begin
       Close (Descriptor, Status);
    end Close;
@@ -296,7 +300,7 @@ package body GNAT.Expect is
       Full_Buffer : Boolean := False)
    is
       Matched : GNAT.Regpat.Match_Array (0 .. 0);
-
+      pragma Warnings (Off, Matched);
    begin
       Expect (Descriptor, Result, Regexp, Matched, Timeout, Full_Buffer);
    end Expect;
@@ -311,7 +315,7 @@ package body GNAT.Expect is
    is
       N           : Expect_Match;
       Descriptors : Array_Of_Pd := (1 => Descriptor'Unrestricted_Access);
-      Try_Until   : Time := Clock + Duration (Timeout) / 1000.0;
+      Try_Until   : constant Time := Clock + Duration (Timeout) / 1000.0;
       Timeout_Tmp : Integer := Timeout;
 
    begin
@@ -344,10 +348,11 @@ package body GNAT.Expect is
             return;
          end if;
 
-         --  Calculate the timeout for the next turn.
+         --  Calculate the timeout for the next turn
+
          --  Note that Timeout is, from the caller's perspective, the maximum
          --  time until a match, not the maximum time until some output is
-         --  read, and thus can not be reused as is for Expect_Internal.
+         --  read, and thus cannot be reused as is for Expect_Internal.
 
          if Timeout /= -1 then
             Timeout_Tmp := Integer (Try_Until - Clock) * 1000;
@@ -381,7 +386,9 @@ package body GNAT.Expect is
       Full_Buffer : Boolean := False)
    is
       Patterns : Compiled_Regexp_Array (Regexps'Range);
-      Matched  : GNAT.Regpat.Match_Array (0 .. 0);
+
+      Matched : GNAT.Regpat.Match_Array (0 .. 0);
+      pragma Warnings (Off, Matched);
 
    begin
       for J in Regexps'Range loop
@@ -403,7 +410,7 @@ package body GNAT.Expect is
       Full_Buffer : Boolean := False)
    is
       Matched : GNAT.Regpat.Match_Array (0 .. 0);
-
+      pragma Warnings (Off, Matched);
    begin
       Expect (Descriptor, Result, Regexps, Matched, Timeout, Full_Buffer);
    end Expect;
@@ -415,7 +422,7 @@ package body GNAT.Expect is
       Full_Buffer : Boolean := False)
    is
       Matched : GNAT.Regpat.Match_Array (0 .. 0);
-
+      pragma Warnings (Off, Matched);
    begin
       Expect (Result, Regexps, Matched, Timeout, Full_Buffer);
    end Expect;
@@ -677,7 +684,7 @@ package body GNAT.Expect is
                                    Descriptors (J).Buffer_Size - N;
                               end if;
 
-                              --  Keep what we read in the buffer.
+                              --  Keep what we read in the buffer
 
                               Descriptors (J).Buffer
                                 (Descriptors (J).Buffer_Index + 1 ..
@@ -730,10 +737,10 @@ package body GNAT.Expect is
      (Descriptor : in out Process_Descriptor;
       Timeout    : Integer := 0)
    is
+      Buffer_Size     : constant Integer := 8192;
       Num_Descriptors : Integer;
       N               : Integer;
       Is_Set          : aliased Integer;
-      Buffer_Size     : Integer := 8192;
       Buffer          : aliased String (1 .. Buffer_Size);
 
    begin
@@ -775,16 +782,99 @@ package body GNAT.Expect is
                end if;
          end case;
       end loop;
-
    end Flush;
+
+   ------------------------
+   -- Get_Command_Output --
+   ------------------------
+
+   function Get_Command_Output
+     (Command    : String;
+      Arguments  : GNAT.OS_Lib.Argument_List;
+      Input      : String;
+      Status     : not null access Integer;
+      Err_To_Out : Boolean := False) return String
+   is
+      use GNAT.Expect;
+
+      Process : Process_Descriptor;
+
+      Output : String_Access := new String (1 .. 1024);
+      --  Buffer used to accumulate standard output from the launched
+      --  command, expanded as necessary during execution.
+
+      Last : Integer := 0;
+      --  Index of the last used character within Output
+
+   begin
+      Non_Blocking_Spawn
+        (Process, Command, Arguments, Err_To_Out => Err_To_Out);
+
+      if Input'Length > 0 then
+         Send (Process, Input);
+      end if;
+
+      GNAT.OS_Lib.Close (Get_Input_Fd (Process));
+
+      declare
+         Result : Expect_Match;
+         pragma Unreferenced (Result);
+
+      begin
+         --  This loop runs until the call to Expect raises Process_Died
+
+         loop
+            Expect (Process, Result, ".+");
+
+            declare
+               NOutput : String_Access;
+               S       : constant String := Expect_Out (Process);
+               pragma Assert (S'Length > 0);
+
+            begin
+               --  Expand buffer if we need more space. Note here that we add
+               --  S'Length to ensure that S will fit in the new buffer size.
+
+               if Last + S'Length > Output'Last then
+                  NOutput := new String (1 .. 2 * Output'Last + S'Length);
+                  NOutput (Output'Range) := Output.all;
+                  Free (Output);
+
+                  --  Here if current buffer size is OK
+
+               else
+                  NOutput := Output;
+               end if;
+
+               NOutput (Last + 1 .. Last + S'Length) := S;
+               Last := Last + S'Length;
+               Output := NOutput;
+            end;
+         end loop;
+
+      exception
+         when Process_Died =>
+            Close (Process, Status.all);
+      end;
+
+      if Last = 0 then
+         return "";
+      end if;
+
+      declare
+         S : constant String := Output (1 .. Last);
+      begin
+         Free (Output);
+         return S;
+      end;
+   end Get_Command_Output;
 
    ------------------
    -- Get_Error_Fd --
    ------------------
 
    function Get_Error_Fd
-     (Descriptor : Process_Descriptor)
-      return       GNAT.OS_Lib.File_Descriptor
+     (Descriptor : Process_Descriptor) return GNAT.OS_Lib.File_Descriptor
    is
    begin
       return Descriptor.Error_Fd;
@@ -795,8 +885,7 @@ package body GNAT.Expect is
    ------------------
 
    function Get_Input_Fd
-     (Descriptor : Process_Descriptor)
-      return       GNAT.OS_Lib.File_Descriptor
+     (Descriptor : Process_Descriptor) return GNAT.OS_Lib.File_Descriptor
    is
    begin
       return Descriptor.Input_Fd;
@@ -807,8 +896,7 @@ package body GNAT.Expect is
    -------------------
 
    function Get_Output_Fd
-     (Descriptor : Process_Descriptor)
-      return       GNAT.OS_Lib.File_Descriptor
+     (Descriptor : Process_Descriptor) return GNAT.OS_Lib.File_Descriptor
    is
    begin
       return Descriptor.Output_Fd;
@@ -819,8 +907,7 @@ package body GNAT.Expect is
    -------------
 
    function Get_Pid
-     (Descriptor : Process_Descriptor)
-      return       Process_Id
+     (Descriptor : Process_Descriptor) return Process_Id
    is
    begin
       return Descriptor.Pid;
@@ -832,7 +919,6 @@ package body GNAT.Expect is
 
    procedure Interrupt (Descriptor : in out Process_Descriptor) is
       SIGINT : constant := 2;
-
    begin
       Send_Signal (Descriptor, SIGINT);
    end Interrupt;
@@ -857,7 +943,102 @@ package body GNAT.Expect is
       Buffer_Size : Natural := 4096;
       Err_To_Out  : Boolean := False)
    is
-   separate;
+      function Fork return Process_Id;
+      pragma Import (C, Fork, "__gnat_expect_fork");
+      --  Starts a new process if possible. See the Unix command fork for more
+      --  information. On systems that do not support this capability (such as
+      --  Windows...), this command does nothing, and Fork will return
+      --  Null_Pid.
+
+      Pipe1, Pipe2, Pipe3 : aliased Pipe_Type;
+
+      Arg        : String_Access;
+      Arg_List   : String_List (1 .. Args'Length + 2);
+      C_Arg_List : aliased array (1 .. Args'Length + 2) of System.Address;
+
+      Command_With_Path : String_Access;
+
+   begin
+      --  Create the rest of the pipes
+
+      Set_Up_Communications
+        (Descriptor, Err_To_Out, Pipe1'Access, Pipe2'Access, Pipe3'Access);
+
+      Command_With_Path := Locate_Exec_On_Path (Command);
+
+      if Command_With_Path = null then
+         raise Invalid_Process;
+      end if;
+
+      --  Fork a new process
+
+      Descriptor.Pid := Fork;
+
+      --  Are we now in the child (or, for Windows, still in the common
+      --  process).
+
+      if Descriptor.Pid = Null_Pid then
+         --  Prepare an array of arguments to pass to C
+
+         Arg := new String (1 .. Command_With_Path'Length + 1);
+         Arg (1 .. Command_With_Path'Length) := Command_With_Path.all;
+         Arg (Arg'Last)        := ASCII.NUL;
+         Arg_List (1)          := Arg;
+
+         for J in Args'Range loop
+            Arg                     := new String (1 .. Args (J)'Length + 1);
+            Arg (1 .. Args (J)'Length)    := Args (J).all;
+            Arg (Arg'Last)                := ASCII.NUL;
+            Arg_List (J + 2 - Args'First) := Arg.all'Access;
+         end loop;
+
+         Arg_List (Arg_List'Last) := null;
+
+         --  Make sure all arguments are compatible with OS conventions
+
+         Normalize_Arguments (Arg_List);
+
+         --  Prepare low-level argument list from the normalized arguments
+
+         for K in Arg_List'Range loop
+            if Arg_List (K) /= null then
+               C_Arg_List (K) := Arg_List (K).all'Address;
+            else
+               C_Arg_List (K) := System.Null_Address;
+            end if;
+         end loop;
+
+         --  This does not return on Unix systems
+
+         Set_Up_Child_Communications
+           (Descriptor, Pipe1, Pipe2, Pipe3, Command_With_Path.all,
+            C_Arg_List'Address);
+      end if;
+
+      Free (Command_With_Path);
+
+      --  Did we have an error when spawning the child ?
+
+      if Descriptor.Pid < Null_Pid then
+         raise Invalid_Process;
+      else
+         --  We are now in the parent process
+
+         Set_Up_Parent_Communications (Descriptor, Pipe1, Pipe2, Pipe3);
+      end if;
+
+      --  Create the buffer
+
+      Descriptor.Buffer_Size := Buffer_Size;
+
+      if Buffer_Size /= 0 then
+         Descriptor.Buffer := new String (1 .. Positive (Buffer_Size));
+      end if;
+
+      --  Initialize the filters
+
+      Descriptor.Filters := null;
+   end Non_Blocking_Spawn;
 
    -------------------------
    -- Reinitialize_Buffer --
@@ -934,24 +1115,26 @@ package body GNAT.Expect is
    ----------
 
    procedure Send
-     (Descriptor : in out Process_Descriptor;
-      Str        : String;
-      Add_LF     : Boolean := True;
+     (Descriptor   : in out Process_Descriptor;
+      Str          : String;
+      Add_LF       : Boolean := True;
       Empty_Buffer : Boolean := False)
    is
-      N           : Natural;
-      Full_Str    : constant String := Str & ASCII.LF;
-      Last        : Natural;
-      Result      : Expect_Match;
+      Line_Feed   : aliased constant String := (1 .. 1 => ASCII.LF);
       Descriptors : Array_Of_Pd := (1 => Descriptor'Unrestricted_Access);
+
+      Result  : Expect_Match;
+      Discard : Natural;
+      pragma Warnings (Off, Result);
+      pragma Warnings (Off, Discard);
 
    begin
       if Empty_Buffer then
 
-         --  Force a read on the process if there is anything waiting.
+         --  Force a read on the process if there is anything waiting
 
-         Expect_Internal (Descriptors, Result,
-                          Timeout => 0, Full_Buffer => False);
+         Expect_Internal
+           (Descriptors, Result, Timeout => 0, Full_Buffer => False);
          Descriptor.Last_Match_End := Descriptor.Buffer_Index;
 
          --  Empty the buffer
@@ -959,17 +1142,15 @@ package body GNAT.Expect is
          Reinitialize_Buffer (Descriptor);
       end if;
 
+      Call_Filters (Descriptor, Str, Input);
+      Discard :=
+        Write (Descriptor.Input_Fd, Str'Address, Str'Last - Str'First + 1);
+
       if Add_LF then
-         Last := Full_Str'Last;
-      else
-         Last := Full_Str'Last - 1;
+         Call_Filters (Descriptor, Line_Feed, Input);
+         Discard :=
+           Write (Descriptor.Input_Fd, Line_Feed'Address, 1);
       end if;
-
-      Call_Filters (Descriptor, Full_Str (Full_Str'First .. Last), Input);
-
-      N := Write (Descriptor.Input_Fd,
-                  Full_Str'Address,
-                  Last - Full_Str'First + 1);
    end Send;
 
    -----------------
@@ -981,8 +1162,19 @@ package body GNAT.Expect is
       Signal     : Integer)
    is
    begin
-      Kill (Descriptor.Pid, Signal);
-      --  ??? Need to check process status here.
+      --  A nonpositive process id passed to kill has special meanings. For
+      --  example, -1 means kill all processes in sight, including self, in
+      --  POSIX and Windows (and something slightly different in Linux). See
+      --  man pages for details. In any case, we don't want to do that. Note
+      --  that Descriptor.Pid will be -1 if the process was not successfully
+      --  started; we don't want to kill ourself in that case.
+
+      if Descriptor.Pid > 0 then
+         Kill (Descriptor.Pid, Signal, Close => 1);
+         --  ??? Need to check process status here
+      else
+         raise Invalid_Process;
+      end if;
    end Send_Signal;
 
    ---------------------------------
@@ -994,8 +1186,8 @@ package body GNAT.Expect is
       Pipe1 : in out Pipe_Type;
       Pipe2 : in out Pipe_Type;
       Pipe3 : in out Pipe_Type;
-      Cmd   : in String;
-      Args  : in System.Address)
+      Cmd   : String;
+      Args  : System.Address)
    is
       pragma Warnings (Off, Pid);
 
@@ -1033,7 +1225,7 @@ package body GNAT.Expect is
 
       Dup2 (Input,  GNAT.OS_Lib.Standin);
       Dup2 (Output, GNAT.OS_Lib.Standout);
-      Dup2 (Error, GNAT.OS_Lib.Standerr);
+      Dup2 (Error,  GNAT.OS_Lib.Standerr);
       Close (Input);
       Close (Output);
       Close (Error);
@@ -1046,10 +1238,13 @@ package body GNAT.Expect is
    procedure Set_Up_Communications
      (Pid        : in out Process_Descriptor;
       Err_To_Out : Boolean;
-      Pipe1      : access Pipe_Type;
-      Pipe2      : access Pipe_Type;
-      Pipe3      : access Pipe_Type)
+      Pipe1      : not null access Pipe_Type;
+      Pipe2      : not null access Pipe_Type;
+      Pipe3      : not null access Pipe_Type)
    is
+      Status : Boolean;
+      pragma Unreferenced (Status);
+
    begin
       --  Create the pipes
 
@@ -1061,18 +1256,35 @@ package body GNAT.Expect is
          return;
       end if;
 
+      --  Record the 'parent' end of the two pipes in Pid:
+      --    Child stdin  is connected to the 'write' end of Pipe1;
+      --    Child stdout is connected to the 'read'  end of Pipe2.
+      --  We do not want these descriptors to remain open in the child
+      --  process, so we mark them close-on-exec/non-inheritable.
+
       Pid.Input_Fd  := Pipe1.Output;
+      Set_Close_On_Exec (Pipe1.Output, True, Status);
       Pid.Output_Fd := Pipe2.Input;
+      Set_Close_On_Exec (Pipe2.Input, True, Status);
 
       if Err_To_Out then
+
+         --  Reuse the standard output pipe for standard error
+
          Pipe3.all := Pipe2.all;
       else
+
+         --  Create a separate pipe for standard error
+
          if Create_Pipe (Pipe3) /= 0 then
             return;
          end if;
       end if;
 
+      --  As above, record the proper fd for the child's standard error stream
+
       Pid.Error_Fd := Pipe3.Input;
+      Set_Close_On_Exec (Pipe3.Input, True, Status);
    end Set_Up_Communications;
 
    ----------------------------------
@@ -1086,7 +1298,6 @@ package body GNAT.Expect is
       Pipe3 : in out Pipe_Type)
    is
       pragma Warnings (Off, Pid);
-
    begin
       Close (Pipe1.Input);
       Close (Pipe2.Output);
@@ -1104,7 +1315,6 @@ package body GNAT.Expect is
    is
       pragma Warnings (Off, Descriptor);
       pragma Warnings (Off, User_Data);
-
    begin
       GNAT.IO.Put (Str);
    end Trace_Filter;

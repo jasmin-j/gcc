@@ -1,5 +1,5 @@
+// { dg-do assemble  }
 // Bug: g++ tries to generate an op= for DbmItem and fails.
-// Build don't link:
 
 class RefCount{
 public:
@@ -11,5 +11,5 @@ private:
 
 class DbmItem: public RefCount{
 public:
-  DbmItem(): RefCount() {};
+  DbmItem(): RefCount() {}
 };

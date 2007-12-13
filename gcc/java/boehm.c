@@ -1,11 +1,11 @@
 /* Functions related to the Boehm garbage collector.
-   Copyright (C) 2000, 2003 Free Software Foundation, Inc.
+   Copyright (C) 2000, 2003, 2004, 2006 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -14,9 +14,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.
 
 Java and all Java-based marks are trademarks or registered trademarks
 of Sun Microsystems, Inc. in the United States and other countries.
@@ -40,13 +39,21 @@ static void mark_reference_fields (tree, unsigned HOST_WIDE_INT *,
 static void set_bit (unsigned HOST_WIDE_INT *, unsigned HOST_WIDE_INT *,
 		     unsigned int);
 
+/* A procedure-based object descriptor.  We know that our
+   `kind' is 0, and `env' is likewise 0, so we have a simple
+   computation.  From the GC sources:
+   (((((env) << LOG_MAX_MARK_PROCS) | (proc_index)) << DS_TAG_BITS)	\
+   | DS_PROC)
+   Here DS_PROC == 2.  */
+#define PROCEDURE_OBJECT_DESCRIPTOR 2
+
 /* Treat two HOST_WIDE_INT's as a contiguous bitmap, with bit 0 being
    the least significant.  This function sets bit N in the bitmap.  */
 static void
 set_bit (unsigned HOST_WIDE_INT *low, unsigned HOST_WIDE_INT *high,
 	 unsigned int n)
 {
-  HOST_WIDE_INT *which;
+  unsigned HOST_WIDE_INT *which;
 
   if (n >= HOST_BITS_PER_WIDE_INT)
     {
@@ -56,7 +63,7 @@ set_bit (unsigned HOST_WIDE_INT *low, unsigned HOST_WIDE_INT *high,
   else
     which = low;
 
-  *which |= (HOST_WIDE_INT) 1 << n;
+  *which |= (unsigned HOST_WIDE_INT) 1 << n;
 }
 
 /* Recursively mark reference fields.  */
@@ -90,6 +97,7 @@ mark_reference_fields (tree field,
 
       offset = int_byte_position (field);
       size_bytes = int_size_in_bytes (TREE_TYPE (field));
+
       if (JREFERENCE_TYPE_P (TREE_TYPE (field))
 	  /* An `object' of type gnu.gcj.RawData is actually non-Java
 	     data.  */
@@ -101,8 +109,14 @@ mark_reference_fields (tree field,
 
 	  /* If this reference slot appears to overlay a slot we think
 	     we already covered, then we are doomed.  */
-	  if (offset <= *last_view_index)
-	    abort ();
+	  gcc_assert (offset > *last_view_index);
+
+	  if (offset % (POINTER_SIZE / BITS_PER_UNIT))
+	    {
+	      *all_bits_set = -1;
+	      *pointer_after_end = 1;
+	      break;
+	    }
 
 	  count = offset * BITS_PER_UNIT / POINTER_SIZE;
 	  size_words = size_bytes * BITS_PER_UNIT / POINTER_SIZE;
@@ -146,12 +160,13 @@ get_boehm_type_descriptor (tree type)
   HOST_WIDE_INT last_view_index = -1;
   int pointer_after_end = 0;
   unsigned HOST_WIDE_INT low = 0, high = 0;
-  tree field, value;
+  tree field, value, value_type;
 
   /* If the GC wasn't requested, just use a null pointer.  */
   if (! flag_use_boehm_gc)
     return null_pointer_node;
 
+  value_type = java_type_for_mode (ptr_mode, 1);
   /* If we have a type of unknown size, use a proc.  */
   if (int_size_in_bytes (type) == -1)
     goto procedure_object_descriptor;
@@ -184,7 +199,7 @@ get_boehm_type_descriptor (tree type)
   /* If the object is all pointers, or if the part with pointers fits
      in our bitmap, then we are ok.  Otherwise we have to allocate it
      a different way.  */
-  if (all_bits_set != -1)
+  if (all_bits_set != -1 || (pointer_after_end && flag_reduced_reflection))
     {
       /* In this case the initial part of the object is all reference
 	 fields, and the end of the object is all non-reference
@@ -193,7 +208,12 @@ get_boehm_type_descriptor (tree type)
 	 this:
 	 value = DS_LENGTH | WORDS_TO_BYTES (last_set_index + 1);
 	 DS_LENGTH is 0.
-	 WORDS_TO_BYTES shifts by log2(bytes-per-pointer).  */
+	 WORDS_TO_BYTES shifts by log2(bytes-per-pointer).
+
+         In the case of flag_reduced_reflection and the bitmap would
+         overflow, we tell the gc that the object is all pointers so
+         that we don't have to emit reflection data for run time
+         marking. */
       count = 0;
       low = 0;
       high = 0;
@@ -205,26 +225,35 @@ get_boehm_type_descriptor (tree type)
 	  last_set_index >>= 1;
 	  ++count;
 	}
-      value = build_int_2 (low, high);
+      value = build_int_cst_wide (value_type, low, high);
     }
   else if (! pointer_after_end)
     {
       /* Bottom two bits for bitmap mark type are 01.  */
       set_bit (&low, &high, 0);
-      value = build_int_2 (low, high);
+      value = build_int_cst_wide (value_type, low, high);
     }
   else
     {
-      /* Compute a procedure-based object descriptor.  We know that our
-	 `kind' is 0, and `env' is likewise 0, so we have a simple
-	 computation.  From the GC sources:
-	    (((((env) << LOG_MAX_MARK_PROCS) | (proc_index)) << DS_TAG_BITS) \
-	    | DS_PROC)
-	 Here DS_PROC == 2.  */
     procedure_object_descriptor:
-      value = build_int_2 (2, 0);
+      value = build_int_cst (value_type, PROCEDURE_OBJECT_DESCRIPTOR);
     }
 
-  TREE_TYPE (value) = java_type_for_mode (ptr_mode, 1);
   return value;
+}
+
+/* The fourth (index of 3) element in the vtable is the GC descriptor.
+   A value of 2 indicates that the class uses _Jv_MarkObj. */
+bool
+uses_jv_markobj_p (tree dtable)
+{
+  tree v;
+  /* FIXME: what do we return if !flag_use_boehm_gc ? */
+  gcc_assert (flag_use_boehm_gc);
+  /* FIXME: this is wrong if TARGET_VTABLE_USES_DESCRIPTORS.  However,
+     this function is only used with flag_reduced_reflection.  No
+     point in asserting unless we hit the bad case.  */
+  gcc_assert (!flag_reduced_reflection || TARGET_VTABLE_USES_DESCRIPTORS == 0);
+  v = VEC_index (constructor_elt, CONSTRUCTOR_ELTS (dtable), 3)->value;
+  return (PROCEDURE_OBJECT_DESCRIPTOR == TREE_INT_CST_LOW (v));
 }

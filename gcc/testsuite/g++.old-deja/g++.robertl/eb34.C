@@ -1,7 +1,7 @@
-// Build don't link:
+// { dg-do assemble  }
 class Base {
 public:
-  class Bar { public: virtual ~Bar() {}; };
+  class Bar { public: virtual ~Bar() {} };
 };
 
 class Derived : public Base {

@@ -1,6 +1,6 @@
 // locks.h - Thread synchronization primitives. Sparc implementation.
 
-/* Copyright (C) 2002  Free Software Foundation
+/* Copyright (C) 2002, 2007  Free Software Foundation
 
    This file is part of libgcj.
 
@@ -38,11 +38,22 @@ release_set(volatile obj_addr_t *addr, obj_addr_t new_val)
 }
 
 inline static bool
-compare_and_swap_release(volatile obj_addr_t *addr,
-		  				     obj_addr_t old,
-						     obj_addr_t new_val)
+compare_and_swap_release(volatile obj_addr_t *addr, obj_addr_t old,
+			 obj_addr_t new_val)
 {
   return compare_and_swap(addr, old, new_val);
+}
+
+inline static void
+read_barrier()
+{
+  __asm__ __volatile__("membar #LoadLoad | #LoadStore" : : : "memory");
+}
+
+inline static void
+write_barrier()
+{
+  __asm__ __volatile__("membar #StoreLoad | #StoreStore" : : : "memory");
 }
 #else
 /* Sparc32 implementation, use a spinlock.  */
@@ -54,11 +65,11 @@ __cas_start_atomic(void)
   unsigned int tmp;
   __asm__ __volatile__(
 "1:	ldstub	[%1], %0\n"
-"	orcc	%0, 0x0, %g0\n"
+"	orcc	%0, 0x0, %%g0\n"
 "	be	3f\n"
 "	 nop\n"
 "2:	ldub	[%1], %0\n"
-"	orcc	%0, 0x0, %g0\n"
+"	orcc	%0, 0x0, %%g0\n"
 "	bne	2b\n"
 "	 nop\n"
 "3:"	: "=&r" (tmp)
@@ -109,11 +120,22 @@ release_set(volatile obj_addr_t *addr, obj_addr_t new_val)
 }
 
 inline static bool
-compare_and_swap_release(volatile obj_addr_t *addr,
-		  				     obj_addr_t old,
-						     obj_addr_t new_val)
+compare_and_swap_release(volatile obj_addr_t *addr, obj_addr_t old,
+			 obj_addr_t new_val)
 {
   return compare_and_swap(addr, old, new_val);
+}
+
+inline static void
+read_barrier()
+{
+  __asm__ __volatile__ ("" : : : "memory");
+}
+
+inline static void
+write_barrier()
+{
+  __asm__ __volatile__ ("" : : : "memory");
 }
 #endif /* __arch64__ */
 

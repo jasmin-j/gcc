@@ -1,4 +1,5 @@
-// Build don't link:
+// { dg-do assemble  }
+// { dg-options "-Waddress" }
 
 struct foo {
   bool test();
@@ -10,10 +11,10 @@ void test() {
   bool (foo::* pmf)() = &foo::test;
   bool (*pf)() = func;
 
-  if (A.test) ;			// ERROR - 
-  if (func) ;			// WARNING - 
-  if (bool(A.test)) ;		// ERROR - 
-  if (bool(func)) ;             // WARNING - 
+  if (A.test) ;			// { dg-error "" } 
+  if (func) ;			// { dg-warning "" } 
+  if (bool(A.test)) ;		// { dg-error "" } 
+  if (bool(func)) ;             // { dg-warning "" } 
   if (pmf) ;
   if (pf) ;
 }

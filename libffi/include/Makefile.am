@@ -1,9 +1,12 @@
 ## Process this with automake to create Makefile.in
 
-AUTOMAKE_OPTIONS = foreign
+AUTOMAKE_OPTIONS=foreign
 
-EXTRA_DIST = ffi.h.in ffi_common.h ffi_mips.h
+DISTCLEANFILES=ffitarget.h
+EXTRA_DIST=ffi.h.in ffi_common.h
 
-hackdir=$(includedir)
+# Where generated headers like ffitarget.h get installed.
+gcc_version   := $(shell cat $(top_srcdir)/../gcc/BASE-VER)
+toollibffidir := $(libdir)/gcc/$(target_alias)/$(gcc_version)/include
 
-hack_DATA=fficonfig.h ffi.h ffi_mips.h
+toollibffi_HEADERS = ffi.h ffitarget.h

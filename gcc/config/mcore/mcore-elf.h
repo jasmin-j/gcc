@@ -1,23 +1,23 @@
 /* Definitions of MCore target. 
-   Copyright (C) 1998, 1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004, 2007
+   Free Software Foundation, Inc.
    Contributed by Cygnus Solutions.
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef __MCORE_ELF_H__
 #define __MCORE_ELF_H__
@@ -25,45 +25,19 @@ Boston, MA 02111-1307, USA.  */
 /* Run-time Target Specification.  */
 #define TARGET_VERSION fputs (" (Motorola MCORE/elf)", stderr)
 
-#define SUBTARGET_CPP_PREDEFINES " -D__ELF__"
-
 /* Use DWARF2 debugging info.  */
 #define DWARF2_DEBUGGING_INFO 1
 
 #undef  PREFERRED_DEBUGGING_TYPE
 #define PREFERRED_DEBUGGING_TYPE DWARF2_DEBUG
 
-/* But allow DWARF 1 if the user wants it.  */
-#define DWARF_DEBUGGING_INFO 1
-
-#define EXPORTS_SECTION_ASM_OP	"\t.section .exports"
-
-#define SUBTARGET_EXTRA_SECTIONS in_exports
-
-#define SUBTARGET_EXTRA_SECTION_FUNCTIONS	\
-  EXPORT_SECTION_FUNCTION
-
-#define EXPORT_SECTION_FUNCTION 				\
-void								\
-exports_section ()						\
-{								\
-  if (in_section != in_exports)					\
-    {								\
-      fprintf (asm_out_file, "%s\n", EXPORTS_SECTION_ASM_OP);	\
-      in_section = in_exports;					\
-    }								\
-}
-
-#define SUBTARGET_SWITCH_SECTIONS		\
-  case in_exports: exports_section (); break;
-
-
 #define MCORE_EXPORT_NAME(STREAM, NAME)			\
   do							\
     {							\
-      exports_section ();				\
+      fprintf (STREAM, "\t.section .exports\n");	\
       fprintf (STREAM, "\t.ascii \" -export:%s\"\n",	\
 	       (* targetm.strip_name_encoding) (NAME));	\
+      in_section = NULL;				\
     }							\
   while (0);
 
@@ -77,7 +51,7 @@ exports_section ()						\
       if (mcore_dllexport_name_p (NAME))			\
 	{							\
           MCORE_EXPORT_NAME (FILE, NAME);			\
-	  function_section (DECL);				\
+	  switch_to_section (function_section (DECL));		\
 	}							\
       ASM_OUTPUT_TYPE_DIRECTIVE (FILE, NAME, "function");	\
       ASM_DECLARE_RESULT (FILE, DECL_RESULT (DECL));		\
@@ -93,9 +67,9 @@ exports_section ()						\
       HOST_WIDE_INT size;					\
       if (mcore_dllexport_name_p (NAME))			\
         {							\
-          enum in_section save_section = in_section;		\
+	  section *save_section = in_section;			\
 	  MCORE_EXPORT_NAME (FILE, NAME);			\
-          switch_to_section (save_section, (DECL));		\
+	  switch_to_section (save_section);			\
         }							\
       ASM_OUTPUT_TYPE_DIRECTIVE (FILE, NAME, "object");		\
       size_directive_output = 0;				\
@@ -144,7 +118,7 @@ exports_section ()						\
 #define ENDFILE_SPEC  "%{!mno-lsim:-lsim} crtend.o%s crtn.o%s"
 
 /* The subroutine calls in the .init and .fini sections create literal
-   pools which must be jumped around...  */
+   pools which must be jumped around....  */
 #define FORCE_CODE_SECTION_ALIGN	asm ("br 1f ; .literals ; 1:");
 
 #undef  CTORS_SECTION_ASM_OP

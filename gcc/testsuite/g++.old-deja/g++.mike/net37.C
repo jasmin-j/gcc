@@ -1,3 +1,4 @@
+// { dg-do run  }
 class B {
 public:
     int bi;
@@ -16,7 +17,7 @@ typedef void (D::*DPROC)(void);
 union AFX_PMSG {
 public:
 
-  AFX_PMSG () {};
+  AFX_PMSG () {}
   AFX_PMSG ( BPROC bpr ) { bfn = bpr ; }
 
   operator BPROC() { return bfn; }

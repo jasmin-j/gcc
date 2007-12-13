@@ -5,10 +5,8 @@
 --                     S Y S T E M . T A S K _ I N F O                      --
 --                                                                          --
 --                                 S p e c                                  --
---                           (Compiler Interface)                           --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -18,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -34,16 +32,19 @@
 ------------------------------------------------------------------------------
 
 --  This package contains the definitions and routines associated with the
---  implementation of the Task_Info pragma. It is specialized appropriately
---  for targets that make use of this pragma.
+--  implementation and use of the Task_Info pragma. It is specialized
+--  appropriately for targets that make use of this pragma.
 
 --  Note: the compiler generates direct calls to this interface, via Rtsfind.
 --  Any changes to this interface may require corresponding compiler changes.
 
-with Unchecked_Deallocation;
+--  This unit may be used directly from an application program by providing
+--  an appropriate WITH, and the interface can be expected to remain stable.
+
 package System.Task_Info is
-pragma Elaborate_Body;
---  To ensure that a body is allowed
+   pragma Preelaborate;
+   pragma Elaborate_Body;
+   --  To ensure that a body is allowed
 
    -----------------------------------------
    -- Implementation of Task_Info Feature --
@@ -60,7 +61,7 @@ pragma Elaborate_Body;
 
    --  The Task_Info pragma appears within a task definition (compare the
    --  definition and implementation of pragma Priority). If no such pragma
-   --  appears, then the value Task_Info_Unspecified is passed. If a pragma
+   --  appears, then the value Unspecified_Task_Info is passed. If a pragma
    --  is present, then it supplies an alternative value. If the argument of
    --  the pragma is a discriminant reference, then the value can be set on
    --  a task by task basis by supplying the appropriate discriminant value.
@@ -86,13 +87,6 @@ pragma Elaborate_Body;
    --  Task_Info pragma. This type may be specialized for individual
    --  implementations, but it must be a type that can be used as a
    --  discriminant (i.e. a scalar or access type).
-
-   type Task_Image_Type is access String;
-   --  Used to generate a meaningful identifier for tasks that are variables
-   --  and components of variables.
-
-   procedure Free_Task_Image is new
-     Unchecked_Deallocation (String, Task_Image_Type);
 
    Unspecified_Task_Info : constant Task_Info_Type := Default_Scope;
    --  Value passed to task in the absence of a Task_Info pragma

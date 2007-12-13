@@ -22,8 +22,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.
+the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.
 
    As a special exception, if you link this library with files
    compiled with GCC to produce an executable, this does not cause
@@ -41,6 +41,7 @@ Boston, MA 02111-1307, USA.
 
 #include <ppc-asm.h>
 
+#ifndef __powerpc64__
 	.section ".got","aw"
 	.globl	__GOT_START__
 	.type	__GOT_START__,@object
@@ -122,3 +123,4 @@ FUNC_START(__fini)
 	stwu 1,-16(1)
 	mflr 0
 	stw 0,20(1)
+#endif

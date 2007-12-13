@@ -1,5 +1,6 @@
-// Skip if not target: i?86-*-linux* i?86-*-freebsd*
-// Special g++ Options: -malign-double
+// { dg-do run { target i?86-*-linux* x86_64-*-linux* i?86-*-freebsd* i?86-*-darwin* } }
+// { dg-require-effective-target ilp32 }
+// { dg-options "-malign-double" }
 // Origin: Alex Samuel <samuel@codesourcery.com>
 
 /* Test the size and alignment of fundamental C types for compliance

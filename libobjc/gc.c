@@ -1,23 +1,23 @@
 /* Basic data types for Objective C.
-   Copyright (C) 1998, 2002 Free Software Foundation, Inc.
+   Copyright (C) 1998, 2002, 2004, 2005, 2006 Free Software Foundation, Inc.
    Contributed by Ovidiu Predescu.
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 2, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING.  If not, write to
+the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
 /* As a special exception, if you link this library with files
    compiled with GCC to produce an executable, this does not cause
@@ -26,31 +26,22 @@ Boston, MA 02111-1307, USA.  */
    the executable file might be covered by the GNU General Public License.  */
 
 #include "tconfig.h"
-#include "objc.h"
-#include "encoding.h"
+#include "objc/objc.h"
+#include "objc/encoding.h"
 
 #include <assert.h>
 #include <string.h>
+#include <stdlib.h>
 
 #if OBJC_WITH_GC
 
 #include <gc.h>
+#include <limits.h>
 
 /* gc_typed.h uses the following but doesn't declare them */
 typedef GC_word word;
 typedef GC_signed_word signed_word;
-
-#if BITS_PER_WORD == 32
-# define LOGWL	5
-# define modWORDSZ(n) ((n) & 0x1f)        /* n mod size of word	    */
-#endif
-
-#if BITS_PER_WORD == 64
-# define LOGWL 6
-# define modWORDSZ(n) ((n) & 0x3f)        /* n mod size of word	    */
-#endif
-
-#define divWORDSZ(n) ((n) >> LOGWL)	   /* divide n by size of word      */
+#define BITS_PER_WORD (CHAR_BIT * sizeof (word))
 
 #include <gc_typed.h>
 
@@ -259,7 +250,7 @@ __objc_class_structure_encoding (Class class, char **type, int *size,
   if (! class)
     {
       strcat (*type, "{");
-      *current++;
+      (*current)++;
       return;
     }
 
@@ -406,30 +397,34 @@ class_ivar_set_gcinvisible (Class class, const char *ivarname,
       if (*type == _C_GCINVISIBLE)
 	{
 	  char *new_type;
+	  size_t len;
 
 	  if (gc_invisible || ! __objc_ivar_pointer (type))
 	    return;	/* The type of the variable already matches the
 			   requested gc_invisible type */
 
-	  /* The variable is gc_invisible and we have to reverse it */
-	  new_type = objc_atomic_malloc (strlen (ivar->ivar_type));
-	  strncpy (new_type, ivar->ivar_type,
-		   (size_t)(type - ivar->ivar_type));
+	  /* The variable is gc_invisible so we make it gc visible.  */
+	  new_type = objc_atomic_malloc (strlen(ivar->ivar_type));
+	  len = (type - ivar->ivar_type);
+	  memcpy (new_type, ivar->ivar_type, len);
+	  new_type[len] = 0;
 	  strcat (new_type, type + 1);
 	  ivar->ivar_type = new_type;
 	}
       else
 	{
 	  char *new_type;
+	  size_t len;
 
 	  if (! gc_invisible || ! __objc_ivar_pointer (type))
 	    return;	/* The type of the variable already matches the
 			   requested gc_invisible type */
 
-	  /* The variable is gc visible and we have to make it gc_invisible */
-	  new_type = objc_malloc (strlen (ivar->ivar_type) + 2);
-	  strncpy (new_type, ivar->ivar_type,
-		   (size_t)(type - ivar->ivar_type));
+	  /* The variable is gc visible so we make it gc_invisible.  */
+	  new_type = objc_malloc (strlen(ivar->ivar_type) + 2);
+	  len = (type - ivar->ivar_type);
+	  memcpy (new_type, ivar->ivar_type, len);
+	  new_type[len] = 0;
 	  strcat (new_type, "!");
 	  strcat (new_type, type);
 	  ivar->ivar_type = new_type;

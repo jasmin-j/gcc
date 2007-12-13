@@ -1,4 +1,4 @@
-// Build don't link:
+// { dg-do assemble  }
 // prms-id: 1989
 
 #define TRUE true
@@ -12,9 +12,9 @@ struct link {
     link *prev;
 
     link(const T& t): item(t), prev(0), next(0)
-	{ };
+	{ }
     link(const T& t, link<T> *p, link<T> *n): item(t), prev(p), next(n)
-	{ };
+	{ }
 };
 
 template<class T>
@@ -182,9 +182,9 @@ template<class T>
 class List_DLS: public List_DL<T> {
 public:
     List_DLS(): List_DL<T>()
-	{ };
+	{ }
     List_DLS(const List_DLS& other): List_DL<T>(other)
-	{ };
+	{ }
 
     bool contains(const T& item) const
 	{ return search(item) != 0 ? TRUE: FALSE; }
@@ -195,8 +195,8 @@ template<class T>
 Pix
 List_DLS<T>::search(const T& item) const
 {
-    for (Pix x=first(); 0 != x; next(x)) {
-	if (item == operator()(x)) // ERROR - const subversion
+    for (Pix x=this->first(); 0 != x; this->next(x)) {
+	if (item == this->operator()(x)) // { dg-error "" } const subversion
 	    return x;
     }
     return 0;
@@ -206,9 +206,9 @@ template<class T>
 class List_DLSp: public List_DL<T> {
 public:
     List_DLSp(): List_DL<T>()
-	{ };
+	{ }
     List_DLSp(const List_DLSp& other): List_DL<T>(other)
-	{ };
+	{ }
 
     bool contains(const T& item) const
 #ifndef INTERNAL_ERROR
@@ -223,8 +223,8 @@ template<class T>
 bool
 List_DLSp<T>::contains(const T& item) const
 {
-    for (Pix x=first(); 0 != x; next(x)) {
-	if (*item == *operator()(x))
+    for (Pix x=this->first(); 0 != x; this->next(x)) {
+        if (*item == *(this->operator()(x)))
 	    return TRUE;
     }
     return FALSE;
@@ -334,10 +334,10 @@ struct vertex {
     T item;
     List_DL<vertex<T> *> fanout;
 
-    vertex(): item(), fanout()	// gets bogus error
-      { };
-    vertex(const T& i): item(), fanout() // gets bogus error
-      { };
+    vertex(): item(), fanout()	// { dg-bogus "" } 
+      { }
+    vertex(const T& i): item(), fanout() // { dg-bogus "" } 
+      { }
 };
 
 template<class T>
@@ -485,8 +485,8 @@ class STRLIdentifier {
     char buf[10];
 };
 
-extern int operator==(vertex<STRLIdentifier*>&, vertex<STRLIdentifier*>&); // ERROR - const subversion
-extern int operator==(STRLIdentifier&, STRLIdentifier&); // ERROR - fn ref in err msg
+extern int operator==(vertex<STRLIdentifier*>&, vertex<STRLIdentifier*>&); // { dg-error "" } const subversion
+extern int operator==(STRLIdentifier&, STRLIdentifier&); // { dg-error "" } fn ref in err msg
 
 extern int x(List_DLSp<STRLIdentifier *>);
 

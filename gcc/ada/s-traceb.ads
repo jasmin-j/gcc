@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1999-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1999-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -37,6 +36,10 @@
 --  calls in the call chain, up to either the top or a designated
 --  number of levels.
 
+pragma Warnings (Off);
+pragma Compiler_Unit;
+pragma Warnings (On);
+
 pragma Polling (Off);
 --  We must turn polling off for this unit, because otherwise we get
 --  elaboration circularities with System.Exception_Tables.
@@ -52,7 +55,8 @@ package System.Traceback is
       Max_Len     : Natural;
       Len         : out Natural;
       Exclude_Min : System.Address := System.Null_Address;
-      Exclude_Max : System.Address := System.Null_Address);
+      Exclude_Max : System.Address := System.Null_Address;
+      Skip_Frames : Natural := 1);
    --  Store up to Max_Len code locations in Traceback, corresponding to
    --  the current call chain.
    --
@@ -69,6 +73,12 @@ package System.Traceback is
    --    Exclude_Min/Exclude_Max, if non null, provide a range of addresses
    --    to ignore from the computation of the traceback.
    --
+   --    Skip_Frames says how many of the most recent calls should at least
+   --    be excluded from the result, regardless of the exclusion bounds and
+   --    starting with this procedure itself: 1 means exclude the frame for
+   --    this procedure, 2 means 1 + exclude the frame for this procedure's
+   --    caller, ...
+   --
    --  On return, the Traceback array is filled in, and Len indicates
    --  the number of stored entries. The first entry is the most recent
    --  call, and the last entry is the highest level call.
@@ -78,6 +88,6 @@ package System.Traceback is
       Max_Len   : Natural)
       return      Natural;
    pragma Export (C, C_Call_Chain, "system__traceback__c_call_chain");
-   --  Version that can be used directly from C.
+   --  Version that can be used directly from C
 
 end System.Traceback;

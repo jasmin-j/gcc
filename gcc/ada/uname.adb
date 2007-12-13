@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -37,7 +36,6 @@ with Casing;   use Casing;
 with Einfo;    use Einfo;
 with Hostparm;
 with Lib;      use Lib;
-with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Output;   use Output;
 with Sinfo;    use Sinfo;
@@ -139,7 +137,7 @@ package body Uname is
 
       while Name_Buffer (Name_Len) /= '.' loop
          if Name_Len = 1 then
-            return No_Name; -- not a child or subunit name
+            return No_Unit_Name;
          else
             Name_Len := Name_Len - 1;
          end if;
@@ -226,7 +224,7 @@ package body Uname is
       -------------------
 
       procedure Add_Node_Name (Node : Node_Id) is
-         Kind : Node_Kind := Nkind (Node);
+         Kind : constant Node_Kind := Nkind (Node);
 
       begin
          --  Just ignore an error node (someone else will give a message)
@@ -353,9 +351,9 @@ package body Uname is
          return N;
       end Get_Parent;
 
-   --------------------------------------------
-   --  Start of Processing for Get_Unit_Name --
-   --------------------------------------------
+   -------------------------------------------
+   -- Start of Processing for Get_Unit_Name --
+   -------------------------------------------
 
    begin
       Node := N;
@@ -426,7 +424,10 @@ package body Uname is
    -- Get_Unit_Name_String --
    --------------------------
 
-   procedure Get_Unit_Name_String (N : Unit_Name_Type) is
+   procedure Get_Unit_Name_String
+     (N      : Unit_Name_Type;
+      Suffix : Boolean := True)
+   is
       Unit_Is_Body : Boolean;
 
    begin
@@ -448,10 +449,12 @@ package body Uname is
 
       --  Now adjust the %s or %b to (spec) or (body)
 
-      if Unit_Is_Body then
-         Name_Buffer (Name_Len - 1 .. Name_Len + 5) := " (body)";
-      else
-         Name_Buffer (Name_Len - 1 .. Name_Len + 5) := " (spec)";
+      if Suffix then
+         if Unit_Is_Body then
+            Name_Buffer (Name_Len - 1 .. Name_Len + 5) := " (body)";
+         else
+            Name_Buffer (Name_Len - 1 .. Name_Len + 5) := " (spec)";
+         end if;
       end if;
 
       for J in 1 .. Name_Len loop
@@ -460,7 +463,13 @@ package body Uname is
          end if;
       end loop;
 
-      Name_Len := Name_Len + (7 - 2);
+      --  Adjust Name_Len
+
+      if Suffix then
+         Name_Len := Name_Len + (7 - 2);
+      else
+         Name_Len := Name_Len - 2;
+      end if;
    end Get_Unit_Name_String;
 
    ------------------
@@ -528,8 +537,7 @@ package body Uname is
 
    function New_Child
      (Old  : Unit_Name_Type;
-      Newp : Unit_Name_Type)
-      return Unit_Name_Type
+      Newp : Unit_Name_Type) return Unit_Name_Type
    is
       P : Natural;
 
@@ -537,7 +545,7 @@ package body Uname is
       Get_Name_String (Old);
 
       declare
-         Child : String := Name_Buffer (1 .. Name_Len);
+         Child : constant String := Name_Buffer (1 .. Name_Len);
 
       begin
          Get_Name_String (Newp);

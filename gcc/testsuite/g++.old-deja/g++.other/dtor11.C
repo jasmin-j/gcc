@@ -1,3 +1,4 @@
+// { dg-do run  }
 // Origin: Mark Mitchell <mark@codesourcery.com>
 
 extern "C" void abort ();
@@ -15,7 +16,7 @@ struct S {
 
 struct T {
   void g (S) {
-  };
+  }
 };
 
 struct U {

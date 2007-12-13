@@ -1,22 +1,22 @@
 /* Definitions for SOM assembler support.
-   Copyright (C) 1999, 2001, 2002, 2003 Free Software Foundation, Inc.
+   Copyright (C) 1999, 2001, 2002, 2003, 2004, 2005, 2007 Free Software Foundation,
+   Inc.
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* So we can conditionalize small amounts of code in pa.c or pa.md.  */
 #undef TARGET_SOM
@@ -27,39 +27,11 @@ Boston, MA 02111-1307, USA.  */
    from other embedded stabs implementations.  */
 #undef DBX_USE_BINCL
 
-/* We make the first line stab special to avoid adding several
-   gross hacks to GAS.  */
-#undef  ASM_OUTPUT_SOURCE_LINE
-#define ASM_OUTPUT_SOURCE_LINE(file, line)		\
-  { static int sym_lineno = 1;				\
-    static tree last_function_decl = NULL;		\
-    if (current_function_decl == last_function_decl)	\
-      fprintf (file, "\t.stabn 68,0,%d,L$M%d-%s\nL$M%d:\n",	\
-	       line, sym_lineno,			\
-	       XSTR (XEXP (DECL_RTL (current_function_decl), 0), 0) + 1, \
-	       sym_lineno);				\
-    else						\
-      fprintf (file, "\t.stabn 68,0,%d,0\n", line);	\
-    last_function_decl = current_function_decl;		\
-    sym_lineno += 1; }
+#define DBX_LINES_FUNCTION_RELATIVE 1
 
 /* gdb needs a null N_SO at the end of each file for scattered loading.  */
 
-#undef	DBX_OUTPUT_MAIN_SOURCE_FILE_END
-#define DBX_OUTPUT_MAIN_SOURCE_FILE_END(FILE, FILENAME) \
-  text_section (); \
-  fputs ("\t.SPACE $TEXT$\n\t.NSUBSPA $CODE$,QUAD=0,ALIGN=8,ACCESS=44,CODE_ONLY\n", FILE); \
-  fprintf (FILE,							\
-	   "\t.stabs \"\",%d,0,0,L$text_end0000\nL$text_end0000:\n", N_SO)
-
-/* Select a format to encode pointers in exception handling data.  CODE
-   is 0 for data, 1 for code labels, 2 for function pointers.  GLOBAL is
-   true if the symbol may be affected by dynamic relocations.  Because
-   the HP assembler does auto alignment, it is necessary to use
-   DW_EH_PE_aligned instead of the default DW_EH_PE_absptr.  */
-
-#define ASM_PREFERRED_EH_DATA_FORMAT(CODE, GLOBAL) \
-  (TARGET_GAS ? DW_EH_PE_absptr : DW_EH_PE_aligned)
+#define DBX_OUTPUT_NULL_N_SO_AT_MAIN_SOURCE_FILE_END
 
 /* HPUX has a program 'chatr' to list the dependencies of dynamically
    linked executables and shared libraries.  */
@@ -126,19 +98,6 @@ do {								\
 #endif
 
 
-/* NAME refers to the function's name.  If we are placing each function into
-   its own section, we need to switch to the section for this function.  Note
-   that the section name will have a "." prefix.  */
-#define ASM_OUTPUT_FUNCTION_PREFIX(FILE, NAME) \
-  {									\
-    const char *name = (*targetm.strip_name_encoding) (NAME);		\
-    if (TARGET_GAS && in_section == in_text) 				\
-      fputs ("\t.NSUBSPA $CODE$,QUAD=0,ALIGN=8,ACCESS=44,CODE_ONLY\n", FILE); \
-    else if (TARGET_GAS)						\
-      fprintf (FILE,							\
-	       "\t.SUBSPA .%s\n", name);				\
-  }
-    
 #define ASM_DECLARE_FUNCTION_NAME(FILE, NAME, DECL) \
     do { tree fntype = TREE_TYPE (TREE_TYPE (DECL));			\
 	 tree tree_type = TREE_TYPE (DECL);				\
@@ -214,117 +173,56 @@ do {								\
 	     fputs ("\n", FILE);					\
 	   }} while (0)
 
-/* Output at beginning of assembler file.  */
+#define TARGET_ASM_FILE_START pa_som_file_start
+#define TARGET_ASM_INIT_SECTIONS pa_som_asm_init_sections
 
-#define ASM_FILE_START(FILE) \
-do {  \
-     if (TARGET_PA_20) \
-       fputs("\t.LEVEL 2.0\n", FILE); \
-     else if (TARGET_PA_11) \
-       fputs("\t.LEVEL 1.1\n", FILE); \
-     else \
-       fputs("\t.LEVEL 1.0\n", FILE); \
-     fputs ("\t.SPACE $PRIVATE$\n\
-\t.SUBSPA $DATA$,QUAD=1,ALIGN=8,ACCESS=31\n\
-\t.SUBSPA $BSS$,QUAD=1,ALIGN=8,ACCESS=31,ZERO,SORT=82\n\
-\t.SPACE $TEXT$\n\
-\t.SUBSPA $LIT$,QUAD=0,ALIGN=8,ACCESS=44\n\
-\t.SUBSPA $CODE$,QUAD=0,ALIGN=8,ACCESS=44,CODE_ONLY\n\
-\t.IMPORT $global$,DATA\n\
-\t.IMPORT $$dyncall,MILLICODE\n", FILE);\
-     if (profile_flag)\
-       fprintf (FILE, "\t.IMPORT _mcount, CODE\n");\
-     if (write_symbols != NO_DEBUG) \
-       output_file_directive ((FILE), main_input_filename); \
-   } while (0)
-
-/* Output before code.  */
-
-/* Supposedly the assembler rejects the command if there is no tab!  */
-#define TEXT_SECTION_ASM_OP "\t.SPACE $TEXT$\n\t.SUBSPA $CODE$\n"
-
-/* Output before read-only data.  */
-
-/* Supposedly the assembler rejects the command if there is no tab!  */
-#define READONLY_DATA_ASM_OP "\t.SPACE $TEXT$\n\t.SUBSPA $LIT$\n"
-
-#define EXTRA_SECTIONS in_readonly_data
-
-#define EXTRA_SECTION_FUNCTIONS						\
-extern void readonly_data PARAMS ((void));				\
-void									\
-readonly_data ()							\
-{									\
-  if (in_section != in_readonly_data)					\
-    {									\
-      in_section = in_readonly_data;					\
-      fprintf (asm_out_file, "%s\n", READONLY_DATA_ASM_OP);		\
-    }									\
-}
-
-/* FIXME: HPUX ld generates incorrect GOT entries for "T" fixups
-   which reference data within the $TEXT$ space (for example constant
-   strings in the $LIT$ subspace).
-
-   The assemblers (GAS and HP as) both have problems with handling
-   the difference of two symbols which is the other correct way to
-   reference constant data during PIC code generation.
-
-   So, there's no way to reference constant data which is in the
-   $TEXT$ space during PIC generation.  Instead place all constant
-   data into the $PRIVATE$ subspace (this reduces sharing, but it
-   works correctly).  */
-
-#define READONLY_DATA_SECTION (flag_pic ? data_section : readonly_data)
-
-/* Output before writable data.  */
-
-/* Supposedly the assembler rejects the command if there is no tab!  */
+/* String to output before writable data.  */
 #define DATA_SECTION_ASM_OP "\t.SPACE $PRIVATE$\n\t.SUBSPA $DATA$\n"
 
-/* Output before uninitialized data.  */
-
+/* String to output before uninitialized data.  */
 #define BSS_SECTION_ASM_OP "\t.SPACE $PRIVATE$\n\t.SUBSPA $BSS$\n"
 
-/* We must not have a reference to an external symbol defined in a
-   shared library in a readonly section, else the SOM linker will
-   complain.
+/* This is how to output a command to make the user-level label
+   named NAME defined for reference from other files.  We use
+   assemble_name_raw instead of assemble_name since a symbol in
+   a .IMPORT directive that isn't otherwise referenced is not
+   placed in the symbol table of the assembled object.
 
-   So, we force exception information into the data section.  */
-#define TARGET_ASM_EXCEPTION_SECTION data_section
+   Failure to import a function reference can cause the HP linker
+   to segmentation fault!
 
-/* This is how to output a command to make the user-level label named NAME
-   defined for reference from other files.
+   Note that the SOM based tools need the symbol imported as a
+   CODE symbol, while the ELF based tools require the symbol to
+   be imported as an ENTRY symbol.  */
 
-   We call assemble_name, which in turn sets TREE_SYMBOL_REFERENCED.  This
-   macro will restore the original value of TREE_SYMBOL_REFERENCED to avoid
-   placing useless function definitions in the output file.
-
-   Also note that the SOM based tools need the symbol imported as a CODE
-   symbol, while the ELF based tools require the symbol to be imported as
-   an ENTRY symbol.  What a crock.  */
-
-#define ASM_OUTPUT_EXTERNAL(FILE, DECL, NAME)	\
-  do { int save_referenced;					\
-       save_referenced = TREE_SYMBOL_REFERENCED (DECL_ASSEMBLER_NAME (DECL)); \
-       fputs ("\t.IMPORT ", FILE);				\
-       assemble_name (FILE, NAME);				\
-       if (FUNCTION_NAME_P (NAME))     				\
-	 fputs (",CODE\n", FILE);				\
-       else							\
-	 fputs (",DATA\n", FILE);				\
-       TREE_SYMBOL_REFERENCED (DECL_ASSEMBLER_NAME (DECL)) = save_referenced; \
+#define ASM_OUTPUT_EXTERNAL(FILE, DECL, NAME) \
+  pa_hpux_asm_output_external ((FILE), (DECL), (NAME))
+#define ASM_OUTPUT_EXTERNAL_REAL(FILE, DECL, NAME) \
+  do { fputs ("\t.IMPORT ", FILE);					\
+       assemble_name_raw (FILE, NAME);					\
+       if (FUNCTION_NAME_P (NAME))					\
+	 fputs (",CODE\n", FILE);					\
+       else								\
+	 fputs (",DATA\n", FILE);					\
      } while (0)
 
 /* The bogus HP assembler requires ALL external references to be
-   "imported", even library calls. They look a bit different, so
+   "imported", even library calls.  They look a bit different, so
    here's this macro.
 
    Also note not all libcall names are passed to pa_encode_section_info
    (__main for example).  To make sure all libcall names have section
-   info recorded in them, we do it here.  We must also ensure that
-   we don't import a libcall that has been previously exported since
-   the HP assembler may change an ENTRY symbol to a CODE symbol.  */
+   info recorded in them, we do it here.
+
+   We must also ensure that a libcall that has been previously
+   exported is not subsequently imported since the HP assembler may
+   change the type from an ENTRY to a CODE symbol.  This would make
+   the symbol local.  We are forced to use the identifier node
+   associated with the real assembler name for this check as the
+   symbol_ref available in ASM_DECLARE_FUNCTION_NAME is not the
+   same as the one used here.  As a result, we can't use flags
+   in the symbol_ref for this check.  The identifier check assumes
+   assemble_external_libcall is called before the symbol is used.  */
 
 #define ASM_OUTPUT_EXTERNAL_LIBCALL(FILE, RTL) \
   do { const char *name;						\
@@ -333,12 +231,12 @@ readonly_data ()							\
        if (!function_label_operand (RTL, VOIDmode))			\
 	 hppa_encode_label (RTL);					\
 									\
-       name = (*targetm.strip_name_encoding) (XSTR ((RTL), 0));		\
+       name = targetm.strip_name_encoding (XSTR ((RTL), 0));		\
        id = maybe_get_identifier (name);				\
-       if (! id || ! TREE_SYMBOL_REFERENCED (id))			\
+       if (!id || !TREE_SYMBOL_REFERENCED (id))				\
 	 {								\
 	   fputs ("\t.IMPORT ", FILE);					\
-	   assemble_name (FILE, XSTR ((RTL), 0));		       	\
+	   assemble_name_raw (FILE, XSTR ((RTL), 0));		       	\
 	   fputs (",CODE\n", FILE);					\
 	 }								\
      } while (0)
@@ -351,15 +249,22 @@ readonly_data ()							\
 
 #define DO_GLOBAL_DTORS_BODY			\
 do {						\
-  extern void __gcc_plt_call ();		\
-  void (*reference)() = &__gcc_plt_call;	\
+  extern void __gcc_plt_call (void);		\
+  void (*reference)(void) = &__gcc_plt_call;	\
   func_ptr *p;					\
   __asm__ ("" : : "r" (reference));		\
   for (p = __DTOR_LIST__ + 1; *p; )		\
     (*p++) ();					\
 } while (0)
 
-/* The .align directive in the HP assembler allows up to a 32 alignment.  */
+/* This macro specifies the biggest alignment supported by the object
+   file format of this machine.
+
+   The .align directive in the HP assembler allows alignments up to 4096
+   bytes.  However, the maximum alignment of a global common symbol is 8
+   bytes for objects smaller than the page size (4096 bytes).  For larger
+   objects, the linker provides an alignment of 32 bytes.  Unfortunately,
+   this macro doesn't provide a mechanism to test for common symbols.  */
 #define MAX_OFILE_ALIGNMENT 32768
 
 /* The SOM linker hardcodes paths into binaries.  As a result, dotdots
@@ -367,10 +272,6 @@ do {						\
    on the location of the GCC tool directory.  The downside is GCC
    cannot be moved after installation using a symlink.  */
 #define ALWAYS_STRIP_DOTDOT 1
-
-/* Aggregates with a single float or double field should be passed and
-   returned in the general registers.  */
-#define MEMBER_TYPE_FORCES_BLK(FIELD, MODE) (MODE==SFmode || MODE==DFmode)
 
 /* If GAS supports weak, we can support weak when we have working linker
    support for secondary definitions and are generating code for GAS.  */
@@ -380,11 +281,30 @@ do {						\
 #define SUPPORTS_WEAK 0
 #endif
 
-/* We can support one only if we support weak.  */
-#define SUPPORTS_ONE_ONLY SUPPORTS_WEAK
+/* CVS GAS as of 4/28/04 supports a comdat parameter for the .nsubspa
+   directive.  This provides one-only linkage semantics even though we
+   don't have weak support.  */
+#ifdef HAVE_GAS_NSUBSPA_COMDAT
+#define SUPPORTS_SOM_COMDAT (TARGET_GAS)
+#else
+#define SUPPORTS_SOM_COMDAT 0
+#endif
 
-/* Use weak (secondary definitions) to make one only declarations.  */
-#define MAKE_DECL_ONE_ONLY(DECL) (DECL_WEAK (DECL) = 1)
+/* We can support one only if we support weak or comdat.  */
+#define SUPPORTS_ONE_ONLY (SUPPORTS_WEAK || SUPPORTS_SOM_COMDAT)
+
+/* We use DECL_COMMON for uninitialized one-only variables as we don't
+   have linkonce .bss.  We use SOM secondary definitions or comdat for
+   initialized variables and functions.  */
+#define MAKE_DECL_ONE_ONLY(DECL) \
+  do {									\
+    if (TREE_CODE (DECL) == VAR_DECL					\
+        && (DECL_INITIAL (DECL) == 0					\
+            || DECL_INITIAL (DECL) == error_mark_node))			\
+      DECL_COMMON (DECL) = 1;						\
+    else if (SUPPORTS_WEAK)						\
+      DECL_WEAK (DECL) = 1;						\
+  } while (0)
 
 /* This is how we tell the assembler that a symbol is weak.  The SOM
    weak implementation uses the secondary definition (sdef) flag.
@@ -409,12 +329,7 @@ do {						\
   do { fputs ("\t.weak\t", FILE);				\
        assemble_name (FILE, NAME);				\
        fputc ('\n', FILE);					\
-       if (! FUNCTION_NAME_P (NAME))				\
-	 {							\
-	   fputs ("\t.EXPORT ", FILE);				\
-	   assemble_name (FILE, NAME);				\
-	   fputs (",DATA\n", FILE);				\
-	 }							\
+       targetm.asm_out.globalize_label (FILE, NAME);		\
   } while (0)
 
 /* We can't handle weak aliases, and therefore can't support pragma weak.

@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2002, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -28,6 +26,7 @@
 --  This package contains various utility procedures to assist in
 --  building specific types of tree nodes.
 
+with Namet; use Namet;
 with Types; use Types;
 
 package Tbuild is
@@ -47,43 +46,51 @@ package Tbuild is
    --  Exp. This means that it is safe to replace a node by a Convert_To
    --  of itself to some other type.
 
+   procedure Discard_Node (N : Node_Or_Entity_Id);
+   pragma Inline (Discard_Node);
+   --  This is a dummy procedure that simply returns and does nothing.
+   --  It is used when a function returning a Node_Id value is called
+   --  for its side effect (e.g. a call to Make to construct a node)
+   --  but the Node_Id value is not required.
+
+   procedure Discard_List (L : List_Id);
+   pragma Inline (Discard_List);
+   --  This is a dummy procedure that simply returns and does nothing.
+   --  It is used when a function returning a Node_Id value is called
+   --  for its side effect (e.g. a call to the pareser to parse a list
+   --  of compilation units), but the List_Id value is not required.
+
    function Make_Byte_Aligned_Attribute_Reference
      (Sloc           : Source_Ptr;
       Prefix         : Node_Id;
-      Attribute_Name : Name_Id)
-      return           Node_Id;
+      Attribute_Name : Name_Id) return Node_Id;
    pragma Inline (Make_Byte_Aligned_Attribute_Reference);
    --  Like the standard Make_Attribute_Reference but the special flag
    --  Must_Be_Byte_Aligned is set in the attribute reference node. The
    --  Attribute_Name must be Name_Address or Name_Unrestricted_Access.
-
-   function Make_DT_Component
-     (Loc  : Source_Ptr;
-      Typ  : Entity_Id;
-      I    : Positive)
-      return Node_Id;
-   --  Gives a reference to the Ith component of the Dispatch Table of
-   --  a given Tagged Type.
-   --
-   --  I = 1    --> Inheritance_Depth
-   --  I = 2    --> Tags (array of ancestors)
-   --  I = 3, 4 --> predefined primitive
-   --            function _Size (X : Typ) return Long_Long_Integer;
-   --            function _Equality (X : Typ; Y : Typ'Class) return Boolean;
-   --  I >= 5   --> User-Defined Primitive Operations
 
    function Make_DT_Access
      (Loc : Source_Ptr; Rec : Node_Id; Typ : Entity_Id) return Node_Id;
    --  Create an access to the Dispatch Table by using the Tag field
    --  of a tagged record : Acc_Dt (Rec.tag).all
 
+   function Make_Implicit_Exception_Handler
+     (Sloc              : Source_Ptr;
+      Choice_Parameter  : Node_Id := Empty;
+      Exception_Choices : List_Id;
+      Statements        : List_Id) return Node_Id;
+   pragma Inline (Make_Implicit_Exception_Handler);
+   --  This is just like Make_Exception_Handler, except that it also sets the
+   --  Local_Raise_Statements field to No_Elist, ensuring that it is properly
+   --  initialized. This should always be used when creating exception handlers
+   --  as part of the expansion.
+
    function Make_Implicit_If_Statement
      (Node            : Node_Id;
       Condition       : Node_Id;
       Then_Statements : List_Id;
       Elsif_Parts     : List_Id := No_List;
-      Else_Statements : List_Id := No_List)
-      return            Node_Id;
+      Else_Statements : List_Id := No_List) return Node_Id;
    pragma Inline (Make_Implicit_If_Statement);
    --  This function makes an N_If_Statement node whose fields are filled
    --  in with the indicated values (see Sinfo), and whose Sloc field is
@@ -95,9 +102,8 @@ package Tbuild is
    function Make_Implicit_Label_Declaration
      (Loc                 : Source_Ptr;
       Defining_Identifier : Node_Id;
-      Label_Construct     : Node_Id)
-      return                Node_Id;
-   --  Used to construct an implicit label declaration node, including setting
+      Label_Construct     : Node_Id) return Node_Id;
+   --  Used to contruct an implicit label declaration node, including setting
    --  the proper Label_Construct field (since Label_Construct is a semantic
    --  field, the normal call to Make_Implicit_Label_Declaration does not
    --  set this field).
@@ -108,8 +114,7 @@ package Tbuild is
       Identifier             : Node_Id := Empty;
       Iteration_Scheme       : Node_Id := Empty;
       Has_Created_Identifier : Boolean := False;
-      End_Label              : Node_Id := Empty)
-      return                   Node_Id;
+      End_Label              : Node_Id := Empty) return Node_Id;
    --  This function makes an N_Loop_Statement node whose fields are filled
    --  in with the indicated values (see Sinfo), and whose Sloc field is
    --  is set to Sloc (Node). The effect is identical to calling function
@@ -120,16 +125,21 @@ package Tbuild is
 
    function Make_Integer_Literal
      (Loc    : Source_Ptr;
-      Intval : Int)
-      return   Node_Id;
+      Intval : Int) return Node_Id;
    pragma Inline (Make_Integer_Literal);
    --  A convenient form of Make_Integer_Literal taking Int instead of Uint
+
+   function Make_Linker_Section_Pragma
+     (Ent : Entity_Id;
+      Loc : Source_Ptr;
+      Sec : String) return Node_Id;
+   --  Construct a Linker_Section pragma for entity Ent, using string Sec as
+   --  the section name. Loc is the Sloc value to use in building the pragma.
 
    function Make_Raise_Constraint_Error
      (Sloc      : Source_Ptr;
       Condition : Node_Id := Empty;
-      Reason    : RT_Exception_Code)
-      return      Node_Id;
+      Reason    : RT_Exception_Code) return Node_Id;
    pragma Inline (Make_Raise_Constraint_Error);
    --  A convenient form of Make_Raise_Constraint_Error where the Reason
    --  is given simply as an enumeration value, rather than a Uint code.
@@ -137,8 +147,7 @@ package Tbuild is
    function Make_Raise_Program_Error
      (Sloc      : Source_Ptr;
       Condition : Node_Id := Empty;
-      Reason    : RT_Exception_Code)
-      return      Node_Id;
+      Reason    : RT_Exception_Code) return Node_Id;
    pragma Inline (Make_Raise_Program_Error);
    --  A convenient form of Make_Raise_Program_Error where the Reason
    --  is given simply as an enumeration value, rather than a Uint code.
@@ -146,17 +155,21 @@ package Tbuild is
    function Make_Raise_Storage_Error
      (Sloc      : Source_Ptr;
       Condition : Node_Id := Empty;
-      Reason    : RT_Exception_Code)
-      return      Node_Id;
+      Reason    : RT_Exception_Code) return Node_Id;
    pragma Inline (Make_Raise_Storage_Error);
    --  A convenient form of Make_Raise_Storage_Error where the Reason
    --  is given simply as an enumeration value, rather than a Uint code.
 
+   function Make_String_Literal
+     (Sloc   : Source_Ptr;
+      Strval : String) return Node_Id;
+   --  A convenient form of Make_String_Literal, where the string value
+   --  is given as a normal string instead of a String_Id value.
+
    function Make_Unsuppress_Block
      (Loc   : Source_Ptr;
       Check : Name_Id;
-      Stmts : List_Id)
-      return  Node_Id;
+      Stmts : List_Id) return Node_Id;
    --  Build a block with a pragma Suppress on 'Check'. Stmts is the
    --  statements list that needs protection against the check
 
@@ -169,14 +182,12 @@ package Tbuild is
      (Related_Id   : Name_Id;
       Suffix       : Character := ' ';
       Suffix_Index : Int       := 0;
-      Prefix       : Character := ' ')
-      return         Name_Id;
+      Prefix       : Character := ' ') return Name_Id;
    function New_External_Name
      (Related_Id   : Name_Id;
       Suffix       : String;
       Suffix_Index : Int       := 0;
-      Prefix       : Character := ' ')
-      return         Name_Id;
+      Prefix       : Character := ' ') return Name_Id;
    --  Builds a new entry in the names table of the form:
    --
    --    [Prefix  &] Related_Id [& Suffix] [& Suffix_Index]
@@ -204,8 +215,7 @@ package Tbuild is
 
    function New_External_Name
      (Suffix       : Character;
-      Suffix_Index : Nat)
-      return         Name_Id;
+      Suffix_Index : Nat) return Name_Id;
    --  Builds a new entry in the names table of the form
    --    Suffix & Suffix_Index'Image
    --  where Suffix is a single upper case letter other than O,Q,U,W,X and is
@@ -236,8 +246,7 @@ package Tbuild is
 
    function New_Occurrence_Of
      (Def_Id : Entity_Id;
-      Loc    : Source_Ptr)
-      return   Node_Id;
+      Loc    : Source_Ptr) return Node_Id;
    --  New_Occurrence_Of creates an N_Identifier node which is an
    --  occurrence of the defining identifier which is passed as its
    --  argument. The Entity and Etype of the result are set from
@@ -247,16 +256,14 @@ package Tbuild is
 
    function New_Reference_To
      (Def_Id : Entity_Id;
-      Loc    : Source_Ptr)
-      return   Node_Id;
+      Loc    : Source_Ptr) return Node_Id;
    --  This is like New_Occurrence_Of, but it does not set the Etype field.
    --  It is used from the expander, where Etype fields are generally not set,
    --  since they are set when the expanded tree is reanalyzed.
 
    function New_Suffixed_Name
      (Related_Id : Name_Id;
-      Suffix     : String)
-      return       Name_Id;
+      Suffix     : String) return Name_Id;
    --  This function is used to create special suffixed names used by the
    --  debugger. Suffix is a string of upper case letters, used to construct
    --  the required name. For instance, the special type used to record the
@@ -269,8 +276,7 @@ package Tbuild is
 
    function Unchecked_Convert_To
      (Typ  : Entity_Id;
-      Expr : Node_Id)
-      return Node_Id;
+      Expr : Node_Id) return Node_Id;
    --  Like Convert_To, but if a conversion is actually needed, constructs
    --  an N_Unchecked_Type_Conversion node to do the required conversion.
 

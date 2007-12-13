@@ -1,9 +1,9 @@
-// Build don't run:
+// { dg-do link  }
 struct foo
 {
-  foo() {};
-  ~foo() {};
-  void func() { static foo x; };
+  foo() {}
+  ~foo() {}
+  void func() { static foo x; }
 };
 
 int main()

@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -95,6 +93,7 @@ package body Ch11 is
 
    begin
       Handler_Node := New_Node (N_Exception_Handler, Token_Ptr);
+      Set_Local_Raise_Statements (Handler_Node, No_Elist);
       T_When;
 
       --  Test for possible choice parameter present
@@ -105,7 +104,7 @@ package body Ch11 is
          Scan; -- past identifier
 
          if Token = Tok_Colon then
-            if Ada_83 then
+            if Ada_Version = Ada_83 then
                Error_Msg_SP ("(Ada 83) choice parameter not allowed!");
             end if;
 
@@ -191,6 +190,16 @@ package body Ch11 is
          Set_Name (Raise_Node, P_Name);
       end if;
 
+      if Token = Tok_With then
+         if Ada_Version < Ada_05 then
+            Error_Msg_SC ("string expression in raise is Ada 2005 extension");
+            Error_Msg_SC ("\unit must be compiled with -gnat05 switch");
+         end if;
+
+         Scan; -- past WITH
+         Set_Expression (Raise_Node, P_Expression);
+      end if;
+
       TF_Semicolon;
       return Raise_Node;
    end P_Raise_Statement;
@@ -215,7 +224,6 @@ package body Ch11 is
    function Parse_Exception_Handlers return List_Id is
       Handler       : Node_Id;
       Handlers_List : List_Id;
-      Pragmas_List  : List_Id;
 
    begin
       Handlers_List := New_List;
@@ -227,7 +235,6 @@ package body Ch11 is
       else
          loop
             Handler := P_Exception_Handler;
-            Pragmas_List := No_List;
             Append (Handler, Handlers_List);
 
             --  Note: no need to check for pragmas here. Although the

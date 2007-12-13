@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -39,8 +39,6 @@ exception statement from your version. */
 package gnu.java.locale;
 
 import java.util.ListResourceBundle;
-import java.util.Calendar;
-import java.util.Date;
 
 /**
  * This class contains locale data for English.
@@ -62,7 +60,7 @@ public class LocaleInformation_en extends ListResourceBundle
   // and probably other things as well.
   private static final String collation_rules = 
   "<0<1<2<3<4<5<6<7<8<9<A,a<b,B<c,C<d,D<e,E<f,F<g,G<h,H<i,I<j,J<k,K" +
-  "<l,L<m,M<n,N<o,O<p,P<q,Q<r,R<s,S<t,T<u,U<v,V<w,W<x,X<y,Y,z<Z";
+  "<l,L<m,M<n,N<o,O<p,P<q,Q<r,R<s,S<t,T<u,U<v,V<w,W<x,X<y,Y<z,Z";
 
   /**
    * This is the list of months, fully spelled out
@@ -161,7 +159,7 @@ public class LocaleInformation_en extends ListResourceBundle
     { "shortWeekdays", shortWeekdays },
     { "ampms", ampms },
     { "eras", eras },
-    { "localPatternChars", "GyMdkHmsSEDFwWahKz" },
+    { "localPatternChars", "GyMdkHmsSEDFwWahKzYeugAZ" },
     { "zoneStrings", zoneStrings },
 
     { "shortDateFormat", "M/d/yy" },         // Java's Y2K bug.

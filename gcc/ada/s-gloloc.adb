@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1999-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1999-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -27,17 +26,17 @@
 -- however invalidate  any other reasons why  the executable file  might be --
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
--- GNAT is maintained by Ada Core Technologies Inc (http://www.gnat.com).   --
+-- GNAT was originally developed  by the GNAT team at  New York University. --
+-- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with GNAT.Task_Lock;
+with System.Soft_Links;
+--  used for Lock_Task, Unlock_Task
 
 package body System.Global_Locks is
 
    type String_Access is access String;
-
-   package TSL renames GNAT.Task_Lock;
 
    Dir_Separator : Character;
    pragma Import (C, Dir_Separator, "__gnat_dir_separator");
@@ -65,8 +64,7 @@ package body System.Global_Locks is
    -- Acquire_Lock --
    ------------------
 
-   procedure Acquire_Lock
-     (Lock : in out Lock_Type) is
+   procedure Acquire_Lock (Lock : in out Lock_Type) is
    begin
       Lock_File
         (Lock_Table (Lock).Dir.all,
@@ -77,17 +75,14 @@ package body System.Global_Locks is
    -- Create_Lock --
    -----------------
 
-   procedure Create_Lock
-     (Lock : out Lock_Type;
-      Name : in String)
-   is
+   procedure Create_Lock (Lock : out Lock_Type; Name : String) is
       L : Lock_Type;
 
    begin
-      TSL.Lock;
+      System.Soft_Links.Lock_Task.all;
       Last_Lock := Last_Lock + 1;
       L := Last_Lock;
-      TSL.Unlock;
+      System.Soft_Links.Unlock_Task.all;
 
       if L > Lock_Table'Last then
          raise Lock_Error;
@@ -95,10 +90,8 @@ package body System.Global_Locks is
 
       for J in reverse Name'Range loop
          if Name (J) = Dir_Separator then
-            Lock_Table (L).Dir
-              := new String'(Name (Name'First .. J - 1));
-            Lock_Table (L).File
-              := new String'(Name (J + 1 .. Name'Last));
+            Lock_Table (L).Dir := new String'(Name (Name'First .. J - 1));
+            Lock_Table (L).File := new String'(Name (J + 1 .. Name'Last));
             exit;
          end if;
       end loop;
@@ -132,9 +125,11 @@ package body System.Global_Locks is
          if Try_Lock (C_Dir'Address, C_File'Address) = 1 then
             return;
          end if;
+
          exit when I = Retries;
          delay Wait;
       end loop;
+
       raise Lock_Error;
    end Lock_File;
 
@@ -142,12 +137,10 @@ package body System.Global_Locks is
    -- Release_Lock --
    ------------------
 
-   procedure Release_Lock
-     (Lock : in out Lock_Type)
-   is
+   procedure Release_Lock (Lock : in out Lock_Type) is
       S : aliased String :=
-        Lock_Table (Lock).Dir.all & Dir_Separator &
-        Lock_Table (Lock).File.all & ASCII.NUL;
+            Lock_Table (Lock).Dir.all & Dir_Separator &
+            Lock_Table (Lock).File.all & ASCII.NUL;
 
       procedure unlink (A : System.Address);
       pragma Import (C, unlink, "unlink");

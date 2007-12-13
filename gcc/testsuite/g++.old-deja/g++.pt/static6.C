@@ -1,5 +1,5 @@
-// Build don't run:
-// excess errors test - XFAIL *-*-aout *-*-coff *-*-hpux* *-*-hms
+// { dg-do link }
+// { dg-xfail-if "" { *-*-aout *-*-coff *-*-hpux* *-*-hms } { "*" } { "" } }
 
 // Simplified from testcase by Erez Louidor Lior <s3824888@techst02.technion.ac.il>
 

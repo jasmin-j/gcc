@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2002 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -34,13 +32,17 @@ with Expander; use Expander;
 with Exp_Util; use Exp_Util;
 with Exp_Ch3;  use Exp_Ch3;
 with Exp_Ch7;  use Exp_Ch7;
+with Exp_Ch9;  use Exp_Ch9;
+with Exp_Tss;  use Exp_Tss;
 with Freeze;   use Freeze;
-with Hostparm; use Hostparm;
 with Itypes;   use Itypes;
 with Lib;      use Lib;
+with Namet;    use Namet;
 with Nmake;    use Nmake;
 with Nlists;   use Nlists;
+with Opt;      use Opt;
 with Restrict; use Restrict;
+with Rident;   use Rident;
 with Rtsfind;  use Rtsfind;
 with Ttypes;   use Ttypes;
 with Sem;      use Sem;
@@ -51,6 +53,7 @@ with Sem_Util; use Sem_Util;
 with Sinfo;    use Sinfo;
 with Snames;   use Snames;
 with Stand;    use Stand;
+with Targparm; use Targparm;
 with Tbuild;   use Tbuild;
 with Uintp;    use Uintp;
 
@@ -65,11 +68,33 @@ package body Exp_Aggr is
    type Case_Table_Type is array (Nat range <>) of Case_Bounds;
    --  Table type used by Check_Case_Choices procedure
 
+   function Must_Slide
+     (Obj_Type : Entity_Id;
+      Typ      : Entity_Id) return Boolean;
+   --  A static array aggregate in an object declaration can in most cases be
+   --  expanded in place. The one exception is when the aggregate is given
+   --  with component associations that specify different bounds from those of
+   --  the type definition in the object declaration. In this pathological
+   --  case the aggregate must slide, and we must introduce an intermediate
+   --  temporary to hold it.
+   --
+   --  The same holds in an assignment to one-dimensional array of arrays,
+   --  when a component may be given with bounds that differ from those of the
+   --  component type.
+
    procedure Sort_Case_Table (Case_Table : in out Case_Table_Type);
    --  Sort the Case Table using the Lower Bound of each Choice as the key.
    --  A simple insertion sort is used since the number of choices in a case
    --  statement of variant part will usually be small and probably in near
    --  sorted order.
+
+   function Has_Default_Init_Comps (N : Node_Id) return Boolean;
+   --  N is an aggregate (record or array). Checks the presence of default
+   --  initialization (<>) in any component (Ada 2005: AI-287)
+
+   function Is_Static_Dispatch_Table_Aggregate (N : Node_Id) return Boolean;
+   --  Returns true if N is an aggregate used to initialize the components
+   --  of an statically allocated dispatch table.
 
    ------------------------------------------------------
    -- Local subprograms for Record Aggregate Expansion --
@@ -93,27 +118,40 @@ package body Exp_Aggr is
    --      aggregate
 
    procedure Convert_To_Assignments (N : Node_Id; Typ : Entity_Id);
-   --  N is an N_Aggregate of a N_Extension_Aggregate. Typ is the type of
-   --  the aggregate. Transform the given aggregate into a sequence of
-   --  assignments component per component.
+   --  N is an N_Aggregate or an N_Extension_Aggregate. Typ is the type of the
+   --  aggregate (which can only be a record type, this procedure is only used
+   --  for record types). Transform the given aggregate into a sequence of
+   --  assignments performed component by component.
 
    function Build_Record_Aggr_Code
-     (N      : Node_Id;
-      Typ    : Entity_Id;
-      Target : Node_Id;
-      Flist  : Node_Id   := Empty;
-      Obj    : Entity_Id := Empty)
-      return   List_Id;
-   --  N is an N_Aggregate or a N_Extension_Aggregate. Typ is the type
-   --  of the aggregate. Target is an expression containing the
-   --  location on which the component by component assignments will
-   --  take place. Returns the list of assignments plus all other
-   --  adjustments needed for tagged and controlled types. Flist is an
-   --  expression representing the finalization list on which to
-   --  attach the controlled components if any. Obj is present in the
-   --  object declaration and dynamic allocation cases, it contains
-   --  an entity that allows to know if the value being created needs to be
-   --  attached to the final list in case of pragma finalize_Storage_Only.
+     (N                             : Node_Id;
+      Typ                           : Entity_Id;
+      Lhs                           : Node_Id;
+      Flist                         : Node_Id   := Empty;
+      Obj                           : Entity_Id := Empty;
+      Is_Limited_Ancestor_Expansion : Boolean   := False) return List_Id;
+   --  N is an N_Aggregate or an N_Extension_Aggregate. Typ is the type of the
+   --  aggregate. Target is an expression containing the location on which the
+   --  component by component assignments will take place. Returns the list of
+   --  assignments plus all other adjustments needed for tagged and controlled
+   --  types. Flist is an expression representing the finalization list on
+   --  which to attach the controlled components if any. Obj is present in the
+   --  object declaration and dynamic allocation cases, it contains an entity
+   --  that allows to know if the value being created needs to be attached to
+   --  the final list in case of pragma Finalize_Storage_Only.
+   --
+   --  ???
+   --  The meaning of the Obj formal is extremely unclear. *What* entity
+   --  should be passed? For the object declaration case we may guess that
+   --  this is the object being declared, but what about the allocator case?
+   --
+   --  Is_Limited_Ancestor_Expansion indicates that the function has been
+   --  called recursively to expand the limited ancestor to avoid copying it.
+
+   function Has_Mutable_Components (Typ : Entity_Id) return Boolean;
+   --  Return true if one of the component is of a discriminated type with
+   --  defaults. An aggregate for a type with mutable components must be
+   --  expanded into individual assignments.
 
    procedure Initialize_Discriminants (N : Node_Id; Typ : Entity_Id);
    --  If the type of the aggregate is a type extension with renamed discrimi-
@@ -131,24 +169,41 @@ package body Exp_Aggr is
    -- Local Subprograms for Array Aggregate Expansion --
    -----------------------------------------------------
 
+   function Aggr_Size_OK (Typ : Entity_Id) return Boolean;
+   --  Very large static aggregates present problems to the back-end, and
+   --  are transformed into assignments and loops. This function verifies
+   --  that the total number of components of an aggregate is acceptable
+   --  for transformation into a purely positional static form. It is called
+   --  prior to calling Flatten.
+
+   procedure Convert_Array_Aggr_In_Allocator
+     (Decl   : Node_Id;
+      Aggr   : Node_Id;
+      Target : Node_Id);
+   --  If the aggregate appears within an allocator and can be expanded in
+   --  place, this routine generates the individual assignments to components
+   --  of the designated object. This is an optimization over the general
+   --  case, where a temporary is first created on the stack and then used to
+   --  construct the allocated object on the heap.
+
    procedure Convert_To_Positional
      (N                    : Node_Id;
-      Max_Others_Replicate : Nat := 5;
+      Max_Others_Replicate : Nat     := 5;
       Handle_Bit_Packed    : Boolean := False);
    --  If possible, convert named notation to positional notation. This
-   --  conversion is possible only in some static cases. If the conversion
-   --  is possible, then N is rewritten with the analyzed converted
-   --  aggregate. The parameter Max_Others_Replicate controls the maximum
-   --  number of values corresponding to an others choice that will be
-   --  converted to positional notation (the default of 5 is the normal
-   --  limit, and reflects the fact that normally the loop is better than
-   --  a lot of separate assignments). Note that this limit gets overridden
-   --  in any case if either of the restrictions No_Elaboration_Code or
-   --  No_Implicit_Loops is set. The parameter Handle_Bit_Packed is usually
-   --  set False (since we do not expect the back end to handle bit packed
-   --  arrays, so the normal case of conversion is pointless), but in the
-   --  special case of a call from Packed_Array_Aggregate_Handled, we set
-   --  this parameter to True, since these are cases we handle in there.
+   --  conversion is possible only in some static cases. If the conversion is
+   --  possible, then N is rewritten with the analyzed converted aggregate.
+   --  The parameter Max_Others_Replicate controls the maximum number of
+   --  values corresponding to an others choice that will be converted to
+   --  positional notation (the default of 5 is the normal limit, and reflects
+   --  the fact that normally the loop is better than a lot of separate
+   --  assignments). Note that this limit gets overridden in any case if
+   --  either of the restrictions No_Elaboration_Code or No_Implicit_Loops is
+   --  set. The parameter Handle_Bit_Packed is usually set False (since we do
+   --  not expect the back end to handle bit packed arrays, so the normal case
+   --  of conversion is pointless), but in the special case of a call from
+   --  Packed_Array_Aggregate_Handled, we set this parameter to True, since
+   --  these are cases we handle in there.
 
    procedure Expand_Array_Aggregate (N : Node_Id);
    --  This is the top-level routine to perform array aggregate expansion.
@@ -160,21 +215,24 @@ package body Exp_Aggr is
 
    function Build_Array_Aggr_Code
      (N           : Node_Id;
+      Ctype       : Entity_Id;
       Index       : Node_Id;
       Into        : Node_Id;
       Scalar_Comp : Boolean;
       Indices     : List_Id := No_List;
-      Flist       : Node_Id := Empty)
-      return        List_Id;
+      Flist       : Node_Id := Empty) return List_Id;
    --  This recursive routine returns a list of statements containing the
    --  loops and assignments that are needed for the expansion of the array
    --  aggregate N.
    --
-   --    N is the (sub-)aggregate node to be expanded into code.
+   --    N is the (sub-)aggregate node to be expanded into code. This node
+   --    has been fully analyzed, and its Etype is properly set.
    --
    --    Index is the index node corresponding to the array sub-aggregate N.
    --
    --    Into is the target expression into which we are copying the aggregate.
+   --    Note that this node may not have been analyzed yet, and so the Etype
+   --    field may not be set.
    --
    --    Scalar_Comp is True if the component type of the aggregate is scalar.
    --
@@ -193,26 +251,23 @@ package body Exp_Aggr is
       Typ    : Entity_Id;
       Target : Node_Id;
       Flist  : Node_Id := Empty;
-      Obj    : Entity_Id := Empty)
-      return List_Id;
-   --  N is a nested (record or array) aggregate that has been marked
-   --  with 'Delay_Expansion'. Typ is the expected type of the
-   --  aggregate and Target is a (duplicable) expression that will
-   --  hold the result of the aggregate expansion. Flist is the
-   --  finalization list to be used to attach controlled
-   --  components. 'Obj' when non empty, carries the original object
-   --  being initialized in order to know if it needs to be attached
-   --  to the previous parameter which may not be the case when
-   --  Finalize_Storage_Only is set.  Basically this procedure is used
-   --  to implement top-down expansions of nested aggregates. This is
-   --  necessary for avoiding temporaries at each level as well as for
-   --  propagating the right internal finalization list.
+      Obj    : Entity_Id := Empty) return List_Id;
+   --  N is a nested (record or array) aggregate that has been marked with
+   --  'Delay_Expansion'. Typ is the expected type of the aggregate and Target
+   --  is a (duplicable) expression that will hold the result of the aggregate
+   --  expansion. Flist is the finalization list to be used to attach
+   --  controlled components. 'Obj' when non empty, carries the original
+   --  object being initialized in order to know if it needs to be attached to
+   --  the previous parameter which may not be the case in the case where
+   --  Finalize_Storage_Only is set. Basically this procedure is used to
+   --  implement top-down expansions of nested aggregates. This is necessary
+   --  for avoiding temporaries at each level as well as for propagating the
+   --  right internal finalization list.
 
    function Make_OK_Assignment_Statement
      (Sloc       : Source_Ptr;
       Name       : Node_Id;
-      Expression : Node_Id)
-      return       Node_Id;
+      Expression : Node_Id) return Node_Id;
    --  This is like Make_Assignment_Statement, except that Assignment_OK
    --  is set in the left operand. All assignments built by this unit
    --  use this routine. This is needed to deal with assignments to
@@ -232,6 +287,152 @@ package body Exp_Aggr is
    --  the assignment can be done in place even if bounds are not static,
    --  by converting it into a loop over the discrete range of the slice.
 
+   ------------------
+   -- Aggr_Size_OK --
+   ------------------
+
+   function Aggr_Size_OK (Typ : Entity_Id) return Boolean is
+      Lo   : Node_Id;
+      Hi   : Node_Id;
+      Indx : Node_Id;
+      Siz  : Int;
+      Lov  : Uint;
+      Hiv  : Uint;
+
+      --  The following constant determines the maximum size of an
+      --  aggregate produced by converting named to positional
+      --  notation (e.g. from others clauses). This avoids running
+      --  away with attempts to convert huge aggregates, which hit
+      --  memory limits in the backend.
+
+      --  The normal limit is 5000, but we increase this limit to
+      --  2**24 (about 16 million) if Restrictions (No_Elaboration_Code)
+      --  or Restrictions (No_Implicit_Loops) is specified, since in
+      --  either case, we are at risk of declaring the program illegal
+      --  because of this limit.
+
+      Max_Aggr_Size : constant Nat :=
+                        5000 + (2 ** 24 - 5000) *
+                          Boolean'Pos
+                            (Restriction_Active (No_Elaboration_Code)
+                               or else
+                             Restriction_Active (No_Implicit_Loops));
+
+      function Component_Count (T : Entity_Id) return Int;
+      --  The limit is applied to the total number of components that the
+      --  aggregate will have, which is the number of static expressions
+      --  that will appear in the flattened array. This requires a recursive
+      --  computation of the the number of scalar components of the structure.
+
+      ---------------------
+      -- Component_Count --
+      ---------------------
+
+      function Component_Count (T : Entity_Id) return Int is
+         Res  : Int := 0;
+         Comp : Entity_Id;
+
+      begin
+         if Is_Scalar_Type (T) then
+            return 1;
+
+         elsif Is_Record_Type (T) then
+            Comp := First_Component (T);
+            while Present (Comp) loop
+               Res := Res + Component_Count (Etype (Comp));
+               Next_Component (Comp);
+            end loop;
+
+            return Res;
+
+         elsif Is_Array_Type (T) then
+            declare
+               Lo : constant Node_Id :=
+                      Type_Low_Bound (Etype (First_Index (T)));
+               Hi : constant Node_Id :=
+                      Type_High_Bound (Etype (First_Index (T)));
+
+               Siz  : constant Int := Component_Count (Component_Type (T));
+
+            begin
+               if not Compile_Time_Known_Value (Lo)
+                 or else not Compile_Time_Known_Value (Hi)
+               then
+                  return 0;
+               else
+                  return
+                    Siz * UI_To_Int (Expr_Value (Hi) - Expr_Value (Lo) + 1);
+               end if;
+            end;
+
+         else
+            --  Can only be a null for an access type
+
+            return 1;
+         end if;
+      end Component_Count;
+
+   --  Start of processing for Aggr_Size_OK
+
+   begin
+      Siz  := Component_Count (Component_Type (Typ));
+
+      Indx := First_Index (Typ);
+      while Present (Indx) loop
+         Lo  := Type_Low_Bound (Etype (Indx));
+         Hi  := Type_High_Bound (Etype (Indx));
+
+         --  Bounds need to be known at compile time
+
+         if not Compile_Time_Known_Value (Lo)
+           or else not Compile_Time_Known_Value (Hi)
+         then
+            return False;
+         end if;
+
+         Lov := Expr_Value (Lo);
+         Hiv := Expr_Value (Hi);
+
+         --  A flat array is always safe
+
+         if Hiv < Lov then
+            return True;
+         end if;
+
+         declare
+            Rng : constant Uint := Hiv - Lov + 1;
+
+         begin
+            --  Check if size is too large
+
+            if not UI_Is_In_Int_Range (Rng) then
+               return False;
+            end if;
+
+            Siz := Siz * UI_To_Int (Rng);
+         end;
+
+         if Siz <= 0
+           or else Siz > Max_Aggr_Size
+         then
+            return False;
+         end if;
+
+         --  Bounds must be in integer range, for later array construction
+
+         if not UI_Is_In_Int_Range (Lov)
+             or else
+            not UI_Is_In_Int_Range (Hiv)
+         then
+            return False;
+         end if;
+
+         Next_Index (Indx);
+      end loop;
+
+      return True;
+   end Aggr_Size_OK;
+
    ---------------------------------
    -- Backend_Processing_Possible --
    ---------------------------------
@@ -249,52 +450,90 @@ package body Exp_Aggr is
    --    4. The array type of N does not follow the Fortran layout convention
    --       or if it does it must be 1 dimensional.
 
-   --    5. The array component type is tagged, which may necessitate
-   --       reassignment of proper tags.
+   --    5. The array component type may not be tagged (which could necessitate
+   --       reassignment of proper tags).
+
+   --    6. The array component type must not have unaligned bit components
+
+   --    7. None of the components of the aggregate may be bit unaligned
+   --       components.
+
+   --    8. There cannot be delayed components, since we do not know enough
+   --       at this stage to know if back end processing is possible.
+
+   --    9. There cannot be any discriminated record components, since the
+   --       back end cannot handle this complex case.
 
    function Backend_Processing_Possible (N : Node_Id) return Boolean is
       Typ : constant Entity_Id := Etype (N);
-      --  Typ is the correct constrained array subtype of the aggregate.
+      --  Typ is the correct constrained array subtype of the aggregate
 
-      function Static_Check (N : Node_Id; Index : Node_Id) return Boolean;
-      --  Recursively checks that N is fully positional, returns true if so.
+      function Component_Check (N : Node_Id; Index : Node_Id) return Boolean;
+      --  This routine checks components of aggregate N, enforcing checks
+      --  1, 7, 8, and 9. In the multi-dimensional case, these checks are
+      --  performed on subaggregates. The Index value is the current index
+      --  being checked in the multi-dimensional case.
 
-      ------------------
-      -- Static_Check --
-      ------------------
+      ---------------------
+      -- Component_Check --
+      ---------------------
 
-      function Static_Check (N : Node_Id; Index : Node_Id) return Boolean is
+      function Component_Check (N : Node_Id; Index : Node_Id) return Boolean is
          Expr : Node_Id;
 
       begin
-         --  Check for component associations
+         --  Checks 1: (no component associations)
 
          if Present (Component_Associations (N)) then
             return False;
          end if;
 
+         --  Checks on components
+
          --  Recurse to check subaggregates, which may appear in qualified
          --  expressions. If delayed, the front-end will have to expand.
+         --  If the component is a discriminated record, treat as non-static,
+         --  as the back-end cannot handle this properly.
 
          Expr := First (Expressions (N));
-
          while Present (Expr) loop
+
+            --  Checks 8: (no delayed components)
 
             if Is_Delayed_Aggregate (Expr) then
                return False;
             end if;
 
-            if Present (Next_Index (Index))
-               and then not Static_Check (Expr, Next_Index (Index))
+            --  Checks 9: (no discriminated records)
+
+            if Present (Etype (Expr))
+              and then Is_Record_Type (Etype (Expr))
+              and then Has_Discriminants (Etype (Expr))
             then
                return False;
             end if;
+
+            --  Checks 7. Component must not be bit aligned component
+
+            if Possible_Bit_Aligned_Component (Expr) then
+               return False;
+            end if;
+
+            --  Recursion to following indexes for multiple dimension case
+
+            if Present (Next_Index (Index))
+               and then not Component_Check (Expr, Next_Index (Index))
+            then
+               return False;
+            end if;
+
+            --  All checks for that component finished, on to next
 
             Next (Expr);
          end loop;
 
          return True;
-      end Static_Check;
+      end Component_Check;
 
    --  Start of processing for Backend_Processing_Possible
 
@@ -305,7 +544,7 @@ package body Exp_Aggr is
          return False;
       end if;
 
-      --  Checks 4  (array must not be multi-dimensional Fortran case)
+      --  Checks 4 (array must not be multi-dimensional Fortran case)
 
       if Convention (Typ) = Convention_Fortran
         and then Number_Dimensions (Typ) > 1
@@ -319,28 +558,31 @@ package body Exp_Aggr is
          return False;
       end if;
 
-      --  Checks 1 (aggregate must be fully positional)
+      --  Checks on components
 
-      if not Static_Check (N, First_Index (Typ)) then
+      if not Component_Check (N, First_Index (Typ)) then
          return False;
       end if;
 
-      --  Checks 5 (if the component type is tagged, then we may need
-      --    to do tag adjustments; perhaps this should be refined to
-      --    check for any component associations that actually
-      --    need tag adjustment, along the lines of the test that's
-      --    done in Has_Delayed_Nested_Aggregate_Or_Tagged_Comps
-      --    for record aggregates with tagged components, but not
-      --    clear whether it's worthwhile ???; in the case of the
-      --    JVM, object tags are handled implicitly)
+      --  Checks 5 (if the component type is tagged, then we may need to do
+      --    tag adjustments. Perhaps this should be refined to check for any
+      --    component associations that actually need tag adjustment, similar
+      --    to the test in Component_Not_OK_For_Backend for record aggregates
+      --    with tagged components, but not clear whether it's worthwhile ???;
+      --    in the case of the JVM, object tags are handled implicitly)
 
-      if Is_Tagged_Type (Component_Type (Typ)) and then not Java_VM then
+      if Is_Tagged_Type (Component_Type (Typ)) and then VM_Target = No_VM then
+         return False;
+      end if;
+
+      --  Checks 6 (component type must not have bit aligned components)
+
+      if Type_May_Have_Bit_Aligned_Components (Component_Type (Typ)) then
          return False;
       end if;
 
       --  Backend processing is possible
 
-      Set_Compile_Time_Known_Aggregate (N, True);
       Set_Size_Known_At_Compile_Time (Etype (N), True);
       return True;
    end Backend_Processing_Possible;
@@ -360,11 +602,11 @@ package body Exp_Aggr is
    --         we are dealing with an expression we emit a sequence of
    --         assignments instead of a loop.
 
-   --     (c) Generate the remaining loops to cover the others choice if any.
+   --     (c) Generate the remaining loops to cover the others choice if any
 
    --  2. If the aggregate contains positional elements we
 
-   --     (a) translate the positional elements in a series of assignments.
+   --     (a) translate the positional elements in a series of assignments
 
    --     (b) Generate a final loop to cover the others choice if any.
    --         Note that this final loop has to be a while loop since the case
@@ -387,12 +629,12 @@ package body Exp_Aggr is
 
    function Build_Array_Aggr_Code
      (N           : Node_Id;
+      Ctype       : Entity_Id;
       Index       : Node_Id;
       Into        : Node_Id;
       Scalar_Comp : Boolean;
       Indices     : List_Id := No_List;
-      Flist       : Node_Id := Empty)
-      return        List_Id
+      Flist       : Node_Id := Empty) return List_Id
    is
       Loc          : constant Source_Ptr := Sloc (N);
       Index_Base   : constant Entity_Id  := Base_Type (Etype (Index));
@@ -400,27 +642,30 @@ package body Exp_Aggr is
       Index_Base_H : constant Node_Id := Type_High_Bound (Index_Base);
 
       function Add (Val : Int; To : Node_Id) return Node_Id;
-      --  Returns an expression where Val is added to expression To,
-      --  unless To+Val is provably out of To's base type range.
-      --  To must be an already analyzed expression.
+      --  Returns an expression where Val is added to expression To, unless
+      --  To+Val is provably out of To's base type range. To must be an
+      --  already analyzed expression.
 
       function Empty_Range (L, H : Node_Id) return Boolean;
-      --  Returns True if the range defined by L .. H is certainly empty.
+      --  Returns True if the range defined by L .. H is certainly empty
 
       function Equal (L, H : Node_Id) return Boolean;
-      --  Returns True if L = H for sure.
+      --  Returns True if L = H for sure
 
       function Index_Base_Name return Node_Id;
-      --  Returns a new reference to the index type name.
+      --  Returns a new reference to the index type name
 
       function Gen_Assign (Ind : Node_Id; Expr : Node_Id) return List_Id;
-      --  Ind must be a side-effect free expression.
-      --  If the input aggregate N to Build_Loop contains no sub-aggregates,
-      --  This routine returns the assignment statement
+      --  Ind must be a side-effect free expression. If the input aggregate
+      --  N to Build_Loop contains no sub-aggregates, then this function
+      --  returns the assignment statement:
       --
       --     Into (Indices, Ind) := Expr;
       --
-      --  Otherwise we call Build_Code recursively.
+      --  Otherwise we call Build_Code recursively
+      --
+      --  Ada 2005 (AI-287): In case of default initialized component, Expr
+      --  is empty and we generate a call to the corresponding IP subprogram.
 
       function Gen_Loop (L, H : Node_Id; Expr : Node_Id) return List_Id;
       --  Nodes L and H must be side-effect free expressions.
@@ -446,7 +691,7 @@ package body Exp_Aggr is
       --        Into (Indices, J) := Expr;
       --     end loop;
       --
-      --  Otherwise we call Build_Code recursively.
+      --  Otherwise we call Build_Code recursively
 
       function Local_Compile_Time_Known_Value (E : Node_Id) return Boolean;
       function Local_Expr_Value               (E : Node_Id) return Uint;
@@ -466,9 +711,8 @@ package body Exp_Aggr is
          Expr_Pos : Node_Id;
          Expr     : Node_Id;
          To_Pos   : Node_Id;
-
-         U_To  : Uint;
-         U_Val : Uint := UI_From_Int (Val);
+         U_To     : Uint;
+         U_Val    : constant Uint := UI_From_Int (Val);
 
       begin
          --  Note: do not try to optimize the case of Val = 0, because
@@ -626,7 +870,7 @@ package body Exp_Aggr is
       ----------------
 
       function Gen_Assign (Ind : Node_Id; Expr : Node_Id) return List_Id is
-         L : List_Id := New_List;
+         L : constant List_Id := New_List;
          F : Entity_Id;
          A : Node_Id;
 
@@ -648,7 +892,13 @@ package body Exp_Aggr is
             Res : List_Id;
 
          begin
-            if Nkind (Parent (Expr)) = N_Component_Association
+            --  Ada 2005 (AI-287): Do nothing else in case of default
+            --  initialized component.
+
+            if No (Expr) then
+               return Lis;
+
+            elsif Nkind (Parent (Expr)) = N_Component_Association
               and then Present (Loop_Actions (Parent (Expr)))
             then
                Append_List (Lis, Loop_Actions (Parent (Expr)));
@@ -680,32 +930,42 @@ package body Exp_Aggr is
               and then Present (Scope (Entity (Into)))
             then
                F := Find_Final_List (Scope (Entity (Into)));
-
             else
                F := Find_Final_List (Current_Scope);
             end if;
          else
-            F := 0;
+            F := Empty;
          end if;
 
          if Present (Next_Index (Index)) then
             return
               Add_Loop_Actions (
                 Build_Array_Aggr_Code
-                  (Expr, Next_Index (Index),
-                    Into, Scalar_Comp, New_Indices, F));
+                  (N           => Expr,
+                   Ctype       => Ctype,
+                   Index       => Next_Index (Index),
+                   Into        => Into,
+                   Scalar_Comp => Scalar_Comp,
+                   Indices     => New_Indices,
+                   Flist       => F));
          end if;
 
          --  If we get here then we are at a bottom-level (sub-)aggregate
 
-         Indexed_Comp :=  Checks_Off (
-             Make_Indexed_Component (Loc,
-               Prefix      => New_Copy_Tree (Into),
-               Expressions => New_Indices));
+         Indexed_Comp :=
+           Checks_Off
+             (Make_Indexed_Component (Loc,
+                Prefix      => New_Copy_Tree (Into),
+                Expressions => New_Indices));
 
          Set_Assignment_OK (Indexed_Comp);
 
-         if Nkind (Expr) = N_Qualified_Expression then
+         --  Ada 2005 (AI-287): In case of default initialized component, Expr
+         --  is not present (and therefore we also initialize Expr_Q to empty).
+
+         if No (Expr) then
+            Expr_Q := Empty;
+         elsif Nkind (Expr) = N_Qualified_Expression then
             Expr_Q := Expression (Expr);
          else
             Expr_Q := Expr;
@@ -715,41 +975,57 @@ package body Exp_Aggr is
            and then Etype (N) /= Any_Composite
          then
             Comp_Type := Component_Type (Etype (N));
+            pragma Assert (Comp_Type = Ctype); --  AI-287
 
          elsif Present (Next (First (New_Indices))) then
 
-            --  this is a multidimensional array. Recover the component
-            --  type from the outermost aggregate, because subaggregates
-            --  do not have an assigned type.
+            --  Ada 2005 (AI-287): Do nothing in case of default initialized
+            --  component because we have received the component type in
+            --  the formal parameter Ctype.
 
-            declare
-               P : Node_Id := Parent (Expr);
+            --  ??? Some assert pragmas have been added to check if this new
+            --      formal can be used to replace this code in all cases.
 
-            begin
-               while Present (P) loop
+            if Present (Expr) then
 
-                  if Nkind (P) = N_Aggregate
-                    and then Present (Etype (P))
-                  then
-                     Comp_Type := Component_Type (Etype (P));
-                     exit;
+               --  This is a multidimensional array. Recover the component
+               --  type from the outermost aggregate, because subaggregates
+               --  do not have an assigned type.
 
-                  else
-                     P := Parent (P);
-                  end if;
-               end loop;
-            end;
+               declare
+                  P : Node_Id;
+
+               begin
+                  P := Parent (Expr);
+                  while Present (P) loop
+                     if Nkind (P) = N_Aggregate
+                       and then Present (Etype (P))
+                     then
+                        Comp_Type := Component_Type (Etype (P));
+                        exit;
+
+                     else
+                        P := Parent (P);
+                     end if;
+                  end loop;
+
+                  pragma Assert (Comp_Type = Ctype); --  AI-287
+               end;
+            end if;
          end if;
 
-         if (Nkind (Expr_Q) = N_Aggregate
-           or else Nkind (Expr_Q) = N_Extension_Aggregate)
-         then
+         --  Ada 2005 (AI-287): We only analyze the expression in case of non-
+         --  default initialized components (otherwise Expr_Q is not present).
 
+         if Present (Expr_Q)
+           and then (Nkind (Expr_Q) = N_Aggregate
+                     or else Nkind (Expr_Q) = N_Extension_Aggregate)
+         then
             --  At this stage the Expression may not have been
             --  analyzed yet because the array aggregate code has not
             --  been updated to use the Expansion_Delayed flag and
             --  avoid analysis altogether to solve the same problem
-            --  (see Resolve_Aggr_Expr) so let's do the analysis of
+            --  (see Resolve_Aggr_Expr). So let us do the analysis of
             --  non-array aggregates now in order to get the value of
             --  Expansion_Delayed flag for the inner aggregate ???
 
@@ -758,65 +1034,137 @@ package body Exp_Aggr is
             end if;
 
             if Is_Delayed_Aggregate (Expr_Q) then
-               return
-                 Add_Loop_Actions (
-                   Late_Expansion (Expr_Q, Etype (Expr_Q), Indexed_Comp, F));
+
+               --  This is either a subaggregate of a multidimentional array,
+               --  or a component of an array type whose component type is
+               --  also an array. In the latter case, the expression may have
+               --  component associations that provide different bounds from
+               --  those of the component type, and sliding must occur. Instead
+               --  of decomposing the current aggregate assignment, force the
+               --  re-analysis of the assignment, so that a temporary will be
+               --  generated in the usual fashion, and sliding will take place.
+
+               if Nkind (Parent (N)) = N_Assignment_Statement
+                 and then Is_Array_Type (Comp_Type)
+                 and then Present (Component_Associations (Expr_Q))
+                 and then Must_Slide (Comp_Type, Etype (Expr_Q))
+               then
+                  Set_Expansion_Delayed (Expr_Q, False);
+                  Set_Analyzed (Expr_Q, False);
+
+               else
+                  return
+                    Add_Loop_Actions (
+                      Late_Expansion (
+                        Expr_Q, Etype (Expr_Q), Indexed_Comp, F));
+               end if;
             end if;
          end if;
 
-         --  Now generate the assignment with no associated controlled
-         --  actions since the target of the assignment may not have
-         --  been initialized, it is not possible to Finalize it as
-         --  expected by normal controlled assignment. The rest of the
-         --  controlled actions are done manually with the proper
-         --  finalization list coming from the context.
+         --  Ada 2005 (AI-287): In case of default initialized component, call
+         --  the initialization subprogram associated with the component type.
 
-         A :=
-           Make_OK_Assignment_Statement (Loc,
-             Name       => Indexed_Comp,
-             Expression => New_Copy_Tree (Expr));
+         if No (Expr) then
+            if Present (Base_Init_Proc (Etype (Ctype)))
+              or else Has_Task (Base_Type (Ctype))
+            then
+               Append_List_To (L,
+                 Build_Initialization_Call (Loc,
+                   Id_Ref            => Indexed_Comp,
+                   Typ               => Ctype,
+                   With_Default_Init => True));
+            end if;
 
-         if Present (Comp_Type) and then Controlled_Type (Comp_Type) then
-            Set_No_Ctrl_Actions (A);
-         end if;
+         else
+            --  Now generate the assignment with no associated controlled
+            --  actions since the target of the assignment may not have
+            --  been initialized, it is not possible to Finalize it as
+            --  expected by normal controlled assignment. The rest of the
+            --  controlled actions are done manually with the proper
+            --  finalization list coming from the context.
 
-         Append_To (L, A);
-
-         --  Adjust the tag if tagged (because of possible view
-         --  conversions), unless compiling for the Java VM
-         --  where tags are implicit.
-
-         if Present (Comp_Type)
-           and then Is_Tagged_Type (Comp_Type)
-           and then not Java_VM
-         then
             A :=
               Make_OK_Assignment_Statement (Loc,
-                Name =>
-                  Make_Selected_Component (Loc,
-                    Prefix =>  New_Copy_Tree (Indexed_Comp),
-                    Selector_Name =>
-                      New_Reference_To (Tag_Component (Comp_Type), Loc)),
+                Name       => Indexed_Comp,
+                Expression => New_Copy_Tree (Expr));
 
-                Expression =>
-                  Unchecked_Convert_To (RTE (RE_Tag),
-                    New_Reference_To (
-                      Access_Disp_Table (Comp_Type), Loc)));
+            if Present (Comp_Type) and then Controlled_Type (Comp_Type) then
+               Set_No_Ctrl_Actions (A);
+
+               --  If this is an aggregate for an array of arrays, each
+               --  subaggregate will be expanded as well, and even with
+               --  No_Ctrl_Actions the assignments of inner components will
+               --  require attachment in their assignments to temporaries.
+               --  These temporaries must be finalized for each subaggregate,
+               --  to prevent multiple attachments of the same temporary
+               --  location to same finalization chain (and consequently
+               --  circular lists). To ensure that finalization takes place
+               --  for each subaggregate we wrap the assignment in a block.
+
+               if Is_Array_Type (Comp_Type)
+                 and then Nkind (Expr) = N_Aggregate
+               then
+                  A :=
+                    Make_Block_Statement (Loc,
+                      Handled_Statement_Sequence =>
+                        Make_Handled_Sequence_Of_Statements (Loc,
+                           Statements => New_List (A)));
+               end if;
+            end if;
 
             Append_To (L, A);
-         end if;
 
-         --  Adjust and Attach the component to the proper final list
-         --  which can be the controller of the outer record object or
-         --  the final list associated with the scope
+            --  Adjust the tag if tagged (because of possible view
+            --  conversions), unless compiling for the Java VM
+            --  where tags are implicit.
 
-         if Present (Comp_Type)  and then Controlled_Type (Comp_Type) then
-            Append_List_To (L,
-              Make_Adjust_Call (
-                Ref         => New_Copy_Tree (Indexed_Comp),
-                Typ         => Comp_Type,
-                Flist_Ref   => F,
-                With_Attach => Make_Integer_Literal (Loc, 1)));
+            if Present (Comp_Type)
+              and then Is_Tagged_Type (Comp_Type)
+              and then VM_Target = No_VM
+            then
+               A :=
+                 Make_OK_Assignment_Statement (Loc,
+                   Name =>
+                     Make_Selected_Component (Loc,
+                       Prefix =>  New_Copy_Tree (Indexed_Comp),
+                       Selector_Name =>
+                         New_Reference_To
+                           (First_Tag_Component (Comp_Type), Loc)),
+
+                   Expression =>
+                     Unchecked_Convert_To (RTE (RE_Tag),
+                       New_Reference_To
+                         (Node (First_Elmt (Access_Disp_Table (Comp_Type))),
+                          Loc)));
+
+               Append_To (L, A);
+            end if;
+
+            --  Adjust and attach the component to the proper final list, which
+            --  can be the controller of the outer record object or the final
+            --  list associated with the scope.
+
+            --  If the component is itself an array of controlled types, whose
+            --  value is given by a sub-aggregate, then the attach calls have
+            --  been generated when individual subcomponent are assigned, and
+            --  and must not be done again to prevent malformed finalization
+            --  chains (see comments above, concerning the creation of a block
+            --  to hold inner finalization actions).
+
+            if Present (Comp_Type)
+              and then Controlled_Type (Comp_Type)
+              and then
+                (not Is_Array_Type (Comp_Type)
+                   or else not Is_Controlled (Component_Type (Comp_Type))
+                   or else Nkind (Expr) /= N_Aggregate)
+            then
+               Append_List_To (L,
+                 Make_Adjust_Call (
+                   Ref         => New_Copy_Tree (Indexed_Comp),
+                   Typ         => Comp_Type,
+                   Flist_Ref   => F,
+                   With_Attach => Make_Integer_Literal (Loc, 1)));
+            end if;
          end if;
 
          return Add_Loop_Actions (L);
@@ -838,8 +1186,8 @@ package body Exp_Aggr is
          L_Body : List_Id;
          --  The statements to execute in the loop
 
-         S : List_Id := New_List;
-         --  list of statement
+         S : constant List_Id := New_List;
+         --  List of statements
 
          Tcopy : Node_Id;
          --  Copy of expression tree, used for checking purposes
@@ -850,21 +1198,29 @@ package body Exp_Aggr is
          if Empty_Range (L, H) then
             Append_To (S, Make_Null_Statement (Loc));
 
-            --  The expression must be type-checked even though no component
-            --  of the aggregate will have this value. This is done only for
-            --  actual components of the array, not for subaggregates. Do the
-            --  check on a copy, because the expression may be shared among
-            --  several choices, some of which might be non-null.
+            --  Ada 2005 (AI-287): Nothing else need to be done in case of
+            --  default initialized component.
 
-            if Present (Etype (N))
-              and then Is_Array_Type (Etype (N))
-              and then No (Next_Index (Index))
-            then
-               Expander_Mode_Save_And_Set (False);
-               Tcopy := New_Copy_Tree (Expr);
-               Set_Parent (Tcopy, N);
-               Analyze_And_Resolve (Tcopy, Component_Type (Etype (N)));
-               Expander_Mode_Restore;
+            if No (Expr) then
+               null;
+
+            else
+               --  The expression must be type-checked even though no component
+               --  of the aggregate will have this value. This is done only for
+               --  actual components of the array, not for subaggregates. Do
+               --  the check on a copy, because the expression may be shared
+               --  among several choices, some of which might be non-null.
+
+               if Present (Etype (N))
+                 and then Is_Array_Type (Etype (N))
+                 and then No (Next_Index (Index))
+               then
+                  Expander_Mode_Save_And_Set (False);
+                  Tcopy := New_Copy_Tree (Expr);
+                  Set_Parent (Tcopy, N);
+                  Analyze_And_Resolve (Tcopy, Component_Type (Etype (N)));
+                  Expander_Mode_Restore;
+               end if;
             end if;
 
             return S;
@@ -884,6 +1240,7 @@ package body Exp_Aggr is
            and then Local_Compile_Time_Known_Value (H)
            and then Local_Expr_Value (H) - Local_Expr_Value (L) <= 2
          then
+
             Append_List_To (S, Gen_Assign (New_Copy_Tree (L), Expr));
             Append_List_To (S, Gen_Assign (Add (1, To => L), Expr));
 
@@ -935,7 +1292,17 @@ package body Exp_Aggr is
                           Iteration_Scheme => L_Iteration_Scheme,
                           Statements       => L_Body));
 
-         return S;
+         --  A small optimization: if the aggregate is initialized with a
+         --  box and the component type has no initialization procedure,
+         --  remove the useless empty loop.
+
+         if Nkind (First (S)) = N_Loop_Statement
+           and then Is_Empty_List (Statements (First (S)))
+         then
+            return New_List (Make_Null_Statement (Loc));
+         else
+            return S;
+         end if;
       end Gen_Loop;
 
       ---------------
@@ -951,7 +1318,6 @@ package body Exp_Aggr is
       --     end loop;
 
       function Gen_While (L, H : Node_Id; Expr : Node_Id) return List_Id is
-
          W_J : Node_Id;
 
          W_Decl : Node_Id;
@@ -963,13 +1329,13 @@ package body Exp_Aggr is
          W_Index_Succ : Node_Id;
          --  Index_Base'Succ (J)
 
-         W_Increment  : Node_Id;
+         W_Increment : Node_Id;
          --  W_J := Index_Base'Succ (W)
 
-         W_Body : List_Id := New_List;
+         W_Body : constant List_Id := New_List;
          --  The statements to execute in the loop
 
-         S : List_Id := New_List;
+         S : constant List_Id := New_List;
          --  list of statement
 
       begin
@@ -996,7 +1362,7 @@ package body Exp_Aggr is
 
          Append_To (S, W_Decl);
 
-         --  construct " while W_J < H"
+         --  Construct " while W_J < H"
 
          W_Iteration_Scheme :=
            Make_Iteration_Scheme
@@ -1054,8 +1420,8 @@ package body Exp_Aggr is
          return Compile_Time_Known_Value (E)
            or else
              (Nkind (E) = N_Attribute_Reference
-              and then Attribute_Name (E) = Name_Val
-              and then Compile_Time_Known_Value (First (Expressions (E))));
+               and then Attribute_Name (E) = Name_Val
+               and then Compile_Time_Known_Value (First (Expressions (E))));
       end Local_Compile_Time_Known_Value;
 
       ----------------------
@@ -1076,8 +1442,10 @@ package body Exp_Aggr is
       Assoc  : Node_Id;
       Choice : Node_Id;
       Expr   : Node_Id;
+      Typ    : Entity_Id;
 
-      Others_Expr : Node_Id   := Empty;
+      Others_Expr        : Node_Id := Empty;
+      Others_Box_Present : Boolean := False;
 
       Aggr_L : constant Node_Id := Low_Bound (Aggregate_Bounds (N));
       Aggr_H : constant Node_Id := High_Bound (Aggregate_Bounds (N));
@@ -1085,12 +1453,12 @@ package body Exp_Aggr is
       --  the code generated by Build_Array_Aggr_Code is executed then these
       --  bounds are OK. Otherwise a Constraint_Error would have been raised.
 
-      Aggr_Low  : constant Node_Id := Duplicate_Subexpr (Aggr_L);
-      Aggr_High : constant Node_Id := Duplicate_Subexpr (Aggr_H);
-      --  After Duplicate_Subexpr these are side-effect free.
+      Aggr_Low  : constant Node_Id := Duplicate_Subexpr_No_Checks (Aggr_L);
+      Aggr_High : constant Node_Id := Duplicate_Subexpr_No_Checks (Aggr_H);
+      --  After Duplicate_Subexpr these are side-effect free
 
-      Low  : Node_Id;
-      High : Node_Id;
+      Low        : Node_Id;
+      High       : Node_Id;
 
       Nb_Choices : Nat := 0;
       Table      : Case_Table_Type (1 .. Number_Of_Choices (N));
@@ -1099,12 +1467,33 @@ package body Exp_Aggr is
       Nb_Elements : Int;
       --  Number of elements in the positional aggregate
 
-      New_Code : List_Id := New_List;
+      New_Code : constant List_Id := New_List;
 
    --  Start of processing for Build_Array_Aggr_Code
 
    begin
+      --  First before we start, a special case. if we have a bit packed
+      --  array represented as a modular type, then clear the value to
+      --  zero first, to ensure that unused bits are properly cleared.
+
+      Typ := Etype (N);
+
+      if Present (Typ)
+        and then Is_Bit_Packed_Array (Typ)
+        and then Is_Modular_Integer_Type (Packed_Array_Type (Typ))
+      then
+         Append_To (New_Code,
+           Make_Assignment_Statement (Loc,
+             Name => New_Copy_Tree (Into),
+             Expression =>
+               Unchecked_Convert_To (Typ,
+                 Make_Integer_Literal (Loc, Uint_0))));
+      end if;
+
+      --  We can skip this
       --  STEP 1: Process component associations
+      --  For those associations that may generate a loop, initialize
+      --  Loop_Actions to collect inserted actions that may be crated.
 
       if No (Expressions (N)) then
 
@@ -1112,22 +1501,35 @@ package body Exp_Aggr is
 
          Assoc := First (Component_Associations (N));
          while Present (Assoc) loop
-
             Choice := First (Choices (Assoc));
             while Present (Choice) loop
-
                if Nkind (Choice) = N_Others_Choice then
-                  Others_Expr := Expression (Assoc);
+                  Set_Loop_Actions (Assoc, New_List);
+
+                  if Box_Present (Assoc) then
+                     Others_Box_Present := True;
+                  else
+                     Others_Expr := Expression (Assoc);
+                  end if;
                   exit;
                end if;
 
                Get_Index_Bounds (Choice, Low, High);
 
-               Nb_Choices := Nb_Choices + 1;
-               Table (Nb_Choices) := (Choice_Lo   => Low,
-                                      Choice_Hi   => High,
-                                      Choice_Node => Expression (Assoc));
+               if Low /= High then
+                  Set_Loop_Actions (Assoc, New_List);
+               end if;
 
+               Nb_Choices := Nb_Choices + 1;
+               if Box_Present (Assoc) then
+                  Table (Nb_Choices) := (Choice_Lo   => Low,
+                                         Choice_Hi   => High,
+                                         Choice_Node => Empty);
+               else
+                  Table (Nb_Choices) := (Choice_Lo   => Low,
+                                         Choice_Hi   => High,
+                                         Choice_Node => Expression (Assoc));
+               end if;
                Next (Choice);
             end loop;
 
@@ -1142,13 +1544,12 @@ package body Exp_Aggr is
             Sort_Case_Table (Table);
          end if;
 
-         --  STEP 1 (b):  take care of the whole set of discrete choices.
+         --  STEP 1 (b):  take care of the whole set of discrete choices
 
          for J in 1 .. Nb_Choices loop
             Low  := Table (J).Choice_Lo;
             High := Table (J).Choice_Hi;
             Expr := Table (J).Choice_Node;
-
             Append_List (Gen_Loop (Low, High, Expr), To => New_Code);
          end loop;
 
@@ -1156,13 +1557,12 @@ package body Exp_Aggr is
          --  We don't need to generate loops over empty gaps, but if there is
          --  a single empty range we must analyze the expression for semantics
 
-         if Present (Others_Expr) then
+         if Present (Others_Expr) or else Others_Box_Present then
             declare
                First : Boolean := True;
 
             begin
                for J in 0 .. Nb_Choices loop
-
                   if J = 0 then
                      Low := Aggr_Low;
                   else
@@ -1175,7 +1575,7 @@ package body Exp_Aggr is
                      High := Add (-1, To => Table (J + 1).Choice_Lo);
                   end if;
 
-                  --  If this is an expansion within an init_proc, make
+                  --  If this is an expansion within an init proc, make
                   --  sure that discriminant references are replaced by
                   --  the corresponding discriminal.
 
@@ -1213,7 +1613,6 @@ package body Exp_Aggr is
 
          Expr        := First (Expressions (N));
          Nb_Elements := -1;
-
          while Present (Expr) loop
             Nb_Elements := Nb_Elements + 1;
             Append_List (Gen_Assign (Add (Nb_Elements, To => Aggr_L), Expr),
@@ -1226,12 +1625,22 @@ package body Exp_Aggr is
 
          if Present (Component_Associations (N)) then
             Assoc := Last (Component_Associations (N));
-            Expr  := Expression (Assoc);
 
-            Append_List (Gen_While (Add (Nb_Elements, To => Aggr_L),
-                                    Aggr_High,
-                                    Expr),
-                         To => New_Code);
+            --  Ada 2005 (AI-287)
+
+            if Box_Present (Assoc) then
+               Append_List (Gen_While (Add (Nb_Elements, To => Aggr_L),
+                                       Aggr_High,
+                                       Empty),
+                            To => New_Code);
+            else
+               Expr  := Expression (Assoc);
+
+               Append_List (Gen_While (Add (Nb_Elements, To => Aggr_L),
+                                       Aggr_High,
+                                       Expr), --  AI-287
+                            To => New_Code);
+            end if;
          end if;
       end if;
 
@@ -1243,26 +1652,25 @@ package body Exp_Aggr is
    ----------------------------
 
    function Build_Record_Aggr_Code
-     (N      : Node_Id;
-      Typ    : Entity_Id;
-      Target : Node_Id;
-      Flist  : Node_Id   := Empty;
-      Obj    : Entity_Id := Empty)
-      return   List_Id
+     (N                             : Node_Id;
+      Typ                           : Entity_Id;
+      Lhs                           : Node_Id;
+      Flist                         : Node_Id   := Empty;
+      Obj                           : Entity_Id := Empty;
+      Is_Limited_Ancestor_Expansion : Boolean   := False) return List_Id
    is
       Loc     : constant Source_Ptr := Sloc (N);
       L       : constant List_Id    := New_List;
-      Start_L : constant List_Id    := New_List;
       N_Typ   : constant Entity_Id  := Etype (N);
 
       Comp      : Node_Id;
       Instr     : Node_Id;
       Ref       : Node_Id;
+      Target    : Entity_Id;
       F         : Node_Id;
       Comp_Type : Entity_Id;
       Selector  : Entity_Id;
       Comp_Expr : Node_Id;
-      Comp_Kind : Node_Kind;
       Expr_Q    : Node_Id;
 
       Internal_Final_List : Node_Id;
@@ -1280,9 +1688,9 @@ package body Exp_Aggr is
       Init_Typ : Entity_Id := Empty;
       Attach   : Node_Id;
 
-      function Get_Constraint_Association (T : Entity_Id) return Node_Id;
-      --  Returns the first discriminant association in the constraint
-      --  associated with T, if any, otherwise returns Empty.
+      Ctrl_Stuff_Done : Boolean := False;
+      --  True if Gen_Ctrl_Actions_For_Aggr has already been called; calls
+      --  after the first do nothing.
 
       function Ancestor_Discriminant_Value (Disc : Entity_Id) return Node_Id;
       --  Returns the value that the given discriminant of an ancestor
@@ -1295,17 +1703,34 @@ package body Exp_Aggr is
       --  values provided by either an association of the aggregate or
       --  by the constraint imposed by a parent type (RM95-4.3.2(8)).
 
+      function Compatible_Int_Bounds
+        (Agg_Bounds : Node_Id;
+         Typ_Bounds : Node_Id) return Boolean;
+      --  Return true if Agg_Bounds are equal or within Typ_Bounds. It is
+      --  assumed that both bounds are integer ranges.
+
+      procedure Gen_Ctrl_Actions_For_Aggr;
+      --  Deal with the various controlled type data structure initializations
+      --  (but only if it hasn't been done already).
+
+      function Get_Constraint_Association (T : Entity_Id) return Node_Id;
+      --  Returns the first discriminant association in the constraint
+      --  associated with T, if any, otherwise returns Empty.
+
       function Init_Controller
         (Target  : Node_Id;
          Typ     : Entity_Id;
          F       : Node_Id;
          Attach  : Node_Id;
-         Init_Pr : Boolean)
-        return List_Id;
-      --  returns the list of statements necessary to initialize the internal
-      --  controller of the (possible) ancestor typ into target and attach
-      --  it to finalization list F. Init_Pr conditions the call to the
-      --  init_proc since it may already be done due to ancestor initialization
+         Init_Pr : Boolean) return List_Id;
+      --  Returns the list of statements necessary to initialize the internal
+      --  controller of the (possible) ancestor typ into target and attach it
+      --  to finalization list F. Init_Pr conditions the call to the init proc
+      --  since it may already be done due to ancestor initialization.
+
+      function Is_Int_Range_Bounds (Bounds : Node_Id) return Boolean;
+      --  Check whether Bounds is a range node and its lower and higher bounds
+      --  are integers literals.
 
       ---------------------------------
       -- Ancestor_Discriminant_Value --
@@ -1342,6 +1767,7 @@ package body Exp_Aggr is
                      if Disc = Corresp_Disc then
                         return Duplicate_Subexpr (Expression (Assoc));
                      end if;
+
                      Corresp_Disc :=
                        Corresponding_Discriminant (Corresp_Disc);
                   end loop;
@@ -1440,11 +1866,12 @@ package body Exp_Aggr is
       ----------------------------------
 
       procedure Check_Ancestor_Discriminants (Anc_Typ : Entity_Id) is
-         Discr      : Entity_Id := First_Discriminant (Base_Type (Anc_Typ));
+         Discr      : Entity_Id;
          Disc_Value : Node_Id;
          Cond       : Node_Id;
 
       begin
+         Discr := First_Discriminant (Base_Type (Anc_Typ));
          while Present (Discr) loop
             Disc_Value := Ancestor_Discriminant_Value (Discr);
 
@@ -1465,6 +1892,22 @@ package body Exp_Aggr is
             Next_Discriminant (Discr);
          end loop;
       end Check_Ancestor_Discriminants;
+
+      ---------------------------
+      -- Compatible_Int_Bounds --
+      ---------------------------
+
+      function Compatible_Int_Bounds
+        (Agg_Bounds : Node_Id;
+         Typ_Bounds : Node_Id) return Boolean
+      is
+         Agg_Lo : constant Uint := Intval (Low_Bound  (Agg_Bounds));
+         Agg_Hi : constant Uint := Intval (High_Bound (Agg_Bounds));
+         Typ_Lo : constant Uint := Intval (Low_Bound  (Typ_Bounds));
+         Typ_Hi : constant Uint := Intval (High_Bound (Typ_Bounds));
+      begin
+         return Typ_Lo <= Agg_Lo and then Agg_Hi <= Typ_Hi;
+      end Compatible_Int_Bounds;
 
       --------------------------------
       -- Get_Constraint_Association --
@@ -1488,7 +1931,7 @@ package body Exp_Aggr is
       end Get_Constraint_Association;
 
       ---------------------
-      -- Init_controller --
+      -- Init_Controller --
       ---------------------
 
       function Init_Controller
@@ -1496,65 +1939,411 @@ package body Exp_Aggr is
          Typ     : Entity_Id;
          F       : Node_Id;
          Attach  : Node_Id;
-         Init_Pr : Boolean)
-        return List_Id
+         Init_Pr : Boolean) return List_Id
       is
+         L   : constant List_Id := New_List;
          Ref : Node_Id;
-         L   : List_Id := New_List;
+         RC  : RE_Id;
 
       begin
-         --     _init_proc (target._controller);
+         --  Generate:
+         --     init-proc (target._controller);
          --     initialize (target._controller);
          --     Attach_to_Final_List (target._controller, F);
 
-         Ref := Make_Selected_Component (Loc,
-                  Prefix        => Convert_To (Typ, New_Copy_Tree (Target)),
-                  Selector_Name => Make_Identifier (Loc, Name_uController));
+         Ref :=
+           Make_Selected_Component (Loc,
+             Prefix        => Convert_To (Typ, New_Copy_Tree (Target)),
+             Selector_Name => Make_Identifier (Loc, Name_uController));
          Set_Assignment_OK (Ref);
+
+         --  Ada 2005 (AI-287): Give support to default initialization of
+         --  limited types and components.
+
+         if (Nkind (Target) = N_Identifier
+              and then Present (Etype (Target))
+              and then Is_Limited_Type (Etype (Target)))
+           or else
+            (Nkind (Target) = N_Selected_Component
+              and then Present (Etype (Selector_Name (Target)))
+              and then Is_Limited_Type (Etype (Selector_Name (Target))))
+           or else
+            (Nkind (Target) = N_Unchecked_Type_Conversion
+              and then Present (Etype (Target))
+              and then Is_Limited_Type (Etype (Target)))
+           or else
+            (Nkind (Target) = N_Unchecked_Expression
+              and then Nkind (Expression (Target)) = N_Indexed_Component
+              and then Present (Etype (Prefix (Expression (Target))))
+              and then Is_Limited_Type (Etype (Prefix (Expression (Target)))))
+         then
+            RC := RE_Limited_Record_Controller;
+         else
+            RC := RE_Record_Controller;
+         end if;
 
          if Init_Pr then
             Append_List_To (L,
               Build_Initialization_Call (Loc,
                 Id_Ref       => Ref,
-                Typ          => RTE (RE_Record_Controller),
+                Typ          => RTE (RC),
                 In_Init_Proc => Within_Init_Proc));
          end if;
 
          Append_To (L,
            Make_Procedure_Call_Statement (Loc,
              Name =>
-               New_Reference_To (Find_Prim_Op (RTE (RE_Record_Controller),
-                 Name_Initialize), Loc),
-             Parameter_Associations => New_List (New_Copy_Tree (Ref))));
+               New_Reference_To (
+                 Find_Prim_Op (RTE (RC), Name_Initialize), Loc),
+             Parameter_Associations =>
+               New_List (New_Copy_Tree (Ref))));
 
          Append_To (L,
            Make_Attach_Call (
              Obj_Ref     => New_Copy_Tree (Ref),
              Flist_Ref   => F,
              With_Attach => Attach));
+
          return L;
       end Init_Controller;
+
+      -------------------------
+      -- Is_Int_Range_Bounds --
+      -------------------------
+
+      function Is_Int_Range_Bounds (Bounds : Node_Id) return Boolean is
+      begin
+         return Nkind (Bounds) = N_Range
+           and then Nkind (Low_Bound  (Bounds)) = N_Integer_Literal
+           and then Nkind (High_Bound (Bounds)) = N_Integer_Literal;
+      end Is_Int_Range_Bounds;
+
+      -------------------------------
+      -- Gen_Ctrl_Actions_For_Aggr --
+      -------------------------------
+
+      procedure Gen_Ctrl_Actions_For_Aggr is
+         Alloc : Node_Id := Empty;
+
+      begin
+         --  Do the work only the first time this is called
+
+         if Ctrl_Stuff_Done then
+            return;
+         end if;
+
+         Ctrl_Stuff_Done := True;
+
+         if Present (Obj)
+           and then Finalize_Storage_Only (Typ)
+           and then
+             (Is_Library_Level_Entity (Obj)
+                or else Entity (Constant_Value (RTE (RE_Garbage_Collected))) =
+                                                          Standard_True)
+
+            --  why not Is_True (Expr_Value (RTE (RE_Garbaage_Collected) ???
+         then
+            Attach := Make_Integer_Literal (Loc, 0);
+
+         elsif Nkind (Parent (N)) = N_Qualified_Expression
+           and then Nkind (Parent (Parent (N))) = N_Allocator
+         then
+            Alloc  := Parent (Parent (N));
+            Attach := Make_Integer_Literal (Loc, 2);
+
+         else
+            Attach := Make_Integer_Literal (Loc, 1);
+         end if;
+
+         --  Determine the external finalization list. It is either the
+         --  finalization list of the outer-scope or the one coming from
+         --  an outer aggregate.  When the target is not a temporary, the
+         --  proper scope is the scope of the target rather than the
+         --  potentially transient current scope.
+
+         if Controlled_Type (Typ) then
+
+            --  The current aggregate belongs to an allocator which creates
+            --  an object through an anonymous access type or acts as the root
+            --  of a coextension chain.
+
+            if Present (Alloc)
+              and then
+                (Is_Coextension_Root (Alloc)
+                   or else Ekind (Etype (Alloc)) = E_Anonymous_Access_Type)
+            then
+               if No (Associated_Final_Chain (Etype (Alloc))) then
+                  Build_Final_List (Alloc, Etype (Alloc));
+               end if;
+
+               External_Final_List :=
+                 Make_Selected_Component (Loc,
+                   Prefix =>
+                     New_Reference_To (
+                       Associated_Final_Chain (Etype (Alloc)), Loc),
+                   Selector_Name =>
+                     Make_Identifier (Loc, Name_F));
+
+            elsif Present (Flist) then
+               External_Final_List := New_Copy_Tree (Flist);
+
+            elsif Is_Entity_Name (Target)
+              and then Present (Scope (Entity (Target)))
+            then
+               External_Final_List :=
+                 Find_Final_List (Scope (Entity (Target)));
+
+            else
+               External_Final_List := Find_Final_List (Current_Scope);
+            end if;
+         else
+            External_Final_List := Empty;
+         end if;
+
+         --  Initialize and attach the outer object in the is_controlled case
+
+         if Is_Controlled (Typ) then
+            if Ancestor_Is_Subtype_Mark then
+               Ref := Convert_To (Init_Typ, New_Copy_Tree (Target));
+               Set_Assignment_OK (Ref);
+               Append_To (L,
+                 Make_Procedure_Call_Statement (Loc,
+                   Name =>
+                     New_Reference_To
+                       (Find_Prim_Op (Init_Typ, Name_Initialize), Loc),
+                   Parameter_Associations => New_List (New_Copy_Tree (Ref))));
+            end if;
+
+            if not Has_Controlled_Component (Typ) then
+               Ref := New_Copy_Tree (Target);
+               Set_Assignment_OK (Ref);
+
+               --  This is an aggregate of a coextension. Do not produce a
+               --  finalization call, but rather attach the reference of the
+               --  aggregate to its coextension chain.
+
+               if Present (Alloc)
+                 and then Is_Dynamic_Coextension (Alloc)
+               then
+                  if No (Coextensions (Alloc)) then
+                     Set_Coextensions (Alloc, New_Elmt_List);
+                  end if;
+
+                  Append_Elmt (Ref, Coextensions (Alloc));
+               else
+                  Append_To (L,
+                    Make_Attach_Call (
+                      Obj_Ref     => Ref,
+                      Flist_Ref   => New_Copy_Tree (External_Final_List),
+                      With_Attach => Attach));
+               end if;
+            end if;
+         end if;
+
+         --  In the Has_Controlled component case, all the intermediate
+         --  controllers must be initialized
+
+         if Has_Controlled_Component (Typ)
+           and not Is_Limited_Ancestor_Expansion
+         then
+            declare
+               Inner_Typ : Entity_Id;
+               Outer_Typ : Entity_Id;
+               At_Root   : Boolean;
+
+            begin
+               --  Find outer type with a controller
+
+               Outer_Typ := Base_Type (Typ);
+               while Outer_Typ /= Init_Typ
+                 and then not Has_New_Controlled_Component (Outer_Typ)
+               loop
+                  Outer_Typ := Etype (Outer_Typ);
+               end loop;
+
+               --  Attach it to the outer record controller to the
+               --  external final list
+
+               if Outer_Typ = Init_Typ then
+                  Append_List_To (L,
+                    Init_Controller (
+                      Target  => Target,
+                      Typ     => Outer_Typ,
+                      F       => External_Final_List,
+                      Attach  => Attach,
+                      Init_Pr => False));
+
+                  At_Root   := True;
+                  Inner_Typ := Init_Typ;
+
+               else
+                  Append_List_To (L,
+                    Init_Controller (
+                      Target  => Target,
+                      Typ     => Outer_Typ,
+                      F       => External_Final_List,
+                      Attach  => Attach,
+                      Init_Pr => True));
+
+                  Inner_Typ := Etype (Outer_Typ);
+                  At_Root   :=
+                    not Is_Tagged_Type (Typ) or else Inner_Typ = Outer_Typ;
+               end if;
+
+               --  The outer object has to be attached as well
+
+               if Is_Controlled (Typ) then
+                  Ref := New_Copy_Tree (Target);
+                  Set_Assignment_OK (Ref);
+                  Append_To (L,
+                    Make_Attach_Call (
+                      Obj_Ref     => Ref,
+                      Flist_Ref   => New_Copy_Tree (External_Final_List),
+                      With_Attach => New_Copy_Tree (Attach)));
+               end if;
+
+               --  Initialize the internal controllers for tagged types with
+               --  more than one controller.
+
+               while not At_Root and then Inner_Typ /= Init_Typ loop
+                  if Has_New_Controlled_Component (Inner_Typ) then
+                     F :=
+                       Make_Selected_Component (Loc,
+                         Prefix =>
+                           Convert_To (Outer_Typ, New_Copy_Tree (Target)),
+                         Selector_Name =>
+                           Make_Identifier (Loc, Name_uController));
+                     F :=
+                       Make_Selected_Component (Loc,
+                         Prefix => F,
+                         Selector_Name => Make_Identifier (Loc, Name_F));
+
+                     Append_List_To (L,
+                       Init_Controller (
+                         Target  => Target,
+                         Typ     => Inner_Typ,
+                         F       => F,
+                         Attach  => Make_Integer_Literal (Loc, 1),
+                         Init_Pr => True));
+                     Outer_Typ := Inner_Typ;
+                  end if;
+
+                  --  Stop at the root
+
+                  At_Root := Inner_Typ = Etype (Inner_Typ);
+                  Inner_Typ := Etype (Inner_Typ);
+               end loop;
+
+               --  If not done yet attach the controller of the ancestor part
+
+               if Outer_Typ /= Init_Typ
+                 and then Inner_Typ = Init_Typ
+                 and then Has_Controlled_Component (Init_Typ)
+               then
+                  F :=
+                    Make_Selected_Component (Loc,
+                      Prefix => Convert_To (Outer_Typ, New_Copy_Tree (Target)),
+                      Selector_Name =>
+                        Make_Identifier (Loc, Name_uController));
+                  F :=
+                    Make_Selected_Component (Loc,
+                      Prefix => F,
+                      Selector_Name => Make_Identifier (Loc, Name_F));
+
+                  Attach := Make_Integer_Literal (Loc, 1);
+                  Append_List_To (L,
+                    Init_Controller (
+                      Target  => Target,
+                      Typ     => Init_Typ,
+                      F       => F,
+                      Attach  => Attach,
+                      Init_Pr => False));
+
+                     --  Note: Init_Pr is False because the ancestor part has
+                     --  already been initialized either way (by default, if
+                     --  given by a type name, otherwise from the expression).
+
+               end if;
+            end;
+         end if;
+      end Gen_Ctrl_Actions_For_Aggr;
+
+      function Replace_Type (Expr : Node_Id) return Traverse_Result;
+      --  If the aggregate contains a self-reference, traverse each
+      --  expression to replace a possible self-reference with a reference
+      --  to the proper component of the target of the assignment.
+
+      ------------------
+      -- Replace_Type --
+      ------------------
+
+      function Replace_Type (Expr : Node_Id) return Traverse_Result is
+      begin
+         if Nkind (Expr) = N_Attribute_Reference
+           and  then Is_Entity_Name (Prefix (Expr))
+           and then Is_Type (Entity (Prefix (Expr)))
+         then
+            if Is_Entity_Name (Lhs) then
+               Rewrite (Prefix (Expr),
+                 New_Occurrence_Of (Entity (Lhs), Loc));
+
+            elsif Nkind (Lhs) = N_Selected_Component then
+               Rewrite (Expr,
+                 Make_Attribute_Reference (Loc,
+                   Attribute_Name => Name_Unrestricted_Access,
+                   Prefix         => New_Copy_Tree (Prefix (Lhs))));
+               Set_Analyzed (Parent (Expr), False);
+
+            else
+               Rewrite (Expr,
+                 Make_Attribute_Reference (Loc,
+                   Attribute_Name => Name_Unrestricted_Access,
+                   Prefix         => New_Copy_Tree (Lhs)));
+               Set_Analyzed (Parent (Expr), False);
+            end if;
+         end if;
+
+         return OK;
+      end Replace_Type;
+
+      procedure Replace_Self_Reference is
+        new Traverse_Proc (Replace_Type);
 
    --  Start of processing for Build_Record_Aggr_Code
 
    begin
+      if Has_Self_Reference (N) then
+         Replace_Self_Reference (N);
+      end if;
+
+      --  If the target of the aggregate is class-wide, we must convert it
+      --  to the actual type of the aggregate, so that the proper components
+      --  are visible. We know already that the types are compatible.
+
+      if Present (Etype (Lhs))
+        and then Is_Interface (Etype (Lhs))
+      then
+         Target := Unchecked_Convert_To (Typ, Lhs);
+      else
+         Target := Lhs;
+      end if;
 
       --  Deal with the ancestor part of extension aggregates
       --  or with the discriminants of the root type
 
       if Nkind (N) = N_Extension_Aggregate then
          declare
-            A : constant Node_Id := Ancestor_Part (N);
+            A      : constant Node_Id := Ancestor_Part (N);
+            Assign : List_Id;
 
          begin
-
             --  If the ancestor part is a subtype mark "T", we generate
-            --     _init_proc (T(tmp));  if T is constrained and
-            --     _init_proc (S(tmp));  where S applies an appropriate
+
+            --     init-proc (T(tmp));  if T is constrained and
+            --     init-proc (S(tmp));  where S applies an appropriate
             --                           constraint if T is unconstrained
 
             if Is_Entity_Name (A) and then Is_Type (Entity (A)) then
-
                Ancestor_Is_Subtype_Mark := True;
 
                if Is_Constrained (Entity (A)) then
@@ -1569,13 +2358,15 @@ package body Exp_Aggr is
 
                elsif Has_Discriminants (Entity (A)) then
                   declare
-                     Anc_Typ    : Entity_Id := Entity (A);
-                     Discrim    : Entity_Id := First_Discriminant (Anc_Typ);
-                     Anc_Constr : List_Id := New_List;
+                     Anc_Typ    : constant Entity_Id := Entity (A);
+                     Anc_Constr : constant List_Id   := New_List;
+                     Discrim    : Entity_Id;
                      Disc_Value : Node_Id;
                      New_Indic  : Node_Id;
                      Subt_Decl  : Node_Id;
+
                   begin
+                     Discrim := First_Discriminant (Anc_Typ);
                      while Present (Discrim) loop
                         Disc_Value := Ancestor_Discriminant_Value (Discrim);
                         Append_To (Anc_Constr, Disc_Value);
@@ -1608,11 +2399,22 @@ package body Exp_Aggr is
                Ref := Convert_To (Init_Typ, New_Copy_Tree (Target));
                Set_Assignment_OK (Ref);
 
-               Append_List_To (Start_L,
-                 Build_Initialization_Call (Loc,
-                   Id_Ref => Ref,
-                   Typ    => Init_Typ,
-                   In_Init_Proc => Within_Init_Proc));
+               if Has_Default_Init_Comps (N)
+                 or else Has_Task (Base_Type (Init_Typ))
+               then
+                  Append_List_To (L,
+                    Build_Initialization_Call (Loc,
+                      Id_Ref       => Ref,
+                      Typ          => Init_Typ,
+                      In_Init_Proc => Within_Init_Proc,
+                      With_Default_Init => True));
+               else
+                  Append_List_To (L,
+                    Build_Initialization_Call (Loc,
+                      Id_Ref       => Ref,
+                      Typ          => Init_Typ,
+                      In_Init_Proc => Within_Init_Proc));
+               end if;
 
                if Is_Constrained (Entity (A))
                  and then Has_Discriminants (Entity (A))
@@ -1620,42 +2422,46 @@ package body Exp_Aggr is
                   Check_Ancestor_Discriminants (Entity (A));
                end if;
 
+            --  Ada 2005 (AI-287): If the ancestor part is an aggregate of
+            --  limited type, a recursive call expands the ancestor. Note that
+            --  in the limited case, the ancestor part must be either a
+            --  function call (possibly qualified, or wrapped in an unchecked
+            --  conversion) or aggregate (definitely qualified).
+
+            elsif Is_Limited_Type (Etype (A))
+              and then Nkind (Unqualify (A)) /= N_Function_Call --  aggregate?
+              and then
+                (Nkind (Unqualify (A)) /= N_Unchecked_Type_Conversion
+                   or else
+                 Nkind (Expression (Unqualify (A))) /= N_Function_Call)
+            then
+               Ancestor_Is_Expression := True;
+
+               Append_List_To (L,
+                  Build_Record_Aggr_Code (
+                    N                             => Unqualify (A),
+                    Typ                           => Etype (Unqualify (A)),
+                    Lhs                           => Target,
+                    Flist                         => Flist,
+                    Obj                           => Obj,
+                    Is_Limited_Ancestor_Expansion => True));
+
             --  If the ancestor part is an expression "E", we generate
             --     T(tmp) := E;
+            --  In Ada 2005, this includes the case of a (possibly qualified)
+            --  limited function call. The assignment will turn into a
+            --  build-in-place function call (see
+            --  Make_Build_In_Place_Call_In_Assignment).
 
             else
                Ancestor_Is_Expression := True;
                Init_Typ := Etype (A);
 
-               --  Assign the tag before doing the assignment to make sure
-               --  that the dispatching call in the subsequent deep_adjust
-               --  works properly (unless Java_VM, where tags are implicit).
-
-               if not Java_VM then
-                  Instr :=
-                    Make_OK_Assignment_Statement (Loc,
-                      Name =>
-                        Make_Selected_Component (Loc,
-                          Prefix => New_Copy_Tree (Target),
-                          Selector_Name => New_Reference_To (
-                            Tag_Component (Base_Type (Typ)), Loc)),
-
-                      Expression =>
-                        Unchecked_Convert_To (RTE (RE_Tag),
-                          New_Reference_To (
-                            Access_Disp_Table (Base_Type (Typ)), Loc)));
-
-                  Set_Assignment_OK (Name (Instr));
-                  Append_To (L, Instr);
-               end if;
-
                --  If the ancestor part is an aggregate, force its full
                --  expansion, which was delayed.
 
-               if Nkind (A) = N_Qualified_Expression
-                 and then (Nkind (Expression (A)) = N_Aggregate
-                             or else
-                           Nkind (Expression (A)) = N_Extension_Aggregate)
+               if Nkind (Unqualify (A)) = N_Aggregate
+                 or else Nkind (Unqualify (A)) = N_Extension_Aggregate
                then
                   Set_Analyzed (A, False);
                   Set_Analyzed (Expression (A), False);
@@ -1663,19 +2469,78 @@ package body Exp_Aggr is
 
                Ref := Convert_To (Init_Typ, New_Copy_Tree (Target));
                Set_Assignment_OK (Ref);
+
+               --  Make the assignment without usual controlled actions since
+               --  we only want the post adjust but not the pre finalize here
+               --  Add manual adjust when necessary
+
+               Assign := New_List (
+                 Make_OK_Assignment_Statement (Loc,
+                   Name       => Ref,
+                   Expression => A));
+               Set_No_Ctrl_Actions (First (Assign));
+
+               --  Assign the tag now to make sure that the dispatching call in
+               --  the subsequent deep_adjust works properly (unless VM_Target,
+               --  where tags are implicit).
+
+               if VM_Target = No_VM then
+                  Instr :=
+                    Make_OK_Assignment_Statement (Loc,
+                      Name =>
+                        Make_Selected_Component (Loc,
+                          Prefix => New_Copy_Tree (Target),
+                          Selector_Name =>
+                            New_Reference_To
+                              (First_Tag_Component (Base_Type (Typ)), Loc)),
+
+                      Expression =>
+                        Unchecked_Convert_To (RTE (RE_Tag),
+                          New_Reference_To
+                            (Node (First_Elmt
+                               (Access_Disp_Table (Base_Type (Typ)))),
+                             Loc)));
+
+                  Set_Assignment_OK (Name (Instr));
+                  Append_To (Assign, Instr);
+
+                  --  Ada 2005 (AI-251): If tagged type has progenitors we must
+                  --  also initialize tags of the secondary dispatch tables.
+
+                  if Present (Abstract_Interfaces (Base_Type (Typ)))
+                    and then not
+                      Is_Empty_Elmt_List
+                        (Abstract_Interfaces (Base_Type (Typ)))
+                  then
+                     Init_Secondary_Tags
+                       (Typ        => Base_Type (Typ),
+                        Target     => Target,
+                        Stmts_List => Assign);
+                  end if;
+               end if;
+
+               --  Call Adjust manually
+
+               if Controlled_Type (Etype (A)) then
+                  Append_List_To (Assign,
+                    Make_Adjust_Call (
+                      Ref         => New_Copy_Tree (Ref),
+                      Typ         => Etype (A),
+                      Flist_Ref   => New_Reference_To (
+                        RTE (RE_Global_Final_List), Loc),
+                      With_Attach => Make_Integer_Literal (Loc, 0)));
+               end if;
+
                Append_To (L,
-                 Make_Unsuppress_Block (Loc,
-                   Name_Discriminant_Check,
-                   New_List (
-                     Make_OK_Assignment_Statement (Loc,
-                       Name       => Ref,
-                       Expression => A))));
+                 Make_Unsuppress_Block (Loc, Name_Discriminant_Check, Assign));
 
                if Has_Discriminants (Init_Typ) then
                   Check_Ancestor_Discriminants (Init_Typ);
                end if;
             end if;
          end;
+
+      --  Normal case (not an extension aggregate)
 
       else
          --  Generate the discriminant expressions, component by component.
@@ -1686,23 +2551,69 @@ package body Exp_Aggr is
          if Has_Discriminants (Typ)
            and then not Is_Unchecked_Union (Base_Type (Typ))
          then
+            --  If the type is derived, and constrains discriminants of the
+            --  parent type, these discriminants are not components of the
+            --  aggregate, and must be initialized explicitly. They are not
+            --  visible components of the object, but can become visible with
+            --  a view conversion to the ancestor.
 
-            --  ??? The discriminants of the object not inherited in the type
-            --  of the object should be initialized here
+            declare
+               Btype      : Entity_Id;
+               Parent_Type : Entity_Id;
+               Disc        : Entity_Id;
+               Discr_Val   : Elmt_Id;
 
-            null;
+            begin
+               Btype := Base_Type (Typ);
+               while Is_Derived_Type (Btype)
+                  and then Present (Stored_Constraint (Btype))
+               loop
+                  Parent_Type := Etype (Btype);
 
-            --  Generate discriminant init values
+                  Disc := First_Discriminant (Parent_Type);
+                  Discr_Val :=
+                    First_Elmt (Stored_Constraint (Base_Type (Typ)));
+                  while Present (Discr_Val) loop
+
+                     --  Only those discriminants of the parent that are not
+                     --  renamed by discriminants of the derived type need to
+                     --  be added explicitly.
+
+                     if not Is_Entity_Name (Node (Discr_Val))
+                       or else
+                         Ekind (Entity (Node (Discr_Val))) /= E_Discriminant
+                     then
+                        Comp_Expr :=
+                          Make_Selected_Component (Loc,
+                            Prefix        => New_Copy_Tree (Target),
+                            Selector_Name => New_Occurrence_Of (Disc, Loc));
+
+                        Instr :=
+                          Make_OK_Assignment_Statement (Loc,
+                            Name       => Comp_Expr,
+                            Expression => New_Copy_Tree (Node (Discr_Val)));
+
+                        Set_No_Ctrl_Actions (Instr);
+                        Append_To (L, Instr);
+                     end if;
+
+                     Next_Discriminant (Disc);
+                     Next_Elmt (Discr_Val);
+                  end loop;
+
+                  Btype := Base_Type (Parent_Type);
+               end loop;
+            end;
+
+            --  Generate discriminant init values for the visible discriminants
 
             declare
                Discriminant : Entity_Id;
                Discriminant_Value : Node_Id;
 
             begin
-               Discriminant := First_Girder_Discriminant (Typ);
-
+               Discriminant := First_Stored_Discriminant (Typ);
                while Present (Discriminant) loop
-
                   Comp_Expr :=
                     Make_Selected_Component (Loc,
                       Prefix        => New_Copy_Tree (Target),
@@ -1722,7 +2633,7 @@ package body Exp_Aggr is
                   Set_No_Ctrl_Actions (Instr);
                   Append_To (L, Instr);
 
-                  Next_Girder_Discriminant (Discriminant);
+                  Next_Stored_Discriminant (Discriminant);
                end loop;
             end;
          end if;
@@ -1736,13 +2647,72 @@ package body Exp_Aggr is
 
       Comp := First (Component_Associations (N));
       while Present (Comp) loop
-         Selector  := Entity (First (Choices (Comp)));
+         Selector := Entity (First (Choices (Comp)));
+
+         --  Ada 2005 (AI-287): For each default-initialized component genarate
+         --  a call to the corresponding IP subprogram if available.
+
+         if Box_Present (Comp)
+           and then Has_Non_Null_Base_Init_Proc (Etype (Selector))
+         then
+            if Ekind (Selector) /= E_Discriminant then
+               Gen_Ctrl_Actions_For_Aggr;
+            end if;
+
+            --  Ada 2005 (AI-287): If the component type has tasks then
+            --  generate the activation chain and master entities (except
+            --  in case of an allocator because in that case these entities
+            --  are generated by Build_Task_Allocate_Block_With_Init_Stmts).
+
+            declare
+               Ctype            : constant Entity_Id := Etype (Selector);
+               Inside_Allocator : Boolean   := False;
+               P                : Node_Id   := Parent (N);
+
+            begin
+               if Is_Task_Type (Ctype) or else Has_Task (Ctype) then
+                  while Present (P) loop
+                     if Nkind (P) = N_Allocator then
+                        Inside_Allocator := True;
+                        exit;
+                     end if;
+
+                     P := Parent (P);
+                  end loop;
+
+                  if not Inside_Init_Proc and not Inside_Allocator then
+                     Build_Activation_Chain_Entity (N);
+                  end if;
+               end if;
+            end;
+
+            Append_List_To (L,
+              Build_Initialization_Call (Loc,
+                Id_Ref => Make_Selected_Component (Loc,
+                            Prefix => New_Copy_Tree (Target),
+                            Selector_Name => New_Occurrence_Of (Selector,
+                                                                   Loc)),
+                Typ    => Etype (Selector),
+                Enclos_Type => Typ,
+                With_Default_Init => True));
+
+            goto Next_Comp;
+         end if;
+
+         --  Prepare for component assignment
 
          if Ekind (Selector) /= E_Discriminant
            or else Nkind (N) = N_Extension_Aggregate
          then
+            --  All the discriminants have now been assigned
+            --  This is now a good moment to initialize and attach all the
+            --  controllers. Their position may depend on the discriminants.
+
+            if Ekind (Selector) /= E_Discriminant then
+               Gen_Ctrl_Actions_For_Aggr;
+            end if;
+
             Comp_Type := Etype (Selector);
-            Comp_Kind := Nkind (Expression (Comp));
             Comp_Expr :=
               Make_Selected_Component (Loc,
                 Prefix        => New_Copy_Tree (Target),
@@ -1765,6 +2735,7 @@ package body Exp_Aggr is
                      New_Copy_Tree (Target)),
                    Selector_Name =>
                      Make_Identifier (Loc, Name_uController));
+
                Internal_Final_List :=
                  Make_Selected_Component (Loc,
                    Prefix => Internal_Final_List,
@@ -1773,14 +2744,122 @@ package body Exp_Aggr is
                --  The internal final list can be part of a constant object
 
                Set_Assignment_OK (Internal_Final_List);
+
             else
                Internal_Final_List := Empty;
             end if;
 
+            --  Now either create the assignment or generate the code for the
+            --  inner aggregate top-down.
+
             if Is_Delayed_Aggregate (Expr_Q) then
-               Append_List_To (L,
-                 Late_Expansion (Expr_Q, Comp_Type, Comp_Expr,
-                   Internal_Final_List));
+
+               --  We have the following case of aggregate nesting inside
+               --  an object declaration:
+
+               --    type Arr_Typ is array (Integer range <>) of ...;
+               --
+               --    type Rec_Typ (...) is record
+               --       Obj_Arr_Typ : Arr_Typ (A .. B);
+               --    end record;
+               --
+               --    Obj_Rec_Typ : Rec_Typ := (...,
+               --      Obj_Arr_Typ => (X => (...), Y => (...)));
+
+               --  The length of the ranges of the aggregate and Obj_Add_Typ
+               --  are equal (B - A = Y - X), but they do not coincide (X /=
+               --  A and B /= Y). This case requires array sliding which is
+               --  performed in the following manner:
+
+               --    subtype Arr_Sub is Arr_Typ (X .. Y);
+               --    Temp : Arr_Sub;
+               --    Temp (X) := (...);
+               --    ...
+               --    Temp (Y) := (...);
+               --    Obj_Rec_Typ.Obj_Arr_Typ := Temp;
+
+               if Ekind (Comp_Type) = E_Array_Subtype
+                 and then Is_Int_Range_Bounds (Aggregate_Bounds (Expr_Q))
+                 and then Is_Int_Range_Bounds (First_Index (Comp_Type))
+                 and then not
+                   Compatible_Int_Bounds
+                     (Agg_Bounds => Aggregate_Bounds (Expr_Q),
+                      Typ_Bounds => First_Index (Comp_Type))
+               then
+                  --  Create the array subtype with bounds equal to those of
+                  --  the corresponding aggregate.
+
+                  declare
+                     SubE : constant Entity_Id :=
+                              Make_Defining_Identifier (Loc,
+                                New_Internal_Name ('T'));
+
+                     SubD : constant Node_Id :=
+                              Make_Subtype_Declaration (Loc,
+                                Defining_Identifier =>
+                                  SubE,
+                                Subtype_Indication  =>
+                                  Make_Subtype_Indication (Loc,
+                                    Subtype_Mark => New_Reference_To (
+                                      Etype (Comp_Type), Loc),
+                                    Constraint =>
+                                      Make_Index_Or_Discriminant_Constraint (
+                                        Loc, Constraints => New_List (
+                                          New_Copy_Tree (Aggregate_Bounds (
+                                            Expr_Q))))));
+
+                     --  Create a temporary array of the above subtype which
+                     --  will be used to capture the aggregate assignments.
+
+                     TmpE : constant Entity_Id :=
+                              Make_Defining_Identifier (Loc,
+                                New_Internal_Name ('A'));
+
+                     TmpD : constant Node_Id :=
+                              Make_Object_Declaration (Loc,
+                                Defining_Identifier =>
+                                  TmpE,
+                                Object_Definition   =>
+                                  New_Reference_To (SubE, Loc));
+
+                  begin
+                     Set_No_Initialization (TmpD);
+                     Append_To (L, SubD);
+                     Append_To (L, TmpD);
+
+                     --  Expand aggregate into assignments to the temp array
+
+                     Append_List_To (L,
+                       Late_Expansion (Expr_Q, Comp_Type,
+                         New_Reference_To (TmpE, Loc), Internal_Final_List));
+
+                     --  Slide
+
+                     Append_To (L,
+                       Make_Assignment_Statement (Loc,
+                         Name       => New_Copy_Tree (Comp_Expr),
+                         Expression => New_Reference_To (TmpE, Loc)));
+
+                     --  Do not pass the original aggregate to Gigi as is,
+                     --  since it will potentially clobber the front or the end
+                     --  of the array. Setting the expression to empty is safe
+                     --  since all aggregates are expanded into assignments.
+
+                     if Present (Obj) then
+                        Set_Expression (Parent (Obj), Empty);
+                     end if;
+                  end;
+
+               --  Normal case (sliding not required)
+
+               else
+                  Append_List_To (L,
+                    Late_Expansion (Expr_Q, Comp_Type, Comp_Expr,
+                      Internal_Final_List));
+               end if;
+
+            --  Expr_Q is not delayed aggregate
+
             else
                Instr :=
                  Make_OK_Assignment_Statement (Loc,
@@ -1791,24 +2870,26 @@ package body Exp_Aggr is
                Append_To (L, Instr);
 
                --  Adjust the tag if tagged (because of possible view
-               --  conversions), unless compiling for the Java VM
-               --  where tags are implicit.
+               --  conversions), unless compiling for a VM where tags are
+               --  implicit.
 
                --    tmp.comp._tag := comp_typ'tag;
 
-               if Is_Tagged_Type (Comp_Type) and then not Java_VM then
+               if Is_Tagged_Type (Comp_Type) and then VM_Target = No_VM then
                   Instr :=
                     Make_OK_Assignment_Statement (Loc,
                       Name =>
                         Make_Selected_Component (Loc,
                           Prefix =>  New_Copy_Tree (Comp_Expr),
                           Selector_Name =>
-                            New_Reference_To (Tag_Component (Comp_Type), Loc)),
+                            New_Reference_To
+                              (First_Tag_Component (Comp_Type), Loc)),
 
                       Expression =>
                         Unchecked_Convert_To (RTE (RE_Tag),
-                          New_Reference_To (
-                            Access_Disp_Table (Comp_Type), Loc)));
+                          New_Reference_To
+                            (Node (First_Elmt (Access_Disp_Table (Comp_Type))),
+                             Loc)));
 
                   Append_To (L, Instr);
                end if;
@@ -1827,7 +2908,76 @@ package body Exp_Aggr is
                       With_Attach => Make_Integer_Literal (Loc, 1)));
                end if;
             end if;
+
+         --  ???
+
+         elsif Ekind (Selector) = E_Discriminant
+           and then Nkind (N) /= N_Extension_Aggregate
+           and then Nkind (Parent (N)) = N_Component_Association
+           and then Is_Constrained (Typ)
+         then
+            --  We must check that the discriminant value imposed by the
+            --  context is the same as the value given in the subaggregate,
+            --  because after the expansion into assignments there is no
+            --  record on which to perform a regular discriminant check.
+
+            declare
+               D_Val : Elmt_Id;
+               Disc  : Entity_Id;
+
+            begin
+               D_Val := First_Elmt (Discriminant_Constraint (Typ));
+               Disc  := First_Discriminant (Typ);
+               while Chars (Disc) /= Chars (Selector) loop
+                  Next_Discriminant (Disc);
+                  Next_Elmt (D_Val);
+               end loop;
+
+               pragma Assert (Present (D_Val));
+
+               --  This check cannot performed for components that are
+               --  constrained by a current instance, because this is not a
+               --  value that can be compared with the actual constraint.
+
+               if Nkind (Node (D_Val)) /= N_Attribute_Reference
+                 or else not Is_Entity_Name (Prefix (Node (D_Val)))
+                 or else not Is_Type (Entity (Prefix (Node (D_Val))))
+               then
+                  Append_To (L,
+                  Make_Raise_Constraint_Error (Loc,
+                    Condition =>
+                      Make_Op_Ne (Loc,
+                        Left_Opnd => New_Copy_Tree (Node (D_Val)),
+                        Right_Opnd => Expression (Comp)),
+                      Reason => CE_Discriminant_Check_Failed));
+
+               else
+                  --  Find self-reference in previous discriminant
+                  --  assignment, and replace with proper expression.
+
+                  declare
+                     Ass : Node_Id;
+
+                  begin
+                     Ass := First (L);
+                     while Present (Ass) loop
+                        if Nkind (Ass) = N_Assignment_Statement
+                          and then Nkind (Name (Ass)) = N_Selected_Component
+                          and then Chars (Selector_Name (Name (Ass))) =
+                             Chars (Disc)
+                        then
+                           Set_Expression
+                             (Ass, New_Copy_Tree (Expression (Comp)));
+                           exit;
+                        end if;
+                        Next (Ass);
+                     end loop;
+                  end;
+               end if;
+            end;
          end if;
+
+         <<Next_Comp>>
 
          Next (Comp);
       end loop;
@@ -1835,247 +2985,134 @@ package body Exp_Aggr is
       --  If the type is tagged, the tag needs to be initialized (unless
       --  compiling for the Java VM where tags are implicit). It is done
       --  late in the initialization process because in some cases, we call
-      --  the init_proc of an ancestor which will not leave out the right tag
+      --  the init proc of an ancestor which will not leave out the right tag
 
       if Ancestor_Is_Expression then
          null;
 
-      elsif Is_Tagged_Type (Typ) and then not Java_VM then
+      elsif Is_Tagged_Type (Typ) and then VM_Target = No_VM then
          Instr :=
            Make_OK_Assignment_Statement (Loc,
              Name =>
                Make_Selected_Component (Loc,
-                  Prefix => New_Copy_Tree (Target),
+                 Prefix => New_Copy_Tree (Target),
                  Selector_Name =>
-                   New_Reference_To (Tag_Component (Base_Type (Typ)), Loc)),
+                   New_Reference_To
+                     (First_Tag_Component (Base_Type (Typ)), Loc)),
 
              Expression =>
                Unchecked_Convert_To (RTE (RE_Tag),
-                 New_Reference_To (Access_Disp_Table (Base_Type (Typ)), Loc)));
+                 New_Reference_To
+                   (Node (First_Elmt (Access_Disp_Table (Base_Type (Typ)))),
+                    Loc)));
 
          Append_To (L, Instr);
-      end if;
 
-      --  Now deal with the various controlled type data structure
-      --  initializations
+         --  Ada 2005 (AI-251): If the tagged type has been derived from
+         --  abstract interfaces we must also initialize the tags of the
+         --  secondary dispatch tables.
 
-      if Present (Obj)
-        and then Finalize_Storage_Only (Typ)
-        and then (Is_Library_Level_Entity (Obj)
-        or else Entity (Constant_Value (RTE (RE_Garbage_Collected)))
-                  = Standard_True)
-      then
-         Attach := Make_Integer_Literal (Loc, 0);
-
-      elsif Nkind (Parent (N)) = N_Qualified_Expression
-        and then Nkind (Parent (Parent (N))) = N_Allocator
-      then
-         Attach := Make_Integer_Literal (Loc, 2);
-
-      else
-         Attach := Make_Integer_Literal (Loc, 1);
-      end if;
-
-      --  Determine the external finalization list. It is either the
-      --  finalization list of the outer-scope or the one coming from
-      --  an outer aggregate.  When the target is not a temporary, the
-      --  proper scope is the scope of the target rather than the
-      --  potentially transient current scope.
-
-      if Controlled_Type (Typ) then
-         if Present (Flist) then
-            External_Final_List := New_Copy_Tree (Flist);
-
-         elsif Is_Entity_Name (Target)
-           and then Present (Scope (Entity (Target)))
+         if Present (Abstract_Interfaces (Base_Type (Typ)))
+           and then not
+             Is_Empty_Elmt_List (Abstract_Interfaces (Base_Type (Typ)))
          then
-            External_Final_List := Find_Final_List (Scope (Entity (Target)));
-
-         else
-            External_Final_List := Find_Final_List (Current_Scope);
-         end if;
-
-      else
-         External_Final_List := Empty;
-      end if;
-
-      --  initialize and attach the outer object in the is_controlled
-      --  case
-
-      if Is_Controlled (Typ) then
-         if Ancestor_Is_Subtype_Mark then
-            Ref := Convert_To (Init_Typ, New_Copy_Tree (Target));
-            Set_Assignment_OK (Ref);
-            Append_To (L,
-              Make_Procedure_Call_Statement (Loc,
-                Name => New_Reference_To (
-                  Find_Prim_Op (Init_Typ, Name_Initialize), Loc),
-                Parameter_Associations => New_List (New_Copy_Tree (Ref))));
-         end if;
-
-         --  ??? when the ancestor part is an expression, the global
-         --  object is already attached at the wrong level. It should
-         --  be detached and re-attached. We have a design problem here.
-
-         if Ancestor_Is_Expression
-           and then Has_Controlled_Component (Init_Typ)
-         then
-            null;
-
-         elsif Has_Controlled_Component (Typ) then
-            F := Make_Selected_Component (Loc,
-                   Prefix        => New_Copy_Tree (Target),
-                   Selector_Name => Make_Identifier (Loc, Name_uController));
-            F := Make_Selected_Component (Loc,
-                   Prefix        => F,
-                   Selector_Name => Make_Identifier (Loc, Name_F));
-
-            Ref := New_Copy_Tree (Target);
-            Set_Assignment_OK (Ref);
-
-            Append_To (L,
-              Make_Attach_Call (
-                Obj_Ref     => Ref,
-                Flist_Ref   => F,
-                With_Attach => Make_Integer_Literal (Loc, 1)));
-
-         else --  is_Controlled (Typ) and not Has_Controlled_Component (Typ)
-            Ref := New_Copy_Tree (Target);
-            Set_Assignment_OK (Ref);
-            Append_To (Start_L,
-              Make_Attach_Call (
-                Obj_Ref     => Ref,
-                Flist_Ref   => New_Copy_Tree (External_Final_List),
-                With_Attach => Attach));
+            Init_Secondary_Tags
+              (Typ        => Base_Type (Typ),
+               Target     => Target,
+               Stmts_List => L);
          end if;
       end if;
 
-      --  in the Has_Controlled component case, all the intermediate
-      --  controllers must be initialized
+      --  If the controllers have not been initialized yet (by lack of non-
+      --  discriminant components), let's do it now.
 
-      if Has_Controlled_Component (Typ) then
-         declare
-            Inner_Typ : Entity_Id;
-            Outer_Typ : Entity_Id;
-            At_Root   : Boolean;
+      Gen_Ctrl_Actions_For_Aggr;
 
-         begin
-
-            Outer_Typ := Base_Type (Typ);
-
-            --  find outer type with a controller
-
-            while Outer_Typ /= Init_Typ
-              and then not Has_New_Controlled_Component (Outer_Typ)
-            loop
-               Outer_Typ := Etype (Outer_Typ);
-            end loop;
-
-            --  attach it to the outer record controller to the
-            --  external final list
-
-            if Outer_Typ = Init_Typ then
-               Append_List_To (Start_L,
-                 Init_Controller (
-                   Target  => Target,
-                   Typ     => Outer_Typ,
-                   F       => External_Final_List,
-                   Attach  => Attach,
-                   Init_Pr => Ancestor_Is_Expression));
-               At_Root := True;
-               Inner_Typ := Init_Typ;
-
-            else
-               Append_List_To (Start_L,
-                 Init_Controller (
-                   Target  => Target,
-                   Typ     => Outer_Typ,
-                   F       => External_Final_List,
-                   Attach  => Attach,
-                   Init_Pr => True));
-
-               Inner_Typ := Etype (Outer_Typ);
-               At_Root   :=
-                 not Is_Tagged_Type (Typ) or else Inner_Typ = Outer_Typ;
-            end if;
-
-            --  Initialize the internal controllers for tagged types with
-            --  more than one controller.
-
-            while not At_Root and then Inner_Typ /= Init_Typ loop
-               if Has_New_Controlled_Component (Inner_Typ) then
-                  F :=
-                    Make_Selected_Component (Loc,
-                      Prefix => Convert_To (Outer_Typ, New_Copy_Tree (Target)),
-                      Selector_Name =>
-                        Make_Identifier (Loc, Name_uController));
-                  F := Make_Selected_Component (Loc,
-                         Prefix => F,
-                         Selector_Name => Make_Identifier (Loc, Name_F));
-                  Append_List_To (Start_L,
-                    Init_Controller (
-                      Target  => Target,
-                      Typ     => Inner_Typ,
-                      F       => F,
-                      Attach  => Make_Integer_Literal (Loc, 1),
-                      Init_Pr => True));
-                  Outer_Typ := Inner_Typ;
-               end if;
-
-               --  Stop at the root
-
-               At_Root := Inner_Typ = Etype (Inner_Typ);
-               Inner_Typ := Etype (Inner_Typ);
-            end loop;
-
-            --  if not done yet attach the controller of the ancestor part
-
-            if Outer_Typ /= Init_Typ
-              and then Inner_Typ = Init_Typ
-              and then Has_Controlled_Component (Init_Typ)
-            then
-               F :=
-                  Make_Selected_Component (Loc,
-                    Prefix => Convert_To (Outer_Typ, New_Copy_Tree (Target)),
-                    Selector_Name => Make_Identifier (Loc, Name_uController));
-               F := Make_Selected_Component (Loc,
-                       Prefix => F,
-                       Selector_Name => Make_Identifier (Loc, Name_F));
-
-               Attach := Make_Integer_Literal (Loc, 1);
-               Append_List_To (Start_L,
-                 Init_Controller (
-                   Target  => Target,
-                   Typ     => Init_Typ,
-                   F       => F,
-                   Attach  => Attach,
-                   Init_Pr => Ancestor_Is_Expression));
-            end if;
-         end;
-      end if;
-
-      Append_List_To (Start_L, L);
-      return Start_L;
+      return L;
    end Build_Record_Aggr_Code;
 
    -------------------------------
    -- Convert_Aggr_In_Allocator --
    -------------------------------
 
-   procedure Convert_Aggr_In_Allocator (Decl, Aggr : Node_Id) is
+   procedure Convert_Aggr_In_Allocator
+     (Alloc :  Node_Id;
+      Decl  :  Node_Id;
+      Aggr  :  Node_Id)
+   is
       Loc  : constant Source_Ptr := Sloc (Aggr);
       Typ  : constant Entity_Id  := Etype (Aggr);
       Temp : constant Entity_Id  := Defining_Identifier (Decl);
-      Occ  : constant Node_Id    := Unchecked_Convert_To (Typ,
-        Make_Explicit_Dereference (Loc, New_Reference_To (Temp, Loc)));
+
+      Occ  : constant Node_Id :=
+               Unchecked_Convert_To (Typ,
+                 Make_Explicit_Dereference (Loc,
+                   New_Reference_To (Temp, Loc)));
 
       Access_Type : constant Entity_Id := Etype (Temp);
+      Flist       : Entity_Id;
 
    begin
-      Insert_Actions_After (Decl,
-        Late_Expansion (Aggr, Typ, Occ,
-          Find_Final_List (Access_Type),
-          Associated_Final_Chain (Base_Type (Access_Type))));
+      --  If the allocator is for an access discriminant, there is no
+      --  finalization list for the anonymous access type, and the eventual
+      --  finalization of the object is handled through the coextension
+      --  mechanism. If the enclosing object is not dynamically allocated,
+      --  the access discriminant is itself placed on the stack. Otherwise,
+      --  some other finalization list is used (see exp_ch4.adb).
+
+      --  Decl has been inserted in the code ahead of the allocator, using
+      --  Insert_Actions. We use Insert_Actions below as well, to ensure that
+      --  subsequent insertions are done in the proper order. Using (for
+      --  example) Insert_Actions_After to place the expanded aggregate
+      --  immediately after Decl may lead to out-of-order references if the
+      --  allocator has generated a finalization list, as when the designated
+      --  object is controlled and there is an open transient scope.
+
+      if Ekind (Access_Type) = E_Anonymous_Access_Type
+        and then Nkind (Associated_Node_For_Itype (Access_Type)) =
+                                              N_Discriminant_Specification
+      then
+         Flist := Empty;
+      else
+         Flist := Find_Final_List (Access_Type);
+      end if;
+
+      if Is_Array_Type (Typ) then
+         Convert_Array_Aggr_In_Allocator (Decl, Aggr, Occ);
+
+      elsif Has_Default_Init_Comps (Aggr) then
+         declare
+            L          : constant List_Id := New_List;
+            Init_Stmts : List_Id;
+
+         begin
+            Init_Stmts :=
+              Late_Expansion
+                (Aggr, Typ, Occ,
+                 Flist,
+                 Associated_Final_Chain (Base_Type (Access_Type)));
+
+            --  ??? Dubious actual for Obj: expect 'the original object
+            --  being initialized'
+
+            if Has_Task (Typ) then
+               Build_Task_Allocate_Block_With_Init_Stmts (L, Aggr, Init_Stmts);
+               Insert_Actions (Alloc, L);
+            else
+               Insert_Actions (Alloc, Init_Stmts);
+            end if;
+         end;
+
+      else
+         Insert_Actions (Alloc,
+           Late_Expansion
+             (Aggr, Typ, Occ, Flist,
+              Associated_Final_Chain (Base_Type (Access_Type))));
+
+         --  ??? Dubious actual for Obj: expect 'the original object
+         --  being initialized'
+
+      end if;
    end Convert_Aggr_In_Allocator;
 
    --------------------------------
@@ -2083,7 +3120,7 @@ package body Exp_Aggr is
    --------------------------------
 
    procedure Convert_Aggr_In_Assignment (N : Node_Id) is
-      Aggr :          Node_Id    := Expression (N);
+      Aggr : Node_Id             := Expression (N);
       Typ  : constant Entity_Id  := Etype (Aggr);
       Occ  : constant Node_Id    := New_Copy_Tree (Name (N));
 
@@ -2093,8 +3130,9 @@ package body Exp_Aggr is
       end if;
 
       Insert_Actions_After (N,
-        Late_Expansion (Aggr, Typ, Occ,
-          Find_Final_List (Typ, New_Copy_Tree (Occ))));
+        Late_Expansion
+          (Aggr, Typ, Occ,
+           Find_Final_List (Typ, New_Copy_Tree (Occ))));
    end Convert_Aggr_In_Assignment;
 
    ---------------------------------
@@ -2103,10 +3141,80 @@ package body Exp_Aggr is
 
    procedure Convert_Aggr_In_Object_Decl (N : Node_Id) is
       Obj  : constant Entity_Id  := Defining_Identifier (N);
-      Aggr :          Node_Id    := Expression (N);
+      Aggr : Node_Id             := Expression (N);
       Loc  : constant Source_Ptr := Sloc (Aggr);
       Typ  : constant Entity_Id  := Etype (Aggr);
       Occ  : constant Node_Id    := New_Occurrence_Of (Obj, Loc);
+
+      function Discriminants_Ok return Boolean;
+      --  If the object type is constrained, the discriminants in the
+      --  aggregate must be checked against the discriminants of the subtype.
+      --  This cannot be done using Apply_Discriminant_Checks because after
+      --  expansion there is no aggregate left to check.
+
+      ----------------------
+      -- Discriminants_Ok --
+      ----------------------
+
+      function Discriminants_Ok return Boolean is
+         Cond  : Node_Id := Empty;
+         Check : Node_Id;
+         D     : Entity_Id;
+         Disc1 : Elmt_Id;
+         Disc2 : Elmt_Id;
+         Val1  : Node_Id;
+         Val2  : Node_Id;
+
+      begin
+         D := First_Discriminant (Typ);
+         Disc1 := First_Elmt (Discriminant_Constraint (Typ));
+         Disc2 := First_Elmt (Discriminant_Constraint (Etype (Obj)));
+         while Present (Disc1) and then Present (Disc2) loop
+            Val1 := Node (Disc1);
+            Val2 := Node (Disc2);
+
+            if not Is_OK_Static_Expression (Val1)
+              or else not Is_OK_Static_Expression (Val2)
+            then
+               Check := Make_Op_Ne (Loc,
+                 Left_Opnd  => Duplicate_Subexpr (Val1),
+                 Right_Opnd => Duplicate_Subexpr (Val2));
+
+               if No (Cond) then
+                  Cond := Check;
+
+               else
+                  Cond := Make_Or_Else (Loc,
+                    Left_Opnd => Cond,
+                    Right_Opnd => Check);
+               end if;
+
+            elsif Expr_Value (Val1) /= Expr_Value (Val2) then
+               Apply_Compile_Time_Constraint_Error (Aggr,
+                 Msg    => "incorrect value for discriminant&?",
+                 Reason => CE_Discriminant_Check_Failed,
+                 Ent    => D);
+               return False;
+            end if;
+
+            Next_Discriminant (D);
+            Next_Elmt (Disc1);
+            Next_Elmt (Disc2);
+         end loop;
+
+         --  If any discriminant constraint is non-static, emit a check
+
+         if Present (Cond) then
+            Insert_Action (N,
+              Make_Raise_Constraint_Error (Loc,
+                Condition => Cond,
+                Reason => CE_Discriminant_Check_Failed));
+         end if;
+
+         return True;
+      end Discriminants_Ok;
+
+   --  Start of processing for Convert_Aggr_In_Object_Decl
 
    begin
       Set_Assignment_OK (Occ);
@@ -2115,10 +3223,59 @@ package body Exp_Aggr is
          Aggr := Expression (Aggr);
       end if;
 
+      if Has_Discriminants (Typ)
+        and then Typ /= Etype (Obj)
+        and then Is_Constrained (Etype (Obj))
+        and then not Discriminants_Ok
+      then
+         return;
+      end if;
+
+      --  If the context is an extended return statement, it has its own
+      --  finalization machinery (i.e. works like a transient scope) and
+      --  we do not want to create an additional one, because objects on
+      --  the finalization list of the return must be moved to the caller's
+      --  finalization list to complete the return.
+
+      if Requires_Transient_Scope (Typ)
+        and then Ekind (Current_Scope) /= E_Return_Statement
+      then
+         Establish_Transient_Scope (Aggr, Sec_Stack =>
+           Is_Controlled (Typ) or else Has_Controlled_Component (Typ));
+      end if;
+
       Insert_Actions_After (N, Late_Expansion (Aggr, Typ, Occ, Obj => Obj));
       Set_No_Initialization (N);
       Initialize_Discriminants (N, Typ);
    end Convert_Aggr_In_Object_Decl;
+
+   -------------------------------------
+   -- Convert_array_Aggr_In_Allocator --
+   -------------------------------------
+
+   procedure Convert_Array_Aggr_In_Allocator
+     (Decl   : Node_Id;
+      Aggr   : Node_Id;
+      Target : Node_Id)
+   is
+      Aggr_Code : List_Id;
+      Typ       : constant Entity_Id := Etype (Aggr);
+      Ctyp      : constant Entity_Id := Component_Type (Typ);
+
+   begin
+      --  The target is an explicit dereference of the allocated object.
+      --  Generate component assignments to it, as for an aggregate that
+      --  appears on the right-hand side of an assignment statement.
+
+      Aggr_Code :=
+        Build_Array_Aggr_Code (Aggr,
+          Ctype       => Ctyp,
+          Index       => First_Index (Typ),
+          Into        => Target,
+          Scalar_Comp => Is_Scalar_Type (Ctyp));
+
+      Insert_Actions_After (Decl, Aggr_Code);
+   end Convert_Array_Aggr_In_Allocator;
 
    ----------------------------
    -- Convert_To_Assignments --
@@ -2128,13 +3285,15 @@ package body Exp_Aggr is
       Loc  : constant Source_Ptr := Sloc (N);
       Temp : Entity_Id;
 
-      Instr         : Node_Id;
-      Target_Expr   : Node_Id;
-      Parent_Kind   : Node_Kind;
-      Unc_Decl      : Boolean := False;
-      Parent_Node   : Node_Id;
+      Instr       : Node_Id;
+      Target_Expr : Node_Id;
+      Parent_Kind : Node_Kind;
+      Unc_Decl    : Boolean := False;
+      Parent_Node : Node_Id;
 
    begin
+      pragma Assert (not Is_Static_Dispatch_Table_Aggregate (N));
+      pragma Assert (Is_Record_Type (Typ));
 
       Parent_Node := Parent (N);
       Parent_Kind := Nkind (Parent_Node);
@@ -2148,33 +3307,59 @@ package body Exp_Aggr is
          begin
             Parent_Node := Parent (Parent_Node);
             Parent_Kind := Nkind (Parent_Node);
+
             if Parent_Kind = N_Object_Declaration then
                Unc_Decl :=
                  not Is_Entity_Name (Object_Definition (Parent_Node))
-                 or else Has_Discriminants (
-                   Entity (Object_Definition (Parent_Node)))
-                 or else Is_Class_Wide_Type (
-                   Entity (Object_Definition (Parent_Node)));
+                   or else Has_Discriminants
+                             (Entity (Object_Definition (Parent_Node)))
+                   or else Is_Class_Wide_Type
+                             (Entity (Object_Definition (Parent_Node)));
             end if;
          end;
       end if;
 
-      --  Just set the Delay flag in the following cases where the
-      --  transformation will be done top down from above
-      --    - internal aggregate (transformed when expanding the parent)
-      --    - allocators  (see Convert_Aggr_In_Allocator)
-      --    - object decl (see Convert_Aggr_In_Object_Decl)
-      --    - safe assignments (see Convert_Aggr_Assignments)
-      --      so far only the assignments in the init_procs are taken
-      --      into account
+      --  Just set the Delay flag in the cases where the transformation
+      --  will be done top down from above.
 
-      if Parent_Kind = N_Aggregate
-        or else Parent_Kind = N_Extension_Aggregate
-        or else Parent_Kind = N_Component_Association
-        or else Parent_Kind = N_Allocator
-        or else (Parent_Kind = N_Object_Declaration and then not Unc_Decl)
-        or else (Parent_Kind = N_Assignment_Statement
-                  and then Inside_Init_Proc)
+      if False
+
+         --  Internal aggregate (transformed when expanding the parent)
+
+         or else Parent_Kind = N_Aggregate
+         or else Parent_Kind = N_Extension_Aggregate
+         or else Parent_Kind = N_Component_Association
+
+         --  Allocator (see Convert_Aggr_In_Allocator)
+
+         or else Parent_Kind = N_Allocator
+
+         --  Object declaration (see Convert_Aggr_In_Object_Decl)
+
+         or else (Parent_Kind = N_Object_Declaration and then not Unc_Decl)
+
+         --  Safe assignment (see Convert_Aggr_Assignments). So far only the
+         --  assignments in init procs are taken into account.
+
+         or else (Parent_Kind = N_Assignment_Statement
+                   and then Inside_Init_Proc)
+
+         --  (Ada 2005) An inherently limited type in a return statement,
+         --  which will be handled in a build-in-place fashion, and may be
+         --  rewritten as an extended return and have its own finalization
+         --  machinery. In the case of a simple return, the aggregate needs
+         --  to be delayed until the scope for the return statement has been
+         --  created, so that any finalization chain will be associated with
+         --  that scope. For extended returns, we delay expansion to avoid the
+         --  creation of an unwanted transient scope that could result in
+         --  premature finalization of the return object (which is built in
+         --  in place within the caller's scope).
+
+         or else
+          (Is_Inherently_Limited_Type (Typ)
+            and then
+              (Nkind (Parent (Parent_Node)) = N_Extended_Return_Statement
+                or else Nkind (Parent_Node) = N_Simple_Return_Statement))
       then
          Set_Expansion_Delayed (N);
          return;
@@ -2210,64 +3395,327 @@ package body Exp_Aggr is
 
    procedure Convert_To_Positional
      (N                    : Node_Id;
-      Max_Others_Replicate : Nat := 5;
+      Max_Others_Replicate : Nat     := 5;
       Handle_Bit_Packed    : Boolean := False)
    is
-      Loc  : constant Source_Ptr := Sloc (N);
-      Typ  : constant Entity_Id  := Etype (N);
-      Ndim : constant Pos        := Number_Dimensions (Typ);
-      Xtyp : constant Entity_Id  := Etype (First_Index (Typ));
-      Indx : constant Node_Id    := First_Index (Base_Type (Typ));
-      Blo  : constant Node_Id    := Type_Low_Bound (Etype (Indx));
-      Lo   : constant Node_Id    := Type_Low_Bound (Xtyp);
-      Hi   : constant Node_Id    := Type_High_Bound (Xtyp);
-      Lov  : Uint;
-      Hiv  : Uint;
+      Typ : constant Entity_Id := Etype (N);
 
-      --  The following constant determines the maximum size of an
-      --  aggregate produced by converting named to positional
-      --  notation (e.g. from others clauses). This avoids running
-      --  away with attempts to convert huge aggregates.
+      Static_Components : Boolean := True;
 
-      --  The normal limit is 5000, but we increase this limit to
-      --  2**24 (about 16 million) if Restrictions (No_Elaboration_Code)
-      --  or Restrictions (No_Implicit_Loops) is specified, since in
-      --  either case, we are at risk of declaring the program illegal
-      --  because of this limit.
+      procedure Check_Static_Components;
+      --  Check whether all components of the aggregate are compile-time
+      --  known values, and can be passed as is to the back-end without
+      --  further expansion.
 
-      Max_Aggr_Size : constant Nat :=
-         5000 + (2 ** 24 - 5000) * Boolean'Pos
-                           (Restrictions (No_Elaboration_Code)
-                              or else
-                            Restrictions (No_Implicit_Loops));
+      function Flatten
+        (N   : Node_Id;
+         Ix  : Node_Id;
+         Ixb : Node_Id) return Boolean;
+      --  Convert the aggregate into a purely positional form if possible.
+      --  On entry the bounds of all dimensions are known to be static,
+      --  and the total number of components is safe enough to expand.
+
+      function Is_Flat (N : Node_Id; Dims : Int) return Boolean;
+      --  Return True iff the array N is flat (which is not rivial
+      --  in the case of multidimensionsl aggregates).
+
+      -----------------------------
+      -- Check_Static_Components --
+      -----------------------------
+
+      procedure Check_Static_Components is
+         Expr : Node_Id;
+
+      begin
+         Static_Components := True;
+
+         if Nkind (N) = N_String_Literal then
+            null;
+
+         elsif Present (Expressions (N)) then
+            Expr := First (Expressions (N));
+            while Present (Expr) loop
+               if Nkind (Expr) /= N_Aggregate
+                 or else not Compile_Time_Known_Aggregate (Expr)
+                 or else Expansion_Delayed (Expr)
+               then
+                  Static_Components := False;
+                  exit;
+               end if;
+
+               Next (Expr);
+            end loop;
+         end if;
+
+         if Nkind (N) = N_Aggregate
+           and then  Present (Component_Associations (N))
+         then
+            Expr := First (Component_Associations (N));
+            while Present (Expr) loop
+               if Nkind (Expression (Expr)) = N_Integer_Literal then
+                  null;
+
+               elsif Nkind (Expression (Expr)) /= N_Aggregate
+                 or else
+                   not Compile_Time_Known_Aggregate (Expression (Expr))
+                 or else Expansion_Delayed (Expression (Expr))
+               then
+                  Static_Components := False;
+                  exit;
+               end if;
+
+               Next (Expr);
+            end loop;
+         end if;
+      end Check_Static_Components;
+
+      -------------
+      -- Flatten --
+      -------------
+
+      function Flatten
+        (N   : Node_Id;
+         Ix  : Node_Id;
+         Ixb : Node_Id) return Boolean
+      is
+         Loc : constant Source_Ptr := Sloc (N);
+         Blo : constant Node_Id    := Type_Low_Bound (Etype (Ixb));
+         Lo  : constant Node_Id    := Type_Low_Bound (Etype (Ix));
+         Hi  : constant Node_Id    := Type_High_Bound (Etype (Ix));
+         Lov : Uint;
+         Hiv : Uint;
+
+      begin
+         if Nkind (Original_Node (N)) = N_String_Literal then
+            return True;
+         end if;
+
+         if not Compile_Time_Known_Value (Lo)
+           or else not Compile_Time_Known_Value (Hi)
+         then
+            return False;
+         end if;
+
+         Lov := Expr_Value (Lo);
+         Hiv := Expr_Value (Hi);
+
+         if Hiv < Lov
+           or else not Compile_Time_Known_Value (Blo)
+         then
+            return False;
+         end if;
+
+         --  Determine if set of alternatives is suitable for conversion
+         --  and build an array containing the values in sequence.
+
+         declare
+            Vals : array (UI_To_Int (Lov) .. UI_To_Int (Hiv))
+                     of Node_Id := (others => Empty);
+            --  The values in the aggregate sorted appropriately
+
+            Vlist : List_Id;
+            --  Same data as Vals in list form
+
+            Rep_Count : Nat;
+            --  Used to validate Max_Others_Replicate limit
+
+            Elmt   : Node_Id;
+            Num    : Int := UI_To_Int (Lov);
+            Choice : Node_Id;
+            Lo, Hi : Node_Id;
+
+         begin
+            if Present (Expressions (N)) then
+               Elmt := First (Expressions (N));
+               while Present (Elmt) loop
+                  if Nkind (Elmt) = N_Aggregate
+                    and then Present (Next_Index (Ix))
+                    and then
+                         not Flatten (Elmt, Next_Index (Ix), Next_Index (Ixb))
+                  then
+                     return False;
+                  end if;
+
+                  Vals (Num) := Relocate_Node (Elmt);
+                  Num := Num + 1;
+
+                  Next (Elmt);
+               end loop;
+            end if;
+
+            if No (Component_Associations (N)) then
+               return True;
+            end if;
+
+            Elmt := First (Component_Associations (N));
+
+            if Nkind (Expression (Elmt)) = N_Aggregate then
+               if Present (Next_Index (Ix))
+                 and then
+                   not Flatten
+                        (Expression (Elmt), Next_Index (Ix), Next_Index (Ixb))
+               then
+                  return False;
+               end if;
+            end if;
+
+            Component_Loop : while Present (Elmt) loop
+               Choice := First (Choices (Elmt));
+               Choice_Loop : while Present (Choice) loop
+
+                  --  If we have an others choice, fill in the missing elements
+                  --  subject to the limit established by Max_Others_Replicate.
+
+                  if Nkind (Choice) = N_Others_Choice then
+                     Rep_Count := 0;
+
+                     for J in Vals'Range loop
+                        if No (Vals (J)) then
+                           Vals (J) := New_Copy_Tree (Expression (Elmt));
+                           Rep_Count := Rep_Count + 1;
+
+                           --  Check for maximum others replication. Note that
+                           --  we skip this test if either of the restrictions
+                           --  No_Elaboration_Code or No_Implicit_Loops is
+                           --  active, or if this is a preelaborable unit.
+
+                           declare
+                              P : constant Entity_Id :=
+                                    Cunit_Entity (Current_Sem_Unit);
+
+                           begin
+                              if Restriction_Active (No_Elaboration_Code)
+                                or else Restriction_Active (No_Implicit_Loops)
+                                or else Is_Preelaborated (P)
+                                or else (Ekind (P) = E_Package_Body
+                                          and then
+                                            Is_Preelaborated (Spec_Entity (P)))
+                              then
+                                 null;
+
+                              elsif Rep_Count > Max_Others_Replicate then
+                                 return False;
+                              end if;
+                           end;
+                        end if;
+                     end loop;
+
+                     exit Component_Loop;
+
+                  --  Case of a subtype mark
+
+                  elsif Nkind (Choice) = N_Identifier
+                    and then Is_Type (Entity (Choice))
+                  then
+                     Lo := Type_Low_Bound  (Etype (Choice));
+                     Hi := Type_High_Bound (Etype (Choice));
+
+                  --  Case of subtype indication
+
+                  elsif Nkind (Choice) = N_Subtype_Indication then
+                     Lo := Low_Bound  (Range_Expression (Constraint (Choice)));
+                     Hi := High_Bound (Range_Expression (Constraint (Choice)));
+
+                  --  Case of a range
+
+                  elsif Nkind (Choice) = N_Range then
+                     Lo := Low_Bound (Choice);
+                     Hi := High_Bound (Choice);
+
+                  --  Normal subexpression case
+
+                  else pragma Assert (Nkind (Choice) in N_Subexpr);
+                     if not Compile_Time_Known_Value (Choice) then
+                        return False;
+
+                     else
+                        Vals (UI_To_Int (Expr_Value (Choice))) :=
+                          New_Copy_Tree (Expression (Elmt));
+                        goto Continue;
+                     end if;
+                  end if;
+
+                  --  Range cases merge with Lo,Hi said
+
+                  if not Compile_Time_Known_Value (Lo)
+                       or else
+                     not Compile_Time_Known_Value (Hi)
+                  then
+                     return False;
+                  else
+                     for J in UI_To_Int (Expr_Value (Lo)) ..
+                              UI_To_Int (Expr_Value (Hi))
+                     loop
+                        Vals (J) := New_Copy_Tree (Expression (Elmt));
+                     end loop;
+                  end if;
+
+               <<Continue>>
+                  Next (Choice);
+               end loop Choice_Loop;
+
+               Next (Elmt);
+            end loop Component_Loop;
+
+            --  If we get here the conversion is possible
+
+            Vlist := New_List;
+            for J in Vals'Range loop
+               Append (Vals (J), Vlist);
+            end loop;
+
+            Rewrite (N, Make_Aggregate (Loc, Expressions => Vlist));
+            Set_Aggregate_Bounds (N, Aggregate_Bounds (Original_Node (N)));
+            return True;
+         end;
+      end Flatten;
+
+      -------------
+      -- Is_Flat --
+      -------------
+
+      function Is_Flat (N : Node_Id; Dims : Int) return Boolean is
+         Elmt : Node_Id;
+
+      begin
+         if Dims = 0 then
+            return True;
+
+         elsif Nkind (N) = N_Aggregate then
+            if Present (Component_Associations (N)) then
+               return False;
+
+            else
+               Elmt := First (Expressions (N));
+               while Present (Elmt) loop
+                  if not Is_Flat (Elmt, Dims - 1) then
+                     return False;
+                  end if;
+
+                  Next (Elmt);
+               end loop;
+
+               return True;
+            end if;
+         else
+            return True;
+         end if;
+      end Is_Flat;
+
+   --  Start of processing for Convert_To_Positional
 
    begin
-      --  For now, we only handle the one dimensional case and aggregates
-      --  that are not part of a component_association
+      --  Ada 2005 (AI-287): Do not convert in case of default initialized
+      --  components because in this case will need to call the corresponding
+      --  IP procedure.
 
-      if Ndim > 1 or else Nkind (Parent (N)) = N_Aggregate
-        or else Nkind (Parent (N)) = N_Component_Association
-      then
+      if Has_Default_Init_Comps (N) then
          return;
       end if;
 
-      --  If already positional, nothing to do!
-
-      if No (Component_Associations (N)) then
+      if Is_Flat (N, Number_Dimensions (Typ)) then
          return;
       end if;
-
-      --  Bounds need to be known at compile time
-
-      if not Compile_Time_Known_Value (Lo)
-        or else not Compile_Time_Known_Value (Hi)
-      then
-         return;
-      end if;
-
-      --  Normally we do not attempt to convert bit packed arrays. The
-      --  exception is when we are explicitly asked to do so (this call
-      --  is from the Packed_Array_Aggregate_Handled procedure).
 
       if Is_Bit_Packed_Array (Typ)
         and then not Handle_Bit_Packed
@@ -2282,159 +3730,31 @@ package body Exp_Aggr is
          return;
       end if;
 
-      --  Get bounds and check reasonable size (positive, not too large)
-      --  Also only handle bounds starting at the base type low bound for now
-      --  since the compiler isn't able to handle different low bounds yet.
+      Check_Static_Components;
 
-      Lov := Expr_Value (Lo);
-      Hiv := Expr_Value (Hi);
+      --  If the size is known, or all the components are static, try to
+      --  build a fully positional aggregate.
 
-      if Hiv < Lov
-        or else (Hiv - Lov > Max_Aggr_Size)
-        or else not Compile_Time_Known_Value (Blo)
-        or else (Lov /= Expr_Value (Blo))
+      --  The size of the type  may not be known for an aggregate with
+      --  discriminated array components, but if the components are static
+      --  it is still possible to verify statically that the length is
+      --  compatible with the upper bound of the type, and therefore it is
+      --  worth flattening such aggregates as well.
+
+      --  For now the back-end expands these aggregates into individual
+      --  assignments to the target anyway, but it is conceivable that
+      --  it will eventually be able to treat such aggregates statically???
+
+      if Aggr_Size_OK (Typ)
+        and then Flatten (N, First_Index (Typ), First_Index (Base_Type (Typ)))
       then
-         return;
-      end if;
-
-      --  Bounds must be in integer range (for array Vals below)
-
-      if not UI_Is_In_Int_Range (Lov)
-          or else
-         not UI_Is_In_Int_Range (Hiv)
-      then
-         return;
-      end if;
-
-      --  Determine if set of alternatives is suitable for conversion
-      --  and build an array containing the values in sequence.
-
-      declare
-         Vals : array (UI_To_Int (Lov) .. UI_To_Int (Hiv))
-                  of Node_Id := (others => Empty);
-         --  The values in the aggregate sorted appropriately
-
-         Vlist : List_Id;
-         --  Same data as Vals in list form
-
-         Rep_Count : Nat;
-         --  Used to validate Max_Others_Replicate limit
-
-         Elmt   : Node_Id;
-         Num    : Int := UI_To_Int (Lov);
-         Choice : Node_Id;
-         Lo, Hi : Node_Id;
-
-      begin
-         if Present (Expressions (N)) then
-            Elmt := First (Expressions (N));
-            while Present (Elmt) loop
-               Vals (Num) := Relocate_Node (Elmt);
-               Num := Num + 1;
-               Next (Elmt);
-            end loop;
+         if Static_Components then
+            Set_Compile_Time_Known_Aggregate (N);
+            Set_Expansion_Delayed (N, False);
          end if;
 
-         Elmt := First (Component_Associations (N));
-         Component_Loop : while Present (Elmt) loop
-
-            Choice := First (Choices (Elmt));
-            Choice_Loop : while Present (Choice) loop
-
-               --  If we have an others choice, fill in the missing elements
-               --  subject to the limit established by Max_Others_Replicate.
-
-               if Nkind (Choice) = N_Others_Choice then
-                  Rep_Count := 0;
-
-                  for J in Vals'Range loop
-                     if No (Vals (J)) then
-                        Vals (J) := New_Copy_Tree (Expression (Elmt));
-                        Rep_Count := Rep_Count + 1;
-
-                        --  Check for maximum others replication. Note that
-                        --  we skip this test if either of the restrictions
-                        --  No_Elaboration_Code or No_Implicit_Loops is
-                        --  active, or if this is a preelaborable unit.
-
-                        if Rep_Count > Max_Others_Replicate
-                          and then not Restrictions (No_Elaboration_Code)
-                          and then not Restrictions (No_Implicit_Loops)
-                          and then not
-                            Is_Preelaborated (Cunit_Entity (Current_Sem_Unit))
-                        then
-                           return;
-                        end if;
-                     end if;
-                  end loop;
-
-                  exit Component_Loop;
-
-               --  Case of a subtype mark
-
-               elsif (Nkind (Choice) = N_Identifier
-                       and then Is_Type (Entity (Choice)))
-               then
-                  Lo := Type_Low_Bound  (Etype (Choice));
-                  Hi := Type_High_Bound (Etype (Choice));
-
-               --  Case of subtype indication
-
-               elsif Nkind (Choice) = N_Subtype_Indication then
-                  Lo := Low_Bound  (Range_Expression (Constraint (Choice)));
-                  Hi := High_Bound (Range_Expression (Constraint (Choice)));
-
-               --  Case of a range
-
-               elsif Nkind (Choice) = N_Range then
-                  Lo := Low_Bound (Choice);
-                  Hi := High_Bound (Choice);
-
-               --  Normal subexpression case
-
-               else pragma Assert (Nkind (Choice) in N_Subexpr);
-                  if not Compile_Time_Known_Value (Choice) then
-                     return;
-
-                  else
-                     Vals (UI_To_Int (Expr_Value (Choice))) :=
-                       New_Copy_Tree (Expression (Elmt));
-                     goto Continue;
-                  end if;
-               end if;
-
-               --  Range cases merge with Lo,Hi said
-
-               if not Compile_Time_Known_Value (Lo)
-                    or else
-                  not Compile_Time_Known_Value (Hi)
-               then
-                  return;
-               else
-                  for J in UI_To_Int (Expr_Value (Lo)) ..
-                           UI_To_Int (Expr_Value (Hi))
-                  loop
-                     Vals (J) := New_Copy_Tree (Expression (Elmt));
-                  end loop;
-               end if;
-
-            <<Continue>>
-               Next (Choice);
-            end loop Choice_Loop;
-
-            Next (Elmt);
-         end loop Component_Loop;
-
-         --  If we get here the conversion is possible
-
-         Vlist := New_List;
-         for J in Vals'Range loop
-            Append (Vals (J), Vlist);
-         end loop;
-
-         Rewrite (N, Make_Aggregate (Loc, Expressions => Vlist));
          Analyze_And_Resolve (N, Typ);
-      end;
+      end if;
    end Convert_To_Positional;
 
    ----------------------------
@@ -2455,11 +3775,17 @@ package body Exp_Aggr is
    --         (c) For multidimensional arrays make sure that all subaggregates
    --             corresponding to the same dimension have the same bounds.
 
-   --  2. Check if the aggregate can be statically processed. If this is the
+   --  2. Check for packed array aggregate which can be converted to a
+   --     constant so that the aggregate disappeares completely.
+
+   --  3. Check case of nested aggregate. Generally nested aggregates are
+   --     handled during the processing of the parent aggregate.
+
+   --  4. Check if the aggregate can be statically processed. If this is the
    --     case pass it as is to Gigi. Note that a necessary condition for
    --     static processing is that the aggregate be fully positional.
 
-   --  3. If in place aggregate expansion is possible (i.e. no need to create
+   --  5. If in place aggregate expansion is possible (i.e. no need to create
    --     a temporary) then mark the aggregate as such and return. Otherwise
    --     create a new temporary and generate the appropriate initialization
    --     code.
@@ -2473,14 +3799,14 @@ package body Exp_Aggr is
       --  Ctyp is the corresponding component type.
 
       Aggr_Dimension : constant Pos := Number_Dimensions (Typ);
-      --  Number of aggregate index dimensions.
+      --  Number of aggregate index dimensions
 
       Aggr_Low  : array (1 .. Aggr_Dimension) of Node_Id;
       Aggr_High : array (1 .. Aggr_Dimension) of Node_Id;
-      --  Low and High bounds of the constraint for each aggregate index.
+      --  Low and High bounds of the constraint for each aggregate index
 
       Aggr_Index_Typ : array (1 .. Aggr_Dimension) of Entity_Id;
-      --  The type of each index.
+      --  The type of each index
 
       Maybe_In_Place_OK : Boolean;
       --  If the type is neither controlled nor packed and the aggregate
@@ -2534,14 +3860,14 @@ package body Exp_Aggr is
       ----------------------------
 
       procedure Build_Constrained_Type (Positional : Boolean) is
-         Loc        : constant Source_Ptr := Sloc (N);
-         Agg_Type   : Entity_Id;
-         Comp       : Node_Id;
-         Decl       : Node_Id;
-         Typ        : constant Entity_Id := Etype (N);
-         Indices    : List_Id := New_List;
-         Num        : Int;
-         Sub_Agg    : Node_Id;
+         Loc      : constant Source_Ptr := Sloc (N);
+         Agg_Type : Entity_Id;
+         Comp     : Node_Id;
+         Decl     : Node_Id;
+         Typ      : constant Entity_Id := Etype (N);
+         Indices  : constant List_Id   := New_List;
+         Num      : Int;
+         Sub_Agg  : Node_Id;
 
       begin
          Agg_Type :=
@@ -2556,11 +3882,10 @@ package body Exp_Aggr is
             Sub_Agg := N;
 
             for D in 1 .. Number_Dimensions (Typ) loop
-               Comp := First (Expressions (Sub_Agg));
+               Sub_Agg := First (Expressions (Sub_Agg));
 
-               Sub_Agg := Comp;
+               Comp := Sub_Agg;
                Num := 0;
-
                while Present (Comp) loop
                   Num := Num + 1;
                   Next (Comp);
@@ -2575,7 +3900,6 @@ package body Exp_Aggr is
             end loop;
 
          else
-
             --  We know the aggregate type is unconstrained and the
             --  aggregate is not processable by the back end, therefore
             --  not necessarily positional. Retrieve the bounds of each
@@ -2596,8 +3920,11 @@ package body Exp_Aggr is
                Type_Definition =>
                  Make_Constrained_Array_Definition (Loc,
                    Discrete_Subtype_Definitions => Indices,
-                   Subtype_Indication =>
-                     New_Occurrence_Of (Component_Type (Typ), Loc)));
+                   Component_Definition =>
+                     Make_Component_Definition (Loc,
+                       Aliased_Present => False,
+                       Subtype_Indication =>
+                         New_Occurrence_Of (Component_Type (Typ), Loc))));
 
          Insert_Action (N, Decl);
          Analyze (Decl);
@@ -2638,22 +3965,22 @@ package body Exp_Aggr is
          elsif Aggr_Hi = Ind_Hi then
             Cond :=
               Make_Op_Lt (Loc,
-                Left_Opnd  => Duplicate_Subexpr (Aggr_Lo),
-                Right_Opnd => Duplicate_Subexpr (Ind_Lo));
+                Left_Opnd  => Duplicate_Subexpr_Move_Checks (Aggr_Lo),
+                Right_Opnd => Duplicate_Subexpr_Move_Checks (Ind_Lo));
 
          elsif Aggr_Lo = Ind_Lo then
             Cond :=
               Make_Op_Gt (Loc,
-                Left_Opnd  => Duplicate_Subexpr (Aggr_Hi),
-                Right_Opnd => Duplicate_Subexpr (Ind_Hi));
+                Left_Opnd  => Duplicate_Subexpr_Move_Checks (Aggr_Hi),
+                Right_Opnd => Duplicate_Subexpr_Move_Checks (Ind_Hi));
 
          else
             Cond :=
               Make_Or_Else (Loc,
                 Left_Opnd =>
                   Make_Op_Lt (Loc,
-                    Left_Opnd  => Duplicate_Subexpr (Aggr_Lo),
-                    Right_Opnd => Duplicate_Subexpr (Ind_Lo)),
+                    Left_Opnd  => Duplicate_Subexpr_Move_Checks (Aggr_Lo),
+                    Right_Opnd => Duplicate_Subexpr_Move_Checks (Ind_Lo)),
 
                 Right_Opnd =>
                   Make_Op_Gt (Loc,
@@ -2666,8 +3993,8 @@ package body Exp_Aggr is
               Make_And_Then (Loc,
                 Left_Opnd =>
                   Make_Op_Le (Loc,
-                    Left_Opnd  => Duplicate_Subexpr (Aggr_Lo),
-                    Right_Opnd => Duplicate_Subexpr (Aggr_Hi)),
+                    Left_Opnd  => Duplicate_Subexpr_Move_Checks (Aggr_Lo),
+                    Right_Opnd => Duplicate_Subexpr_Move_Checks (Aggr_Hi)),
 
                 Right_Opnd => Cond);
 
@@ -2687,19 +4014,19 @@ package body Exp_Aggr is
       procedure Check_Same_Aggr_Bounds (Sub_Aggr : Node_Id; Dim : Pos) is
          Sub_Lo : constant Node_Id := Low_Bound (Aggregate_Bounds (Sub_Aggr));
          Sub_Hi : constant Node_Id := High_Bound (Aggregate_Bounds (Sub_Aggr));
-         --  The bounds of this specific sub-aggregate.
+         --  The bounds of this specific sub-aggregate
 
          Aggr_Lo : constant Node_Id := Aggr_Low (Dim);
          Aggr_Hi : constant Node_Id := Aggr_High (Dim);
          --  The bounds of the aggregate for this dimension
 
          Ind_Typ : constant Entity_Id := Aggr_Index_Typ (Dim);
-         --  The index type for this dimension.
+         --  The index type for this dimension.xxx
 
-         Cond : Node_Id := Empty;
+         Cond  : Node_Id := Empty;
 
-         Assoc  : Node_Id;
-         Expr   : Node_Id;
+         Assoc : Node_Id;
+         Expr  : Node_Id;
 
       begin
          --  If index checks are on generate the test
@@ -2723,22 +4050,22 @@ package body Exp_Aggr is
          elsif Aggr_Hi = Sub_Hi then
             Cond :=
               Make_Op_Ne (Loc,
-                Left_Opnd  => Duplicate_Subexpr (Aggr_Lo),
-                Right_Opnd => Duplicate_Subexpr (Sub_Lo));
+                Left_Opnd  => Duplicate_Subexpr_Move_Checks (Aggr_Lo),
+                Right_Opnd => Duplicate_Subexpr_Move_Checks (Sub_Lo));
 
          elsif Aggr_Lo = Sub_Lo then
             Cond :=
               Make_Op_Ne (Loc,
-                Left_Opnd  => Duplicate_Subexpr (Aggr_Hi),
-                Right_Opnd => Duplicate_Subexpr (Sub_Hi));
+                Left_Opnd  => Duplicate_Subexpr_Move_Checks (Aggr_Hi),
+                Right_Opnd => Duplicate_Subexpr_Move_Checks (Sub_Hi));
 
          else
             Cond :=
               Make_Or_Else (Loc,
                 Left_Opnd =>
                   Make_Op_Ne (Loc,
-                    Left_Opnd  => Duplicate_Subexpr (Aggr_Lo),
-                    Right_Opnd => Duplicate_Subexpr (Sub_Lo)),
+                    Left_Opnd  => Duplicate_Subexpr_Move_Checks (Aggr_Lo),
+                    Right_Opnd => Duplicate_Subexpr_Move_Checks (Sub_Lo)),
 
                 Right_Opnd =>
                   Make_Op_Ne (Loc,
@@ -2785,8 +4112,8 @@ package body Exp_Aggr is
       ----------------------------
 
       procedure Compute_Others_Present (Sub_Aggr : Node_Id; Dim : Pos) is
-         Assoc  : Node_Id;
-         Expr   : Node_Id;
+         Assoc : Node_Id;
+         Expr  : Node_Id;
 
       begin
          if Present (Component_Associations (Sub_Aggr)) then
@@ -2824,17 +4151,17 @@ package body Exp_Aggr is
          end if;
       end Compute_Others_Present;
 
-      -------------------------
-      --  Has_Address_Clause --
-      -------------------------
+      ------------------------
+      -- Has_Address_Clause --
+      ------------------------
 
       function Has_Address_Clause (D : Node_Id) return Boolean is
-         Id   : Entity_Id := Defining_Identifier (D);
-         Decl : Node_Id := Next (D);
+         Id   : constant Entity_Id := Defining_Identifier (D);
+         Decl : Node_Id;
 
       begin
+         Decl := Next (D);
          while Present (Decl) loop
-
             if Nkind (Decl) = N_At_Clause
                and then Chars (Identifier (Decl)) = Chars (Id)
             then
@@ -2899,7 +4226,6 @@ package body Exp_Aggr is
          begin
             if Present (Expressions (Aggr)) then
                Expr := First (Expressions (Aggr));
-
                while Present (Expr) loop
                   if Nkind (Expr) = N_Aggregate then
                      if not Safe_Aggregate (Expr) then
@@ -2916,7 +4242,6 @@ package body Exp_Aggr is
 
             if Present (Component_Associations (Aggr)) then
                Expr := First (Component_Associations (Aggr));
-
                while Present (Expr) loop
                   if Nkind (Expression (Expr)) = N_Aggregate then
                      if not Safe_Aggregate (Expression (Expr)) then
@@ -2942,7 +4267,11 @@ package body Exp_Aggr is
             Comp : Node_Id := Expr;
 
             function Check_Component (Comp : Node_Id) return Boolean;
-            --  Do the recursive traversal, after copy.
+            --  Do the recursive traversal, after copy
+
+            ---------------------
+            -- Check_Component --
+            ---------------------
 
             function Check_Component (Comp : Node_Id) return Boolean is
             begin
@@ -2967,10 +4296,13 @@ package body Exp_Aggr is
                            and then Check_Component (Right_Opnd (Comp)))
 
                  or else (Nkind (Comp) = N_Selected_Component
-                           and then Check_Component (Prefix (Comp)));
+                           and then Check_Component (Prefix (Comp)))
+
+                 or else (Nkind (Comp) = N_Unchecked_Type_Conversion
+                           and then Check_Component (Expression (Comp)));
             end Check_Component;
 
-            --  Start of processing for Safe_Component
+         --  Start of processing for Safe_Component
 
          begin
             --  If the component appears in an association that may
@@ -2990,7 +4322,8 @@ package body Exp_Aggr is
                   return False;
 
                elsif Nkind (Expr) = N_Allocator then
-                  --  For now, too complex to analyze.
+
+                  --  For now, too complex to analyze
 
                   return False;
                end if;
@@ -3027,7 +4360,17 @@ package body Exp_Aggr is
             end if;
 
             Aggr_In := First_Index (Etype (N));
-            Obj_In  := First_Index (Etype (Name (Parent (N))));
+            if Nkind (Parent (N)) = N_Assignment_Statement then
+               Obj_In  := First_Index (Etype (Name (Parent (N))));
+
+            else
+               --  Context is an allocator. Check bounds of aggregate
+               --  against given type in qualified expression.
+
+               pragma Assert (Nkind (Parent (Parent (N))) = N_Allocator);
+               Obj_In :=
+                 First_Index (Etype (Entity (Subtype_Mark (Parent (N)))));
+            end if;
 
             while Present (Aggr_In) loop
                Get_Index_Bounds (Aggr_In, Aggr_Lo, Aggr_Hi);
@@ -3048,7 +4391,7 @@ package body Exp_Aggr is
             end loop;
          end if;
 
-         --  Now check the component values themselves.
+         --  Now check the component values themselves
 
          return Safe_Aggregate (N);
       end In_Place_Assign_OK;
@@ -3060,10 +4403,10 @@ package body Exp_Aggr is
       procedure Others_Check (Sub_Aggr : Node_Id; Dim : Pos) is
          Aggr_Lo : constant Node_Id := Aggr_Low (Dim);
          Aggr_Hi : constant Node_Id := Aggr_High (Dim);
-         --  The bounds of the aggregate for this dimension.
+         --  The bounds of the aggregate for this dimension
 
          Ind_Typ : constant Entity_Id := Aggr_Index_Typ (Dim);
-         --  The index type for this dimension.
+         --  The index type for this dimension
 
          Need_To_Check : Boolean := False;
 
@@ -3205,14 +4548,16 @@ package body Exp_Aggr is
                         Prefix         => New_Reference_To (Ind_Typ, Loc),
                         Attribute_Name => Name_Pos,
                         Expressions    =>
-                          New_List (Duplicate_Subexpr (Aggr_Lo))),
+                          New_List
+                            (Duplicate_Subexpr_Move_Checks (Aggr_Lo))),
                     Right_Opnd => Make_Integer_Literal (Loc, Nb_Elements - 1)),
 
                 Right_Opnd =>
                   Make_Attribute_Reference (Loc,
                     Prefix         => New_Reference_To (Ind_Typ, Loc),
                     Attribute_Name => Name_Pos,
-                    Expressions    => New_List (Duplicate_Subexpr (Aggr_Hi))));
+                    Expressions    => New_List (
+                      Duplicate_Subexpr_Move_Checks (Aggr_Hi))));
 
          --  If we are dealing with an aggregate containing an others
          --  choice and discrete choices we generate the following test:
@@ -3225,13 +4570,17 @@ package body Exp_Aggr is
               Make_Or_Else (Loc,
                 Left_Opnd =>
                   Make_Op_Lt (Loc,
-                    Left_Opnd  => Duplicate_Subexpr (Choices_Lo),
-                    Right_Opnd => Duplicate_Subexpr (Aggr_Lo)),
+                    Left_Opnd  =>
+                      Duplicate_Subexpr_Move_Checks (Choices_Lo),
+                    Right_Opnd =>
+                      Duplicate_Subexpr_Move_Checks (Aggr_Lo)),
 
                 Right_Opnd =>
                   Make_Op_Gt (Loc,
-                    Left_Opnd  => Duplicate_Subexpr (Choices_Hi),
-                    Right_Opnd => Duplicate_Subexpr (Aggr_Hi)));
+                    Left_Opnd  =>
+                      Duplicate_Subexpr (Choices_Hi),
+                    Right_Opnd =>
+                      Duplicate_Subexpr (Aggr_Hi)));
          end if;
 
          if Present (Cond) then
@@ -3271,10 +4620,10 @@ package body Exp_Aggr is
       --  Remaining Expand_Array_Aggregate variables
 
       Tmp : Entity_Id;
-      --  Holds the temporary aggregate value.
+      --  Holds the temporary aggregate value
 
       Tmp_Decl : Node_Id;
-      --  Holds the declaration of Tmp.
+      --  Holds the declaration of Tmp
 
       Aggr_Code   : List_Id;
       Parent_Node : Node_Id;
@@ -3298,7 +4647,10 @@ package body Exp_Aggr is
 
       pragma Assert (not Raises_Constraint_Error (N));
 
-      --  STEP 1: Check (a)
+      --  STEP 1a
+
+      --  Check that the index range defined by aggregate bounds is
+      --  compatible with corresponding index subtype.
 
       Index_Compatibility_Check : declare
          Aggr_Index_Range : Node_Id := First_Index (Typ);
@@ -3343,34 +4695,73 @@ package body Exp_Aggr is
          end loop;
       end Index_Compatibility_Check;
 
-      --  STEP 1: Check (b)
+      --  STEP 1b
+
+      --  If an others choice is present check that no aggregate
+      --  index is outside the bounds of the index constraint.
 
       Others_Check (N, 1);
 
-      --  STEP 1: Check (c)
+      --  STEP 1c
+
+      --  For multidimensional arrays make sure that all subaggregates
+      --  corresponding to the same dimension have the same bounds.
 
       if Aggr_Dimension > 1 then
          Check_Same_Aggr_Bounds (N, 1);
       end if;
 
-      --  STEP 2.
+      --  STEP 2
 
-      --  First try to convert to positional form. If the result is not
-      --  an aggregate any more, then we are done with the analysis (it
-      --  it could be a string literal or an identifier for a temporary
-      --  variable following this call). If result is an analyzed aggregate
-      --  the transformation was also successful and we are done as well.
+      --  Here we test for is packed array aggregate that we can handle
+      --  at compile time. If so, return with transformation done. Note
+      --  that we do this even if the aggregate is nested, because once
+      --  we have done this processing, there is no more nested aggregate!
 
-      Convert_To_Positional (N);
+      if Packed_Array_Aggregate_Handled (N) then
+         return;
+      end if;
+
+      --  At this point we try to convert to positional form
+
+      if Ekind (Current_Scope) = E_Package
+        and then Static_Elaboration_Desired (Current_Scope)
+      then
+         Convert_To_Positional (N, Max_Others_Replicate => 100);
+
+      else
+         Convert_To_Positional (N);
+      end if;
+
+      --  if the result is no longer an aggregate (e.g. it may be a string
+      --  literal, or a temporary which has the needed value), then we are
+      --  done, since there is no longer a nested aggregate.
 
       if Nkind (N) /= N_Aggregate then
          return;
+
+      --  We are also done if the result is an analyzed aggregate
+      --  This case could use more comments ???
 
       elsif Analyzed (N)
         and then N /= Original_Node (N)
       then
          return;
       end if;
+
+      --  If all aggregate components are compile-time known and the aggregate
+      --  has been flattened, nothing left to do. The same occurs if the
+      --  aggregate is used to initialize the components of an statically
+      --  allocated dispatch table.
+
+      if Compile_Time_Known_Aggregate (N)
+        or else Is_Static_Dispatch_Table_Aggregate (N)
+      then
+         Set_Expansion_Delayed (N, False);
+         return;
+      end if;
+
+      --  Now see if back end processing is possible
 
       if Backend_Processing_Possible (N) then
 
@@ -3386,7 +4777,6 @@ package body Exp_Aggr is
 
          begin
             Index := First_Index (Itype);
-
             while Present (Index) loop
                if not Is_Static_Subtype (Etype (Index)) then
                   Needs_Type := True;
@@ -3405,6 +4795,8 @@ package body Exp_Aggr is
 
          return;
       end if;
+
+      --  STEP 3
 
       --  Delay expansion for nested aggregates it will be taken care of
       --  when the parent aggregate is expanded
@@ -3425,20 +4817,20 @@ package body Exp_Aggr is
         or else (Parent_Kind = N_Assignment_Statement
                   and then Inside_Init_Proc)
       then
-         Set_Expansion_Delayed (N);
-         return;
+         if Static_Array_Aggregate (N)
+           or else Compile_Time_Known_Aggregate (N)
+         then
+            Set_Expansion_Delayed (N, False);
+            return;
+         else
+            Set_Expansion_Delayed (N);
+            return;
+         end if;
       end if;
 
-      --  STEP 3.
+      --  STEP 4
 
       --  Look if in place aggregate expansion is possible
-
-      --  First case to test for is packed array aggregate that we can
-      --  handle at compile time. If so, return with transformation done.
-
-      if Packed_Array_Aggregate_Handled (N) then
-         return;
-      end if;
 
       --  For object declarations we build the aggregate in place, unless
       --  the array is bit-packed or the component is controlled.
@@ -3448,20 +4840,40 @@ package body Exp_Aggr is
       --  create a temporary. The analysis for safety of on-line assignment
       --  is delicate, i.e. we don't know how to do it fully yet ???
 
+      --  For allocators we assign to the designated object in place if the
+      --  aggregate meets the same conditions as other in-place assignments.
+      --  In this case the aggregate may not come from source but was created
+      --  for default initialization, e.g. with Initialize_Scalars.
+
       if Requires_Transient_Scope (Typ) then
          Establish_Transient_Scope
            (N, Sec_Stack => Has_Controlled_Component (Typ));
       end if;
 
-      Maybe_In_Place_OK :=
-        Comes_From_Source (N)
-          and then Nkind (Parent (N)) = N_Assignment_Statement
-          and then not Is_Bit_Packed_Array (Typ)
-          and then not Has_Controlled_Component (Typ)
-          and then In_Place_Assign_OK;
+      if Has_Default_Init_Comps (N) then
+         Maybe_In_Place_OK := False;
 
-      if Comes_From_Source (Parent (N))
+      elsif Is_Bit_Packed_Array (Typ)
+        or else Has_Controlled_Component (Typ)
+      then
+         Maybe_In_Place_OK := False;
+
+      else
+         Maybe_In_Place_OK :=
+          (Nkind (Parent (N)) = N_Assignment_Statement
+             and then Comes_From_Source (N)
+             and then In_Place_Assign_OK)
+
+          or else
+            (Nkind (Parent (Parent (N))) = N_Allocator
+              and then In_Place_Assign_OK);
+      end if;
+
+      if not Has_Default_Init_Comps (N)
+         and then Comes_From_Source (Parent (N))
          and then Nkind (Parent (N)) = N_Object_Declaration
+         and then not
+           Must_Slide (Etype (Defining_Identifier (Parent (N))), Typ)
          and then N = Expression (Parent (N))
          and then not Is_Bit_Packed_Array (Typ)
          and then not Has_Controlled_Component (Typ)
@@ -3489,12 +4901,28 @@ package body Exp_Aggr is
          end if;
 
       elsif Maybe_In_Place_OK
+        and then Nkind (Parent (N)) = N_Qualified_Expression
+        and then Nkind (Parent (Parent (N))) = N_Allocator
+      then
+         Set_Expansion_Delayed (N);
+         return;
+
+      --  In the remaining cases the aggregate is the RHS of an assignment
+
+      elsif Maybe_In_Place_OK
         and then Is_Entity_Name (Name (Parent (N)))
       then
          Tmp := Entity (Name (Parent (N)));
 
          if Etype (Tmp) /= Etype (N) then
             Apply_Length_Check (N, Etype (Tmp));
+
+            if Nkind (N) = N_Raise_Constraint_Error then
+
+               --  Static error, nothing further to expand
+
+               return;
+            end if;
          end if;
 
       elsif Maybe_In_Place_OK
@@ -3514,6 +4942,10 @@ package body Exp_Aggr is
          --  Safe_Slice_Assignment rewrites assignment as a loop
 
          return;
+
+      --  Step 5
+
+      --  In place aggregate expansion is not possible
 
       else
          Maybe_In_Place_OK := False;
@@ -3552,13 +4984,22 @@ package body Exp_Aggr is
             Target := New_Reference_To (Tmp, Loc);
 
          else
-            --  Name in assignment is explicit dereference.
+
+            if Has_Default_Init_Comps (N) then
+
+               --  Ada 2005 (AI-287): This case has not been analyzed???
+
+               raise Program_Error;
+            end if;
+
+            --  Name in assignment is explicit dereference
 
             Target := New_Copy (Tmp);
          end if;
 
          Aggr_Code :=
            Build_Array_Aggr_Code (N,
+             Ctype       => Ctyp,
              Index       => First_Index (Typ),
              Into        => Target,
              Scalar_Comp => Is_Scalar_Type (Ctyp));
@@ -3598,6 +5039,9 @@ package body Exp_Aggr is
       else
          Expand_Array_Aggregate (N);
       end if;
+   exception
+      when RE_Not_Available =>
+         return;
    end Expand_N_Aggregate;
 
    ----------------------------------
@@ -3617,7 +5061,7 @@ package body Exp_Aggr is
       Typ : constant Entity_Id  := Etype (N);
 
    begin
-      --  If the ancestor is a subtype mark, an init_proc must be called
+      --  If the ancestor is a subtype mark, an init proc must be called
       --  on the resulting object which thus has to be materialized in
       --  the front-end
 
@@ -3633,17 +5077,22 @@ package body Exp_Aggr is
       else
          Set_Etype (N, Typ);
 
-         --  No tag is needed in the case of Java_VM
-
-         if Java_VM then
+         if VM_Target = No_VM then
             Expand_Record_Aggregate (N,
+              Orig_Tag    =>
+                New_Occurrence_Of
+                  (Node (First_Elmt (Access_Disp_Table (Typ))), Loc),
               Parent_Expr => A);
          else
+            --  No tag is needed in the case of a VM
             Expand_Record_Aggregate (N,
-              Orig_Tag    => New_Occurrence_Of (Access_Disp_Table (Typ), Loc),
               Parent_Expr => A);
          end if;
       end if;
+
+   exception
+      when RE_Not_Available =>
+         return;
    end Expand_N_Extension_Aggregate;
 
    -----------------------------
@@ -3655,21 +5104,29 @@ package body Exp_Aggr is
       Orig_Tag    : Node_Id := Empty;
       Parent_Expr : Node_Id := Empty)
    is
-      Loc   : constant Source_Ptr   := Sloc  (N);
-      Comps : constant List_Id      := Component_Associations (N);
-      Typ   : constant Entity_Id    := Etype (N);
-      Base_Typ : constant Entity_Id := Base_Type (Typ);
+      Loc      : constant Source_Ptr := Sloc  (N);
+      Comps    : constant List_Id    := Component_Associations (N);
+      Typ      : constant Entity_Id  := Etype (N);
+      Base_Typ : constant Entity_Id  := Base_Type (Typ);
 
-      function Has_Delayed_Nested_Aggregate_Or_Tagged_Comps return Boolean;
-      --  Checks the presence of a nested aggregate which needs Late_Expansion
-      --  or the presence of tagged components which may need tag adjustment.
+      Static_Components : Boolean := True;
+      --  Flag to indicate whether all components are compile-time known,
+      --  and the aggregate can be constructed statically and handled by
+      --  the back-end.
 
-      --------------------------------------------------
-      -- Has_Delayed_Nested_Aggregate_Or_Tagged_Comps --
-      --------------------------------------------------
+      function Component_Not_OK_For_Backend return Boolean;
+      --  Check for presence of component which makes it impossible for the
+      --  backend to process the aggregate, thus requiring the use of a series
+      --  of assignment statements. Cases checked for are a nested aggregate
+      --  needing Late_Expansion, the presence of a tagged component which may
+      --  need tag adjustment, and a bit unaligned component reference.
 
-      function Has_Delayed_Nested_Aggregate_Or_Tagged_Comps return Boolean is
-         C     : Node_Id;
+      ----------------------------------
+      -- Component_Not_OK_For_Backend --
+      ----------------------------------
+
+      function Component_Not_OK_For_Backend return Boolean is
+         C      : Node_Id;
          Expr_Q : Node_Id;
 
       begin
@@ -3679,7 +5136,6 @@ package body Exp_Aggr is
 
          C := First (Comps);
          while Present (C) loop
-
             if Nkind (Expression (C)) = N_Qualified_Expression then
                Expr_Q := Expression (Expression (C));
             else
@@ -3691,27 +5147,44 @@ package body Exp_Aggr is
             --  These are cases where the source expression may have
             --  a tag that could differ from the component tag (e.g.,
             --  can occur for type conversions and formal parameters).
-            --  (Tag adjustment is not needed if Java_VM because object
+            --  (Tag adjustment is not needed if VM_Target because object
             --  tags are implicit in the JVM.)
 
             if Is_Tagged_Type (Etype (Expr_Q))
               and then (Nkind (Expr_Q) = N_Type_Conversion
-                or else (Is_Entity_Name (Expr_Q)
-                          and then Ekind (Entity (Expr_Q)) in Formal_Kind))
-              and then not Java_VM
+                         or else (Is_Entity_Name (Expr_Q)
+                                   and then
+                                    Ekind (Entity (Expr_Q)) in Formal_Kind))
+              and then VM_Target = No_VM
             then
+               Static_Components := False;
+               return True;
+
+            elsif Is_Delayed_Aggregate (Expr_Q) then
+               Static_Components := False;
+               return True;
+
+            elsif Possible_Bit_Aligned_Component (Expr_Q) then
+               Static_Components := False;
                return True;
             end if;
 
-            if Is_Delayed_Aggregate (Expr_Q) then
-               return True;
+            if Is_Scalar_Type (Etype (Expr_Q)) then
+               if not Compile_Time_Known_Value (Expr_Q) then
+                  Static_Components := False;
+               end if;
+
+            elsif Nkind (Expr_Q) /= N_Aggregate
+              or else not Compile_Time_Known_Aggregate (Expr_Q)
+            then
+               Static_Components := False;
             end if;
 
             Next (C);
          end loop;
 
          return False;
-      end  Has_Delayed_Nested_Aggregate_Or_Tagged_Comps;
+      end Component_Not_OK_For_Backend;
 
       --  Remaining Expand_Record_Aggregate variables
 
@@ -3722,10 +5195,40 @@ package body Exp_Aggr is
    --  Start of processing for Expand_Record_Aggregate
 
    begin
+      --  If the aggregate is to be assigned to an atomic variable, we
+      --  have to prevent a piecemeal assignment even if the aggregate
+      --  is to be expanded. We create a temporary for the aggregate, and
+      --  assign the temporary instead, so that the back end can generate
+      --  an atomic move for it.
+
+      if Is_Atomic (Typ)
+        and then (Nkind (Parent (N)) = N_Object_Declaration
+                    or else Nkind (Parent (N)) = N_Assignment_Statement)
+        and then Comes_From_Source (Parent (N))
+      then
+         Expand_Atomic_Aggregate (N, Typ);
+         return;
+
+      --  No special management required for aggregates used to initialize
+      --  statically allocated dispatch tables
+
+      elsif Is_Static_Dispatch_Table_Aggregate (N) then
+         return;
+      end if;
+
+      --  Ada 2005 (AI-318-2): We need to convert to assignments if components
+      --  are build-in-place function calls. This test could be more specific,
+      --  but doing it for all inherently limited aggregates seems harmless.
+      --  The assignments will turn into build-in-place function calls (see
+      --  Make_Build_In_Place_Call_In_Assignment).
+
+      if Ada_Version >= Ada_05 and then Is_Inherently_Limited_Type (Typ) then
+         Convert_To_Assignments (N, Typ);
+
       --  Gigi doesn't handle properly temporaries of variable size
       --  so we generate it in the front-end
 
-      if not Size_Known_At_Compile_Time (Typ) then
+      elsif not Size_Known_At_Compile_Time (Typ) then
          Convert_To_Assignments (N, Typ);
 
       --  Temporaries for controlled aggregates need to be attached to a
@@ -3737,7 +5240,15 @@ package body Exp_Aggr is
       then
          Convert_To_Assignments (N, Typ);
 
-      elsif Has_Delayed_Nested_Aggregate_Or_Tagged_Comps then
+         --  Ada 2005 (AI-287): In case of default initialized components we
+         --  convert the aggregate into assignments.
+
+      elsif Has_Default_Init_Comps (N) then
+         Convert_To_Assignments (N, Typ);
+
+      --  Check components
+
+      elsif Component_Not_OK_For_Backend then
          Convert_To_Assignments (N, Typ);
 
       --  If an ancestor is private, some components are not inherited and
@@ -3752,10 +5263,42 @@ package body Exp_Aggr is
       elsif Is_Tagged_Type (Typ) and then Has_Discriminants (Typ) then
          Convert_To_Assignments (N, Typ);
 
+      --  If the tagged types covers interface types we need to initialize all
+      --  the hidden components containing the pointers to secondary dispatch
+      --  tables.
+
+      elsif Is_Tagged_Type (Typ) and then Has_Abstract_Interfaces (Typ) then
+         Convert_To_Assignments (N, Typ);
+
+      --  If some components are mutable, the size of the aggregate component
+      --  may be disctinct from the default size of the type component, so
+      --  we need to expand to insure that the back-end copies the proper
+      --  size of the data.
+
+      elsif Has_Mutable_Components (Typ) then
+         Convert_To_Assignments (N, Typ);
+
+      --  If the type involved has any non-bit aligned components, then
+      --  we are not sure that the back end can handle this case correctly.
+
+      elsif Type_May_Have_Bit_Aligned_Components (Typ) then
+         Convert_To_Assignments (N, Typ);
+
       --  In all other cases we generate a proper aggregate that
       --  can be handled by gigi.
 
       else
+         if Nkind (N) = N_Aggregate then
+
+            --  If the aggregate is static and can be handled by the
+            --  back-end, nothing left to do.
+
+            if Static_Components then
+               Set_Compile_Time_Known_Aggregate (N);
+               Set_Expansion_Delayed (N, False);
+            end if;
+         end if;
+
          --  If no discriminants, nothing special to do
 
          if not Has_Discriminants (Typ) then
@@ -3765,30 +5308,29 @@ package body Exp_Aggr is
 
          elsif Is_Derived_Type (Typ) then
 
-            --  For untagged types,  non-girder discriminants are replaced
-            --  with girder discriminants, which are the ones that gigi uses
+            --  For untagged types,  non-stored discriminants are replaced
+            --  with stored discriminants, which are the ones that gigi uses
             --  to describe the type and its components.
 
             Generate_Aggregate_For_Derived_Type : declare
+               Constraints  : constant List_Id := New_List;
                First_Comp   : Node_Id;
                Discriminant : Entity_Id;
-               Constraints  : List_Id := New_List;
                Decl         : Node_Id;
                Num_Disc     : Int := 0;
                Num_Gird     : Int := 0;
 
-               procedure Prepend_Girder_Values (T : Entity_Id);
-               --  Scan the list of girder discriminants of the type, and
+               procedure Prepend_Stored_Values (T : Entity_Id);
+               --  Scan the list of stored discriminants of the type, and
                --  add their values to the aggregate being built.
 
                ---------------------------
-               -- Prepend_Girder_Values --
+               -- Prepend_Stored_Values --
                ---------------------------
 
-               procedure Prepend_Girder_Values (T : Entity_Id) is
+               procedure Prepend_Stored_Values (T : Entity_Id) is
                begin
-                  Discriminant := First_Girder_Discriminant (T);
-
+                  Discriminant := First_Stored_Discriminant (T);
                   while Present (Discriminant) loop
                      New_Comp :=
                        Make_Component_Association (Loc,
@@ -3809,9 +5351,9 @@ package body Exp_Aggr is
                      end if;
 
                      First_Comp := New_Comp;
-                     Next_Girder_Discriminant (Discriminant);
+                     Next_Stored_Discriminant (Discriminant);
                   end loop;
-               end Prepend_Girder_Values;
+               end Prepend_Stored_Values;
 
             --  Start of processing for Generate_Aggregate_For_Derived_Type
 
@@ -3820,38 +5362,36 @@ package body Exp_Aggr is
                --  the derived type.
 
                First_Comp := First (Component_Associations (N));
-
                while Present (First_Comp) loop
                   Comp := First_Comp;
                   Next (First_Comp);
 
-                  if Ekind (Entity (First (Choices (Comp)))) =
-                    E_Discriminant
+                  if Ekind (Entity
+                             (First (Choices (Comp)))) = E_Discriminant
                   then
                      Remove (Comp);
                      Num_Disc := Num_Disc + 1;
                   end if;
                end loop;
 
-               --  Insert girder discriminant associations in the correct
-               --  order. If there are more girder discriminants than new
+               --  Insert stored discriminant associations in the correct
+               --  order. If there are more stored discriminants than new
                --  discriminants, there is at least one new discriminant
-               --  that constrains more than one of the girders. In this
-               --  case we need to construct a proper subtype of the parent
-               --  type, in order to supply values to all the components.
-               --  Otherwise there is one-one correspondence between the
-               --  constraints and the girder discriminants.
+               --  that constrains more than one of the stored discriminants.
+               --  In this case we need to construct a proper subtype of
+               --  the parent type, in order to supply values to all the
+               --  components. Otherwise there is one-one correspondence
+               --  between the constraints and the stored discriminants.
 
                First_Comp := Empty;
 
-               Discriminant := First_Girder_Discriminant (Base_Type (Typ));
-
+               Discriminant := First_Stored_Discriminant (Base_Type (Typ));
                while Present (Discriminant) loop
                   Num_Gird := Num_Gird + 1;
-                  Next_Girder_Discriminant (Discriminant);
+                  Next_Stored_Discriminant (Discriminant);
                end loop;
 
-               --  Case of more girder discriminants than new discriminants
+               --  Case of more stored discriminants than new discriminants
 
                if Num_Gird > Num_Disc then
 
@@ -3859,8 +5399,7 @@ package body Exp_Aggr is
                   --  the proper implementation type for the aggregate, and
                   --  convert it to the intended target type.
 
-                  Discriminant := First_Girder_Discriminant (Base_Type (Typ));
-
+                  Discriminant := First_Stored_Discriminant (Base_Type (Typ));
                   while Present (Discriminant) loop
                      New_Comp :=
                        New_Copy_Tree (
@@ -3869,7 +5408,7 @@ package body Exp_Aggr is
                              Typ,
                              Discriminant_Constraint (Typ)));
                      Append (New_Comp, Constraints);
-                     Next_Girder_Discriminant (Discriminant);
+                     Next_Stored_Discriminant (Discriminant);
                   end loop;
 
                   Decl :=
@@ -3886,7 +5425,7 @@ package body Exp_Aggr is
                               (Loc, Constraints)));
 
                   Insert_Action (N, Decl);
-                  Prepend_Girder_Values (Base_Type (Typ));
+                  Prepend_Stored_Values (Base_Type (Typ));
 
                   Set_Etype (N, Defining_Identifier (Decl));
                   Set_Analyzed (N);
@@ -3895,18 +5434,18 @@ package body Exp_Aggr is
                   Analyze (N);
 
                --  Case where we do not have fewer new discriminants than
-               --  girder discriminants, so in this case we can simply
-               --  use the girder discriminants of the subtype.
+               --  stored discriminants, so in this case we can simply
+               --  use the stored discriminants of the subtype.
 
                else
-                  Prepend_Girder_Values (Typ);
+                  Prepend_Stored_Values (Typ);
                end if;
             end Generate_Aggregate_For_Derived_Type;
          end if;
 
          if Is_Tagged_Type (Typ) then
 
-            --  The tagged case, _parent and _tag component must be created.
+            --  The tagged case, _parent and _tag component must be created
 
             --  Reset null_present unconditionally. tagged records always have
             --  at least one field (the tag or the parent)
@@ -3920,19 +5459,12 @@ package body Exp_Aggr is
             if Present (Parent_Expr)
               and then Is_Empty_List (Comps)
             then
-               Comp := First_Entity (Typ);
+               Comp := First_Component_Or_Discriminant (Typ);
                while Present (Comp) loop
-
-                  --  Skip all entities that aren't discriminants or components
-
-                  if Ekind (Comp) /= E_Discriminant
-                    and then Ekind (Comp) /= E_Component
-                  then
-                     null;
 
                   --  Skip all expander-generated components
 
-                  elsif
+                  if
                     not Comes_From_Source (Original_Record_Component (Comp))
                   then
                      null;
@@ -3956,7 +5488,7 @@ package body Exp_Aggr is
                      Analyze_And_Resolve (New_Comp, Etype (Comp));
                   end if;
 
-                  Next_Entity (Comp);
+                  Next_Component_Or_Discriminant (Comp);
                end loop;
             end if;
 
@@ -3966,10 +5498,12 @@ package body Exp_Aggr is
 
             if Present (Orig_Tag) then
                Tag_Value := Orig_Tag;
-            elsif Java_VM then
+            elsif VM_Target /= No_VM then
                Tag_Value := Empty;
             else
-               Tag_Value := New_Occurrence_Of (Access_Disp_Table (Typ), Loc);
+               Tag_Value :=
+                 New_Occurrence_Of
+                   (Node (First_Elmt (Access_Disp_Table (Typ))), Loc);
             end if;
 
             --  For a derived type, an aggregate for the parent is formed with
@@ -3989,7 +5523,6 @@ package body Exp_Aggr is
 
                   First_Comp := First (Component_Associations (N));
                   Parent_Comps := New_List;
-
                   while Present (First_Comp)
                     and then Scope (Original_Record_Component (
                             Entity (First (Choices (First_Comp))))) /= Base_Typ
@@ -4027,12 +5560,13 @@ package body Exp_Aggr is
                end;
 
             --  For a root type, the tag component is added (unless compiling
-            --  for the Java VM, where tags are implicit).
+            --  for the VMs, where tags are implicit).
 
-            elsif not Java_VM then
+            elsif VM_Target = No_VM then
                declare
                   Tag_Name  : constant Node_Id :=
-                                New_Occurrence_Of (Tag_Component (Typ), Loc);
+                                New_Occurrence_Of
+                                  (First_Tag_Component (Typ), Loc);
                   Typ_Tag   : constant Entity_Id := RTE (RE_Tag);
                   Conv_Node : constant Node_Id :=
                                 Unchecked_Convert_To (Typ_Tag, Tag_Value);
@@ -4047,15 +5581,68 @@ package body Exp_Aggr is
             end if;
          end if;
       end if;
+
    end Expand_Record_Aggregate;
+
+   ----------------------------
+   -- Has_Default_Init_Comps --
+   ----------------------------
+
+   function Has_Default_Init_Comps (N : Node_Id) return Boolean is
+      Comps : constant List_Id := Component_Associations (N);
+      C     : Node_Id;
+      Expr  : Node_Id;
+   begin
+      pragma Assert (Nkind (N) = N_Aggregate
+         or else Nkind (N) = N_Extension_Aggregate);
+
+      if No (Comps) then
+         return False;
+      end if;
+
+      if Has_Self_Reference (N) then
+         return True;
+      end if;
+
+      --  Check if any direct component has default initialized components
+
+      C := First (Comps);
+      while Present (C) loop
+         if Box_Present (C) then
+            return True;
+         end if;
+
+         Next (C);
+      end loop;
+
+      --  Recursive call in case of aggregate expression
+
+      C := First (Comps);
+      while Present (C) loop
+         Expr := Expression (C);
+
+         if Present (Expr)
+           and then (Nkind (Expr) = N_Aggregate
+                     or else Nkind (Expr) = N_Extension_Aggregate)
+           and then Has_Default_Init_Comps (Expr)
+         then
+            return True;
+         end if;
+
+         Next (C);
+      end loop;
+
+      return False;
+   end Has_Default_Init_Comps;
 
    --------------------------
    -- Is_Delayed_Aggregate --
    --------------------------
 
    function Is_Delayed_Aggregate (N : Node_Id) return Boolean is
-      Node : Node_Id := N;
+      Node : Node_Id   := N;
       Kind : Node_Kind := Nkind (Node);
+
    begin
       if Kind = N_Qualified_Expression then
          Node := Expression (Node);
@@ -4069,6 +5656,39 @@ package body Exp_Aggr is
       end if;
    end Is_Delayed_Aggregate;
 
+   ----------------------------------------
+   -- Is_Static_Dispatch_Table_Aggregate --
+   ----------------------------------------
+
+   function Is_Static_Dispatch_Table_Aggregate (N : Node_Id) return Boolean is
+      Typ : constant Entity_Id := Base_Type (Etype (N));
+
+   begin
+      return Static_Dispatch_Tables
+        and then VM_Target = No_VM
+        and then RTU_Loaded (Ada_Tags)
+
+         --  Avoid circularity when rebuilding the compiler
+
+        and then Cunit_Entity (Get_Source_Unit (N)) /= RTU_Entity (Ada_Tags)
+        and then (Typ = RTE (RE_Dispatch_Table_Wrapper)
+                    or else
+                  Typ = RTE (RE_Address_Array)
+                    or else
+                  Typ = RTE (RE_Type_Specific_Data)
+                    or else
+                  Typ = RTE (RE_Tag_Table)
+                    or else
+                  (RTE_Available (RE_Interface_Data)
+                     and then Typ = RTE (RE_Interface_Data))
+                    or else
+                  (RTE_Available (RE_Interfaces_Array)
+                     and then Typ = RTE (RE_Interfaces_Array))
+                    or else
+                  (RTE_Available (RE_Interface_Data_Element)
+                     and then Typ = RTE (RE_Interface_Data_Element)));
+   end Is_Static_Dispatch_Table_Aggregate;
+
    --------------------
    -- Late_Expansion --
    --------------------
@@ -4077,23 +5697,23 @@ package body Exp_Aggr is
      (N      : Node_Id;
       Typ    : Entity_Id;
       Target : Node_Id;
-      Flist  : Node_Id := Empty;
-      Obj    : Entity_Id := Empty)
-
-      return   List_Id is
-
+      Flist  : Node_Id   := Empty;
+      Obj    : Entity_Id := Empty) return List_Id
+   is
    begin
       if Is_Record_Type (Etype (N)) then
          return Build_Record_Aggr_Code (N, Typ, Target, Flist, Obj);
-      else
+
+      else pragma Assert (Is_Array_Type (Etype (N)));
          return
            Build_Array_Aggr_Code
-             (N,
-              First_Index (Typ),
-              Target,
-              Is_Scalar_Type (Component_Type (Typ)),
-              No_List,
-              Flist);
+             (N           => N,
+              Ctype       => Component_Type (Etype (N)),
+              Index       => First_Index (Typ),
+              Into        => Target,
+              Scalar_Comp => Is_Scalar_Type (Component_Type (Typ)),
+              Indices     => No_List,
+              Flist       => Flist);
       end if;
    end Late_Expansion;
 
@@ -4104,11 +5724,11 @@ package body Exp_Aggr is
    function Make_OK_Assignment_Statement
      (Sloc       : Source_Ptr;
       Name       : Node_Id;
-      Expression : Node_Id)
-      return       Node_Id
+      Expression : Node_Id) return Node_Id
    is
    begin
       Set_Assignment_OK (Name);
+
       return Make_Assignment_Statement (Sloc, Name, Expression);
    end Make_OK_Assignment_Statement;
 
@@ -4129,10 +5749,8 @@ package body Exp_Aggr is
 
       Assoc := First (Component_Associations (N));
       while Present (Assoc) loop
-
          Choice := First (Choices (Assoc));
          while Present (Choice) loop
-
             if Nkind (Choice) /= N_Others_Choice then
                Nb_Choices := Nb_Choices + 1;
             end if;
@@ -4176,6 +5794,12 @@ package body Exp_Aggr is
          return False;
       end if;
 
+      if not Is_Scalar_Type (Component_Type (Typ))
+        and then Has_Non_Standard_Rep (Component_Type (Typ))
+      then
+         return False;
+      end if;
+
       declare
          Csiz  : constant Nat := UI_To_Int (Component_Size (Typ));
 
@@ -4207,9 +5831,13 @@ package body Exp_Aggr is
 
             Analyze_And_Resolve (N, Ctyp);
 
-            --  Must have a compile time value
+            --  Must have a compile time value. String literals have to
+            --  be converted into temporaries as well, because they cannot
+            --  easily be converted into their bit representation.
 
-            if not Compile_Time_Known_Value (N) then
+            if not Compile_Time_Known_Value (N)
+              or else Nkind (N) = N_String_Literal
+            then
                raise Not_Handled;
             end if;
 
@@ -4272,8 +5900,8 @@ package body Exp_Aggr is
          --  Otherwise we are all positional, so convert to proper value
 
          declare
-            Lov : constant Nat := UI_To_Int (Lob);
-            Hiv : constant Nat := UI_To_Int (Hib);
+            Lov : constant Int := UI_To_Int (Lob);
+            Hiv : constant Int := UI_To_Int (Hib);
 
             Len : constant Nat := Int'Max (0, Hiv - Lov + 1);
             --  The length of the array (number of elements)
@@ -4316,14 +5944,19 @@ package body Exp_Aggr is
 
             --  Loop to set the values
 
-            Aggregate_Val := Uint_0;
-            Expr := First (Expressions (N));
-            for J in 1 .. Len loop
-               Aggregate_Val :=
-                 Aggregate_Val + Get_Component_Val (Expr) * Uint_2 ** Shift;
-               Shift := Shift + Incr;
-               Next (Expr);
-            end loop;
+            if Len = 0 then
+               Aggregate_Val := Uint_0;
+            else
+               Expr := First (Expressions (N));
+               Aggregate_Val := Get_Component_Val (Expr) * Uint_2 ** Shift;
+
+               for J in 2 .. Len loop
+                  Shift := Shift + Incr;
+                  Next (Expr);
+                  Aggregate_Val :=
+                    Aggregate_Val + Get_Component_Val (Expr) * Uint_2 ** Shift;
+               end loop;
+            end if;
 
             --  Now we can rewrite with the proper value
 
@@ -4355,6 +5988,29 @@ package body Exp_Aggr is
          return False;
    end Packed_Array_Aggregate_Handled;
 
+   ----------------------------
+   -- Has_Mutable_Components --
+   ----------------------------
+
+   function Has_Mutable_Components (Typ : Entity_Id) return Boolean is
+      Comp : Entity_Id;
+
+   begin
+      Comp := First_Component (Typ);
+      while Present (Comp) loop
+         if Is_Record_Type (Etype (Comp))
+           and then Has_Discriminants (Etype (Comp))
+           and then not Is_Constrained (Etype (Comp))
+         then
+            return True;
+         end if;
+
+         Next_Component (Comp);
+      end loop;
+
+      return False;
+   end Has_Mutable_Components;
+
    ------------------------------
    -- Initialize_Discriminants --
    ------------------------------
@@ -4379,7 +6035,7 @@ package body Exp_Aggr is
         and then Nkind (N) /= N_Extension_Aggregate
       then
 
-         --   Call init_proc to set discriminants.
+         --   Call init proc to set discriminants.
          --   There should eventually be a special procedure for this ???
 
          Ref := New_Reference_To (Defining_Identifier (N), Loc);
@@ -4387,6 +6043,48 @@ package body Exp_Aggr is
            Build_Initialization_Call (Sloc (N), Ref, Typ));
       end if;
    end Initialize_Discriminants;
+
+   ----------------
+   -- Must_Slide --
+   ----------------
+
+   function Must_Slide
+     (Obj_Type : Entity_Id;
+      Typ      : Entity_Id) return Boolean
+   is
+      L1, L2, H1, H2 : Node_Id;
+   begin
+      --  No sliding if the type of the object is not established yet, if
+      --  it is an unconstrained type whose actual subtype comes from the
+      --  aggregate, or if the two types are identical.
+
+      if not Is_Array_Type (Obj_Type) then
+         return False;
+
+      elsif not Is_Constrained (Obj_Type) then
+         return False;
+
+      elsif Typ = Obj_Type then
+         return False;
+
+      else
+         --  Sliding can only occur along the first dimension
+
+         Get_Index_Bounds (First_Index (Typ), L1, H1);
+         Get_Index_Bounds (First_Index (Obj_Type), L2, H2);
+
+         if not Is_Static_Expression (L1)
+           or else not Is_Static_Expression (L2)
+           or else not Is_Static_Expression (H1)
+           or else not Is_Static_Expression (H2)
+         then
+            return False;
+         else
+            return Expr_Value (L1) /= Expr_Value (L2)
+              or else Expr_Value (H1) /= Expr_Value (H2);
+         end if;
+      end if;
+   end Must_Slide;
 
    ---------------------------
    -- Safe_Slice_Assignment --
@@ -4439,6 +6137,11 @@ package body Exp_Aggr is
               Iteration_Scheme => L_Iter,
               Statements       => New_List (L_Body));
 
+         --  Set type of aggregate to be type of lhs in assignment,
+         --  to suppress redundant length checks.
+
+         Set_Etype (N, Etype (Name (Parent (N))));
+
          Rewrite (Parent (N), Stat);
          Analyze (Parent (N));
          return True;
@@ -4453,19 +6156,18 @@ package body Exp_Aggr is
    ---------------------
 
    procedure Sort_Case_Table (Case_Table : in out Case_Table_Type) is
-      L : Int := Case_Table'First;
-      U : Int := Case_Table'Last;
+      L : constant Int := Case_Table'First;
+      U : constant Int := Case_Table'Last;
       K : Int;
       J : Int;
       T : Case_Bounds;
 
    begin
       K := L;
-
       while K /= U loop
          T := Case_Table (K + 1);
-         J := K + 1;
 
+         J := K + 1;
          while J /= L
            and then Expr_Value (Case_Table (J - 1).Choice_Lo) >
                     Expr_Value (T.Choice_Lo)
@@ -4479,4 +6181,109 @@ package body Exp_Aggr is
       end loop;
    end Sort_Case_Table;
 
+   ----------------------------
+   -- Static_Array_Aggregate --
+   ----------------------------
+
+   function Static_Array_Aggregate (N : Node_Id) return Boolean is
+      Bounds : constant Node_Id := Aggregate_Bounds (N);
+
+      Typ       : constant Entity_Id := Etype (N);
+      Comp_Type : constant Entity_Id := Component_Type (Typ);
+      Agg       : Node_Id;
+      Expr      : Node_Id;
+      Lo        : Node_Id;
+      Hi        : Node_Id;
+
+   begin
+      if Is_Tagged_Type (Typ)
+        or else Is_Controlled (Typ)
+        or else Is_Packed (Typ)
+      then
+         return False;
+      end if;
+
+      if Present (Bounds)
+        and then Nkind (Bounds) = N_Range
+        and then Nkind (Low_Bound  (Bounds)) = N_Integer_Literal
+        and then Nkind (High_Bound (Bounds)) = N_Integer_Literal
+      then
+         Lo := Low_Bound  (Bounds);
+         Hi := High_Bound (Bounds);
+
+         if No (Component_Associations (N)) then
+
+            --  Verify that all components are static integers
+
+            Expr := First (Expressions (N));
+            while Present (Expr) loop
+               if Nkind (Expr) /= N_Integer_Literal then
+                  return False;
+               end if;
+
+               Next (Expr);
+            end loop;
+
+            return True;
+
+         else
+            --  We allow only a single named association, either a static
+            --  range or an others_clause, with a static expression.
+
+            Expr := First (Component_Associations (N));
+
+            if Present (Expressions (N)) then
+               return False;
+
+            elsif Present (Next (Expr)) then
+               return False;
+
+            elsif Present (Next (First (Choices (Expr)))) then
+               return False;
+
+            else
+               --  The aggregate is static if all components are literals,
+               --  or else all its components are static aggregates for the
+               --  component type.
+
+               if Is_Array_Type (Comp_Type)
+                 or else Is_Record_Type (Comp_Type)
+               then
+                  if Nkind (Expression (Expr)) /= N_Aggregate
+                    or else
+                      not Compile_Time_Known_Aggregate (Expression (Expr))
+                  then
+                     return False;
+                  end if;
+
+               elsif Nkind (Expression (Expr)) /= N_Integer_Literal then
+                  return False;
+               end if;
+
+               --  Create a positional aggregate with the right number of
+               --  copies of the expression.
+
+               Agg := Make_Aggregate (Sloc (N), New_List, No_List);
+
+               for I in UI_To_Int (Intval (Lo)) .. UI_To_Int (Intval (Hi))
+               loop
+                  Append_To
+                    (Expressions (Agg), New_Copy (Expression (Expr)));
+                  Set_Etype (Last (Expressions (Agg)), Component_Type (Typ));
+               end loop;
+
+               Set_Aggregate_Bounds (Agg, Bounds);
+               Set_Etype (Agg, Typ);
+               Set_Analyzed (Agg);
+               Rewrite (N, Agg);
+               Set_Compile_Time_Known_Aggregate (N);
+
+               return True;
+            end if;
+         end if;
+
+      else
+         return False;
+      end if;
+   end Static_Array_Aggregate;
 end Exp_Aggr;

@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-1998 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -61,6 +59,8 @@ package body Debug_A is
 
    procedure Debug_A_Entry (S : String; N : Node_Id) is
    begin
+      --  Output debugging information if -gnatda flag set
+
       if Debug_Flag_A then
          Debug_Output_Astring;
          Write_Str (S);
@@ -73,11 +73,20 @@ package body Debug_A is
          Write_Eol;
       end if;
 
+      --  Now push the new element
+
       Debug_A_Depth := Debug_A_Depth + 1;
-      Current_Error_Node := N;
 
       if Debug_A_Depth <= Max_Node_Ids then
          Node_Ids (Debug_A_Depth) := N;
+      end if;
+
+      --  Set Current_Error_Node only if the new node has a decent Sloc
+      --  value, since it is for the Sloc value that we set this anyway.
+      --  If we don't have a decent Sloc value, we leave it unchanged.
+
+      if Sloc (N) > No_Location then
+         Current_Error_Node := N;
       end if;
    end Debug_A_Entry;
 
@@ -89,9 +98,17 @@ package body Debug_A is
    begin
       Debug_A_Depth := Debug_A_Depth - 1;
 
-      if Debug_A_Depth in 1 .. Max_Node_Ids then
-         Current_Error_Node := Node_Ids (Debug_A_Depth);
-      end if;
+      --  We look down the stack to find something with a decent Sloc. (If
+      --  we find nothing, just leave it unchanged which is not so terrible)
+
+      for J in reverse 1 .. Integer'Min (Max_Node_Ids, Debug_A_Depth) loop
+         if Sloc (Node_Ids (J)) > No_Location then
+            Current_Error_Node := Node_Ids (J);
+            exit;
+         end if;
+      end loop;
+
+      --  Output debugging information if -gnatda flag set
 
       if Debug_Flag_A then
          Debug_Output_Astring;
@@ -108,7 +125,7 @@ package body Debug_A is
    --------------------------
 
    procedure Debug_Output_Astring is
-      Vbars : String := "|||||||||||||||||||||||||";
+      Vbars : constant String := "|||||||||||||||||||||||||";
       --  Should be constant, removed because of GNAT 1.78 bug ???
 
    begin

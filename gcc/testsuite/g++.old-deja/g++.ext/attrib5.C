@@ -1,9 +1,11 @@
+// { dg-do run { xfail alpha*-dec-osf* *-*-hms i?86-pc-cygwin *-*-coff } }
 // Test that attributes weak and alias coexist.
-// excess errors test - XFAIL alpha*-dec-osf* *-*-hms i?86-pc-cygwin *-*-coff
+// { dg-require-weak "" }
+// { dg-require-alias "" }
 
 extern "C" {
-  void f () __attribute__((weak, alias ("_f")));
   void _f () { }
+  void f () __attribute__((weak, alias ("_f")));
 }
 
 int main ()

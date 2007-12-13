@@ -1,25 +1,24 @@
 /* Operating system specific defines to be used when targeting GCC for some
    generic System V Release 4 system.
    Copyright (C) 1991, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001 Free Software Foundation, Inc.
+   2000, 2001, 2007 Free Software Foundation, Inc.
    Contributed by Ron Guilmette (rfg@monkeys.com).
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.
 
    To use this file, make up a line like that in config.gcc:
 
@@ -28,11 +27,7 @@ Boston, MA 02111-1307, USA.
    where MACHINE is replaced by the name of the basic hardware that you
    are targeting for.  Then, in the file MACHINE/svr4.h, put any really
    system-specific defines (or overrides of defines) which you find that
-   you need.  For example, CPP_PREDEFINES is defined here with only the
-   defined -Dunix and -DSVR4.  You should probably override that in your
-   target-specific MACHINE/svr4.h file with a set of defines that
-   includes these, but also contains an appropriate define for the type
-   of hardware that you are targeting.
+   you need.
 */
 
 /* Define a symbol indicating that we are using svr4.h.  */
@@ -45,6 +40,7 @@ Boston, MA 02111-1307, USA.
    -z* options (for the linker).  Note however that there is no such
    thing as a -T option for svr4.  */
 
+#undef  SWITCH_TAKES_ARG
 #define SWITCH_TAKES_ARG(CHAR)		\
   (DEFAULT_SWITCH_TAKES_ARG (CHAR)	\
    || (CHAR) == 'h'			\
@@ -58,12 +54,6 @@ Boston, MA 02111-1307, USA.
  (DEFAULT_WORD_SWITCH_TAKES_ARG (STR)			\
   && strcmp (STR, "Tdata") && strcmp (STR, "Ttext")	\
   && strcmp (STR, "Tbss"))
-
-/* You should redefine CPP_PREDEFINES in any file which includes this one.
-   The definition should be appropriate for the type of target system
-   involved, and it should include any -A (assertion) options which are
-   appropriate for the given target system.  */
-#undef CPP_PREDEFINES
 
 /* Provide an ASM_SPEC appropriate for svr4.  Here we try to support as
    many of the specialized svr4 assembler options as seems reasonable,
@@ -93,7 +83,7 @@ Boston, MA 02111-1307, USA.
 /* Under svr4, the normal location of the `ld' and `as' programs is the
    /usr/ccs/bin directory.  */
 
-#ifndef CROSS_COMPILE
+#ifndef CROSS_DIRECTORY_STRUCTURE
 #undef  MD_EXEC_PREFIX
 #define MD_EXEC_PREFIX "/usr/ccs/bin/"
 #endif
@@ -101,7 +91,7 @@ Boston, MA 02111-1307, USA.
 /* Under svr4, the normal location of the various *crt*.o files is the
    /usr/ccs/lib directory.  */
 
-#ifndef CROSS_COMPILE
+#ifndef CROSS_DIRECTORY_STRUCTURE
 #undef  MD_STARTFILE_PREFIX
 #define MD_STARTFILE_PREFIX "/usr/ccs/lib/"
 #endif
@@ -145,7 +135,7 @@ Boston, MA 02111-1307, USA.
    not being done.  */
 
 #undef	LINK_SPEC
-#ifdef CROSS_COMPILE
+#ifdef CROSS_DIRECTORY_STRUCTURE
 #define LINK_SPEC "%{h*} %{v:-V} \
 		   %{b} \
 		   %{static:-dn -Bstatic} \
@@ -212,8 +202,4 @@ Boston, MA 02111-1307, USA.
 #undef  WCHAR_TYPE_SIZE
 #define WCHAR_TYPE_SIZE BITS_PER_WORD
 
-/* This causes trouble, because it requires the host machine
-   to support ANSI C.  */
-/* #define MULTIBYTE_CHARS */
-
-#define TARGET_HAS_F_SETLKW
+#define TARGET_POSIX_IO

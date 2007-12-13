@@ -1,20 +1,20 @@
 /* scan-decls.c - Extracts declarations from cpp output.
    Copyright (C) 1993, 1995, 1997, 1998,
-   1999, 2000 Free Software Foundation, Inc.
+   1999, 2000, 2003, 2004, 2007 Free Software Foundation, Inc.
 
-This program is free software; you can redistribute it and/or modify it
-under the terms of the GNU General Public License as published by the
-Free Software Foundation; either version 2, or (at your option) any
-later version.
+   This program is free software; you can redistribute it and/or modify it
+   under the terms of the GNU General Public License as published by the
+   Free Software Foundation; either version 3, or (at your option) any
+   later version.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+   You should have received a copy of the GNU General Public License
+   along with this program; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  
 
    Written by Per Bothner <bothner@cygnus.com>, July 1993.  */
 
@@ -25,8 +25,8 @@ Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "cpplib.h"
 #include "scan.h"
 
-static void skip_to_closing_brace PARAMS ((cpp_reader *));
-static const cpp_token *get_a_token PARAMS ((cpp_reader *));
+static void skip_to_closing_brace (cpp_reader *);
+static const cpp_token *get_a_token (cpp_reader *);
 
 int brace_nesting = 0;
 
@@ -34,7 +34,9 @@ int brace_nesting = 0;
    indicate the (brace nesting levels of) left braces that were
    prefixed by extern "C".  */
 int extern_C_braces_length = 0;
-char extern_C_braces[20];
+/* 20 is not enough anymore on Solaris 9.  */
+#define MAX_EXTERN_C_BRACES  200
+char extern_C_braces[MAX_EXTERN_C_BRACES];
 #define in_extern_C_brace (extern_C_braces_length>0)
 
 /* True if the function declaration currently being scanned is
@@ -43,8 +45,7 @@ int current_extern_C = 0;
 
 /* Get a token but skip padding.  */
 static const cpp_token *
-get_a_token (pfile)
-     cpp_reader *pfile;
+get_a_token (cpp_reader *pfile)
 {
   for (;;)
     {
@@ -55,8 +56,7 @@ get_a_token (pfile)
 }
 
 static void
-skip_to_closing_brace (pfile)
-     cpp_reader *pfile;
+skip_to_closing_brace (cpp_reader *pfile)
 {
   int nesting = 1;
   for (;;)
@@ -95,10 +95,8 @@ Here dname is the actual name being declared.
 */
 
 int
-scan_decls (pfile, argc, argv)
-     cpp_reader *pfile;
-     int argc ATTRIBUTE_UNUSED;
-     char **argv ATTRIBUTE_UNUSED;
+scan_decls (cpp_reader *pfile, int argc ATTRIBUTE_UNUSED,
+	    char **argv ATTRIBUTE_UNUSED)
 {
   int saw_extern, saw_inline;
   cpp_token prev_id;
@@ -167,6 +165,8 @@ scan_decls (pfile, argc, argv)
 	    {
 	      int nesting = 1;
 	      int have_arg_list = 0;
+	      const struct line_map *map;
+	      unsigned int line;
 	      for (;;)
 		{
 		  token = get_a_token (pfile);
@@ -184,7 +184,9 @@ scan_decls (pfile, argc, argv)
 			   || token->type == CPP_ELLIPSIS)
 		    have_arg_list = 1;
 		}
-	      recognized_function (&prev_id, token->line,
+	      map = linemap_lookup (&line_table, token->src_loc);
+	      line = SOURCE_LINE (map, token->src_loc);
+	      recognized_function (&prev_id, line,
 				   (saw_inline ? 'I'
 				    : in_extern_C_brace || current_extern_C
 				    ? 'F' : 'f'), have_arg_list);
@@ -200,6 +202,8 @@ scan_decls (pfile, argc, argv)
 		 parameter list */
 	      while (token->type != CPP_SEMICOLON && token->type != CPP_EOF)
 		token = get_a_token (pfile);
+	      if (token->type == CPP_EOF)
+		return 0;
 	      goto new_statement;
 	    }
 	  break;
@@ -224,6 +228,12 @@ scan_decls (pfile, argc, argv)
 		      brace_nesting++;
 		      extern_C_braces[extern_C_braces_length++]
 			= brace_nesting;
+		      if (extern_C_braces_length >= MAX_EXTERN_C_BRACES)
+			{
+			  fprintf (stderr,
+			  	   "Internal error: out-of-bounds index\n");
+			  exit (FATAL_EXIT_CODE);
+			}
 		      goto new_statement;
 		    }
 		}

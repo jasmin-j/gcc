@@ -2,12 +2,11 @@
  *                                                                          *
  *                         GNAT COMPILER COMPONENTS                         *
  *                                                                          *
- *                             G N A T D E C O                              *
- *                                                                          *
+ *                            A D A D E C O D E                             *
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *           Copyright (C) 2001-2002, Free Software Foundation, Inc.        *
+ *           Copyright (C) 2001-2006, Free Software Foundation, Inc.        *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -17,8 +16,8 @@
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
  * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
+ * Boston, MA 02110-1301, USA.                                              *
  *                                                                          *
  * As a  special  exception,  if you  link  this file  with other  files to *
  * produce an executable,  this file does not by itself cause the resulting *
@@ -36,15 +35,20 @@
 #include "system.h"
 #else
 #include <stdio.h>
+#include <ctype.h>
+#define ISDIGIT(c) isdigit(c)
 #define PARMS(ARGS) ARGS
 #endif
 
-#include "ctype.h"
 #include "adadecode.h"
 
-static void add_verbose	PARAMS ((const char *, char *));
-static int has_prefix	PARAMS ((char *, const char *));
-static int has_suffix	PARAMS ((char *, const char *));
+static void add_verbose (const char *, char *);
+static int has_prefix (const char *, const char *);
+static int has_suffix (const char *, const char *);
+
+/* This is a safe version of strcpy that can be used with overlapped
+   pointers. Does nothing if s2 <= s1.  */
+static void ostrcpy (char *s1, char *s2);
 
 /* Set to nonzero if we have written any verbose info.  */
 static int verbose_info;
@@ -52,9 +56,7 @@ static int verbose_info;
 /* Add TEXT to end of ADA_NAME, putting a leading " (" or ", ", depending
    on VERBOSE_INFO.  */
 
-static void add_verbose (text, ada_name)
-     const char *text;
-     char *ada_name;
+static void add_verbose (const char *text, char *ada_name)
 {
   strcat (ada_name, verbose_info ? ", " : " (");
   strcat (ada_name, text);
@@ -65,9 +67,7 @@ static void add_verbose (text, ada_name)
 /* Returns 1 if NAME starts with PREFIX.  */
 
 static int
-has_prefix (name, prefix)
-     char *name;
-     const char *prefix;
+has_prefix (const char *name, const char *prefix)
 {
   return strncmp (name, prefix, strlen (prefix)) == 0;
 }
@@ -75,9 +75,7 @@ has_prefix (name, prefix)
 /* Returns 1 if NAME ends with SUFFIX.  */
 
 static int
-has_suffix (name, suffix)
-     char *name;
-     const char *suffix;
+has_suffix (const char *name, const char *suffix)
 {
   int nlen = strlen (name);
   int slen = strlen (suffix);
@@ -85,11 +83,23 @@ has_suffix (name, suffix)
   return nlen > slen && strncmp (name + nlen - slen, suffix, slen) == 0;
 }
 
+/* Safe overlapped pointers version of strcpy.  */
+
+static void
+ostrcpy (char *s1, char *s2)
+{
+  if (s2 > s1)
+    {
+      while (*s2) *s1++ = *s2++;
+      *s1 = '\0';
+    }
+}
+
 /* This function will return the Ada name from the encoded form.
    The Ada coding is done in exp_dbug.ads and this is the inverse function.
    see exp_dbug.ads for full encoding rules, a short description is added
-   below. Right now only objects and routines are handled. There is no support
-   for Ada types.
+   below. Right now only objects and routines are handled. Ada types are
+   stripped of their encodings.
 
    CODED_NAME is the encoded entity name.
 
@@ -132,10 +142,7 @@ has_suffix (name, suffix)
   x__Oexpon               "**"     */
 
 void
-__gnat_decode (coded_name, ada_name, verbose)
-     const char *coded_name;
-     char *ada_name;
-     int verbose;
+__gnat_decode (const char *coded_name, char *ada_name, int verbose)
 {
   int lib_subprog = 0;
   int overloaded = 0;
@@ -143,16 +150,26 @@ __gnat_decode (coded_name, ada_name, verbose)
   int in_task = 0;
   int body_nested = 0;
 
-  /* Copy the coded name into the ada name string, the rest of the code will
-     just replace or add characters into the ada_name.  */
-  strcpy (ada_name, coded_name);
-
   /* Check for library level subprogram.  */
-  if (has_prefix (ada_name, "_ada_"))
+  if (has_prefix (coded_name, "_ada_"))
     {
-      strcpy (ada_name, ada_name + 5);
+      strcpy (ada_name, coded_name + 5);
       lib_subprog = 1;
     }
+  else
+    strcpy (ada_name, coded_name);
+
+  /* Check for the first triple underscore in the name. This indicates
+     that the name represents a type with encodings; in this case, we
+     need to strip the encodings.  */
+  {
+    char *encodings;
+
+    if ((encodings = (char *) strstr (ada_name, "___")) != NULL)
+      {
+	*encodings = '\0';
+      }
+  }
 
   /* Check for task body.  */
   if (has_suffix (ada_name, "TKB"))
@@ -192,7 +209,7 @@ __gnat_decode (coded_name, ada_name, verbose)
 
     while ((tktoken = (char *) strstr (ada_name, "TK__")) != NULL)
       {
-	strcpy (tktoken, tktoken + 2);
+	ostrcpy (tktoken, tktoken + 2);
 	in_task = 1;
       }
   }
@@ -203,7 +220,7 @@ __gnat_decode (coded_name, ada_name, verbose)
     int n_digits = 0;
 
     if (len > 1)
-      while (isdigit ((int) ada_name[(int) len - 1 - n_digits]))
+      while (ISDIGIT ((int) ada_name[(int) len - 1 - n_digits]))
 	n_digits++;
 
     /* Check if we have $ or __ before digits.  */
@@ -230,7 +247,7 @@ __gnat_decode (coded_name, ada_name, verbose)
 	if (ada_name[k] == '_' && ada_name[k+1] == '_')
 	  {
 	    ada_name[k] = '.';
-	    strcpy (ada_name + k + 1, ada_name + k + 2);
+	    ostrcpy (ada_name + k + 1, ada_name + k + 2);
 	    len = len - 1;
 	  }
 	k++;
@@ -260,7 +277,7 @@ __gnat_decode (coded_name, ada_name, verbose)
 
 	    if (codedlen > oplen)
 	      /* We shrink the space.  */
-	      strcpy (optoken, optoken + codedlen - oplen);
+	      ostrcpy (optoken, optoken + codedlen - oplen);
 	    else if (oplen > codedlen)
 	      {
 		/* We need more space.  */
@@ -286,7 +303,7 @@ __gnat_decode (coded_name, ada_name, verbose)
   }
 
   /* If verbose mode is on, we add some information to the Ada name.  */
-  if (verbose) 
+  if (verbose)
     {
       if (overloaded)
 	add_verbose ("overloaded", ada_name);
@@ -309,11 +326,50 @@ __gnat_decode (coded_name, ada_name, verbose)
 }
 
 char *
-ada_demangle (coded_name)
-     const char *coded_name;
+ada_demangle (const char *coded_name)
 {
   char ada_name[2048];
 
   __gnat_decode (coded_name, ada_name, 0);
   return xstrdup (ada_name);
+}
+
+void
+get_encoding (const char *coded_name, char *encoding)
+{
+  char * dest_index = encoding;
+  const char *p;
+  int found = 0;
+  int count = 0;
+
+  /* The heuristics is the following: we assume that the first triple
+     underscore in an encoded name indicates the beginning of the
+     first encoding, and that subsequent triple underscores indicate
+     the next encodings. We assume that the encodings are always at the
+     end of encoded names.  */
+
+  for (p = coded_name; *p != '\0'; p++)
+    {
+      if (*p != '_')
+	count = 0;
+      else
+	if (++count == 3)
+	  {
+	    count = 0;
+
+	    if (found)
+	      {
+		dest_index = dest_index - 2;
+		*dest_index++ = ':';
+	      }
+
+	    p++;
+	    found = 1;
+	  }
+
+      if (found)
+	*dest_index++ = *p;
+    }
+
+  *dest_index = '\0';
 }

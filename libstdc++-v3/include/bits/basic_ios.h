@@ -1,6 +1,8 @@
 // Iostreams base classes -*- C++ -*-
 
-// Copyright (C) 1997, 1998, 1999, 2001, 2002 Free Software Foundation, Inc.
+// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+// 2006, 2007
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -32,18 +34,27 @@
  *  You should not attempt to use it directly.
  */
 
-#ifndef _CPP_BITS_BASICIOS_H
-#define _CPP_BITS_BASICIOS_H 1
+#ifndef _BASIC_IOS_H
+#define _BASIC_IOS_H 1
 
 #pragma GCC system_header
 
-#include <bits/streambuf_iterator.h>
 #include <bits/localefwd.h>
 #include <bits/locale_classes.h>
 #include <bits/locale_facets.h>
+#include <bits/streambuf_iterator.h>
 
-namespace std 
-{
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
+  template<typename _Facet>
+    inline const _Facet&
+    __check_facet(const _Facet* __f)
+    {
+      if (!__f)
+	__throw_bad_cast();
+      return *__f;
+    }
+
   // 27.4.5  Template class basic_ios
   /**
    *  @brief  Virtual base class for all stream classes.
@@ -75,12 +86,12 @@ namespace std
        *  @endif
       */
       typedef ctype<_CharT>                          __ctype_type;
-      typedef ostreambuf_iterator<_CharT, _Traits>   __ostreambuf_iter;
-      typedef num_put<_CharT, __ostreambuf_iter>     __numput_type;
-      typedef istreambuf_iterator<_CharT, _Traits>   __istreambuf_iter;
-      typedef num_get<_CharT, __istreambuf_iter>     __numget_type;
+      typedef num_put<_CharT, ostreambuf_iterator<_CharT, _Traits> >
+						     __num_put_type;
+      typedef num_get<_CharT, istreambuf_iterator<_CharT, _Traits> >
+						     __num_get_type;
       //@}
-      
+
       // Data members:
     protected:
       basic_ostream<_CharT, _Traits>*                _M_tie;
@@ -89,11 +100,11 @@ namespace std
       basic_streambuf<_CharT, _Traits>*              _M_streambuf;
 
       // Cached use_facet<ctype>, which is based on the current locale info.
-      const __ctype_type*                            _M_fctype;      
-      // From ostream.
-      const __numput_type*                           _M_fnumput;
-      // From istream.
-      const __numget_type*                           _M_fnumget;
+      const __ctype_type*                            _M_ctype;
+      // For ostream.
+      const __num_put_type*                          _M_num_put;
+      // For istream.
+      const __num_get_type*                          _M_num_get;
 
     public:
       //@{
@@ -103,11 +114,11 @@ namespace std
        *  This allows you to write constructs such as
        *  "if (!a_stream) ..." and "while (a_stream) ..."
       */
-      operator void*() const 
+      operator void*() const
       { return this->fail() ? 0 : const_cast<basic_ios*>(this); }
 
-      bool 
-      operator!() const 
+      bool
+      operator!() const
       { return this->fail(); }
       //@}
 
@@ -118,8 +129,8 @@ namespace std
        *  See std::ios_base::iostate for the possible bit values.  Most
        *  users will call one of the interpreting wrappers, e.g., good().
       */
-      iostate 
-      rdstate() const 
+      iostate
+      rdstate() const
       { return _M_streambuf_state; }
 
       /**
@@ -129,7 +140,7 @@ namespace std
        *  See std::ios_base::iostate for the possible bit values.  Most
        *  users will not need to pass an argument.
       */
-      void 
+      void
       clear(iostate __state = goodbit);
 
       /**
@@ -138,9 +149,22 @@ namespace std
        *
        *  See std::ios_base::iostate for the possible bit values.
       */
-      void 
-      setstate(iostate __state) 
+      void
+      setstate(iostate __state)
       { this->clear(this->rdstate() | __state); }
+
+      // Flip the internal state on for the proper state bits, then re
+      // throws the propagated exception if bit also set in
+      // exceptions().
+      void
+      _M_setstate(iostate __state)
+      {
+	// 27.6.1.2.1 Common requirements.
+	// Turn this on without causing an ios::failure to be thrown.
+	_M_streambuf_state |= __state;
+	if (this->exceptions() & __state)
+	  __throw_exception_again;
+      }
 
       /**
        *  @brief  Fast error checking.
@@ -148,8 +172,8 @@ namespace std
        *
        *  A wrapper around rdstate.
       */
-      bool 
-      good() const 
+      bool
+      good() const
       { return this->rdstate() == 0; }
 
       /**
@@ -158,8 +182,8 @@ namespace std
        *
        *  Note that other iostate flags may also be set.
       */
-      bool 
-      eof() const 
+      bool
+      eof() const
       { return (this->rdstate() & eofbit) != 0; }
 
       /**
@@ -169,8 +193,8 @@ namespace std
        *  Checking the badbit in fail() is historical practice.
        *  Note that other iostate flags may also be set.
       */
-      bool 
-      fail() const 
+      bool
+      fail() const
       { return (this->rdstate() & (badbit | failbit)) != 0; }
 
       /**
@@ -179,8 +203,8 @@ namespace std
        *
        *  Note that other iostate flags may also be set.
       */
-      bool 
-      bad() const 
+      bool
+      bad() const
       { return (this->rdstate() & badbit) != 0; }
 
       /**
@@ -190,8 +214,8 @@ namespace std
        *  This changes nothing in the stream.  See the one-argument version
        *  of exceptions(iostate) for the meaning of the return value.
       */
-      iostate 
-      exceptions() const 
+      iostate
+      exceptions() const
       { return _M_exception; }
 
       /**
@@ -210,26 +234,26 @@ namespace std
        *  #include <iostream>
        *  #include <fstream>
        *  #include <exception>
-       *  
+       *
        *  int main()
        *  {
        *      std::set_terminate (__gnu_cxx::__verbose_terminate_handler);
-       *  
+       *
        *      std::ifstream f ("/etc/motd");
-       *  
+       *
        *      std::cerr << "Setting badbit\n";
        *      f.setstate (std::ios_base::badbit);
-       *  
+       *
        *      std::cerr << "Setting exception mask\n";
        *      f.exceptions (std::ios_base::badbit);
        *  }
        *  @endcode
       */
-      void 
-      exceptions(iostate __except) 
-      { 
-        _M_exception = __except; 
-        this->clear(_M_streambuf_state); 
+      void
+      exceptions(iostate __except)
+      {
+        _M_exception = __except;
+        this->clear(_M_streambuf_state);
       }
 
       // Constructor/destructor:
@@ -238,8 +262,10 @@ namespace std
        *
        *  The parameter is passed by derived streams.
       */
-      explicit 
-      basic_ios(basic_streambuf<_CharT, _Traits>* __sb) : ios_base() 
+      explicit
+      basic_ios(basic_streambuf<_CharT, _Traits>* __sb)
+      : ios_base(), _M_tie(0), _M_fill(), _M_fill_init(false), _M_streambuf(0),
+	_M_ctype(0), _M_num_put(0), _M_num_get(0)
       { this->init(__sb); }
 
       /**
@@ -248,9 +274,9 @@ namespace std
        *  The destructor does nothing.  More specifically, it does not
        *  destroy the streambuf held by rdbuf().
       */
-      virtual 
+      virtual
       ~basic_ios() { }
-      
+
       // Members:
       /**
        *  @brief  Fetches the current @e tied stream.
@@ -262,7 +288,7 @@ namespace std
        *  first flushed.  For example, @c std::cin is tied to @c std::cout.
       */
       basic_ostream<_CharT, _Traits>*
-      tie() const      
+      tie() const
       { return _M_tie; }
 
       /**
@@ -288,7 +314,7 @@ namespace std
        *  This does not change the state of the stream.
       */
       basic_streambuf<_CharT, _Traits>*
-      rdbuf() const    
+      rdbuf() const
       { return _M_streambuf; }
 
       /**
@@ -313,11 +339,19 @@ namespace std
        *  foo.ios::rdbuf(p);            // ios == basic_ios<char>
        *  @endcode
       */
-      basic_streambuf<_CharT, _Traits>* 
+      basic_streambuf<_CharT, _Traits>*
       rdbuf(basic_streambuf<_CharT, _Traits>* __sb);
 
       /**
-       *  @doctodo
+       *  @brief  Copies fields of __rhs into this.
+       *  @param  __rhs  The source values for the copies.
+       *  @return  Reference to this object.
+       *
+       *  All fields of __rhs are copied into this object except that rdbuf()
+       *  and rdstate() remain unchanged.  All values in the pword and iword
+       *  arrays are copied.  Before copying, each callback is invoked with
+       *  erase_event.  After copying, each (new) callback is invoked with
+       *  copyfmt_event.  The final step is to copy exceptions().
       */
       basic_ios&
       copyfmt(const basic_ios& __rhs);
@@ -328,15 +362,15 @@ namespace std
        *
        *  It defaults to a space (' ') in the current locale.
       */
-      char_type 
-      fill() const 
+      char_type
+      fill() const
       {
 	if (!_M_fill_init)
 	  {
 	    _M_fill = this->widen(' ');
 	    _M_fill_init = true;
 	  }
-	return _M_fill; 
+	return _M_fill;
       }
 
       /**
@@ -348,7 +382,7 @@ namespace std
        *  have been requested (e.g., via setw), Q characters are actually
        *  used, and Q<P.  It defaults to a space (' ') in the current locale.
       */
-      char_type 
+      char_type
       fill(char_type __ch)
       {
 	char_type __old = this->fill();
@@ -368,7 +402,7 @@ namespace std
        *  Additional l10n notes are at
        *  http://gcc.gnu.org/onlinedocs/libstdc++/22_locale/howto.html
       */
-      locale 
+      locale
       imbue(const locale& __loc);
 
       /**
@@ -382,14 +416,15 @@ namespace std
        *
        *  Returns the result of
        *  @code
-       *    std::use_facet< ctype<char_type> >(getloc()).narrow(c,dfault)
+       *    std::use_facet<ctype<char_type> >(getloc()).narrow(c,dfault)
        *  @endcode
        *
        *  Additional l10n notes are at
        *  http://gcc.gnu.org/onlinedocs/libstdc++/22_locale/howto.html
       */
-      char 
-      narrow(char_type __c, char __dfault) const;
+      char
+      narrow(char_type __c, char __dfault) const
+      { return __check_facet(_M_ctype).narrow(__c, __dfault); }
 
       /**
        *  @brief  Widens characters.
@@ -400,15 +435,16 @@ namespace std
        *
        *  Returns the result of
        *  @code
-       *    std::use_facet< ctype<char_type> >(getloc()).widen(c)
+       *    std::use_facet<ctype<char_type> >(getloc()).widen(c)
        *  @endcode
        *
        *  Additional l10n notes are at
        *  http://gcc.gnu.org/onlinedocs/libstdc++/22_locale/howto.html
       */
-      char_type 
-      widen(char __c) const;
-     
+      char_type
+      widen(char __c) const
+      { return __check_facet(_M_ctype).widen(__c); }
+
     protected:
       // 27.4.5.1  basic_ios constructors
       /**
@@ -417,7 +453,9 @@ namespace std
        *  The default constructor does nothing and is not normally
        *  accessible to users.
       */
-      basic_ios() : ios_base() 
+      basic_ios()
+      : ios_base(), _M_tie(0), _M_fill(char_type()), _M_fill_init(false), 
+	_M_streambuf(0), _M_ctype(0), _M_num_put(0), _M_num_get(0)
       { }
 
       /**
@@ -426,25 +464,17 @@ namespace std
        *  This is called from the public constructor.  It is not virtual and
        *  cannot be redefined.
       */
-      void 
+      void
       init(basic_streambuf<_CharT, _Traits>* __sb);
 
-      bool
-      _M_check_facet(const locale::facet* __f) const
-      {
-	if (!__f)
-	  __throw_bad_cast();
-	return true;
-      }
-
       void
-      _M_cache_facets(const locale& __loc);
+      _M_cache_locale(const locale& __loc);
     };
-} // namespace std
 
-#ifdef _GLIBCPP_NO_TEMPLATE_EXPORT
-# define export
+_GLIBCXX_END_NAMESPACE
+
+#ifndef _GLIBCXX_EXPORT_TEMPLATE
 #include <bits/basic_ios.tcc>
 #endif
 
-#endif /* _CPP_BITS_BASICIOS_H */
+#endif /* _BASIC_IOS_H */

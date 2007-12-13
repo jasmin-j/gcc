@@ -1,6 +1,6 @@
 // 2001-08-27 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2004 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.6.2.1 money_put members
@@ -27,14 +27,13 @@
 void test04()
 {
   using namespace std;
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   // Check money_put works with other iterators besides streambuf
   // output iterators. (As long as output_iterator requirements are met.)
   typedef wstring::iterator iter_type;
   typedef money_put<wchar_t, iter_type> mon_put_type;
   const ios_base::iostate goodbit = ios_base::goodbit;
-  const ios_base::iostate eofbit = ios_base::eofbit;
   ios_base::iostate err = goodbit;
   const locale loc_c = locale::classic();
   // woman, art, thief (stole the blues)
@@ -51,7 +50,7 @@ void test04()
 
   // 01 wstring
   res = x;
-  iter_type ret1 = mp.put(res.begin(), false, oss, ' ', str);
+  iter_type ret1 = mp.put(res.begin(), false, oss, L' ', str);
   wstring sanity1(res.begin(), ret1);
   VERIFY( err == goodbit );
   VERIFY( res == L"1943xxxxxxxxxxxxx" );
@@ -59,7 +58,7 @@ void test04()
 
   // 02 long double
   res = x;
-  iter_type ret2 = mp.put(res.begin(), false, oss, ' ', ld);
+  iter_type ret2 = mp.put(res.begin(), false, oss, L' ', ld);
   wstring sanity2(res.begin(), ret2);
   VERIFY( err == goodbit );
   VERIFY( res == L"1943xxxxxxxxxxxxx" );

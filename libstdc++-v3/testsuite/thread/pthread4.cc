@@ -2,7 +2,8 @@
 // Adapted from http://gcc.gnu.org/ml/gcc-bugs/2002-01/msg00679.html
 // which was adapted from pthread1.cc by Mike Lu <MLu@dynamicsoft.com>
 //
-// Copyright (C) 2002 Free Software Foundation, Inc.
+// Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -17,24 +18,23 @@
 //
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
-// { dg-do run { target *-*-freebsd* *-*-netbsd* *-*-linux* *-*-solaris* *-*-cygwin } }
-// { dg-options "-pthread" { target *-*-freebsd* *-*-netbsd* *-*-linux* } }
+// { dg-do run { target *-*-freebsd* *-*-netbsd* *-*-linux* *-*-solaris* *-*-cygwin *-*-darwin* alpha*-*-osf* mips-sgi-irix6* } }
+// { dg-options "-pthread" { target *-*-freebsd* *-*-netbsd* *-*-linux* alpha*-*-osf* mips-sgi-irix6* } }
 // { dg-options "-pthreads" { target *-*-solaris* } }
 
 #include <string>
 #include <list>
+#include <pthread.h>
 
-// Do not include <pthread.h> explicitly; if threads are properly
-// configured for the port, then it is picked up free from STL headers.
-
-#if __GTHREADS
 using namespace std;
 
 static list<string> foo;
 static pthread_mutex_t fooLock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t fooCondOverflow = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t fooCondUnderflow = PTHREAD_COND_INITIALIZER;
 static unsigned max_size = 10;
 #if defined(__CYGWIN__)
 static int iters = 10000;
@@ -50,13 +50,19 @@ produce (void*)
       string str ("test string");
 
       pthread_mutex_lock (&fooLock);
-      if (foo.size () < max_size)
-	{
-	  foo.push_back (str);
-	  num++;
-	}
+      while (foo.size () >= max_size)
+	pthread_cond_wait (&fooCondOverflow, &fooLock);
+      foo.push_back (str);
+      num++;
+      if (foo.size () >= (max_size / 2))
+	pthread_cond_signal (&fooCondUnderflow);
       pthread_mutex_unlock (&fooLock);
     }
+
+  // No more data will ever be written, ensure no fini race
+  pthread_mutex_lock (&fooLock);
+  pthread_cond_signal (&fooCondUnderflow);
+  pthread_mutex_unlock (&fooLock);
 
   return 0;
 }
@@ -67,12 +73,15 @@ consume (void*)
   for (int num = 0; num < iters; )
     {
       pthread_mutex_lock (&fooLock);
+      while (foo.size () == 0)
+	pthread_cond_wait (&fooCondUnderflow, &fooLock);
       while (foo.size () > 0)
 	{
 	  string str = foo.back ();
 	  foo.pop_back ();
 	  num++;
 	}
+      pthread_cond_signal (&fooCondOverflow);
       pthread_mutex_unlock (&fooLock);
     }
 
@@ -82,7 +91,7 @@ consume (void*)
 int
 main (void)
 {
-#if defined(__sun) && defined(__svr4__)
+#if defined(__sun) && defined(__svr4__) && _XOPEN_VERSION >= 500
   pthread_setconcurrency (2);
 #endif
 
@@ -96,6 +105,3 @@ main (void)
 
   return 0;
 }
-#else
-int main (void) {}
-#endif

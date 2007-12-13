@@ -24,8 +24,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program; see the file COPYING.  If not, write to
- * the Free Software Foundation, 59 Temple Place - Suite 330,
- * Boston, MA 02111-1307, USA.
+ * the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301, USA.
  * 
  *    As a special exception, if you link this library with files
  *    compiled with GCC to produce an executable, this does not cause
@@ -252,7 +252,7 @@ FUNC_START(__eabi_convert)
 
 .Lcvt:
 	lwzu	6,4(3)				/* pointer to convert */
-	cmpi	0,6,0
+	cmpwi	0,6,0
 	beq-	.Lcvt2				/* if pointer is null, don't convert */
 
         add	6,6,12				/* convert pointer */

@@ -1,7 +1,7 @@
 /* Specialized bits of code needed to support construction and
    destruction of file-scope objects in C++ code.
    Copyright (C) 1991, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+   1999, 2000, 2001, 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
    Contributed by Ron Guilmette (rfg@monkeys.com).
 
 This file is part of GCC.
@@ -27,8 +27,8 @@ for more details.
 
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301, USA.  */
 
 /* This file is a bit like libgcc2.c in that it is compiled
    multiple times and yields multiple .o files.
@@ -51,13 +51,19 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 
    This file must be compiled with gcc.  */
 
-/* It is incorrect to include config.h here, because this file is being
-   compiled for the target, and hence definitions concerning only the host
-   do not apply.  */
+/* Target machine header files require this define. */
+#define IN_LIBGCC2
 
-/* We include auto-host.h here to get HAVE_GAS_HIDDEN.  This is
-   supposedly valid even though this is a "target" file.  */
+/* FIXME: Including auto-host is incorrect, but until we have
+   identified the set of defines that need to go into auto-target.h,
+   this will have to do.  */
 #include "auto-host.h"
+#undef gid_t
+#undef pid_t
+#undef rlim_t
+#undef ssize_t
+#undef uid_t
+#undef vfork
 #include "tconfig.h"
 #include "tsystem.h"
 #include "coretypes.h"
@@ -80,11 +86,16 @@ call_ ## FUNC (void)					\
 }
 #endif
 
-#if defined(OBJECT_FORMAT_ELF) && defined(HAVE_LD_EH_FRAME_HDR) \
+#if defined(OBJECT_FORMAT_ELF) \
+    && !defined(OBJECT_FORMAT_FLAT) \
+    && defined(HAVE_LD_EH_FRAME_HDR) \
     && !defined(inhibit_libc) && !defined(CRTSTUFFT_O) \
     && defined(__GLIBC__) && __GLIBC__ >= 2
 #include <link.h>
-# if (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ > 2) \
+/* uClibc pretends to be glibc 2.2 and DT_CONFIG is defined in its link.h.
+   But it doesn't use PT_GNU_EH_FRAME ELF segment currently.  */
+# if !defined(__UCLIBC__) \
+     && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ > 2) \
      || (__GLIBC__ == 2 && __GLIBC_MINOR__ == 2 && defined(DT_CONFIG)))
 #  define USE_PT_GNU_EH_FRAME
 # endif
@@ -92,10 +103,15 @@ call_ ## FUNC (void)					\
 #if defined(EH_FRAME_SECTION_NAME) && !defined(USE_PT_GNU_EH_FRAME)
 # define USE_EH_FRAME_REGISTRY
 #endif
-#if defined(EH_FRAME_SECTION_NAME) && defined(HAVE_LD_RO_RW_SECTION_MIXING)
+#if defined(EH_FRAME_SECTION_NAME) && EH_TABLES_CAN_BE_READ_ONLY
 # define EH_FRAME_SECTION_CONST const
 #else
 # define EH_FRAME_SECTION_CONST
+#endif
+
+#if !defined(DTOR_LIST_END) && defined(OBJECT_FORMAT_ELF) \
+    && defined(HAVE_GAS_HIDDEN) && !defined(FINI_ARRAY_SECTION_ASM_OP)
+# define HIDDEN_DTOR_LIST_END
 #endif
 
 /* We do not want to add the weak attribute to the declarations of these
@@ -109,7 +125,7 @@ call_ ## FUNC (void)					\
    but not its definition.
 
    Making TARGET_WEAK_ATTRIBUTE conditional seems like a good solution until
-   one thinks about scaling to larger problems -- ie, the condition under
+   one thinks about scaling to larger problems -- i.e., the condition under
    which TARGET_WEAK_ATTRIBUTE is active will eventually get far too
    complicated.
 
@@ -120,15 +136,16 @@ call_ ## FUNC (void)					\
    
 /* References to __register_frame_info and __deregister_frame_info should
    be weak in this file if at all possible.  */
-extern void __register_frame_info (void *, struct object *)
+extern void __register_frame_info (const void *, struct object *)
 				  TARGET_ATTRIBUTE_WEAK;
-extern void __register_frame_info_bases (void *, struct object *,
+extern void __register_frame_info_bases (const void *, struct object *,
 					 void *, void *)
 				  TARGET_ATTRIBUTE_WEAK;
-extern void *__deregister_frame_info (void *)
+extern void *__deregister_frame_info (const void *)
 				     TARGET_ATTRIBUTE_WEAK;
-extern void *__deregister_frame_info_bases (void *)
+extern void *__deregister_frame_info_bases (const void *)
 				     TARGET_ATTRIBUTE_WEAK;
+extern void __do_global_ctors_1 (void);
 
 /* Likewise for _Jv_RegisterClasses.  */
 extern void _Jv_RegisterClasses (void *) TARGET_ATTRIBUTE_WEAK;
@@ -208,7 +225,7 @@ STATIC void *__JCR_LIST__[]
   = { };
 #endif /* JCR_SECTION_NAME */
 
-#ifdef INIT_SECTION_ASM_OP
+#if defined(INIT_SECTION_ASM_OP) || defined(INIT_ARRAY_SECTION_ASM_OP)
 
 #ifdef OBJECT_FORMAT_ELF
 
@@ -218,6 +235,9 @@ STATIC void *__JCR_LIST__[]
    in one DSO or the main program is not used in another object.  The
    dynamic linker takes care of this.  */
 
+#ifdef TARGET_LIBGCC_SDATA_SECTION
+extern void *__dso_handle __attribute__ ((__section__ (TARGET_LIBGCC_SDATA_SECTION)));
+#endif
 #ifdef HAVE_GAS_HIDDEN
 extern void *__dso_handle __attribute__ ((__visibility__ ("hidden")));
 #endif
@@ -253,9 +273,7 @@ extern void __cxa_finalize (void *) TARGET_ATTRIBUTE_WEAK;
 static void __attribute__((used))
 __do_global_dtors_aux (void)
 {
-  static func_ptr *p = __DTOR_LIST__ + 1;
   static _Bool completed;
-  func_ptr f;
 
   if (__builtin_expect (completed, 0))
     return;
@@ -265,14 +283,39 @@ __do_global_dtors_aux (void)
     __cxa_finalize (__dso_handle);
 #endif
 
-  while ((f = *p))
-    {
-      p++;
-      f ();
-    }
+#ifdef FINI_ARRAY_SECTION_ASM_OP
+  /* If we are using .fini_array then destructors will be run via that
+     mechanism.  */
+#elif defined(HIDDEN_DTOR_LIST_END)
+  {
+    /* Safer version that makes sure only .dtors function pointers are
+       called even if the static variable is maliciously changed.  */
+    extern func_ptr __DTOR_END__[] __attribute__((visibility ("hidden")));
+    static size_t dtor_idx;
+    const size_t max_idx = __DTOR_END__ - __DTOR_LIST__ - 1;
+    func_ptr f;
+
+    while (dtor_idx < max_idx)
+      {
+	f = __DTOR_LIST__[++dtor_idx];
+	f ();
+      }
+  }
+#else /* !defined (FINI_ARRAY_SECTION_ASM_OP) */
+  {
+    static func_ptr *p = __DTOR_LIST__ + 1;
+    func_ptr f;
+
+    while ((f = *p))
+      {
+	p++;
+	f ();
+      }
+  }
+#endif /* !defined(FINI_ARRAY_SECTION_ASM_OP) */
 
 #ifdef USE_EH_FRAME_REGISTRY
-#if defined(CRT_GET_RFIB_TEXT) || defined(CRT_GET_RFIB_DATA)
+#ifdef CRT_GET_RFIB_DATA
   /* If we used the new __register_frame_info_bases interface,
      make sure that we deregister from the same place.  */
   if (__deregister_frame_info_bases)
@@ -287,7 +330,13 @@ __do_global_dtors_aux (void)
 }
 
 /* Stick a call to __do_global_dtors_aux into the .fini section.  */
+#ifdef FINI_SECTION_ASM_OP
 CRT_CALL_STATIC_FUNCTION (FINI_SECTION_ASM_OP, __do_global_dtors_aux)
+#else /* !defined(FINI_SECTION_ASM_OP) */
+static func_ptr __do_global_dtors_aux_fini_array_entry[]
+  __attribute__ ((__unused__, section(".fini_array")))
+  = { __do_global_dtors_aux };
+#endif /* !defined(FINI_SECTION_ASM_OP) */
 
 #if defined(USE_EH_FRAME_REGISTRY) || defined(JCR_SECTION_NAME)
 /* Stick a call to __register_frame_info into the .init section.  For some
@@ -299,32 +348,35 @@ frame_dummy (void)
 {
 #ifdef USE_EH_FRAME_REGISTRY
   static struct object object;
-#if defined(CRT_GET_RFIB_TEXT) || defined(CRT_GET_RFIB_DATA)
-  void *tbase, *dbase;
-#ifdef CRT_GET_RFIB_TEXT
-  CRT_GET_RFIB_TEXT (tbase);
-#else
-  tbase = 0;
-#endif
 #ifdef CRT_GET_RFIB_DATA
+  void *tbase, *dbase;
+  tbase = 0;
   CRT_GET_RFIB_DATA (dbase);
-#else
-  dbase = 0;
-#endif
   if (__register_frame_info_bases)
     __register_frame_info_bases (__EH_FRAME_BEGIN__, &object, tbase, dbase);
 #else
   if (__register_frame_info)
     __register_frame_info (__EH_FRAME_BEGIN__, &object);
-#endif
+#endif /* CRT_GET_RFIB_DATA */
 #endif /* USE_EH_FRAME_REGISTRY */
 #ifdef JCR_SECTION_NAME
-  if (__JCR_LIST__[0] && _Jv_RegisterClasses)
-    _Jv_RegisterClasses (__JCR_LIST__);
+  if (__JCR_LIST__[0])
+    {
+      void (*register_classes) (void *) = _Jv_RegisterClasses;
+      __asm ("" : "+r" (register_classes));
+      if (register_classes)
+	register_classes (__JCR_LIST__);
+    }
 #endif /* JCR_SECTION_NAME */
 }
 
+#ifdef INIT_SECTION_ASM_OP
 CRT_CALL_STATIC_FUNCTION (INIT_SECTION_ASM_OP, frame_dummy)
+#else /* defined(INIT_SECTION_ASM_OP) */
+static func_ptr __frame_dummy_init_array_entry[]
+  __attribute__ ((__unused__, section(".init_array")))
+  = { frame_dummy };
+#endif /* !defined(INIT_SECTION_ASM_OP) */
 #endif /* USE_EH_FRAME_REGISTRY || JCR_SECTION_NAME */
 
 #else  /* OBJECT_FORMAT_ELF */
@@ -351,16 +403,6 @@ __do_global_ctors (void)
 
 asm (INIT_SECTION_ASM_OP);	/* cc1 doesn't know that we are switching! */
 
-/* On some svr4 systems, the initial .init section preamble code provided in
-   crti.o may do something, such as bump the stack, which we have to 
-   undo before we reach the function prologue code for __do_global_ctors 
-   (directly below).  For such systems, define the macro INIT_SECTION_PREAMBLE
-   to expand into the code needed to undo the actions of the crti.o file.  */
-
-#ifdef INIT_SECTION_PREAMBLE
-  INIT_SECTION_PREAMBLE;
-#endif
-
 /* A routine to invoke all of the global constructors upon entry to the
    program.  We put this into the .init section (for systems that have
    such a thing) so that we can properly perform the construction of
@@ -378,6 +420,8 @@ __do_global_ctors_aux (void)	/* prologue goes in .init section */
 #endif /* OBJECT_FORMAT_ELF */
 
 #elif defined(HAS_INIT_SECTION) /* ! INIT_SECTION_ASM_OP */
+
+extern void __do_global_dtors (void);
 
 /* This case is used by the Irix 6 port, which supports named sections but
    not an SVR4-style .fini section.  __do_global_dtors can be non-static
@@ -410,8 +454,13 @@ __do_global_ctors_1(void)
     __register_frame_info (__EH_FRAME_BEGIN__, &object);
 #endif
 #ifdef JCR_SECTION_NAME
-  if (__JCR_LIST__[0] && _Jv_RegisterClasses)
-    _Jv_RegisterClasses (__JCR_LIST__);
+  if (__JCR_LIST__[0])
+    {
+      void (*register_classes) (void *) = _Jv_RegisterClasses;
+      __asm ("" : "+r" (register_classes));
+      if (register_classes)
+	register_classes (__JCR_LIST__);
+    }
 #endif
 }
 #endif /* USE_EH_FRAME_REGISTRY || JCR_SECTION_NAME */
@@ -446,6 +495,17 @@ STATIC func_ptr __CTOR_END__[1]
 
 #ifdef DTOR_LIST_END
 DTOR_LIST_END;
+#elif defined(HIDDEN_DTOR_LIST_END)
+#ifdef DTORS_SECTION_ASM_OP
+asm (DTORS_SECTION_ASM_OP);
+#endif
+func_ptr __DTOR_END__[1]
+  __attribute__ ((unused,
+#ifndef DTORS_SECTION_ASM_OP
+		  section(".dtors"),
+#endif
+		  aligned(sizeof(func_ptr)), visibility ("hidden")))
+  = { (func_ptr) 0 };
 #elif defined(DTORS_SECTION_ASM_OP)
 asm (DTORS_SECTION_ASM_OP);
 STATIC func_ptr __DTOR_END__[1]
@@ -460,9 +520,18 @@ STATIC func_ptr __DTOR_END__[1]
 #ifdef EH_FRAME_SECTION_NAME
 /* Terminate the frame unwind info section with a 4byte 0 as a sentinel;
    this would be the 'length' field in a real FDE.  */
-STATIC EH_FRAME_SECTION_CONST int __FRAME_END__[]
-     __attribute__ ((unused, mode(SI), section(EH_FRAME_SECTION_NAME),
-		     aligned(4)))
+# if __INT_MAX__ == 2147483647
+typedef int int32;
+# elif __LONG_MAX__ == 2147483647
+typedef long int32;
+# elif __SHRT_MAX__ == 2147483647
+typedef short int32;
+# else
+#  error "Missing a 4 byte integer"
+# endif
+STATIC EH_FRAME_SECTION_CONST int32 __FRAME_END__[]
+     __attribute__ ((unused, section(EH_FRAME_SECTION_NAME),
+		     aligned(sizeof(int32))))
      = { 0 };
 #endif /* EH_FRAME_SECTION_NAME */
 
@@ -474,7 +543,11 @@ STATIC void *__JCR_END__[1]
    = { 0 };
 #endif /* JCR_SECTION_NAME */
 
-#ifdef INIT_SECTION_ASM_OP
+#ifdef INIT_ARRAY_SECTION_ASM_OP
+
+/* If we are using .init_array, there is nothing to do.  */
+
+#elif defined(INIT_SECTION_ASM_OP)
 
 #ifdef OBJECT_FORMAT_ELF
 static void __attribute__((used))
@@ -525,10 +598,11 @@ asm (TEXT_SECTION_ASM_OP);
 
 #elif defined(HAS_INIT_SECTION) /* ! INIT_SECTION_ASM_OP */
 
+extern void __do_global_ctors (void);
+
 /* This case is used by the Irix 6 port, which supports named sections but
    not an SVR4-style .init section.  __do_global_ctors can be non-static
    in this case because we protect it with -hidden_symbol.  */
-extern void __do_global_ctors_1(void);
 void
 __do_global_ctors (void)
 {

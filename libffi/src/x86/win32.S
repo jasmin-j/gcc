@@ -27,6 +27,7 @@
    ----------------------------------------------------------------------- */
  
 #define LIBFFI_ASM
+#include <fficonfig.h>
 #include <ffi.h>
  
 .text
@@ -113,11 +114,27 @@ retlongdouble:
  
 retint64:
         cmpl  $FFI_TYPE_SINT64,%ecx
-        jne   retstruct
+        jne   retstruct1b
         # Load %ecx with the pointer to storage for the return value
         movl  24(%ebp),%ecx
         movl  %eax,0(%ecx)
         movl  %edx,4(%ecx)
+ 
+retstruct1b:
+        cmpl  $FFI_TYPE_SINT8,%ecx
+        jne   retstruct2b
+        # Load %ecx with the pointer to storage for the return value
+        movl  24(%ebp),%ecx
+        movb  %al,0(%ecx)
+        jmp   epilogue
+ 
+retstruct2b:
+        cmpl  $FFI_TYPE_SINT16,%ecx
+        jne   retstruct
+        # Load %ecx with the pointer to storage for the return value
+        movl  24(%ebp),%ecx
+        movw  %ax,0(%ecx)
+        jmp   epilogue
  
 retstruct:
         # Nothing to do!
@@ -208,11 +225,27 @@ sc_retlongdouble:
 
 sc_retint64:
         cmpl  $FFI_TYPE_SINT64,%ecx
-        jne   sc_retstruct
+        jne   sc_retstruct1b
         # Load %ecx with the pointer to storage for the return value
         movl  24(%ebp),%ecx
         movl  %eax,0(%ecx)
         movl  %edx,4(%ecx)
+
+sc_retstruct1b:
+        cmpl  $FFI_TYPE_SINT8,%ecx
+        jne   sc_retstruct2b
+        # Load %ecx with the pointer to storage for the return value
+        movl  24(%ebp),%ecx
+        movb  %al,0(%ecx)
+        jmp   sc_epilogue
+
+sc_retstruct2b:
+        cmpl  $FFI_TYPE_SINT16,%ecx
+        jne   sc_retstruct
+        # Load %ecx with the pointer to storage for the return value
+        movl  24(%ebp),%ecx
+        movw  %ax,0(%ecx)
+        jmp   sc_epilogue
 
 sc_retstruct:
         # Nothing to do!
@@ -224,3 +257,117 @@ sc_epilogue:
         ret
 
 .ffi_call_STDCALL_end:
+
+	.globl _ffi_closure_SYSV
+_ffi_closure_SYSV:
+	pushl	%ebp
+	movl	%esp, %ebp
+	subl	$40, %esp
+	leal	-24(%ebp), %edx
+	movl	%edx, -12(%ebp)	/* resp */
+	leal	8(%ebp), %edx
+	movl	%edx, 4(%esp)	/* args = __builtin_dwarf_cfa () */
+	leal	-12(%ebp), %edx
+	movl	%edx, (%esp)	/* &resp */
+	call	_ffi_closure_SYSV_inner
+	movl	-12(%ebp), %ecx
+	cmpl	$FFI_TYPE_INT, %eax
+	je	.Lcls_retint
+	cmpl	$FFI_TYPE_FLOAT, %eax
+	je	.Lcls_retfloat
+	cmpl	$FFI_TYPE_DOUBLE, %eax
+	je	.Lcls_retdouble
+	cmpl	$FFI_TYPE_LONGDOUBLE, %eax
+	je	.Lcls_retldouble
+	cmpl	$FFI_TYPE_SINT64, %eax
+	je	.Lcls_retllong
+	cmpl	$FFI_TYPE_SINT8, %eax	/* 1-byte struct */
+	je	.Lcls_retstruct1
+	cmpl	$FFI_TYPE_SINT16, %eax	/* 2-bytes struct */
+	je	.Lcls_retstruct2
+.Lcls_epilogue:
+	movl	%ebp, %esp
+	popl	%ebp
+	ret
+.Lcls_retint:
+	movl	(%ecx), %eax
+	jmp	.Lcls_epilogue
+.Lcls_retfloat:
+	flds	(%ecx)
+	jmp	.Lcls_epilogue
+.Lcls_retdouble:
+	fldl	(%ecx)
+	jmp	.Lcls_epilogue
+.Lcls_retldouble:
+	fldt	(%ecx)
+	jmp	.Lcls_epilogue
+.Lcls_retllong:
+	movl	(%ecx), %eax
+	movl	4(%ecx), %edx
+	jmp	.Lcls_epilogue
+.Lcls_retstruct1:
+	movsbl	(%ecx), %eax
+	jmp	.Lcls_epilogue
+.Lcls_retstruct2:
+	movswl	(%ecx), %eax
+	jmp	.Lcls_epilogue
+.ffi_closure_SYSV_end:
+
+#if !FFI_NO_RAW_API
+
+#define RAW_CLOSURE_CIF_OFFSET ((FFI_TRAMPOLINE_SIZE + 3) & ~3)
+#define RAW_CLOSURE_FUN_OFFSET (RAW_CLOSURE_CIF_OFFSET + 4)
+#define RAW_CLOSURE_USER_DATA_OFFSET (RAW_CLOSURE_FUN_OFFSET + 4)
+#define CIF_FLAGS_OFFSET 20
+
+	.balign	16
+	.globl _ffi_closure_raw_SYSV
+_ffi_closure_raw_SYSV:
+	pushl	%ebp
+	movl	%esp, %ebp
+	pushl	%esi
+	subl	$36, %esp
+	movl	RAW_CLOSURE_CIF_OFFSET(%eax), %esi	 /* closure->cif */
+	movl	RAW_CLOSURE_USER_DATA_OFFSET(%eax), %edx /* closure->user_data */
+	movl	%edx, 12(%esp)	/* user_data */
+	leal	8(%ebp), %edx	/* __builtin_dwarf_cfa () */
+	movl	%edx, 8(%esp)	/* raw_args */
+	leal	-24(%ebp), %edx
+	movl	%edx, 4(%esp)	/* &res */
+	movl	%esi, (%esp)	/* cif */
+	call	*RAW_CLOSURE_FUN_OFFSET(%eax)		 /* closure->fun */
+	movl	CIF_FLAGS_OFFSET(%esi), %eax		 /* rtype */
+	cmpl	$FFI_TYPE_INT, %eax
+	je	.Lrcls_retint
+	cmpl	$FFI_TYPE_FLOAT, %eax
+	je	.Lrcls_retfloat
+	cmpl	$FFI_TYPE_DOUBLE, %eax
+	je	.Lrcls_retdouble
+	cmpl	$FFI_TYPE_LONGDOUBLE, %eax
+	je	.Lrcls_retldouble
+	cmpl	$FFI_TYPE_SINT64, %eax
+	je	.Lrcls_retllong
+.Lrcls_epilogue:
+	addl	$36, %esp
+	popl	%esi
+	popl	%ebp
+	ret
+.Lrcls_retint:
+	movl	-24(%ebp), %eax
+	jmp	.Lrcls_epilogue
+.Lrcls_retfloat:
+	flds	-24(%ebp)
+	jmp	.Lrcls_epilogue
+.Lrcls_retdouble:
+	fldl	-24(%ebp)
+	jmp	.Lrcls_epilogue
+.Lrcls_retldouble:
+	fldt	-24(%ebp)
+	jmp	.Lrcls_epilogue
+.Lrcls_retllong:
+	movl	-24(%ebp), %eax
+	movl	-20(%ebp), %edx
+	jmp	.Lrcls_epilogue
+.ffi_closure_raw_SYSV_end:
+
+#endif

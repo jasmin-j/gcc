@@ -1,3 +1,4 @@
+// { dg-do run  }
 // GROUPS passed references
 // (Message bugs/refs:1)
 // From: tal@vlsi.cs.caltech.edu
@@ -9,13 +10,13 @@
 
 class C {
 private:
-   char** list;
+   const char** list;
 public:
-   C(char** );
+   C(const char** );
    void count (int&);
 };
 
-C::C (char** l) {
+C::C (const char** l) {
    list = l;
 }
 
@@ -28,7 +29,7 @@ void C::count (int& total) {
    }
 }
 
-char * foo[] = {
+const char * foo[] = {
    "one", "two", "three", NULL};
 
 int main() {

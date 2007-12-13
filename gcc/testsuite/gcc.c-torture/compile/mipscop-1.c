@@ -1,6 +1,8 @@
+/* { dg-do compile { target mips*-*-* } } */
+
 register unsigned int cp0count asm ("$c0r1");
 
-int
+int __attribute__ ((nomips16))
 main (int argc, char *argv[])
 {
   unsigned int d;

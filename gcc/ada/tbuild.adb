@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2002, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -27,14 +25,17 @@
 
 with Atree;    use Atree;
 with Einfo;    use Einfo;
+with Elists;   use Elists;
 with Lib;      use Lib;
-with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Nmake;    use Nmake;
+with Opt;      use Opt;
 with Restrict; use Restrict;
+with Rident;   use Rident;
 with Sinfo;    use Sinfo;
 with Snames;   use Snames;
 with Stand;    use Stand;
+with Stringt;  use Stringt;
 with Uintp;    use Uintp;
 
 package body Tbuild is
@@ -51,25 +52,46 @@ package body Tbuild is
    -- Add_Unique_Serial_Number --
    ------------------------------
 
+   Config_Serial_Number : Nat := 0;
+   --  Counter for use in config pragmas, see comment below
+
    procedure Add_Unique_Serial_Number is
-      Unit_Node : constant Node_Id := Unit (Cunit (Current_Sem_Unit));
-
    begin
-      Add_Nat_To_Name_Buffer (Increment_Serial_Number);
+      --  If we are analyzing configuration pragmas, Cunit (Main_Unit) will
+      --  not be set yet. This happens for example when analyzing static
+      --  string expressions in configuration pragmas. For this case, we
+      --  just maintain a local counter, defined above and we do not need
+      --  to add a b or s indication in this case.
 
-      --  Add either b or s, depending on whether current unit is a spec
-      --  or a body. This is needed because we may generate the same name
-      --  in a spec and a body otherwise.
+      if No (Cunit (Current_Sem_Unit)) then
+         Config_Serial_Number := Config_Serial_Number + 1;
+         Add_Nat_To_Name_Buffer (Config_Serial_Number);
+         return;
 
-      Name_Len := Name_Len + 1;
+      --  Normal case, within a unit
 
-      if Nkind (Unit_Node) = N_Package_Declaration
-        or else Nkind (Unit_Node) = N_Subprogram_Declaration
-        or else Nkind (Unit_Node) in N_Generic_Declaration
-      then
-         Name_Buffer (Name_Len) := 's';
       else
-         Name_Buffer (Name_Len) := 'b';
+         declare
+            Unit_Node : constant Node_Id := Unit (Cunit (Current_Sem_Unit));
+
+         begin
+            Add_Nat_To_Name_Buffer (Increment_Serial_Number);
+
+            --  Add either b or s, depending on whether current unit is a spec
+            --  or a body. This is needed because we may generate the same name
+            --  in a spec and a body otherwise.
+
+            Name_Len := Name_Len + 1;
+
+            if Nkind (Unit_Node) = N_Package_Declaration
+              or else Nkind (Unit_Node) = N_Subprogram_Declaration
+              or else Nkind (Unit_Node) in N_Generic_Declaration
+            then
+               Name_Buffer (Name_Len) := 's';
+            else
+               Name_Buffer (Name_Len) := 'b';
+            end if;
+         end;
       end if;
    end Add_Unique_Serial_Number;
 
@@ -107,6 +129,26 @@ package body Tbuild is
       end if;
    end Convert_To;
 
+   ------------------
+   -- Discard_List --
+   ------------------
+
+   procedure Discard_List (L : List_Id) is
+      pragma Warnings (Off, L);
+   begin
+      null;
+   end Discard_List;
+
+   ------------------
+   -- Discard_Node --
+   ------------------
+
+   procedure Discard_Node (N : Node_Or_Entity_Id) is
+      pragma Warnings (Off, N);
+   begin
+      null;
+   end Discard_Node;
+
    -------------------------------------------
    -- Make_Byte_Aligned_Attribute_Reference --
    -------------------------------------------
@@ -135,10 +177,9 @@ package body Tbuild is
    --------------------
 
    function Make_DT_Access
-     (Loc  : Source_Ptr;
-      Rec  : Node_Id;
-      Typ  : Entity_Id)
-      return Node_Id
+     (Loc : Source_Ptr;
+      Rec : Node_Id;
+      Typ : Entity_Id) return Node_Id
    is
       Full_Type : Entity_Id := Typ;
 
@@ -149,40 +190,53 @@ package body Tbuild is
 
       return
         Unchecked_Convert_To (
-          New_Occurrence_Of (Etype (Access_Disp_Table (Full_Type)), Loc),
+          New_Occurrence_Of
+            (Etype (Node (First_Elmt (Access_Disp_Table (Full_Type)))), Loc),
           Make_Selected_Component (Loc,
             Prefix => New_Copy (Rec),
             Selector_Name =>
-              New_Reference_To (Tag_Component (Full_Type), Loc)));
+              New_Reference_To (First_Tag_Component (Full_Type), Loc)));
    end Make_DT_Access;
 
-   -----------------------
-   -- Make_DT_Component --
-   -----------------------
+   -------------------------------------
+   -- Make_Implicit_Exception_Handler --
+   -------------------------------------
 
-   function Make_DT_Component
-     (Loc  : Source_Ptr;
-      Typ  : Entity_Id;
-      I    : Positive)
-      return Node_Id
+   function Make_Implicit_Exception_Handler
+     (Sloc              : Source_Ptr;
+      Choice_Parameter  : Node_Id := Empty;
+      Exception_Choices : List_Id;
+      Statements        : List_Id) return Node_Id
    is
-      X : Node_Id;
-      Full_Type : Entity_Id := Typ;
+      Handler : Node_Id;
+      Loc     : Source_Ptr;
 
    begin
-      if Is_Private_Type (Typ) then
-         Full_Type := Underlying_Type (Typ);
+      --  Set the source location only when debugging the expanded code
+
+      --  When debugging the source code directly, we do not want the compiler
+      --  to associate this implicit exception handler with any specific source
+      --  line, because it can potentially confuse the debugger. The most
+      --  damaging situation would arise when the debugger tries to insert a
+      --  breakpoint at a certain line. If the code of the associated implicit
+      --  exception handler is generated before the code of that line, then the
+      --  debugger will end up inserting the breakpoint inside the exception
+      --  handler, rather than the code the user intended to break on. As a
+      --  result, it is likely that the program will not hit the breakpoint
+      --  as expected.
+
+      if Debug_Generated_Code then
+         Loc := Sloc;
+      else
+         Loc := No_Location;
       end if;
 
-      X := First_Component (
-             Designated_Type (Etype (Access_Disp_Table (Full_Type))));
-
-      for J in 2 .. I loop
-         X := Next_Component (X);
-      end loop;
-
-      return New_Reference_To (X, Loc);
-   end Make_DT_Component;
+      Handler :=
+        Make_Exception_Handler
+          (Loc, Choice_Parameter, Exception_Choices, Statements);
+      Set_Local_Raise_Statements (Handler, No_Elist);
+      return Handler;
+   end Make_Implicit_Exception_Handler;
 
    --------------------------------
    -- Make_Implicit_If_Statement --
@@ -193,11 +247,11 @@ package body Tbuild is
       Condition       : Node_Id;
       Then_Statements : List_Id;
       Elsif_Parts     : List_Id := No_List;
-      Else_Statements : List_Id := No_List)
-      return            Node_Id
+      Else_Statements : List_Id := No_List) return Node_Id
    is
    begin
       Check_Restriction (No_Implicit_Conditionals, Node);
+
       return Make_If_Statement (Sloc (Node),
         Condition,
         Then_Statements,
@@ -212,12 +266,10 @@ package body Tbuild is
    function Make_Implicit_Label_Declaration
      (Loc                 : Source_Ptr;
       Defining_Identifier : Node_Id;
-      Label_Construct     : Node_Id)
-      return                Node_Id
+      Label_Construct     : Node_Id) return Node_Id
    is
       N : constant Node_Id :=
             Make_Implicit_Label_Declaration (Loc, Defining_Identifier);
-
    begin
       Set_Label_Construct (N, Label_Construct);
       return N;
@@ -233,8 +285,7 @@ package body Tbuild is
       Identifier             : Node_Id := Empty;
       Iteration_Scheme       : Node_Id := Empty;
       Has_Created_Identifier : Boolean := False;
-      End_Label              : Node_Id := Empty)
-      return                   Node_Id
+      End_Label              : Node_Id := Empty) return Node_Id
    is
    begin
       Check_Restriction (No_Implicit_Loops, Node);
@@ -259,12 +310,42 @@ package body Tbuild is
 
    function Make_Integer_Literal
      (Loc    : Source_Ptr;
-      Intval : Int)
-      return   Node_Id
+      Intval : Int) return Node_Id
    is
    begin
       return Make_Integer_Literal (Loc, UI_From_Int (Intval));
    end Make_Integer_Literal;
+
+   --------------------------------
+   -- Make_Linker_Section_Pragma --
+   --------------------------------
+
+   function Make_Linker_Section_Pragma
+     (Ent : Entity_Id;
+      Loc : Source_Ptr;
+      Sec : String) return Node_Id
+   is
+      LS : Node_Id;
+
+   begin
+      LS :=
+        Make_Pragma
+          (Loc,
+           Name_Linker_Section,
+           New_List
+             (Make_Pragma_Argument_Association
+                (Sloc => Loc,
+                 Expression => New_Occurrence_Of (Ent, Loc)),
+              Make_Pragma_Argument_Association
+                (Sloc => Loc,
+                 Expression =>
+                   Make_String_Literal
+                     (Sloc => Loc,
+                      Strval => Sec))));
+
+      Set_Has_Gigi_Rep_Item (Ent);
+      return LS;
+   end Make_Linker_Section_Pragma;
 
    ---------------------------------
    -- Make_Raise_Constraint_Error --
@@ -273,8 +354,7 @@ package body Tbuild is
    function Make_Raise_Constraint_Error
      (Sloc      : Source_Ptr;
       Condition : Node_Id := Empty;
-      Reason    : RT_Exception_Code)
-      return      Node_Id
+      Reason    : RT_Exception_Code) return Node_Id
    is
    begin
       pragma Assert (Reason in RT_CE_Exceptions);
@@ -292,8 +372,7 @@ package body Tbuild is
    function Make_Raise_Program_Error
      (Sloc      : Source_Ptr;
       Condition : Node_Id := Empty;
-      Reason    : RT_Exception_Code)
-      return      Node_Id
+      Reason    : RT_Exception_Code) return Node_Id
    is
    begin
       pragma Assert (Reason in RT_PE_Exceptions);
@@ -311,8 +390,7 @@ package body Tbuild is
    function Make_Raise_Storage_Error
      (Sloc      : Source_Ptr;
       Condition : Node_Id := Empty;
-      Reason    : RT_Exception_Code)
-      return      Node_Id
+      Reason    : RT_Exception_Code) return Node_Id
    is
    begin
       pragma Assert (Reason in RT_SE_Exceptions);
@@ -322,6 +400,22 @@ package body Tbuild is
           Reason =>
             UI_From_Int (RT_Exception_Code'Pos (Reason)));
    end Make_Raise_Storage_Error;
+
+   -------------------------
+   -- Make_String_Literal --
+   -------------------------
+
+   function Make_String_Literal
+     (Sloc   : Source_Ptr;
+      Strval : String) return Node_Id
+   is
+   begin
+      Start_String;
+      Store_String_Chars (Strval);
+      return
+        Make_String_Literal (Sloc,
+          Strval => End_String);
+   end Make_String_Literal;
 
    ---------------------------
    -- Make_Unsuppress_Block --
@@ -338,8 +432,7 @@ package body Tbuild is
    function Make_Unsuppress_Block
      (Loc   : Source_Ptr;
       Check : Name_Id;
-      Stmts : List_Id)
-      return  Node_Id
+      Stmts : List_Id) return Node_Id
    is
    begin
       return
@@ -381,8 +474,7 @@ package body Tbuild is
      (Related_Id   : Name_Id;
       Suffix       : Character := ' ';
       Suffix_Index : Int       := 0;
-      Prefix       : Character := ' ')
-      return         Name_Id
+      Prefix       : Character := ' ') return Name_Id
    is
    begin
       Get_Name_String (Related_Id);
@@ -419,8 +511,7 @@ package body Tbuild is
      (Related_Id   : Name_Id;
       Suffix       : String;
       Suffix_Index : Int       := 0;
-      Prefix       : Character := ' ')
-      return         Name_Id
+      Prefix       : Character := ' ') return Name_Id
    is
    begin
       Get_Name_String (Related_Id);
@@ -454,8 +545,7 @@ package body Tbuild is
 
    function New_External_Name
      (Suffix       : Character;
-      Suffix_Index : Nat)
-      return         Name_Id
+      Suffix_Index : Nat) return Name_Id
    is
    begin
       Name_Buffer (1) := Suffix;
@@ -483,8 +573,7 @@ package body Tbuild is
 
    function New_Occurrence_Of
      (Def_Id : Entity_Id;
-      Loc    : Source_Ptr)
-      return   Node_Id
+      Loc    : Source_Ptr) return Node_Id
    is
       Occurrence : Node_Id;
 
@@ -508,8 +597,7 @@ package body Tbuild is
 
    function New_Reference_To
      (Def_Id : Entity_Id;
-      Loc    : Source_Ptr)
-      return   Node_Id
+      Loc    : Source_Ptr) return Node_Id
    is
       Occurrence : Node_Id;
 
@@ -526,8 +614,7 @@ package body Tbuild is
 
    function New_Suffixed_Name
      (Related_Id : Name_Id;
-      Suffix     : String)
-      return       Name_Id
+      Suffix     : String) return Name_Id
    is
    begin
       Get_Name_String (Related_Id);
@@ -544,7 +631,6 @@ package body Tbuild is
 
    function OK_Convert_To (Typ : Entity_Id; Expr : Node_Id) return Node_Id is
       Result : Node_Id;
-
    begin
       Result :=
         Make_Type_Conversion (Sloc (Expr),
@@ -561,8 +647,7 @@ package body Tbuild is
 
    function Unchecked_Convert_To
      (Typ  : Entity_Id;
-      Expr : Node_Id)
-      return Node_Id
+      Expr : Node_Id) return Node_Id
    is
       Loc    : constant Source_Ptr := Sloc (Expr);
       Result : Node_Id;
@@ -583,6 +668,13 @@ package body Tbuild is
       elsif Nkind (Expr) = N_Unchecked_Type_Conversion
         and then Entity (Subtype_Mark (Expr)) = Typ
       then
+         Result := Relocate_Node (Expr);
+
+      elsif Nkind (Expr) = N_Null
+        and then Is_Access_Type (Typ)
+      then
+         --  No need for a conversion
+
          Result := Relocate_Node (Expr);
 
       --  All other cases

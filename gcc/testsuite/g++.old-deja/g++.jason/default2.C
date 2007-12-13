@@ -1,5 +1,5 @@
+// { dg-do assemble  }
 // PRMS Id: 5921
-// Build don't link:
 // Bug: default arguments containing constructor calls persist incorrectly.
 
 class foo
@@ -15,7 +15,7 @@ class bar
 {
  public:
   bar();
-  int memberfunction(int i, char *j, double k, foo foo1 = foo(0));
+  int memberfunction(int i, const char *j, double k, foo foo1 = foo(0));
 };
 
 int

@@ -1,11 +1,12 @@
 /* Basic error reporting routines.
-   Copyright (C) 1999, 2000, 2001 Free Software Foundation, Inc.
+   Copyright (C) 1999, 2000, 2001, 2003, 2004, 2005, 2007
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -14,18 +15,19 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* warning, error, and fatal.  These definitions are suitable for use
-   in the generator programs; eventually we would like to use them in
-   cc1 too, but that's a longer term project.  */
+   in the generator programs; the compiler has a more elaborate suite
+   of diagnostic printers, found in diagnostic.c.  */
 
+#ifdef GENERATOR_FILE
+#include "bconfig.h"
+#else
 #include "config.h"
+#endif
 #include "system.h"
-#include "coretypes.h"
-#include "tm.h"
 #include "errors.h"
 
 /* Set this to argv[0] at the beginning of main.  */
@@ -39,14 +41,14 @@ int have_error = 0;
 /* Print a warning message - output produced, but there may be problems.  */
 
 void
-warning VPARAMS ((const char *format, ...))
+warning (int opt ATTRIBUTE_UNUSED, const char *format, ...)
 {
-  VA_OPEN (ap, format);
-  VA_FIXEDARG (ap, const char *, format);
+  va_list ap;
 
+  va_start (ap, format);
   fprintf (stderr, "%s: warning: ", progname);
   vfprintf (stderr, format, ap);
-  VA_CLOSE (ap);
+  va_end (ap);
   fputc('\n', stderr);
 }
 
@@ -54,14 +56,14 @@ warning VPARAMS ((const char *format, ...))
 /* Print an error message - we keep going but the output is unusable.  */
 
 void
-error VPARAMS ((const char *format, ...))
+error (const char *format, ...)
 {
-  VA_OPEN (ap, format);
-  VA_FIXEDARG (ap, const char *, format);
+  va_list ap;
 
+  va_start (ap, format);
   fprintf (stderr, "%s: ", progname);
   vfprintf (stderr, format, ap);
-  VA_CLOSE (ap);
+  va_end (ap);
   fputc('\n', stderr);
 
   have_error = 1;
@@ -71,14 +73,14 @@ error VPARAMS ((const char *format, ...))
 /* Fatal error - terminate execution immediately.  Does not return.  */
 
 void
-fatal VPARAMS ((const char *format, ...))
+fatal (const char *format, ...)
 {
-  VA_OPEN (ap, format);
-  VA_FIXEDARG (ap, const char *, format);
+  va_list ap;
 
+  va_start (ap, format);
   fprintf (stderr, "%s: ", progname);
   vfprintf (stderr, format, ap);
-  VA_CLOSE (ap);
+  va_end (ap);
   fputc('\n', stderr);
   exit (FATAL_EXIT_CODE);
 }
@@ -86,14 +88,14 @@ fatal VPARAMS ((const char *format, ...))
 /* Similar, but say we got an internal error.  */
 
 void
-internal_error VPARAMS ((const char *format, ...))
+internal_error (const char *format, ...)
 {
-  VA_OPEN (ap, format);
-  VA_FIXEDARG (ap, const char *, format);
+  va_list ap;
 
+  va_start (ap, format);
   fprintf (stderr, "%s: Internal error: ", progname);
   vfprintf (stderr, format, ap);
-  VA_CLOSE (ap);
+  va_end (ap);
   fputc ('\n', stderr);
   exit (FATAL_EXIT_CODE);
 }
@@ -105,8 +107,7 @@ internal_error VPARAMS ((const char *format, ...))
    version if for the gen* programs and so needn't handle subdirectories.  */
 
 const char *
-trim_filename (name)
-     const char *name;
+trim_filename (const char *name)
 {
   static const char this_file[] = __FILE__;
   const char *p = name, *q = this_file;
@@ -116,11 +117,7 @@ trim_filename (name)
     p++, q++;
 
   /* Now go backwards until the previous directory separator.  */
-  while (p > name && p[-1] != DIR_SEPARATOR
-#ifdef DIR_SEPARATOR_2
-	 && p[-1] != DIR_SEPARATOR_2
-#endif
-	 )
+  while (p > name && !IS_DIR_SEPARATOR (p[-1]))
     p--;
 
   return p;
@@ -130,10 +127,7 @@ trim_filename (name)
    This file is used only by build programs, so we're not as polite as
    the version in diagnostic.c.  */
 void
-fancy_abort (file, line, func)
-     const char *file;
-     int line;
-     const char *func;
+fancy_abort (const char *file, int line, const char *func)
 {
-  internal_error ("abort in %s, at %s:%d", func, file, line);
+  internal_error ("abort in %s, at %s:%d", func, trim_filename (file), line);
 }

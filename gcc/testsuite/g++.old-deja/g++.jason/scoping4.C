@@ -1,10 +1,10 @@
+// { dg-do assemble  }
 // PRMS Id: 4375
 // Bug: g++ fails to keep track of nested typedefs properly.
-// Build don't link:
 
 class A {
 public:
-  typedef char * Ptr;
+  typedef const char * Ptr;
   Ptr s;
   Ptr get_string();
   A(Ptr string); // { s = string; };
@@ -18,8 +18,8 @@ public:
   B(Ptr a_ptr);
 };
 
-A::A(Ptr string) {		// gets bogus error - 
-  s = string;			// gets bogus error - 
+A::A(Ptr string) {		// { dg-bogus "" } 
+  s = string;			// { dg-bogus "" } 
 }
 
 int main() {

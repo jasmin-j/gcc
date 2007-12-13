@@ -1,7 +1,8 @@
 // -*- c++ -*-
 // win32-threads.h - Defines for using Win32 threads.
 
-/* Copyright (C) 1998, 1999, 2000  Free Software Foundation
+/* Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2006 Free Software
+   Foundation
 
    This file is part of libgcj.
 
@@ -12,24 +13,52 @@ details.  */
 #ifndef __JV_WIN32_THREADS__
 #define __JV_WIN32_THREADS__
 
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 //
 // Typedefs.
 //
 
-typedef struct _Jv_ConditionVariable_t {
+typedef struct
+{
+  // ev[0] (signal) is a Win32 auto-reset event for _Jv_CondNotify
+  // ev[1] (broadcast) is a Win32 manual-reset event for _Jv_CondNotifyAll
   HANDLE ev[2];
-  CRITICAL_SECTION count_mutex;
-  int blocked_count;
-};
 
-typedef CRITICAL_SECTION _Jv_Mutex_t;
+  // Number of threads waiting on this condition variable
+  int blocked_count;
+
+  // Protects access to the blocked_count variable
+  CRITICAL_SECTION count_mutex;
+
+} _Jv_ConditionVariable_t;
 
 typedef struct
 {
+  // The thread-id of the owner thread if any, 0 otherwise
+  DWORD owner;
+
+  // Track nested mutex acquisitions by the same thread
+  int refcount;
+
+  // The actual Windows construct used to implement this mutex
+  CRITICAL_SECTION cs;
+
+} _Jv_Mutex_t;
+
+typedef struct _Jv_Thread_t
+{
   int flags;            // Flags are defined in implementation.
   HANDLE handle;        // Actual handle to the thread
+
+  // Protects access to the thread's interrupt_flag and
+  // interrupt_event variables within this module.
+  CRITICAL_SECTION interrupt_mutex;
+  
+  // A Win32 auto-reset event for thread interruption
+  HANDLE interrupt_event;
+
   java::lang::Thread *thread_obj;
 } _Jv_Thread_t;
 
@@ -43,10 +72,20 @@ _Jv_ThreadSelf (void)
 
 typedef void _Jv_ThreadStartFunc (java::lang::Thread *);
 
+// Type identifying a win32 thread.
+typedef HANDLE _Jv_ThreadDesc_t;
+
+inline _Jv_ThreadDesc_t
+_Jv_GetPlatformThreadID(_Jv_Thread_t *t)
+{
+  return t->handle;
+}
+
 //
 // Condition variables.
 //
 
+#define _Jv_HaveCondDestroy
 int _Jv_CondWait (_Jv_ConditionVariable_t *cv, _Jv_Mutex_t *mu, jlong millis, jint nanos);
 void _Jv_CondInit (_Jv_ConditionVariable_t *cv);
 void _Jv_CondDestroy (_Jv_ConditionVariable_t *cv);
@@ -58,27 +97,47 @@ int _Jv_CondNotifyAll (_Jv_ConditionVariable_t *cv, _Jv_Mutex_t *);
 // We use CRITICAL_SECTIONs instead of CreateMutex() for better performance
 //
 
+// Returns 0 if the mutex lock is held by the current thread, and 1 otherwise.
+inline int _Jv_MutexCheckMonitor (_Jv_Mutex_t *mu)
+{
+  return (mu->owner != GetCurrentThreadId ( ));
+}
+
 inline void _Jv_MutexInit (_Jv_Mutex_t *mu)
 {
-  InitializeCriticalSection(mu);
+  mu->owner = 0UL;
+  mu->refcount = 0;
+  InitializeCriticalSection (&(mu->cs));
 }
 
 #define _Jv_HaveMutexDestroy
 inline void _Jv_MutexDestroy (_Jv_Mutex_t *mu)
 {
-  DeleteCriticalSection(mu);
+  mu->owner = 0UL;
+  mu->refcount = 0;
+  DeleteCriticalSection (&(mu->cs));
   mu = NULL;
 }
 
 inline int _Jv_MutexUnlock (_Jv_Mutex_t *mu)
 {
-  LeaveCriticalSection(mu);
-  return 0;
+  if (mu->owner == GetCurrentThreadId ( ))
+    {
+      mu->refcount--;
+      if (mu->refcount == 0)
+        mu->owner = 0UL;
+      LeaveCriticalSection (&(mu->cs));
+      return 0;
+    }
+  else
+    return 1;
 }
 
 inline int _Jv_MutexLock (_Jv_Mutex_t *mu)
 {
-  EnterCriticalSection(mu);
+  EnterCriticalSection (&(mu->cs));
+  mu->owner = GetCurrentThreadId ( );
+  mu->refcount++;
   return 0;
 }
 
@@ -104,9 +163,7 @@ inline _Jv_Thread_t *_Jv_ThreadCurrentData(void)
 
 inline void _Jv_ThreadYield (void)
 {
-  // FIXME: win98 freezes hard (OS hang) when we use this --
-  //        for now, we simply don't yield
-  // Sleep (0);
+  Sleep (0);
 }
 
 void _Jv_ThreadRegister (_Jv_Thread_t *data);
@@ -117,6 +174,46 @@ void _Jv_ThreadStart (java::lang::Thread *thread, _Jv_Thread_t *data,
 		      _Jv_ThreadStartFunc *meth);
 void _Jv_ThreadWait (void);
 void _Jv_ThreadInterrupt (_Jv_Thread_t *data);
+
+//
+// Thread interruption support
+//
+
+// Gets the auto-reset event for the current thread which is
+// signalled by _Jv_ThreadInterrupt. The caller can wait on this
+// event in addition to other waitable objects.
+//
+// NOTE: After waiting on this event with WaitForMultipleObjects,
+// you should ALWAYS use the return value of WaitForMultipleObjects
+// to test whether this event was signalled and whether thread
+// interruption has occurred. You should do this instead of checking
+// the thread's interrupted_flag, because someone could have reset
+// this flag in the interval of time between the return of
+// WaitForMultipleObjects and the time you query interrupted_flag.
+// See java/lang/natWin32Process.cc (waitFor) for an example.
+HANDLE _Jv_Win32GetInterruptEvent (void);
+
+// park() / unpark() support
+
+struct ParkHelper
+{
+  // We use LONG instead of obj_addr_t to avoid pulling in locks.h,
+  // which depends on size_t, ...
+  volatile LONG permit;
+
+  // The critical section is used for lazy initialization of our event
+  CRITICAL_SECTION cs;
+  HANDLE event;
+  
+  void init ();
+  void deactivate ();
+  void destroy ();
+  void park (jboolean isAbsolute, jlong time);
+  void unpark ();
+  
+private:
+  void init_event();
+};
 
 // Remove defines from <windows.h> that conflict with various things in libgcj code
 
@@ -129,5 +226,7 @@ void _Jv_ThreadInterrupt (_Jv_Thread_t *data);
 #undef interface
 #undef STRICT
 #undef VOID
+#undef TEXT
+#undef OUT
 
 #endif /* __JV_WIN32_THREADS__ */

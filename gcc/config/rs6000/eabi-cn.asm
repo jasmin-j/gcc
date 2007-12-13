@@ -1,5 +1,5 @@
 /* crtn.s for eabi
-   Copyright (C) 1996, 2000 Free Software Foundation, Inc.
+   Copyright (C) 1996, 2000, 2007 Free Software Foundation, Inc.
    Written By Michael Meissner
 
 This file is free software; you can redistribute it and/or modify it
@@ -22,8 +22,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.
+the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.
 
    As a special exception, if you link this library with files
    compiled with GCC to produce an executable, this does not cause
@@ -39,6 +39,7 @@ Boston, MA 02111-1307, USA.
 	.file	"crtn.s"
 	.ident	"GNU C crtn.s"
 
+#ifndef __powerpc64__
 	.section ".got","aw"
 	.globl	__GOT_END__
 	.type	__GOT_END__,@object
@@ -65,7 +66,7 @@ __FIXUP_END__:
 __CTOR_END__:
 
 	.section ".dtors","aw"
-	.globl	__DTOR_END__
+	.weak	__DTOR_END__
 	.type	__DTOR_END__,@object
 __DTOR_END__:
 
@@ -113,3 +114,4 @@ __EH_FRAME_END__:
 	mtlr 0
 	addi 1,1,16
 	blr
+#endif

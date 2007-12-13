@@ -1,5 +1,5 @@
-// Build don't link: 
-// Special g++ Options: -O
+// { dg-do assemble  }
+// { dg-options "-O" }
 // GROUPS passed old-abort
 typedef unsigned char uchar;
 typedef unsigned short ushort;
@@ -93,7 +93,7 @@ ulong memsize;
 ulong compression_quality;		 
 char *compressfile;			 
 int debug_level;			 
-extern "C" int getopt (int, char**, char*);
+extern "C" int getopt (int, char**, const char*);
 int
 main(int argc, char** argv)
 {

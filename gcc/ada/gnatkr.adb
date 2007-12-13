@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -27,10 +25,12 @@
 
 with Ada.Characters.Handling; use Ada.Characters.Handling;
 with Ada.Command_Line;        use Ada.Command_Line;
+with Gnatvsn;
 with Krunch;
 with System.IO; use System.IO;
 
 procedure Gnatkr is
+   pragma Ident (Gnatvsn.Gnat_Static_Version_String);
 
    Count        : Natural;
    Maxlen       : Integer;
@@ -92,29 +92,19 @@ begin
          --  If extension is present, points to it (init to prevent warning)
 
       begin
-         --  Remove .adb or .ads extension if present (recognized only if the
+         --  Remove extension if present (an extension is defined as the
+         --  section of the file name after the last dot in the name. If
+         --  there is no dot in the name, then
          --  name is all lower case and contains no other instances of dots)
 
-         if Klen > 4
-           and then Fname (Klen - 3 .. Klen - 1) = ".ad"
-           and then (Fname (Klen) = 's' or else Fname (Klen) = 'b')
-         then
-            Extp := True;
-
-            for J in 1 .. Klen - 4 loop
-               if Is_Upper (Fname (J)) or else Fname (J) = '.' then
-                  Extp := False;
-               end if;
-            end loop;
-
-            if Extp then
-               Klen := Klen - 4;
-               Ext := Klen + 1;
+         for J in reverse 1 .. Klen loop
+            if Fname (J) = '.' then
+               Extp := True;
+               Ext := J;
+               Klen := J - 1;
+               exit;
             end if;
-
-         else
-            Extp := False;
-         end if;
+         end loop;
 
          --  Fold to lower case and replace dots by dashes
 

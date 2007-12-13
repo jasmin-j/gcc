@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -38,7 +38,7 @@ void test02()
   using namespace std;
   typedef char 	wide_type;
 
-  bool test = true;
+  bool test __attribute__((unused)) = true;
   const char dfault = '?';
   const locale loc_c = locale::classic();
   const ctype<wide_type>& ctype_c = use_facet<ctype<wide_type> >(loc_c); 
@@ -53,16 +53,16 @@ void test02()
   vector<char> 			narrow_chars(wide.length() + 1);
 
   // narrow(charT c, char dfault) const
-  for (int i = 0; i < wide.length(); ++i)
+  for (size_t i = 0; i < wide.length(); ++i)
     {
       char c = ctype_c.narrow(wide[i], dfault);
       VERIFY( c == narrow[i] );
     }
 
   // narrow(const charT* low, const charT* high, char dfault, char* dest) const
-  ctype_c.narrow(&wide[0], &wide[wide.length()], dfault, &narrow_chars[0]);  
+  ctype_c.narrow(&wide[0], &wide[0] + wide.length(), dfault, &narrow_chars[0]);
   VERIFY( narrow_chars[0] != dfault );
-  for (int i = 0; i < wide.length(); ++i)
+  for (size_t i = 0; i < wide.length(); ++i)
     VERIFY( narrow_chars[i] == narrow[i] );
 }
 

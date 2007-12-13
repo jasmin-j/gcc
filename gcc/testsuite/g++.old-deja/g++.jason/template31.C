@@ -1,7 +1,9 @@
+// { dg-do run  }
 // PRMS Id: 8569
 
 #include <iostream>
 #include <vector>
+#include <cstdlib>
 
 using std::vector;
  

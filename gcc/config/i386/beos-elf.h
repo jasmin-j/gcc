@@ -1,22 +1,22 @@
 /* Definitions for Intel x86 running BeOS
-   Copyright (C) 1998, 1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004, 2007
+   Free Software Foundation, Inc.
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 #define TARGET_VERSION fprintf (stderr, " (i386 BeOS/ELF)");
@@ -55,22 +55,17 @@ Boston, MA 02111-1307, USA.  */
 #undef WCHAR_TYPE_SIZE
 #define WCHAR_TYPE_SIZE 16
 
+#define TARGET_DECLSPEC 1
+
 #define TARGET_OS_CPP_BUILTINS()					\
   do									\
     {									\
-	builtin_define ("__ELF__");					\
 	builtin_define ("__BEOS__");					\
 	builtin_define ("__INTEL__");					\
 	builtin_define ("_X86_");					\
 	builtin_define ("__stdcall=__attribute__((__stdcall__))");	\
 	builtin_define ("__cdecl=__attribute__((__cdecl__))");		\
-	builtin_define ("__declspec(x)=__attribute__((x))");		\
 	builtin_assert ("system=beos");					\
-	if (flag_pic)							\
-	  {								\
-	    builtin_define ("__PIC__");					\
-	    builtin_define ("__pic__");					\
-	  }								\
     }									\
   while (0)
     
@@ -79,7 +74,7 @@ Boston, MA 02111-1307, USA.  */
    CC1_SPEC is used for both cc1 and cc1plus.  */
 
 #undef CC1_SPEC
-#define CC1_SPEC "%{!no-fpic:%{!fPIC:-fpic}} %{!Wmultichar: -Wno-multichar} %(cc1_cpu) %{profile:-p}"
+#define CC1_SPEC "%{!no-fpic:%{!fno-pic:%{!fno-pie:%{!fpie:%{!fPIC:%{!fPIE:-fpic}}}}}} %{!Wmultichar: -Wno-multichar} %(cc1_cpu) %{profile:-p}"
 
 #undef CC1PLUS_SPEC
 #define CC1PLUS_SPEC "%{!Wctor-dtor-privacy:-Wno-ctor-dtor-privacy}"
@@ -139,7 +134,7 @@ Boston, MA 02111-1307, USA.  */
    for the BeOS include files relative to TOOL_INCLUDE_DIR.  Yes, we
    use ANSI string concatenation here (FIXME) */
 
-#ifndef CROSS_COMPILE
+#ifndef CROSS_DIRECTORY_STRUCTURE
 #undef INCLUDE_DEFAULTS
 #define INCLUDE_DEFAULTS \
     { \
@@ -181,7 +176,7 @@ Boston, MA 02111-1307, USA.  */
     { "/boot/develop/headers", 0, 0, 0 }, \
     { 0, 0, 0, 0 } \
     }
-#else /* CROSS_COMPILE */
+#else /* CROSS_DIRECTORY_STRUCTURE */
 #undef	INCLUDE_DEFAULTS
 #define INCLUDE_DEFAULTS				\
     { \
@@ -235,8 +230,5 @@ Boston, MA 02111-1307, USA.  */
 /* BeOS headers are C++-aware (and often use C++).  */
 #define NO_IMPLICIT_EXTERN_C
 
-/* Define this macro if in some cases global symbols from one translation
-   unit may not be bound to undefined symbols in another translation unit
-   without user intervention.  For instance, under Microsoft Windows
-   symbols must be explicitly imported from shared libraries (DLLs).  */
-#define MULTIPLE_SYMBOL_SPACES
+/* BeOS uses explicit import from shared libraries.  */
+#define MULTIPLE_SYMBOL_SPACES 1

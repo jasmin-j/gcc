@@ -1,3 +1,4 @@
+// { dg-do run  }
 #include <sys/types.h>
 #include <algorithm>
 typedef short _eb91_int16_t;
@@ -22,7 +23,7 @@ private:
     val.i = x;
     std::swap(val.c[0], val.c[1]);
     return val.i;
-  };
+  }
 
   _eb91_int16_t change_endian(_eb91_int16_t x)
   {
@@ -33,7 +34,7 @@ private:
     val.i = x;
     std::swap(val.c[0], val.c[1]);
     return val.i;
-  };
+  }
 public:
   other_endian(const INT i = 0)
   {

@@ -1,13 +1,13 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                   A D A . C A L E N D A R . D E L A Y S                  --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---                                                                          --
---             Copyright (C) 1991-2001 Florida State University             --
+--             Copyright (C) 1991-1994, Florida State University            --
+--                     Copyright (C) 1995-2006, AdaCore                     --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +17,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -27,9 +27,8 @@
 -- however invalidate  any other reasons why  the executable file  might be --
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
--- GNARL was developed by the GNARL team at Florida State University. It is --
--- now maintained by Ada Core Technologies Inc. in cooperation with Florida --
--- State University (http://www.gnat.com).                                  --
+-- GNARL was developed by the GNARL team at Florida State University.       --
+-- Extensive contributions were provided by Ada Core Technologies, Inc.     --
 --                                                                          --
 ------------------------------------------------------------------------------
 
@@ -55,12 +54,12 @@ package body Ada.Calendar.Delays is
 
    use System.Traces;
 
-   --  Earlier, the following operations were implemented using
-   --  System.Time_Operations.  The idea was to avoid sucking in the tasking
-   --  packages.  This did not work.  Logically, we can't have it both ways.
-   --  There is no way to implement time delays that will have correct task
-   --  semantics without reference to the tasking run-time system.
-   --  To achieve this goal, we now use soft links.
+   --  Earlier, System.Time_Opeations was used to implement the following
+   --  operations. The idea was to avoid sucking in the tasking packages. This
+   --  did not work. Logically, we can't have it both ways. There is no way to
+   --  implement time delays that will have correct task semantics without
+   --  reference to the tasking run-time system. To achieve this goal, we now
+   --  use soft links.
 
    -----------------------
    -- Local Subprograms --
@@ -121,18 +120,23 @@ package body Ada.Calendar.Delays is
 
    function To_Duration (T : Time) return Duration is
    begin
-      return Duration (T);
+      --  Since time has multiple representations on different platforms, a
+      --  target independent operation in Ada.Calendar is used to perform
+      --  this conversion.
+
+      return Delays_Operations.To_Duration (T);
    end To_Duration;
 
 begin
-   --  Set up the Timed_Delay soft link to the non tasking version
-   --  if it has not been already set.
+   --  Set up the Timed_Delay soft link to the non tasking version if it has
+   --  not been already set.
 
-   --  If tasking is present, Timed_Delay has already set this soft
-   --  link, or this will be overriden during the elaboration of
+   --  If tasking is present, Timed_Delay has already set this soft link, or
+   --  this will be overriden during the elaboration of
    --  System.Tasking.Initialization
 
    if SSL.Timed_Delay = null then
       SSL.Timed_Delay := Timed_Delay_NT'Access;
    end if;
+
 end Ada.Calendar.Delays;

@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                      S Y S T E M . I M G _ E N U M                       --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---            Copyright (C) 2000 Free Software Foundation, Inc.             --
+--          Copyright (C) 2000-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,7 +31,11 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Unchecked_Conversion;
+pragma Warnings (Off);
+pragma Compiler_Unit;
+pragma Warnings (On);
+
+with Ada.Unchecked_Conversion;
 
 package body System.Img_Enum is
 
@@ -51,12 +54,12 @@ package body System.Img_Enum is
       type Index_Table_Ptr is access Index_Table;
 
       function To_Index_Table_Ptr is
-        new Unchecked_Conversion (System.Address, Index_Table_Ptr);
+        new Ada.Unchecked_Conversion (System.Address, Index_Table_Ptr);
 
       IndexesT : constant Index_Table_Ptr := To_Index_Table_Ptr (Indexes);
 
-      Start : Natural := Natural (IndexesT (Pos));
-      Next  : Natural := Natural (IndexesT (Pos + 1));
+      Start : constant Natural := Natural (IndexesT (Pos));
+      Next  : constant Natural := Natural (IndexesT (Pos + 1));
 
       subtype Result_Type is String (1 .. Next - Start);
       --  We need this result type to force the result to have the
@@ -81,12 +84,12 @@ package body System.Img_Enum is
       type Index_Table_Ptr is access Index_Table;
 
       function To_Index_Table_Ptr is
-        new Unchecked_Conversion (System.Address, Index_Table_Ptr);
+        new Ada.Unchecked_Conversion (System.Address, Index_Table_Ptr);
 
       IndexesT : constant Index_Table_Ptr := To_Index_Table_Ptr (Indexes);
 
-      Start : Natural := Natural (IndexesT (Pos));
-      Next  : Natural := Natural (IndexesT (Pos + 1));
+      Start : constant Natural := Natural (IndexesT (Pos));
+      Next  : constant Natural := Natural (IndexesT (Pos + 1));
 
       subtype Result_Type is String (1 .. Next - Start);
       --  We need this result type to force the result to have the
@@ -111,12 +114,12 @@ package body System.Img_Enum is
       type Index_Table_Ptr is access Index_Table;
 
       function To_Index_Table_Ptr is
-        new Unchecked_Conversion (System.Address, Index_Table_Ptr);
+        new Ada.Unchecked_Conversion (System.Address, Index_Table_Ptr);
 
       IndexesT : constant Index_Table_Ptr := To_Index_Table_Ptr (Indexes);
 
-      Start : Natural := Natural (IndexesT (Pos));
-      Next  : Natural := Natural (IndexesT (Pos + 1));
+      Start : constant Natural := Natural (IndexesT (Pos));
+      Next  : constant Natural := Natural (IndexesT (Pos + 1));
 
       subtype Result_Type is String (1 .. Next - Start);
       --  We need this result type to force the result to have the

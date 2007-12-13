@@ -1,26 +1,25 @@
 /* Definitions of target machine for GNU compiler, for MIPS NetBSD systems.
-   Copyright (C) 1993, 1995, 1996, 1997, 1999, 2000, 2001, 2002, 2003
-   Free Software Foundation, Inc.
+   Copyright (C) 1993, 1995, 1996, 1997, 1999, 2000, 2001, 2002, 2003, 2004,
+   2007 Free Software Foundation, Inc.
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
-/* Define default target values. */
+/* Define default target values.  */
 
 #undef MACHINE_TYPE
 #if TARGET_ENDIAN_DEFAULT != 0
@@ -35,7 +34,6 @@ Boston, MA 02111-1307, USA.  */
       NETBSD_OS_CPP_BUILTINS_ELF();			\
       builtin_define ("__NO_LEADING_UNDERSCORES__");	\
       builtin_define ("__GP_SUPPORT__");		\
-      builtin_assert ("machine=mips");			\
       if (TARGET_LONG64)				\
 	builtin_define ("__LONG64");			\
 							\
@@ -58,7 +56,7 @@ Boston, MA 02111-1307, USA.  */
    them here.  Note this is structured for easy comparison to the version
    in mips.h.
 
-   FIXME: This probably isn't the best solution.  But in the absense
+   FIXME: This probably isn't the best solution.  But in the absence
    of something better, it will have to do, for now.  */
 
 #undef TARGET_CPU_CPP_BUILTINS
@@ -128,20 +126,9 @@ Boston, MA 02111-1307, USA.  */
   while (0)
 
 
-/* Include the generic MIPS ELF configuration.  */
-#include <mips/elf.h>
-
-/* Now clean up after it.  */
+/* Clean up after the generic MIPS/ELF configuration.  */
 #undef MD_EXEC_PREFIX
 #undef MD_STARTFILE_PREFIX
-
-/* Get generic NetBSD definitions.  */
-#include <netbsd.h>
-
-
-/* Get generic NetBSD ELF definitions.  */
-#include <netbsd-elf.h>
-
 
 /* Extra specs we need.  */
 #undef SUBTARGET_EXTRA_SPECS

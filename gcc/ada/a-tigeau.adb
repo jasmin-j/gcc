@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --              A D A . T E X T _ I O . G E N E R I C _ A U X               --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -320,7 +319,7 @@ package body Ada.Text_IO.Generic_Aux is
       Ptr    : in out Integer)
    is
       Junk : Boolean;
-
+      pragma Unreferenced (Junk);
    begin
       Load_Extended_Digits (File, Buf, Ptr, Junk);
    end Load_Extended_Digits;
@@ -427,18 +426,17 @@ package body Ada.Text_IO.Generic_Aux is
    procedure Store_Char
      (File : File_Type;
       ch   : int;
-      Buf  : out String;
+      Buf  : in out String;
       Ptr  : in out Integer)
    is
    begin
       File.Col := File.Col + 1;
 
-      if Ptr = Buf'Last then
-         raise Data_Error;
-      else
+      if Ptr < Buf'Last then
          Ptr := Ptr + 1;
-         Buf (Ptr) := Character'Val (ch);
       end if;
+
+      Buf (Ptr) := Character'Val (ch);
    end Store_Char;
 
    -----------------

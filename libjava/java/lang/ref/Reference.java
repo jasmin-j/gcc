@@ -1,5 +1,5 @@
 /* java.lang.ref.Reference
-   Copyright (C) 1999, 2002 Free Software Foundation, Inc.
+   Copyright (C) 1999, 2002, 2003, 2006 Free Software Foundation, Inc.
 
 This file is part of GNU Classpath.
 
@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -40,7 +40,7 @@ package java.lang.ref;
 
 /**
  * This is the base class of all references.  A reference allows
- * refering to an object without preventing the garbage collection to
+ * refering to an object without preventing the garbage collector to
  * collect it.  The only way to get the referred object is via the
  * <code>get()</code>-method.  This method will return
  * <code>null</code> if the object was collected. <br>
@@ -52,11 +52,11 @@ package java.lang.ref;
  * There are currently three types of references:  soft reference,
  * weak reference and phantom reference. <br>
  *
- * Soft references will be cleared if the garbage collection is told
+ * Soft references will be cleared if the garbage collector is told
  * to free some memory and there are no unreferenced or weakly referenced
  * objects.  It is useful for caches. <br>
  *
- * Weak references will be cleared as soon as the garbage collection
+ * Weak references will be cleared as soon as the garbage collector
  * determines that the refered object is only weakly reachable.  They
  * are useful as keys in hashtables (see <code>WeakHashtable</code>) as
  * you get notified when nobody has the key anymore.
@@ -70,11 +70,11 @@ package java.lang.ref;
  * @author Jochen Hoenicke
  * @see java.util.WeakHashtable
  */
-public abstract class Reference
+public abstract class Reference<T>
 {
   /**
    * The underlying object.  This field is handled in a special way by
-   * the garbage collection.
+   * the garbage collector.
    * GCJ LOCAL:
    * This is a RawData because it must be disguised from the GC.
    * END GCJ LOCAL
@@ -83,19 +83,29 @@ public abstract class Reference
 
   /**
    * This is like REFERENT but is not scanned by the GC.  We keep a
-   * copy around so that we can see when clear() has been called.
+   * copy around so that we can clean up our internal data structure
+   * even after clear() is called.
    * GCJ LOCAL:
-   * This field doesn't exist in Classpath; we use it to detect
-   * clearing.
+   * This field doesn't exist in Classpath.
    * END GCJ LOCAL
    */
   gnu.gcj.RawData copy;
 
   /**
+   * Set to true if {@link #clear()} is called.
+   * GCJ LOCAL:
+   * This field doesn't exist in Classpath.  It is used internally in
+   * natReference.cc, which enqueues the reference unless it is true
+   * (has been cleared).
+   * END GCJ LOCAL
+   */
+  boolean cleared = false;
+
+  /**
    * The queue this reference is registered on. This is null, if this
    * wasn't registered to any queue or reference was already enqueued.
    */
-  ReferenceQueue queue;
+  ReferenceQueue<? super T> queue;
 
   /**
    * Link to the next entry on the queue.  If this is null, this
@@ -107,7 +117,7 @@ public abstract class Reference
   Reference nextOnQueue;
 
   /**
-   * This lock should be taken by the garbage collection, before
+   * This lock should be taken by the garbage collector, before
    * determining reachability.  It will prevent the get()-method to
    * return the reference so that reachability doesn't change.
    */
@@ -119,7 +129,7 @@ public abstract class Reference
    * class in a different package.  
    * @param referent the object we refer to.
    */
-  Reference(Object ref)
+  Reference(T ref)
   {
     create (ref);
   }
@@ -132,7 +142,7 @@ public abstract class Reference
    * @param q the reference queue to register on.
    * @exception NullPointerException if q is null.
    */
-  Reference(Object ref, ReferenceQueue q)
+  Reference(T ref, ReferenceQueue<? super T> q)
   {
     if (q == null)
       throw new NullPointerException();
@@ -143,31 +153,29 @@ public abstract class Reference
   /**
    * Notifies the VM that a new Reference has been created.
    */
-  private native void create (Object o);
+  private native void create (T o);
 
   /**
    * Returns the object, this reference refers to.
    * @return the object, this reference refers to, or null if the 
    * reference was cleared.
    */
-  public Object get()
-  {
-    synchronized(lock)
-      {
-	return referent;
-      }
-  }
+  public native T get();
 
   /**
    * Clears the reference, so that it doesn't refer to its object
    * anymore.  For soft and weak references this is called by the
-   * garbage collection.  For phantom references you should call 
+   * garbage collector.  For phantom references you should call 
    * this when enqueuing the reference.
    */
   public void clear()
   {
-    referent = null;
-    copy = null;
+    // Must synchronize so changes are visible in finalizer thread.
+    synchronized (lock)
+      {
+        referent = null;
+        cleared = true;
+      }
   }
 
   /**
@@ -181,7 +189,7 @@ public abstract class Reference
 
   /**
    * Enqueue an object on a reference queue.  This is normally executed
-   * by the garbage collection.
+   * by the garbage collector.
    */
   public boolean enqueue() 
   {

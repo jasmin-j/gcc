@@ -1,6 +1,7 @@
 // Iterators -*- C++ -*-
 
-// Copyright (C) 2001, 2002 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -62,11 +63,15 @@
  *  supporting functions and overloaded operators.
  */
 
-#ifndef __GLIBCPP_INTERNAL_ITERATOR_H
-#define __GLIBCPP_INTERNAL_ITERATOR_H
+#ifndef _STL_ITERATOR_H
+#define _STL_ITERATOR_H 1
 
-namespace std
-{
+#include <bits/cpp_type_traits.h>
+#include <ext/type_traits.h>
+#include <bits/stl_move.h>
+
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
   // 24.4.1 Reverse iterators
   /**
    *  "Bidirectional and random access iterators have corresponding reverse
@@ -87,7 +92,7 @@ namespace std
    *  the requirement that the iterators must be safe.
   */
   template<typename _Iterator>
-    class reverse_iterator 
+    class reverse_iterator
     : public iterator<typename iterator_traits<_Iterator>::iterator_category,
 		      typename iterator_traits<_Iterator>::value_type,
 		      typename iterator_traits<_Iterator>::difference_type,
@@ -98,28 +103,31 @@ namespace std
       _Iterator current;
 
     public:
-      typedef _Iterator 				       iterator_type;
-      typedef typename iterator_traits<_Iterator>::difference_type 	
-      							       difference_type;
+      typedef _Iterator					       iterator_type;
+      typedef typename iterator_traits<_Iterator>::difference_type
+							       difference_type;
       typedef typename iterator_traits<_Iterator>::reference   reference;
       typedef typename iterator_traits<_Iterator>::pointer     pointer;
 
     public:
       /**
-       *  The default constructor gives an undefined state to this %iterator.
+       *  The default constructor default-initializes member @p current.
+       *  If it is a pointer, that means it is zero-initialized.
       */
-      reverse_iterator() { }
+      // _GLIBCXX_RESOLVE_LIB_DEFECTS
+      // 235 No specification of default ctor for reverse_iterator
+      reverse_iterator() : current() { }
 
       /**
        *  This %iterator will move in the opposite direction that @p x does.
       */
-      explicit 
+      explicit
       reverse_iterator(iterator_type __x) : current(__x) { }
 
       /**
        *  The copy constructor is normal.
       */
-      reverse_iterator(const reverse_iterator& __x) 
+      reverse_iterator(const reverse_iterator& __x)
       : current(__x.current) { }
 
       /**
@@ -129,20 +137,21 @@ namespace std
       template<typename _Iter>
         reverse_iterator(const reverse_iterator<_Iter>& __x)
 	: current(__x.base()) { }
-    
+
       /**
        *  @return  @c current, the %iterator used for underlying work.
       */
-      iterator_type 
-      base() const { return current; }
+      iterator_type
+      base() const
+      { return current; }
 
       /**
        *  @return  TODO
        *
        *  @doctodo
       */
-      reference 
-      operator*() const 
+      reference
+      operator*() const
       {
 	_Iterator __tmp = current;
 	return *--__tmp;
@@ -153,16 +162,17 @@ namespace std
        *
        *  @doctodo
       */
-      pointer 
-      operator->() const { return &(operator*()); }
+      pointer
+      operator->() const
+      { return &(operator*()); }
 
       /**
        *  @return  TODO
        *
        *  @doctodo
       */
-      reverse_iterator& 
-      operator++() 
+      reverse_iterator&
+      operator++()
       {
 	--current;
 	return *this;
@@ -173,8 +183,8 @@ namespace std
        *
        *  @doctodo
       */
-      reverse_iterator 
-      operator++(int) 
+      reverse_iterator
+      operator++(int)
       {
 	reverse_iterator __tmp = *this;
 	--current;
@@ -186,8 +196,8 @@ namespace std
        *
        *  @doctodo
       */
-      reverse_iterator& 
-      operator--() 
+      reverse_iterator&
+      operator--()
       {
 	++current;
 	return *this;
@@ -198,20 +208,21 @@ namespace std
        *
        *  @doctodo
       */
-      reverse_iterator operator--(int) 
+      reverse_iterator
+      operator--(int)
       {
 	reverse_iterator __tmp = *this;
 	++current;
 	return __tmp;
       }
-      
+
       /**
        *  @return  TODO
        *
        *  @doctodo
       */
-      reverse_iterator 
-      operator+(difference_type __n) const 
+      reverse_iterator
+      operator+(difference_type __n) const
       { return reverse_iterator(current - __n); }
 
       /**
@@ -219,8 +230,8 @@ namespace std
        *
        *  @doctodo
       */
-      reverse_iterator& 
-      operator+=(difference_type __n) 
+      reverse_iterator&
+      operator+=(difference_type __n)
       {
 	current -= __n;
 	return *this;
@@ -231,8 +242,8 @@ namespace std
        *
        *  @doctodo
       */
-      reverse_iterator 
-      operator-(difference_type __n) const 
+      reverse_iterator
+      operator-(difference_type __n) const
       { return reverse_iterator(current + __n); }
 
       /**
@@ -240,8 +251,8 @@ namespace std
        *
        *  @doctodo
       */
-      reverse_iterator& 
-      operator-=(difference_type __n) 
+      reverse_iterator&
+      operator-=(difference_type __n)
       {
 	current += __n;
 	return *this;
@@ -252,10 +263,11 @@ namespace std
        *
        *  @doctodo
       */
-      reference 
-      operator[](difference_type __n) const { return *(*this + __n); }  
-    }; 
- 
+      reference
+      operator[](difference_type __n) const
+      { return *(*this + __n); }
+    };
+
   //@{
   /**
    *  @param  x  A %reverse_iterator.
@@ -267,52 +279,96 @@ namespace std
    *
   */
   template<typename _Iterator>
-    inline bool 
-    operator==(const reverse_iterator<_Iterator>& __x, 
-	       const reverse_iterator<_Iterator>& __y) 
+    inline bool
+    operator==(const reverse_iterator<_Iterator>& __x,
+	       const reverse_iterator<_Iterator>& __y)
     { return __x.base() == __y.base(); }
 
   template<typename _Iterator>
-    inline bool 
-    operator<(const reverse_iterator<_Iterator>& __x, 
-	      const reverse_iterator<_Iterator>& __y) 
+    inline bool
+    operator<(const reverse_iterator<_Iterator>& __x,
+	      const reverse_iterator<_Iterator>& __y)
     { return __y.base() < __x.base(); }
 
   template<typename _Iterator>
-    inline bool 
-    operator!=(const reverse_iterator<_Iterator>& __x, 
-	       const reverse_iterator<_Iterator>& __y) 
+    inline bool
+    operator!=(const reverse_iterator<_Iterator>& __x,
+	       const reverse_iterator<_Iterator>& __y)
     { return !(__x == __y); }
 
   template<typename _Iterator>
-    inline bool 
-    operator>(const reverse_iterator<_Iterator>& __x, 
-	      const reverse_iterator<_Iterator>& __y) 
+    inline bool
+    operator>(const reverse_iterator<_Iterator>& __x,
+	      const reverse_iterator<_Iterator>& __y)
     { return __y < __x; }
 
   template<typename _Iterator>
-    inline bool 
-    operator<=(const reverse_iterator<_Iterator>& __x, 
-		const reverse_iterator<_Iterator>& __y) 
+    inline bool
+    operator<=(const reverse_iterator<_Iterator>& __x,
+	       const reverse_iterator<_Iterator>& __y)
     { return !(__y < __x); }
 
   template<typename _Iterator>
-    inline bool 
-    operator>=(const reverse_iterator<_Iterator>& __x, 
-	       const reverse_iterator<_Iterator>& __y) 
+    inline bool
+    operator>=(const reverse_iterator<_Iterator>& __x,
+	       const reverse_iterator<_Iterator>& __y)
     { return !(__x < __y); }
 
   template<typename _Iterator>
     inline typename reverse_iterator<_Iterator>::difference_type
-    operator-(const reverse_iterator<_Iterator>& __x, 
-	      const reverse_iterator<_Iterator>& __y) 
+    operator-(const reverse_iterator<_Iterator>& __x,
+	      const reverse_iterator<_Iterator>& __y)
     { return __y.base() - __x.base(); }
 
   template<typename _Iterator>
-    inline reverse_iterator<_Iterator> 
+    inline reverse_iterator<_Iterator>
     operator+(typename reverse_iterator<_Iterator>::difference_type __n,
-	      const reverse_iterator<_Iterator>& __x) 
+	      const reverse_iterator<_Iterator>& __x)
     { return reverse_iterator<_Iterator>(__x.base() - __n); }
+
+  // _GLIBCXX_RESOLVE_LIB_DEFECTS
+  // DR 280. Comparison of reverse_iterator to const reverse_iterator.
+  template<typename _IteratorL, typename _IteratorR>
+    inline bool
+    operator==(const reverse_iterator<_IteratorL>& __x,
+	       const reverse_iterator<_IteratorR>& __y)
+    { return __x.base() == __y.base(); }
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline bool
+    operator<(const reverse_iterator<_IteratorL>& __x,
+	      const reverse_iterator<_IteratorR>& __y)
+    { return __y.base() < __x.base(); }
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline bool
+    operator!=(const reverse_iterator<_IteratorL>& __x,
+	       const reverse_iterator<_IteratorR>& __y)
+    { return !(__x == __y); }
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline bool
+    operator>(const reverse_iterator<_IteratorL>& __x,
+	      const reverse_iterator<_IteratorR>& __y)
+    { return __y < __x; }
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline bool
+    operator<=(const reverse_iterator<_IteratorL>& __x,
+	       const reverse_iterator<_IteratorR>& __y)
+    { return !(__y < __x); }
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline bool
+    operator>=(const reverse_iterator<_IteratorL>& __x,
+	       const reverse_iterator<_IteratorR>& __y)
+    { return !(__x < __y); }
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline typename reverse_iterator<_IteratorL>::difference_type
+    operator-(const reverse_iterator<_IteratorL>& __x,
+	      const reverse_iterator<_IteratorR>& __y)
+    { return __y.base() - __x.base(); }
   //@}
 
   // 24.4.2.2.1 back_insert_iterator
@@ -327,7 +383,7 @@ namespace std
    *  save typing.
   */
   template<typename _Container>
-    class back_insert_iterator 
+    class back_insert_iterator
     : public iterator<output_iterator_tag, void, void, void, void>
     {
     protected:
@@ -336,9 +392,9 @@ namespace std
     public:
       /// A nested typedef for the type of whatever container you used.
       typedef _Container          container_type;
-      
+
       /// The only way to create this %iterator is with a container.
-      explicit 
+      explicit
       back_insert_iterator(_Container& __x) : container(&__x) { }
 
       /**
@@ -353,23 +409,35 @@ namespace std
        *  always append the value to the end of the container.
       */
       back_insert_iterator&
-      operator=(typename _Container::const_reference __value) 
-      { 
+      operator=(typename _Container::const_reference __value)
+      {
 	container->push_back(__value);
 	return *this;
       }
 
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      back_insert_iterator&
+      operator=(typename _Container::value_type&& __value)
+      {
+	container->push_back(std::move(__value));
+	return *this;
+      }
+#endif
+
       /// Simply returns *this.
-      back_insert_iterator& 
-      operator*() { return *this; }
+      back_insert_iterator&
+      operator*()
+      { return *this; }
 
       /// Simply returns *this.  (This %iterator does not "move".)
-      back_insert_iterator& 
-      operator++() { return *this; }
+      back_insert_iterator&
+      operator++()
+      { return *this; }
 
       /// Simply returns *this.  (This %iterator does not "move".)
       back_insert_iterator
-      operator++(int) { return *this; }
+      operator++(int)
+      { return *this; }
     };
 
   /**
@@ -384,8 +452,8 @@ namespace std
    *  types for you.
   */
   template<typename _Container>
-    inline back_insert_iterator<_Container> 
-    back_inserter(_Container& __x) 
+    inline back_insert_iterator<_Container>
+    back_inserter(_Container& __x)
     { return back_insert_iterator<_Container>(__x); }
 
   /**
@@ -399,7 +467,7 @@ namespace std
    *  save typing.
   */
   template<typename _Container>
-    class front_insert_iterator 
+    class front_insert_iterator
     : public iterator<output_iterator_tag, void, void, void, void>
     {
     protected:
@@ -424,23 +492,35 @@ namespace std
        *  always prepend the value to the front of the container.
       */
       front_insert_iterator&
-      operator=(typename _Container::const_reference __value) 
-      { 
+      operator=(typename _Container::const_reference __value)
+      {
 	container->push_front(__value);
 	return *this;
       }
 
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      front_insert_iterator&
+      operator=(typename _Container::value_type&& __value)
+      {
+	container->push_front(std::move(__value));
+	return *this;
+      }
+#endif
+
       /// Simply returns *this.
-      front_insert_iterator& 
-      operator*() { return *this; }
+      front_insert_iterator&
+      operator*()
+      { return *this; }
 
       /// Simply returns *this.  (This %iterator does not "move".)
-      front_insert_iterator& 
-      operator++() { return *this; }
+      front_insert_iterator&
+      operator++()
+      { return *this; }
 
       /// Simply returns *this.  (This %iterator does not "move".)
-      front_insert_iterator 
-      operator++(int) { return *this; }
+      front_insert_iterator
+      operator++(int)
+      { return *this; }
     };
 
   /**
@@ -455,8 +535,8 @@ namespace std
    *  types for you.
   */
   template<typename _Container>
-    inline front_insert_iterator<_Container> 
-    front_inserter(_Container& __x) 
+    inline front_insert_iterator<_Container>
+    front_inserter(_Container& __x)
     { return front_insert_iterator<_Container>(__x); }
 
   /**
@@ -474,7 +554,7 @@ namespace std
    *  save typing.
   */
   template<typename _Container>
-    class insert_iterator 
+    class insert_iterator
     : public iterator<output_iterator_tag, void, void, void, void>
     {
     protected:
@@ -484,14 +564,14 @@ namespace std
     public:
       /// A nested typedef for the type of whatever container you used.
       typedef _Container          container_type;
-      
+
       /**
        *  The only way to create this %iterator is with a container and an
        *  initial position (a normal %iterator into the container).
       */
-      insert_iterator(_Container& __x, typename _Container::iterator __i) 
+      insert_iterator(_Container& __x, typename _Container::iterator __i)
       : container(&__x), iter(__i) {}
-   
+
       /**
        *  @param  value  An instance of whatever type
        *                 container_type::const_reference is; presumably a
@@ -516,26 +596,39 @@ namespace std
        *  @endcode
       */
       insert_iterator&
-      operator=(const typename _Container::const_reference __value) 
-      { 
+      operator=(typename _Container::const_reference __value)
+      {
 	iter = container->insert(iter, __value);
 	++iter;
 	return *this;
       }
 
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      insert_iterator&
+      operator=(typename _Container::value_type&& __value)
+      {
+	iter = container->insert(iter, std::move(__value));
+	++iter;
+	return *this;
+      }
+#endif
+
       /// Simply returns *this.
-      insert_iterator& 
-      operator*() { return *this; }
+      insert_iterator&
+      operator*()
+      { return *this; }
 
       /// Simply returns *this.  (This %iterator does not "move".)
-      insert_iterator& 
-      operator++() { return *this; }
+      insert_iterator&
+      operator++()
+      { return *this; }
 
       /// Simply returns *this.  (This %iterator does not "move".)
-      insert_iterator& 
-      operator++(int) { return *this; }
+      insert_iterator&
+      operator++(int)
+      { return *this; }
     };
-  
+
   /**
    *  @param  x  A container of arbitrary type.
    *  @return  An instance of insert_iterator working on @p x.
@@ -548,16 +641,17 @@ namespace std
    *  types for you.
   */
   template<typename _Container, typename _Iterator>
-    inline insert_iterator<_Container> 
+    inline insert_iterator<_Container>
     inserter(_Container& __x, _Iterator __i)
     {
-      return insert_iterator<_Container>(__x, 
+      return insert_iterator<_Container>(__x,
 					 typename _Container::iterator(__i));
     }
-} // namespace std
 
-namespace __gnu_cxx
-{  
+_GLIBCXX_END_NAMESPACE
+
+_GLIBCXX_BEGIN_NAMESPACE(__gnu_cxx)
+
   // This iterator adapter is 'normal' in the sense that it does not
   // change the semantics of any of the operators of its iterator
   // parameter.  Its primary purpose is to convert an iterator that is
@@ -569,56 +663,70 @@ namespace __gnu_cxx
   using std::iterator;
   template<typename _Iterator, typename _Container>
     class __normal_iterator
-      : public iterator<typename iterator_traits<_Iterator>::iterator_category,
-                        typename iterator_traits<_Iterator>::value_type,
-                        typename iterator_traits<_Iterator>::difference_type,
-                        typename iterator_traits<_Iterator>::pointer,
-                        typename iterator_traits<_Iterator>::reference>
     {
     protected:
       _Iterator _M_current;
-      
+
     public:
-      typedef typename iterator_traits<_Iterator>::difference_type 	
-      							       difference_type;
-      typedef typename iterator_traits<_Iterator>::reference   reference;
-      typedef typename iterator_traits<_Iterator>::pointer     pointer;
+      typedef _Iterator					     iterator_type;
+      typedef typename iterator_traits<_Iterator>::iterator_category
+                                                             iterator_category;
+      typedef typename iterator_traits<_Iterator>::value_type  value_type;
+      typedef typename iterator_traits<_Iterator>::difference_type
+                                                             difference_type;
+      typedef typename iterator_traits<_Iterator>::reference reference;
+      typedef typename iterator_traits<_Iterator>::pointer   pointer;
 
       __normal_iterator() : _M_current(_Iterator()) { }
 
-      explicit 
+      explicit
       __normal_iterator(const _Iterator& __i) : _M_current(__i) { }
 
       // Allow iterator to const_iterator conversion
       template<typename _Iter>
-      inline __normal_iterator(const __normal_iterator<_Iter, _Container>& __i)
-	: _M_current(__i.base()) { }
+        __normal_iterator(const __normal_iterator<_Iter,
+			  typename __enable_if<
+      	       (std::__are_same<_Iter, typename _Container::pointer>::__value),
+		      _Container>::__type>& __i)
+        : _M_current(__i.base()) { }
 
       // Forward iterator requirements
       reference
-      operator*() const { return *_M_current; }
-      
+      operator*() const
+      { return *_M_current; }
+
       pointer
-      operator->() const { return _M_current; }
-      
+      operator->() const
+      { return _M_current; }
+
       __normal_iterator&
-      operator++() { ++_M_current; return *this; }
-      
+      operator++()
+      {
+	++_M_current;
+	return *this;
+      }
+
       __normal_iterator
-      operator++(int) { return __normal_iterator(_M_current++); }
-      
+      operator++(int)
+      { return __normal_iterator(_M_current++); }
+
       // Bidirectional iterator requirements
       __normal_iterator&
-      operator--() { --_M_current; return *this; }
-      
+      operator--()
+      {
+	--_M_current;
+	return *this;
+      }
+
       __normal_iterator
-      operator--(int) { return __normal_iterator(_M_current--); }
-      
+      operator--(int)
+      { return __normal_iterator(_M_current--); }
+
       // Random access iterator requirements
       reference
       operator[](const difference_type& __n) const
       { return _M_current[__n]; }
-      
+
       __normal_iterator&
       operator+=(const difference_type& __n)
       { _M_current += __n; return *this; }
@@ -626,17 +734,18 @@ namespace __gnu_cxx
       __normal_iterator
       operator+(const difference_type& __n) const
       { return __normal_iterator(_M_current + __n); }
-      
+
       __normal_iterator&
       operator-=(const difference_type& __n)
       { _M_current -= __n; return *this; }
-      
+
       __normal_iterator
       operator-(const difference_type& __n) const
       { return __normal_iterator(_M_current - __n); }
-      
-      const _Iterator& 
-      base() const { return _M_current; }
+
+      const _Iterator&
+      base() const
+      { return _M_current; }
     };
 
   // Note: In what follows, the left- and right-hand-side iterators are
@@ -646,100 +755,276 @@ namespace __gnu_cxx
   // will make overload resolution ambiguous (when in scope) if we don't
   // provide overloads whose operands are of the same type.  Can someone
   // remind me what generic programming is about? -- Gaby
-  
+
   // Forward iterator requirements
   template<typename _IteratorL, typename _IteratorR, typename _Container>
-  inline bool
-  operator==(const __normal_iterator<_IteratorL, _Container>& __lhs,
-	     const __normal_iterator<_IteratorR, _Container>& __rhs)
-  { return __lhs.base() == __rhs.base(); }
+    inline bool
+    operator==(const __normal_iterator<_IteratorL, _Container>& __lhs,
+	       const __normal_iterator<_IteratorR, _Container>& __rhs)
+    { return __lhs.base() == __rhs.base(); }
 
   template<typename _Iterator, typename _Container>
-  inline bool
-  operator==(const __normal_iterator<_Iterator, _Container>& __lhs,
-             const __normal_iterator<_Iterator, _Container>& __rhs)
-  { return __lhs.base() == __rhs.base(); }
+    inline bool
+    operator==(const __normal_iterator<_Iterator, _Container>& __lhs,
+	       const __normal_iterator<_Iterator, _Container>& __rhs)
+    { return __lhs.base() == __rhs.base(); }
 
   template<typename _IteratorL, typename _IteratorR, typename _Container>
-  inline bool
-  operator!=(const __normal_iterator<_IteratorL, _Container>& __lhs,
-	     const __normal_iterator<_IteratorR, _Container>& __rhs)
-  { return __lhs.base() != __rhs.base(); }
+    inline bool
+    operator!=(const __normal_iterator<_IteratorL, _Container>& __lhs,
+	       const __normal_iterator<_IteratorR, _Container>& __rhs)
+    { return __lhs.base() != __rhs.base(); }
 
   template<typename _Iterator, typename _Container>
-  inline bool
-  operator!=(const __normal_iterator<_Iterator, _Container>& __lhs,
-             const __normal_iterator<_Iterator, _Container>& __rhs)
-  { return __lhs.base() != __rhs.base(); }
+    inline bool
+    operator!=(const __normal_iterator<_Iterator, _Container>& __lhs,
+	       const __normal_iterator<_Iterator, _Container>& __rhs)
+    { return __lhs.base() != __rhs.base(); }
 
   // Random access iterator requirements
   template<typename _IteratorL, typename _IteratorR, typename _Container>
-  inline bool 
-  operator<(const __normal_iterator<_IteratorL, _Container>& __lhs,
-	    const __normal_iterator<_IteratorR, _Container>& __rhs)
-  { return __lhs.base() < __rhs.base(); }
+    inline bool
+    operator<(const __normal_iterator<_IteratorL, _Container>& __lhs,
+	      const __normal_iterator<_IteratorR, _Container>& __rhs)
+    { return __lhs.base() < __rhs.base(); }
 
   template<typename _Iterator, typename _Container>
-  inline bool
-  operator<(const __normal_iterator<_Iterator, _Container>& __lhs,
-             const __normal_iterator<_Iterator, _Container>& __rhs)
-  { return __lhs.base() < __rhs.base(); }
+    inline bool
+    operator<(const __normal_iterator<_Iterator, _Container>& __lhs,
+	      const __normal_iterator<_Iterator, _Container>& __rhs)
+    { return __lhs.base() < __rhs.base(); }
 
   template<typename _IteratorL, typename _IteratorR, typename _Container>
-  inline bool
-  operator>(const __normal_iterator<_IteratorL, _Container>& __lhs,
-	    const __normal_iterator<_IteratorR, _Container>& __rhs)
-  { return __lhs.base() > __rhs.base(); }
+    inline bool
+    operator>(const __normal_iterator<_IteratorL, _Container>& __lhs,
+	      const __normal_iterator<_IteratorR, _Container>& __rhs)
+    { return __lhs.base() > __rhs.base(); }
 
   template<typename _Iterator, typename _Container>
-  inline bool
-  operator>(const __normal_iterator<_Iterator, _Container>& __lhs,
-	    const __normal_iterator<_Iterator, _Container>& __rhs)
-  { return __lhs.base() > __rhs.base(); }
+    inline bool
+    operator>(const __normal_iterator<_Iterator, _Container>& __lhs,
+	      const __normal_iterator<_Iterator, _Container>& __rhs)
+    { return __lhs.base() > __rhs.base(); }
 
   template<typename _IteratorL, typename _IteratorR, typename _Container>
-  inline bool
-  operator<=(const __normal_iterator<_IteratorL, _Container>& __lhs,
-	     const __normal_iterator<_IteratorR, _Container>& __rhs)
-  { return __lhs.base() <= __rhs.base(); }
+    inline bool
+    operator<=(const __normal_iterator<_IteratorL, _Container>& __lhs,
+	       const __normal_iterator<_IteratorR, _Container>& __rhs)
+    { return __lhs.base() <= __rhs.base(); }
 
   template<typename _Iterator, typename _Container>
-  inline bool
-  operator<=(const __normal_iterator<_Iterator, _Container>& __lhs,
-	     const __normal_iterator<_Iterator, _Container>& __rhs)
-  { return __lhs.base() <= __rhs.base(); }
+    inline bool
+    operator<=(const __normal_iterator<_Iterator, _Container>& __lhs,
+	       const __normal_iterator<_Iterator, _Container>& __rhs)
+    { return __lhs.base() <= __rhs.base(); }
 
   template<typename _IteratorL, typename _IteratorR, typename _Container>
-  inline bool
-  operator>=(const __normal_iterator<_IteratorL, _Container>& __lhs,
-	     const __normal_iterator<_IteratorR, _Container>& __rhs)
-  { return __lhs.base() >= __rhs.base(); }
+    inline bool
+    operator>=(const __normal_iterator<_IteratorL, _Container>& __lhs,
+	       const __normal_iterator<_IteratorR, _Container>& __rhs)
+    { return __lhs.base() >= __rhs.base(); }
 
   template<typename _Iterator, typename _Container>
-  inline bool
-  operator>=(const __normal_iterator<_Iterator, _Container>& __lhs,
-	     const __normal_iterator<_Iterator, _Container>& __rhs)
-  { return __lhs.base() >= __rhs.base(); }
+    inline bool
+    operator>=(const __normal_iterator<_Iterator, _Container>& __lhs,
+	       const __normal_iterator<_Iterator, _Container>& __rhs)
+    { return __lhs.base() >= __rhs.base(); }
 
-  // _GLIBCPP_RESOLVE_LIB_DEFECTS
+  // _GLIBCXX_RESOLVE_LIB_DEFECTS
   // According to the resolution of DR179 not only the various comparison
   // operators but also operator- must accept mixed iterator/const_iterator
   // parameters.
   template<typename _IteratorL, typename _IteratorR, typename _Container>
-  inline typename __normal_iterator<_IteratorL, _Container>::difference_type
-  operator-(const __normal_iterator<_IteratorL, _Container>& __lhs,
-	     const __normal_iterator<_IteratorR, _Container>& __rhs)
-  { return __lhs.base() - __rhs.base(); }
+    inline typename __normal_iterator<_IteratorL, _Container>::difference_type
+    operator-(const __normal_iterator<_IteratorL, _Container>& __lhs,
+	      const __normal_iterator<_IteratorR, _Container>& __rhs)
+    { return __lhs.base() - __rhs.base(); }
 
   template<typename _Iterator, typename _Container>
-  inline __normal_iterator<_Iterator, _Container>
-  operator+(typename __normal_iterator<_Iterator, _Container>::difference_type __n,
-	    const __normal_iterator<_Iterator, _Container>& __i)
-  { return __normal_iterator<_Iterator, _Container>(__i.base() + __n); }
-} // namespace __gnu_cxx
+    inline typename __normal_iterator<_Iterator, _Container>::difference_type
+    operator-(const __normal_iterator<_Iterator, _Container>& __lhs,
+	      const __normal_iterator<_Iterator, _Container>& __rhs)
+    { return __lhs.base() - __rhs.base(); }
 
-#endif 
+  template<typename _Iterator, typename _Container>
+    inline __normal_iterator<_Iterator, _Container>
+    operator+(typename __normal_iterator<_Iterator, _Container>::difference_type
+	      __n, const __normal_iterator<_Iterator, _Container>& __i)
+    { return __normal_iterator<_Iterator, _Container>(__i.base() + __n); }
 
-// Local Variables:
-// mode:C++
-// End:
+_GLIBCXX_END_NAMESPACE
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
+  // 24.4.3  Move iterators
+  /**
+   *  @if maint
+   *  Class template move_iterator is an iterator adapter with the same
+   *  behavior as the underlying iterator except that its dereference
+   *  operator implicitly converts the value returned by the underlying
+   *  iterator's dereference operator to an rvalue reference.  Some
+   *  generic algorithms can be called with move iterators to replace
+   *  copying with moving.
+   *  @endif
+   */
+  template<typename _Iterator>
+    class move_iterator
+    {
+    protected:
+      _Iterator _M_current;
+
+    public:
+      typedef _Iterator                                        iterator_type;
+      typedef typename iterator_traits<_Iterator>::difference_type
+                                                               difference_type;
+      // NB: DR 680.
+      typedef _Iterator                                        pointer;
+      typedef typename iterator_traits<_Iterator>::value_type  value_type;
+      typedef typename iterator_traits<_Iterator>::iterator_category
+                                                               iterator_category;
+      typedef value_type&&                                     reference;
+
+    public:
+      move_iterator()
+      : _M_current() { }
+
+      explicit
+      move_iterator(iterator_type __i)
+      : _M_current(__i) { }
+
+      template<typename _Iter>
+	move_iterator(const move_iterator<_Iter>& __i)
+	: _M_current(__i.base()) { }
+
+      iterator_type
+      base() const
+      { return _M_current; }
+
+      reference
+      operator*() const
+      { return *_M_current; }
+
+      pointer
+      operator->() const
+      { return _M_current; }
+
+      move_iterator&
+      operator++()
+      {
+	++_M_current;
+	return *this;
+      }
+
+      move_iterator
+      operator++(int)
+      {
+	move_iterator __tmp = *this;
+	++_M_current;
+	return __tmp;
+      }
+
+      move_iterator&
+      operator--()
+      {
+	--_M_current;
+	return *this;
+      }
+
+      move_iterator
+      operator--(int)
+      {
+	move_iterator __tmp = *this;
+	--_M_current;
+	return __tmp;
+      }
+
+      move_iterator
+      operator+(difference_type __n) const
+      { return move_iterator(_M_current + __n); }
+
+      move_iterator&
+      operator+=(difference_type __n)
+      {
+	_M_current += __n;
+	return *this;
+      }
+
+      move_iterator
+      operator-(difference_type __n) const
+      { return move_iterator(_M_current - __n); }
+    
+      move_iterator&
+      operator-=(difference_type __n)
+      { 
+	_M_current -= __n;
+	return *this;
+      }
+
+      reference
+      operator[](difference_type __n) const
+      { return _M_current[__n]; }
+    };
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline bool
+    operator==(const move_iterator<_IteratorL>& __x,
+	       const move_iterator<_IteratorR>& __y)
+    { return __x.base() == __y.base(); }
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline bool
+    operator!=(const move_iterator<_IteratorL>& __x,
+	       const move_iterator<_IteratorR>& __y)
+    { return !(__x == __y); }
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline bool
+    operator<(const move_iterator<_IteratorL>& __x,
+	      const move_iterator<_IteratorR>& __y)
+    { return __x.base() < __y.base(); }
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline bool
+    operator<=(const move_iterator<_IteratorL>& __x,
+	       const move_iterator<_IteratorR>& __y)
+    { return !(__y < __x); }
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline bool
+    operator>(const move_iterator<_IteratorL>& __x,
+	      const move_iterator<_IteratorR>& __y)
+    { return __y < __x; }
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline bool
+    operator>=(const move_iterator<_IteratorL>& __x,
+	       const move_iterator<_IteratorR>& __y)
+    { return !(__x < __y); }
+
+  template<typename _IteratorL, typename _IteratorR>
+    inline typename move_iterator<_IteratorL>::difference_type
+    operator-(const move_iterator<_IteratorL>& __x,
+	      const move_iterator<_IteratorR>& __y)
+    { return __x.base() - __y.base(); }
+
+  template<typename _Iterator>
+    inline move_iterator<_Iterator>
+    operator+(typename move_iterator<_Iterator>::difference_type __n,
+	      const move_iterator<_Iterator>& __x)
+    { return __x + __n; }
+
+  template<typename _Iterator>
+    inline move_iterator<_Iterator>
+    make_move_iterator(const _Iterator& __i)
+    { return move_iterator<_Iterator>(__i); }
+
+_GLIBCXX_END_NAMESPACE
+
+#define _GLIBCXX_MAKE_MOVE_ITERATOR(_Iter) std::make_move_iterator(_Iter)
+#else
+#define _GLIBCXX_MAKE_MOVE_ITERATOR(_Iter) (_Iter)
+#endif // __GXX_EXPERIMENTAL_CXX0X__
+
+#endif

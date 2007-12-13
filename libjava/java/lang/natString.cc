@@ -1,6 +1,6 @@
 // natString.cc - Implementation of java.lang.String native methods.
 
-/* Copyright (C) 1998, 1999, 2000, 2001, 2002  Free Software Foundation
+/* Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007  Free Software Foundation
 
    This file is part of libgcj.
 
@@ -15,11 +15,13 @@ details.  */
 
 #include <gcj/cni.h>
 #include <java/lang/Character.h>
+#include <java/lang/CharSequence.h>
 #include <java/lang/String.h>
 #include <java/lang/IndexOutOfBoundsException.h>
 #include <java/lang/ArrayIndexOutOfBoundsException.h>
 #include <java/lang/StringIndexOutOfBoundsException.h>
 #include <java/lang/NullPointerException.h>
+#include <java/lang/StringBuffer.h>
 #include <java/io/ByteArrayOutputStream.h>
 #include <java/io/OutputStreamWriter.h>
 #include <java/io/ByteArrayInputStream.h>
@@ -27,9 +29,9 @@ details.  */
 #include <java/util/Locale.h>
 #include <gnu/gcj/convert/UnicodeToBytes.h>
 #include <gnu/gcj/convert/BytesToUnicode.h>
+#include <gnu/gcj/runtime/StringBuffer.h>
 #include <jvm.h>
 
-static void unintern (jobject);
 static jstring* strhash = NULL;
 static int strhash_count = 0;  /* Number of slots used in strhash. */
 static int strhash_size = 0;  /* Number of slots available in strhash.
@@ -55,7 +57,7 @@ static int strhash_size = 0;  /* Number of slots available in strhash.
 jstring*
 _Jv_StringFindSlot (jchar* data, jint len, jint hash)
 {
-  JvSynchronize sync (&StringClass);
+  JvSynchronize sync (&java::lang::String::class$);
 
   int start_index = hash & (strhash_size - 1);
   int deleted_index = -1;
@@ -63,7 +65,7 @@ _Jv_StringFindSlot (jchar* data, jint len, jint hash)
   int index = start_index;
   /* step must be non-zero, and relatively prime with strhash_size. */
   jint step = (hash ^ (hash >> 16)) | 1;
-  for (;;)
+  do
     {
       jstring* ptr = &strhash[index];
       jstring value = (jstring) UNMASK_PTR (*ptr);
@@ -80,8 +82,12 @@ _Jv_StringFindSlot (jchar* data, jint len, jint hash)
 	       && memcmp(JvGetStringChars(value), data, 2*len) == 0)
 	return (ptr);
       index = (index + step) & (strhash_size - 1);
-      JvAssert (index != start_index);
     }
+  while (index != start_index);
+  // Note that we can have INDEX == START_INDEX if the table has no
+  // NULL entries but does have DELETED_STRING entries.
+  JvAssert (deleted_index >= 0);
+  return &strhash[deleted_index];
 }
 
 /* Calculate a hash code for the string starting at PTR at given LENGTH.
@@ -102,7 +108,9 @@ hashChars (jchar* ptr, jint length)
 jint
 java::lang::String::hashCode()
 {
-  return hashChars(JvGetStringChars(this), length());
+  if (cachedHashCode == 0)
+    cachedHashCode = hashChars(JvGetStringChars(this), length());
+  return cachedHashCode;
 }
 
 jstring*
@@ -113,16 +121,15 @@ _Jv_StringGetSlot (jstring str)
   return _Jv_StringFindSlot(data, length, hashChars (data, length));
 }
 
-void
-java::lang::String::rehash()
+static void
+rehash ()
 {
-  JvSynchronize sync (&StringClass);
+  JvSynchronize sync (&java::lang::String::class$);
 
   if (strhash == NULL)
     {
       strhash_size = 1024;
       strhash = (jstring *) _Jv_AllocBytes (strhash_size * sizeof (jstring));
-      memset (strhash, 0, strhash_size * sizeof (jstring));
     }
   else
     {
@@ -130,7 +137,6 @@ java::lang::String::rehash()
       jstring* ptr = strhash + i;
       int nsize = strhash_size * 2;
       jstring *next = (jstring *) _Jv_AllocBytes (nsize * sizeof (jstring));
-      memset (next, 0, nsize * sizeof (jstring));
 
       while (--i >= 0)
 	{
@@ -163,34 +169,44 @@ java::lang::String::rehash()
 jstring
 java::lang::String::intern()
 {
-  JvSynchronize sync (&StringClass);
+  JvSynchronize sync (&java::lang::String::class$);
   if (3 * strhash_count >= 2 * strhash_size)
     rehash();
   jstring* ptr = _Jv_StringGetSlot(this);
   if (*ptr != NULL && *ptr != DELETED_STRING)
     {
-      // See description in unintern() to understand this.
+      // See description in _Jv_FinalizeString() to understand this.
       *ptr = (jstring) MASK_PTR (*ptr);
       return (jstring) UNMASK_PTR (*ptr);
     }
-  jstring str = this->data == this ? this
-    : _Jv_NewString(JvGetStringChars(this), this->length());
+  jstring str = (this->data == this
+		 ? this
+		 : _Jv_NewString(JvGetStringChars(this), this->length()));
   SET_STRING_IS_INTERNED(str);
   strhash_count++;
   *ptr = str;
   // When string is GC'd, clear the slot in the hash table.
-  _Jv_RegisterFinalizer ((void *) str, unintern);
+  _Jv_RegisterStringFinalizer (str);
   return str;
 }
 
-/* Called by String fake finalizer. */
-static void
-unintern (jobject obj)
+// The fake String finalizer.  This is only used when the String has
+// been intern()d.  However, we must check this case, as it might be
+// called by the Reference code for any String.
+void
+_Jv_FinalizeString (jobject obj)
 {
-  JvSynchronize sync (&StringClass);
+  JvSynchronize sync (&java::lang::String::class$);
+
+  // We might not actually have intern()d any strings at all, if
+  // we're being called from Reference.
+  if (! strhash)
+    return;
+
   jstring str = reinterpret_cast<jstring> (obj);
-  jstring* ptr = _Jv_StringGetSlot(str);
-  if (*ptr == NULL || *ptr == DELETED_STRING)
+  jstring *ptr = _Jv_StringGetSlot(str);
+  if (*ptr == NULL || *ptr == DELETED_STRING
+      || (jobject) UNMASK_PTR (*ptr) != obj)
     return;
 
   // We assume the lowest bit of the pointer is free for our nefarious
@@ -198,21 +214,21 @@ unintern (jobject obj)
   // interning the String.  If we subsequently re-intern the same
   // String, then we set the bit.  When finalizing, if the bit is set
   // then we clear it and re-register the finalizer.  We know this is
-  // a safe approach because both intern() and unintern() acquire
-  // the class lock; this bit can't be manipulated when the lock is
-  // not held.  So if we are finalizing and the bit is clear then we
-  // know all references are gone and we can clear the entry in the
-  // hash table.  The naive approach of simply clearing the pointer
-  // here fails in the case where a request to intern a new string
-  // with the same contents is made between the time the intern()d
-  // string is found to be unreachable and when the finalizer is
-  // actually run.  In this case we could clear a pointer to a valid
-  // string, and future intern() calls for that particular value would
-  // spuriously fail.
+  // a safe approach because both intern() and _Jv_FinalizeString()
+  // acquire the class lock; this bit can't be manipulated when the
+  // lock is not held.  So if we are finalizing and the bit is clear
+  // then we know all references are gone and we can clear the entry
+  // in the hash table.  The naive approach of simply clearing the
+  // pointer here fails in the case where a request to intern a new
+  // string with the same contents is made between the time the
+  // intern()d string is found to be unreachable and when the
+  // finalizer is actually run.  In this case we could clear a pointer
+  // to a valid string, and future intern() calls for that particular
+  // value would spuriously fail.
   if (PTR_MASKED (*ptr))
     {
       *ptr = (jstring) UNMASK_PTR (*ptr);
-      _Jv_RegisterFinalizer ((void *) obj, unintern);
+      _Jv_RegisterStringFinalizer (obj);
     }
   else
     {
@@ -272,9 +288,9 @@ _Jv_NewStringUtf8Const (Utf8Const* str)
     }
   chrs -= length;
 
-  JvSynchronize sync (&StringClass);
+  JvSynchronize sync (&java::lang::String::class$);
   if (3 * strhash_count >= 2 * strhash_size)
-    java::lang::String::rehash();
+    rehash();
   jstring* ptr = _Jv_StringFindSlot (chrs, length, hash);
   if (*ptr != NULL && *ptr != DELETED_STRING)
     return (jstring) UNMASK_PTR (*ptr);
@@ -285,10 +301,13 @@ _Jv_NewStringUtf8Const (Utf8Const* str)
       chrs = JvGetStringChars(jstr);
       memcpy (chrs, buffer, sizeof(jchar)*length);
     }
+  jstr->cachedHashCode = hash;
   *ptr = jstr;
   SET_STRING_IS_INTERNED(jstr);
-  // When string is GC'd, clear the slot in the hash table.
-  _Jv_RegisterFinalizer ((void *) jstr, unintern);
+  // When string is GC'd, clear the slot in the hash table.  Note that
+  // we don't have to call _Jv_RegisterStringFinalizer here, as we
+  // know the new object cannot be referred to by a Reference.
+  _Jv_RegisterFinalizer ((void *) jstr, _Jv_FinalizeString);
   return jstr;
 }
 
@@ -352,11 +371,11 @@ _Jv_FormatInt (jchar* bufend, jint num)
   if (num < 0)
     {
       isNeg = true;
-      num = -(num);
-      if (num < 0)
+      if (num != (jint) -2147483648U)
+	num = -(num);
+      else
 	{
-	  // Must be MIN_VALUE, so handle this special case.
-	  // FIXME use 'unsigned jint' for num.
+	  // Handle special case of MIN_VALUE.
 	  *--ptr = '8';
 	  num = 214748364;
 	}
@@ -386,35 +405,11 @@ java::lang::String::valueOf (jint num)
 }
 
 jstring
-_Jv_AllocString(jsize len)
-{
-  jsize sz = sizeof(java::lang::String) + len * sizeof(jchar);
-
-  // We assert that for strings allocated this way, the data field
-  // will always point to the object itself.  Thus there is no reason
-  // for the garbage collector to scan any of it.
-  // Furthermore, we're about to overwrite the string data, so
-  // initialization of the object is not an issue.
-#ifdef ENABLE_JVMPI
-  jstring obj = (jstring) _Jv_AllocPtrFreeObject(&StringClass, sz);
-#else
-  // Class needs no initialization, and there is no finalizer, so
-  // we can go directly to the collector's allocator interface.
-  jstring obj = (jstring) _Jv_AllocPtrFreeObj(sz, &StringClass);
-#endif
-  obj->data = obj;
-  obj->boffset = sizeof(java::lang::String);
-  obj->count = len;
-  return obj;
-}
-
-jstring
 _Jv_NewString(const jchar *chars, jsize len)
 {
   jstring str = _Jv_AllocString(len);
   jchar* data = JvGetStringChars (str);
-  while (--len >= 0)
-    *data++ = *chars++;
+  memcpy (data, chars, len * sizeof (jchar));
   return str;
 }
 
@@ -426,14 +421,6 @@ _Jv_NewStringLatin1(const char *bytes, jsize len)
   while (--len >= 0)
     *data++ = *(unsigned char*)bytes++;
   return str;
-}
-
-void
-java::lang::String::init ()
-{
-  count = 0;
-  boffset = sizeof(java::lang::String);
-  data = this;
 }
 
 void
@@ -528,6 +515,12 @@ java::lang::String::init (jbyteArray bytes, jint offset, jint count,
   this->count = outpos;
 }
 
+void
+java::lang::String::init (gnu::gcj::runtime::StringBuffer *buffer)
+{
+  init (buffer->value, 0, buffer->count, true);
+}
+
 jboolean
 java::lang::String::equals(jobject anObject)
 {
@@ -535,20 +528,51 @@ java::lang::String::equals(jobject anObject)
     return false;
   if (anObject == this)
     return true;
-  if (anObject->getClass() != &StringClass)
+  if (anObject->getClass() != &java::lang::String::class$)
     return false;
   jstring other = (jstring) anObject;
   if (count != other->count)
     return false;
-  /* if both are interned, return false. */
-  jint i = count;
+
+  // If both have cached hash codes, check that.  If the cached hash
+  // codes are zero, don't bother trying to compute them.
+  int myHash = cachedHashCode;
+  int otherHash = other->cachedHashCode;
+  if (myHash && otherHash && myHash != otherHash)
+    return false;
+
+  // We could see if both are interned, and return false.  But that
+  // seems too expensive.
+
   jchar *xptr = JvGetStringChars (this);
   jchar *yptr = JvGetStringChars (other);
-  while (--i >= 0)
-    {
-      if (*xptr++ != *yptr++)
-	return false;
-    }
+  return ! memcmp (xptr, yptr, count * sizeof (jchar));
+}
+
+jboolean
+java::lang::String::contentEquals(java::lang::StringBuffer* buffer)
+{
+  if (buffer == NULL)
+    throw new NullPointerException;
+  JvSynchronize sync(buffer);
+  if (count != buffer->count)
+    return false;
+  if (data == buffer->value)
+    return true; // Possible if shared.
+  jchar *xptr = JvGetStringChars(this);
+  jchar *yptr = elements(buffer->value);
+  return ! memcmp (xptr, yptr, count * sizeof (jchar));
+}
+
+jboolean
+java::lang::String::contentEquals(java::lang::CharSequence *seq)
+{
+  if (seq->length() != count)
+    return false;
+  jchar *value = JvGetStringChars(this);
+  for (int i = 0; i < count; ++i)
+    if (value[i] != seq->charAt(i))
+      return false;
   return true;
 }
 
@@ -556,7 +580,7 @@ jchar
 java::lang::String::charAt(jint i)
 {
   if (i < 0 || i >= count)
-    throw new java::lang::StringIndexOutOfBoundsException;
+    throw new java::lang::StringIndexOutOfBoundsException(i);
   return JvGetStringChars(this)[i];
 }
 
@@ -567,13 +591,15 @@ java::lang::String::getChars(jint srcBegin, jint srcEnd,
   jint dst_length = JvGetArrayLength (dst);
   if (srcBegin < 0 || srcBegin > srcEnd || srcEnd > count)
     throw new java::lang::StringIndexOutOfBoundsException;
-  if (dstBegin < 0 || dstBegin + (srcEnd-srcBegin) > dst_length)
+  // The 2nd part of the test below is equivalent to 
+  // dstBegin + (srcEnd-srcBegin) > dst_length
+  // except that it does not overflow.
+  if (dstBegin < 0 || dstBegin > dst_length - (srcEnd-srcBegin))
     throw new ArrayIndexOutOfBoundsException;
   jchar *dPtr = elements (dst) + dstBegin;
   jchar *sPtr = JvGetStringChars (this) + srcBegin;
-  jint i = srcEnd-srcBegin;
-  while (--i >= 0)
-    *dPtr++ = *sPtr++;
+  jint i = srcEnd - srcBegin;
+  memcpy (dPtr, sPtr, i * sizeof (jchar));
 }
 
 jbyteArray
@@ -586,7 +612,7 @@ java::lang::String::getBytes (jstring enc)
   jint offset = 0;
   gnu::gcj::convert::UnicodeToBytes *converter
     = gnu::gcj::convert::UnicodeToBytes::getEncoder(enc);
-  while (todo > 0)
+  while (todo > 0 || converter->havePendingBytes())
     {
       converter->setOutput(buffer, bufpos);
       int converted = converter->write(this, offset, todo, NULL);
@@ -604,6 +630,11 @@ java::lang::String::getBytes (jstring enc)
 	  todo -= converted;
 	}
     }
+  if (length() > 0)
+    {
+      converter->setFinished();
+      converter->write(this, 0, 0, NULL);
+    }
   converter->done ();
   if (bufpos == buflen)
     return buffer;
@@ -619,7 +650,10 @@ java::lang::String::getBytes(jint srcBegin, jint srcEnd,
   jint dst_length = JvGetArrayLength (dst);
   if (srcBegin < 0 || srcBegin > srcEnd || srcEnd > count)
     throw new java::lang::StringIndexOutOfBoundsException;
-  if (dstBegin < 0 || dstBegin + (srcEnd-srcBegin) > dst_length)
+  // The 2nd part of the test below is equivalent to 
+  // dstBegin + (srcEnd-srcBegin) > dst_length
+  // except that it does not overflow.
+  if (dstBegin < 0 || dstBegin > dst_length - (srcEnd-srcBegin))
     throw new ArrayIndexOutOfBoundsException;
   jbyte *dPtr = elements (dst) + dstBegin;
   jchar *sPtr = JvGetStringChars (this) + srcBegin;
@@ -635,8 +669,7 @@ java::lang::String::toCharArray()
   jchar *dPtr = elements (array);
   jchar *sPtr = JvGetStringChars (this);
   jint i = count;
-  while (--i >= 0)
-    *dPtr++ = *sPtr++;
+  memcpy (dPtr, sPtr, i * sizeof (jchar));
   return array;
 }
 
@@ -666,23 +699,18 @@ jboolean
 java::lang::String::regionMatches (jint toffset,
 				   jstring other, jint ooffset, jint len)
 {
-  if (toffset < 0 || ooffset < 0
-      || toffset + len > count
-      || ooffset + len > other->count)
+  if (toffset < 0 || ooffset < 0 || len < 0
+      || toffset > count - len
+      || ooffset > other->count - len)
     return false;
   jchar *tptr = JvGetStringChars (this) + toffset;
   jchar *optr = JvGetStringChars (other) + ooffset;
   jint i = len;
-  while (--i >= 0)
-    {
-      if (*tptr++ != *optr++)
-	return false;
-    }
-  return true;
+  return ! memcmp (tptr, optr, i * sizeof (jchar));
 }
 
 jint
-java::lang::String::compareTo (jstring anotherString)
+java::lang::String::nativeCompareTo (jstring anotherString)
 {
   jchar *tptr = JvGetStringChars (this);
   jchar *optr = JvGetStringChars (anotherString);
@@ -703,49 +731,39 @@ jboolean
 java::lang::String::regionMatches (jboolean ignoreCase, jint toffset,
 				   jstring other, jint ooffset, jint len)
 {
-  if (toffset < 0 || ooffset < 0
-      || toffset + len > count
-      || ooffset + len > other->count)
+  if (toffset < 0 || ooffset < 0 || len < 0
+      || toffset > count - len
+      || ooffset > other->count - len)
     return false;
   jchar *tptr = JvGetStringChars (this) + toffset;
   jchar *optr = JvGetStringChars (other) + ooffset;
   jint i = len;
   if (ignoreCase)
-    while (--i >= 0)
-      {
-	jchar tch = *tptr++;
-	jchar och = *optr++;
-	if ((java::lang::Character::toLowerCase (tch)
-	     != java::lang::Character::toLowerCase (och))
-	    && (java::lang::Character::toUpperCase (tch)
-		!= java::lang::Character::toUpperCase (och)))
-	  return false;
-      }
-  else
-    while (--i >= 0)
-      {
-	jchar tch = *tptr++;
-	jchar och = *optr++;
-	if (tch != och)
-	  return false;
-      }
-  return true;
+    {
+      while (--i >= 0)
+	{
+	  jchar tch = *tptr++;
+	  jchar och = *optr++;
+	  if ((java::lang::Character::toLowerCase (tch)
+	       != java::lang::Character::toLowerCase (och))
+	      && (java::lang::Character::toUpperCase (tch)
+		  != java::lang::Character::toUpperCase (och)))
+	    return false;
+	}
+      return true;
+    }
+  return ! memcmp (tptr, optr, i * sizeof (jchar));
 }
 
 jboolean
 java::lang::String::startsWith (jstring prefix, jint toffset)
 {
   jint i = prefix->count;
-  if (toffset < 0 || toffset + i > count)
+  if (toffset < 0 || toffset > count - i)
     return false;
   jchar *xptr = JvGetStringChars (this) + toffset;
   jchar *yptr = JvGetStringChars (prefix);
-  while (--i >= 0)
-    {
-      if (*xptr++ != *yptr++)
-	return false;
-    }
-  return true;
+  return ! memcmp (xptr, yptr, i * sizeof (jchar));
 }
 
 jint
@@ -815,7 +833,10 @@ java::lang::String::substring (jint beginIndex, jint endIndex)
   if (beginIndex == 0 && endIndex == count)
     return this;
   jint newCount = endIndex - beginIndex;
-  if (newCount <= 8)  // Optimization, mainly for GC.
+  // For very small strings, just allocate a new one.  For other
+  // substrings, allocate a new one unless the substring is over half
+  // of the original string.
+  if (newCount <= 8 || newCount < (count >> 1))
     return JvNewString(JvGetStringChars(this) + beginIndex, newCount);
   jstring s = new String();
   s->data = data;
@@ -834,12 +855,11 @@ java::lang::String::concat(jstring str)
   jchar *dstPtr = JvGetStringChars(result);
   jchar *srcPtr = JvGetStringChars(this);
   jint i = count;
-  while (--i >= 0)
-    *dstPtr++ = *srcPtr++;
+  memcpy (dstPtr, srcPtr, i * sizeof (jchar));
+  dstPtr += i;
   srcPtr = JvGetStringChars(str);
   i = str->count;
-  while (--i >= 0)
-    *dstPtr++ = *srcPtr++;
+  memcpy (dstPtr, srcPtr, i * sizeof (jchar));
   return result;
 }
 
@@ -1009,13 +1029,12 @@ jstring
 java::lang::String::valueOf(jcharArray data, jint offset, jint count)
 {
   jint data_length = JvGetArrayLength (data);
-  if (offset < 0 || count < 0 || offset+count > data_length)
+  if (offset < 0 || count < 0 || offset > data_length - count)
     throw new ArrayIndexOutOfBoundsException;
   jstring result = JvAllocString(count);
   jchar *sPtr = elements (data) + offset;
   jchar *dPtr = JvGetStringChars(result);
-  while (--count >= 0)
-    *dPtr++ = *sPtr++;
+  memcpy (dPtr, sPtr, count * sizeof (jchar));
   return result;
 }
 

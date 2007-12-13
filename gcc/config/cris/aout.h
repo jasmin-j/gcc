@@ -1,12 +1,12 @@
 /* Definitions for GCC.  Part of the machine description for CRIS.
-   Copyright (C) 2001, 2002 Free Software Foundation, Inc.
+   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
    Contributed by Axis Communications.  Written by Hans-Peter Nilsson.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* After the first "Node:" comment comes all preprocessor directives and
    attached declarations described in the info files, the "Using and
@@ -41,35 +40,14 @@ Boston, MA 02111-1307, USA.  */
 #undef STARTFILE_SPEC
 #define STARTFILE_SPEC \
  "%{melinux:crt0.o%s}\
-  %{!melinux:\
-   %{sim2:s2crt0.o%s}\
-   %{!sim2:\
-    %{sim:scrt0.o%s}\
-    %{!sim:%{pg:gcrt0.o%s}\
-     %{!pg:%{p:mcrt0.o%s}%{!p:crt0.o%s}}}}}"
+  %{!melinux:%{sim*:crt1.o%s}%{!sim*:crt0.o%s}}"
 
-/* Which library to get.  The only difference from the default is to get
-   libsc.a if -sim is given to the driver.  Repeat -lc -lsysX
-   {X=sim,linux}, because libsysX needs (at least) errno from libc, and
-   then we want to resolve new unknowns in libc against libsysX, not
-   libnosys.  Assume everything is in libc for -mlinux.  */
-#undef LIB_SPEC
-#define LIB_SPEC \
- "%{melinux:-lc -lsyslinux -lc -lsyslinux -lic}\
-  %{!melinux:\
-   %{sim*:-lc -lsyssim -lc -lsyssim}\
-   %{!sim*:%{g*:-lg}\
-     %{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p} -lbsp}\
-   -lnosys}"
+/* Override cris.h define.  */
+#undef ENDFILE_SPEC
 
 #undef CRIS_CPP_SUBTARGET_SPEC
 #define CRIS_CPP_SUBTARGET_SPEC \
- "-D__AOUT__\
-  %{melinux:-D__gnu_linux__ -D__linux__ -D__unix__ -D__elinux__ -D__uclinux__\
-    %{!nostdinc:\
-      %{!mbest-lib-options:%{isystem*}}\
-      -isystem elinux/include%s\
-      %{mbest-lib-options:%{isystem*}}}\
+ "%{melinux:-D__gnu_linux__ -D__linux__ -D__unix__ -D__elinux__ -D__uclinux__\
     %{!ansi:%{!std=*:%{!undef:-Dlinux -Dunix -Delinux -Duclinux}}}}\
   %{mbest-lib-options:\
    %{!moverride-best-lib-options:\
@@ -95,22 +73,31 @@ Boston, MA 02111-1307, USA.  */
    %{static:-Bstatic}}\
   %{melinux-stacksize=*:-defsym __Stacksize=%*}"
 
-#undef CRIS_SUBTARGET_SWITCHES
-#define CRIS_SUBTARGET_SWITCHES						\
-  {"elinux", (TARGET_MASK_SVINTO					\
-	      + TARGET_MASK_STACK_ALIGN					\
-	      + TARGET_MASK_CONST_ALIGN					\
-	      + TARGET_MASK_DATA_ALIGN					\
-	      + TARGET_MASK_ETRAX4_ADD					\
-	      + TARGET_MASK_ALIGN_BY_32),				\
-   N_("Compile for the MMU-less Etrax 100-based elinux system")},	\
-  /* Legacy option.  */							\
-  {"aout",   0,	""},
+/* Previously controlled by target_flags.  */
+#undef TARGET_ELF
+#define TARGET_ELF 0
 
-#undef CRIS_SUBTARGET_LONG_OPTIONS
-#define CRIS_SUBTARGET_LONG_OPTIONS \
-  {"elinux-stacksize=", &cris_elinux_stacksize_str,			\
-   N_("For elinux, request a specified stack-size for this program")},	\
+#undef CRIS_SUBTARGET_HANDLE_OPTION
+#define CRIS_SUBTARGET_HANDLE_OPTION(CODE, ARG, VALUE)	\
+  do							\
+    {							\
+      switch (CODE)					\
+	{						\
+	case OPT_melinux:				\
+	  target_flags					\
+	    |= (MASK_SVINTO				\
+		+ MASK_STACK_ALIGN			\
+		+ MASK_CONST_ALIGN			\
+		+ MASK_DATA_ALIGN			\
+		+ MASK_ETRAX4_ADD			\
+		+ MASK_ALIGN_BY_32);			\
+	  break;					\
+							\
+	default:					\
+	  break;					\
+	}						\
+    }							\
+  while (0)
 
 #undef CRIS_SUBTARGET_VERSION
 #define CRIS_SUBTARGET_VERSION " - a.out"
@@ -118,15 +105,23 @@ Boston, MA 02111-1307, USA.  */
 #undef CRIS_SUBTARGET_DEFAULT
 #define CRIS_SUBTARGET_DEFAULT 0
 
+
+/* Node: Run-time Target */
+
+/* For the cris-*-aout subtarget.  */
+#undef TARGET_OS_CPP_BUILTINS
+#define TARGET_OS_CPP_BUILTINS()		\
+  do						\
+    {						\
+      builtin_define ("__AOUT__");		\
+    }						\
+  while (0)
+
+
 /* Node: Storage Layout */
 
-/* We can align to 16 bits (only) with CRIS a.out.  */
-#define MAX_OFILE_ALIGNMENT 16
-
-
-/* Node: Library Calls */
-
-#define TARGET_MEM_FUNCTIONS
+/* All sections but the .bss is rounded up to a 4-byte multiple size.  */
+#define MAX_OFILE_ALIGNMENT 32
 
 
 /* Node: Data Output */
@@ -173,13 +168,13 @@ Boston, MA 02111-1307, USA.  */
       register const unsigned char *_limited_str =	\
 	(const unsigned char *) (STR);			\
       register unsigned ch;				\
-      							\
+							\
       fprintf ((FILE), "%s\"", STRING_ASM_OP);		\
-      							\
+							\
       for (; (ch = *_limited_str); _limited_str++)	\
         {						\
 	  register int escape;				\
-	  						\
+							\
 	  switch (escape = ESCAPES[ch])			\
 	    {						\
 	    case 0:					\
@@ -194,7 +189,7 @@ Boston, MA 02111-1307, USA.  */
 	      break;					\
 	    }						\
         }						\
-      							\
+							\
       fprintf ((FILE), "\"\n");				\
     }							\
   while (0)
@@ -218,16 +213,16 @@ Boston, MA 02111-1307, USA.  */
       for (; _ascii_bytes < limit; _ascii_bytes++)			\
         {								\
 	  register const unsigned char *p;				\
-      									\
+									\
 	  if (bytes_in_chunk >= 60)					\
 	    {								\
 	      fprintf ((FILE), "\"\n");					\
 	      bytes_in_chunk = 0;					\
 	    }								\
-      									\
+									\
 	  for (p = _ascii_bytes; p < limit && *p != '\0'; p++)		\
 	    continue;							\
-      									\
+									\
 	  if (p < limit && (p - _ascii_bytes) <= (long)STRING_LIMIT)	\
 	    {								\
 	      if (bytes_in_chunk > 0)					\
@@ -235,7 +230,7 @@ Boston, MA 02111-1307, USA.  */
 		  fprintf ((FILE), "\"\n");				\
 		  bytes_in_chunk = 0;					\
 		}							\
-      									\
+									\
 	      ASM_OUTPUT_LIMITED_STRING ((FILE), _ascii_bytes);		\
 	      _ascii_bytes = p;						\
 	    }								\
@@ -243,10 +238,10 @@ Boston, MA 02111-1307, USA.  */
 	    {								\
 	      register int escape;					\
 	      register unsigned ch;					\
-      									\
+									\
 	      if (bytes_in_chunk == 0)					\
 		fprintf ((FILE), "%s\"", ASCII_DATA_ASM_OP);		\
-      									\
+									\
 	      switch (escape = ESCAPES[ch = *_ascii_bytes])		\
 		{							\
 		case 0:							\
@@ -265,7 +260,7 @@ Boston, MA 02111-1307, USA.  */
 		}							\
 	    }								\
 	}								\
-      									\
+									\
       if (bytes_in_chunk > 0)						\
         fprintf ((FILE), "\"\n");					\
     }									\
@@ -279,11 +274,11 @@ Boston, MA 02111-1307, USA.  */
 #define ASM_OUTPUT_EXTERNAL_LIBCALL(FILE, FUN)	\
   (*targetm.asm_out.globalize_label) (FILE, XSTR (FUN, 0))
 
-#define ASM_WEAKEN_LABEL(FILE, NAME) 	\
+#define ASM_WEAKEN_LABEL(FILE, NAME)	\
   do					\
     {					\
       fputs ("\t.weak\t", (FILE));	\
-      assemble_name ((FILE), (NAME)); 	\
+      assemble_name ((FILE), (NAME));	\
       fputc ('\n', (FILE));		\
     }					\
   while (0)
@@ -316,12 +311,13 @@ Boston, MA 02111-1307, USA.  */
     }								\
   while (0)
 
+#undef ASM_FINISH_DECLARE_OBJECT
 #define ASM_FINISH_DECLARE_OBJECT(FILE, DECL, TOP_LEVEL, AT_END)\
   do								\
     {								\
       const char *name = XSTR (XEXP (DECL_RTL (DECL), 0), 0);	\
       HOST_WIDE_INT size;					\
-      								\
+								\
       if (!flag_inhibit_size_directive				\
 	  && DECL_SIZE (DECL)					\
 	  && ! AT_END && TOP_LEVEL				\
@@ -343,6 +339,13 @@ Boston, MA 02111-1307, USA.  */
     }								\
   while (0)
 
+/* The configure machinery invokes the assembler without options, which is
+   not how gcc invokes it.  Without options, the multi-target assembler
+   will probably be found, which is ELF by default.  To counter that, we
+   need to override ELF auto-host.h config stuff which we know collides
+   with a.out.  */
+#undef HAVE_GAS_HIDDEN
+
 
 /* Node: Alignment Output */
 
@@ -350,7 +353,7 @@ Boston, MA 02111-1307, USA.  */
 
 #undef  ASM_OUTPUT_SKIP
 #define ASM_OUTPUT_SKIP(FILE, SIZE) \
-  fprintf (FILE, "%s%u\n", SKIP_ASM_OP, (SIZE))
+  fprintf (FILE, "%s%u\n", SKIP_ASM_OP, (int)(SIZE))
 
 /* Node: All Debuggers */
 

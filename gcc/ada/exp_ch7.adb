@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2002, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -32,22 +30,23 @@
 with Atree;    use Atree;
 with Debug;    use Debug;
 with Einfo;    use Einfo;
+with Errout;   use Errout;
 with Exp_Ch9;  use Exp_Ch9;
 with Exp_Ch11; use Exp_Ch11;
 with Exp_Dbug; use Exp_Dbug;
+with Exp_Dist; use Exp_Dist;
+with Exp_Disp; use Exp_Disp;
 with Exp_Tss;  use Exp_Tss;
 with Exp_Util; use Exp_Util;
 with Freeze;   use Freeze;
-with Hostparm; use Hostparm;
 with Lib;      use Lib;
-with Lib.Xref; use Lib.Xref;
 with Nlists;   use Nlists;
 with Nmake;    use Nmake;
 with Opt;      use Opt;
 with Output;   use Output;
 with Restrict; use Restrict;
+with Rident;   use Rident;
 with Rtsfind;  use Rtsfind;
-with Targparm; use Targparm;
 with Sinfo;    use Sinfo;
 with Sem;      use Sem;
 with Sem_Ch3;  use Sem_Ch3;
@@ -58,6 +57,7 @@ with Sem_Type; use Sem_Type;
 with Sem_Util; use Sem_Util;
 with Snames;   use Snames;
 with Stand;    use Stand;
+with Targparm; use Targparm;
 with Tbuild;   use Tbuild;
 with Uintp;    use Uintp;
 
@@ -90,27 +90,33 @@ package body Exp_Ch7 is
    --      declaration and the secondary stack deallocation is done in the
    --      proper enclosing scope (see Wrap_Transient_Declaration for details)
 
-   --  Note about function returning tagged types: It has been decided to
-   --  always allocate their result in the secondary stack while it is not
+   --  Note about functions returning tagged types: It has been decided to
+   --  always allocate their result in the secondary stack, even though is not
    --  absolutely mandatory when the tagged type is constrained because the
    --  caller knows the size of the returned object and thus could allocate the
-   --  result in the primary stack. But, allocating them always in the
-   --  secondary stack simplifies many implementation hassles:
+   --  result in the primary stack. An exception to this is when the function
+   --  builds its result in place, as is done for functions with inherently
+   --  limited result types for Ada 2005. In that case, certain callers may
+   --  pass the address of a constrained object as the target object for the
+   --  function result.
 
-   --    - If it is dispatching function call, the computation of the size of
+   --  By allocating tagged results in the secondary stack a number of
+   --  implementation difficulties are avoided:
+
+   --    - If it is a dispatching function call, the computation of the size of
    --      the result is possible but complex from the outside.
 
    --    - If the returned type is controlled, the assignment of the returned
    --      value to the anonymous object involves an Adjust, and we have no
-   --      easy way to access the anonymous object created by the back-end
+   --      easy way to access the anonymous object created by the back end.
 
    --    - If the returned type is class-wide, this is an unconstrained type
-   --      anyway
+   --      anyway.
 
-   --  Furthermore, the little loss in efficiency which is the result of this
-   --  decision is not such a big deal because function returning tagged types
-   --  are not very much used in real life as opposed to functions returning
-   --  access to a tagged type
+   --  Furthermore, the small loss in efficiency which is the result of this
+   --  decision is not such a big deal because functions returning tagged types
+   --  are not as common in practice compared to functions returning access to
+   --  a tagged type.
 
    --------------------------------------------------
    -- Transient Blocks and Finalization Management --
@@ -131,8 +137,7 @@ package body Exp_Ch7 is
       Is_Master                  : Boolean;
       Is_Protected_Subprogram    : Boolean;
       Is_Task_Allocation_Block   : Boolean;
-      Is_Asynchronous_Call_Block : Boolean)
-      return      Node_Id;
+      Is_Asynchronous_Call_Block : Boolean) return Node_Id;
    --  Expand a the clean-up procedure for controlled and/or transient
    --  block, and/or task master or task body, or blocks used to
    --  implement task allocation or asynchronous entry calls, or
@@ -154,8 +159,7 @@ package body Exp_Ch7 is
 
    function Make_Transient_Block
      (Loc    : Source_Ptr;
-      Action : Node_Id)
-      return   Node_Id;
+      Action : Node_Id) return Node_Id;
    --  Create a transient block whose name is Scope, which is also a
    --  controlled block if Flist is not empty and whose only code is
    --  Action (either a single statement or single declaration).
@@ -169,10 +173,10 @@ package body Exp_Ch7 is
                      Adjust_Case     => Name_Adjust,
                      Finalize_Case   => Name_Finalize);
 
-   Deep_Name_Of : constant array (Final_Primitives) of Name_Id :=
-                    (Initialize_Case => Name_uDeep_Initialize,
-                     Adjust_Case     => Name_uDeep_Adjust,
-                     Finalize_Case   => Name_uDeep_Finalize);
+   Deep_Name_Of : constant array (Final_Primitives) of TSS_Name_Type :=
+                    (Initialize_Case => TSS_Deep_Initialize,
+                     Adjust_Case     => TSS_Deep_Adjust,
+                     Finalize_Case   => TSS_Deep_Finalize);
 
    procedure Build_Record_Deep_Procs (Typ : Entity_Id);
    --  Build the deep Initialize/Adjust/Finalize for a record Typ with
@@ -185,8 +189,7 @@ package body Exp_Ch7 is
    function Make_Deep_Proc
      (Prim  : Final_Primitives;
       Typ   : Entity_Id;
-      Stmts : List_Id)
-      return  Node_Id;
+      Stmts : List_Id) return Node_Id;
    --  This function generates the tree for Deep_Initialize, Deep_Adjust
    --  or Deep_Finalize procedures according to the first parameter,
    --  these procedures operate on the type Typ. The Stmts parameter
@@ -194,8 +197,7 @@ package body Exp_Ch7 is
 
    function Make_Deep_Array_Body
      (Prim : Final_Primitives;
-      Typ  : Entity_Id)
-      return List_Id;
+      Typ  : Entity_Id) return List_Id;
    --  This function generates the list of statements for implementing
    --  Deep_Initialize, Deep_Adjust or Deep_Finalize procedures
    --  according to the first parameter, these procedures operate on the
@@ -203,18 +205,34 @@ package body Exp_Ch7 is
 
    function Make_Deep_Record_Body
      (Prim : Final_Primitives;
-      Typ  : Entity_Id)
-      return List_Id;
+      Typ  : Entity_Id) return List_Id;
    --  This function generates the list of statements for implementing
    --  Deep_Initialize, Deep_Adjust or Deep_Finalize procedures
    --  according to the first parameter, these procedures operate on the
    --  record type Typ.
 
+   procedure Check_Visibly_Controlled
+     (Prim : Final_Primitives;
+      Typ  : Entity_Id;
+      E    : in out Entity_Id;
+      Cref : in out Node_Id);
+   --  The controlled operation declared for a derived type may not be
+   --  overriding, if the controlled operations of the parent type are
+   --  hidden, for example when the parent is a private type whose full
+   --  view is controlled. For other primitive operations we modify the
+   --  name of the operation to indicate that it is not overriding, but
+   --  this is not possible for Initialize, etc. because they have to be
+   --  retrievable by name. Before generating the proper call to one of
+   --  these operations we check whether Typ is known to be controlled at
+   --  the point of definition. If it is not then we must retrieve the
+   --  hidden operation of the parent and use it instead.  This is one
+   --  case that might be solved more cleanly once Overriding pragmas or
+   --  declarations are in place.
+
    function Convert_View
      (Proc : Entity_Id;
       Arg  : Node_Id;
-      Ind  : Pos := 1)
-      return Node_Id;
+      Ind  : Pos := 1) return Node_Id;
    --  Proc is one of the Initialize/Adjust/Finalize operations, and
    --  Arg is the argument being passed to it. Ind indicates which
    --  formal of procedure Proc we are trying to match. This function
@@ -233,8 +251,8 @@ package body Exp_Ch7 is
    --  controlled components (Has_Controlled_Component flag set). In the first
    --  case the procedures to call are the user-defined primitive operations
    --  Initialize/Adjust/Finalize. In the second case, GNAT generates
-   --  Deep_Initialize, Deep_Adjust and Deep_Finalize that are in charge of
-   --  calling the former procedures on the controlled components.
+   --  Deep_Initialize, Deep_Adjust and Deep_Finalize that are in charge
+   --  of calling the former procedures on the controlled components.
 
    --  For records with Has_Controlled_Component set, a hidden "controller"
    --  component is inserted. This controller component contains its own
@@ -243,9 +261,9 @@ package body Exp_Ch7 is
    --  technique facilitates the management of objects whose number of
    --  controlled components changes during execution. This controller
    --  component is itself controlled and is attached to the upper-level
-   --  finalization chain. Its adjust primitive is in charge of calling
-   --  adjust on the components and adusting the finalization pointer to
-   --  match their new location (see a-finali.adb)
+   --  finalization chain. Its adjust primitive is in charge of calling adjust
+   --  on the components and adusting the finalization pointer to match their
+   --  new location (see a-finali.adb).
 
    --  It is not possible to use a similar technique for arrays that have
    --  Has_Controlled_Component set. In this case, deep procedures are
@@ -253,11 +271,11 @@ package body Exp_Ch7 is
    --  detachment on the finalization list for all component.
 
    --  Initialize calls: they are generated for declarations or dynamic
-   --  allocations of Controlled objects with no initial value. They are
-   --  always followed by an attachment to the current Finalization
-   --  Chain. For the dynamic allocation case this the chain attached to
-   --  the scope of the access type definition otherwise, this is the chain
-   --  of the current scope.
+   --  allocations of Controlled objects with no initial value. They are always
+   --  followed by an attachment to the current Finalization Chain. For the
+   --  dynamic allocation case this the chain attached to the scope of the
+   --  access type definition otherwise, this is the chain of the current
+   --  scope.
 
    --  Adjust Calls: They are generated on 2 occasions: (1) for
    --  declarations or dynamic allocations of Controlled objects with an
@@ -268,13 +286,31 @@ package body Exp_Ch7 is
    --  Finalization Calls: They are generated on (1) scope exit, (2)
    --  assignments, (3) unchecked deallocations. In case (3) they have to
    --  be detached from the final chain, in case (2) they must not and in
-   --  case (1) this is not important since we are exiting the scope
-   --  anyway.
+   --  case (1) this is not important since we are exiting the scope anyway.
+
+   --  Other details:
+
+   --    Type extensions will have a new record controller at each derivation
+   --    level containing controlled components. The record controller for
+   --    the parent/ancestor is attached to the finalization list of the
+   --    extension's record controller (i.e. the parent is like a component
+   --    of the extension).
+
+   --    For types that are both Is_Controlled and Has_Controlled_Components,
+   --    the record controller and the object itself are handled separately.
+   --    It could seem simpler to attach the object at the end of its record
+   --    controller but this would not tackle view conversions properly.
+
+   --    A classwide type can always potentially have controlled components
+   --    but the record controller of the corresponding actual type may not
+   --    be known at compile time so the dispatch table contains a special
+   --    field that allows to compute the offset of the record controller
+   --    dynamically. See s-finimp.Deep_Tag_Attach and a-tags.RC_Offset.
 
    --  Here is a simple example of the expansion of a controlled block :
 
    --    declare
-   --       X : Controlled ;
+   --       X : Controlled;
    --       Y : Controlled := Init;
    --
    --       type R is record
@@ -300,8 +336,11 @@ package body Exp_Ch7 is
    --       end _Clean;
 
    --       X : Controlled;
-   --       Initialize (X);
-   --       Attach_To_Final_List (_L, Finalizable (X), 1);
+   --       begin
+   --          Abort_Defer;
+   --          Initialize (X);
+   --          Attach_To_Final_List (_L, Finalizable (X), 1);
+   --       at end: Abort_Undefer;
    --       Y : Controlled := Init;
    --       Adjust (Y);
    --       Attach_To_Final_List (_L, Finalizable (Y), 1);
@@ -311,27 +350,35 @@ package body Exp_Ch7 is
    --          C : Controlled;
    --       end record;
    --       W : R;
-   --       Deep_Initialize (W, _L, 1);
+   --       begin
+   --          Abort_Defer;
+   --          Deep_Initialize (W, _L, 1);
+   --       at end: Abort_Under;
    --       Z : R := (C => X);
    --       Deep_Adjust (Z, _L, 1);
 
    --    begin
-   --       Finalize (X);
-   --       X := Y;
-   --       Adjust (X);
-
+   --       _Assign (X, Y);
    --       Deep_Finalize (W, False);
+   --       <save W's final pointers>
    --       W := Z;
+   --       <restore W's final pointers>
    --       Deep_Adjust (W, _L, 0);
    --    at end
    --       _Clean;
    --    end;
 
    function Global_Flist_Ref (Flist_Ref : Node_Id) return Boolean;
-   --  Return True if Flist_Ref refers to a global final list, either
-   --  the object GLobal_Final_List which is used to attach standalone
-   --  objects, or any of the list controllers associated with library
-   --  level access to controlled objects
+   --  Return True if Flist_Ref refers to a global final list, either the
+   --  object Global_Final_List which is used to attach standalone objects,
+   --  or any of the list controllers associated with library-level access
+   --  to controlled objects.
+
+   procedure Clean_Simple_Protected_Objects (N : Node_Id);
+   --  Protected objects without entries are not controlled types, and the
+   --  locks have to be released explicitly when such an object goes out
+   --  of scope. Traverse declarations in scope to determine whether such
+   --  objects are present.
 
    ----------------------------
    -- Build_Array_Deep_Procs --
@@ -345,7 +392,7 @@ package body Exp_Ch7 is
           Typ   => Typ,
           Stmts => Make_Deep_Array_Body (Initialize_Case, Typ)));
 
-      if not Is_Return_By_Reference_Type (Typ) then
+      if not Is_Inherently_Limited_Type (Typ) then
          Set_TSS (Typ,
            Make_Deep_Proc (
              Prim  => Adjust_Case,
@@ -395,12 +442,11 @@ package body Exp_Ch7 is
             New_Reference_To
               (RTE (RE_List_Controller), Loc));
 
-      --  The type may have been frozen already, and this is a late
-      --  freezing action, in which case the declaration must be elaborated
-      --  at once. If the call is for an allocator, the chain must also be
-      --  created now, because the freezing of the type does not build one.
-      --  Otherwise, the declaration is one of the freezing actions for a
-      --  user-defined type.
+      --  The type may have been frozen already, and this is a late freezing
+      --  action, in which case the declaration must be elaborated at once.
+      --  If the call is for an allocator, the chain must also be created now,
+      --  because the freezing of the type does not build one. Otherwise, the
+      --  declaration is one of the freezing actions for a user-defined type.
 
       if Is_Frozen (Typ)
         or else (Nkind (N) = N_Allocator
@@ -441,7 +487,7 @@ package body Exp_Ch7 is
           Typ   => Typ,
           Stmts => Make_Deep_Record_Body (Initialize_Case, Typ)));
 
-      if not Is_Return_By_Reference_Type (Typ) then
+      if not Is_Inherently_Limited_Type (Typ) then
          Set_TSS (Typ,
            Make_Deep_Proc (
              Prim  => Adjust_Case,
@@ -456,6 +502,348 @@ package body Exp_Ch7 is
           Stmts => Make_Deep_Record_Body (Finalize_Case, Typ)));
    end Build_Record_Deep_Procs;
 
+   -------------------
+   -- Cleanup_Array --
+   -------------------
+
+   function Cleanup_Array
+     (N    : Node_Id;
+      Obj  : Node_Id;
+      Typ  : Entity_Id) return List_Id
+   is
+      Loc        : constant Source_Ptr := Sloc (N);
+      Index_List : constant List_Id := New_List;
+
+      function Free_Component return List_Id;
+      --  Generate the code to finalize the task or protected  subcomponents
+      --  of a single component of the array.
+
+      function Free_One_Dimension (Dim : Int) return List_Id;
+      --  Generate a loop over one dimension of the array
+
+      --------------------
+      -- Free_Component --
+      --------------------
+
+      function Free_Component return List_Id is
+         Stmts : List_Id := New_List;
+         Tsk   : Node_Id;
+         C_Typ : constant Entity_Id := Component_Type (Typ);
+
+      begin
+         --  Component type is known to contain tasks or protected objects
+
+         Tsk :=
+           Make_Indexed_Component (Loc,
+             Prefix        => Duplicate_Subexpr_No_Checks (Obj),
+             Expressions   => Index_List);
+
+         Set_Etype (Tsk, C_Typ);
+
+         if Is_Task_Type (C_Typ) then
+            Append_To (Stmts, Cleanup_Task (N, Tsk));
+
+         elsif Is_Simple_Protected_Type (C_Typ) then
+            Append_To (Stmts, Cleanup_Protected_Object (N, Tsk));
+
+         elsif Is_Record_Type (C_Typ) then
+            Stmts := Cleanup_Record (N, Tsk, C_Typ);
+
+         elsif Is_Array_Type (C_Typ) then
+            Stmts := Cleanup_Array (N, Tsk, C_Typ);
+         end if;
+
+         return Stmts;
+      end Free_Component;
+
+      ------------------------
+      -- Free_One_Dimension --
+      ------------------------
+
+      function Free_One_Dimension (Dim : Int) return List_Id is
+         Index      : Entity_Id;
+
+      begin
+         if Dim > Number_Dimensions (Typ) then
+            return Free_Component;
+
+         --  Here we generate the required loop
+
+         else
+            Index :=
+              Make_Defining_Identifier (Loc, New_Internal_Name ('J'));
+
+            Append (New_Reference_To (Index, Loc), Index_List);
+
+            return New_List (
+              Make_Implicit_Loop_Statement (N,
+                Identifier => Empty,
+                Iteration_Scheme =>
+                  Make_Iteration_Scheme (Loc,
+                    Loop_Parameter_Specification =>
+                      Make_Loop_Parameter_Specification (Loc,
+                        Defining_Identifier => Index,
+                        Discrete_Subtype_Definition =>
+                          Make_Attribute_Reference (Loc,
+                            Prefix => Duplicate_Subexpr (Obj),
+                            Attribute_Name  => Name_Range,
+                            Expressions => New_List (
+                              Make_Integer_Literal (Loc, Dim))))),
+                Statements =>  Free_One_Dimension (Dim + 1)));
+         end if;
+      end Free_One_Dimension;
+
+   --  Start of processing for Cleanup_Array
+
+   begin
+      return Free_One_Dimension (1);
+   end Cleanup_Array;
+
+   --------------------
+   -- Cleanup_Record --
+   --------------------
+
+   function Cleanup_Record
+     (N    : Node_Id;
+      Obj  : Node_Id;
+      Typ  : Entity_Id) return List_Id
+   is
+      Loc   : constant Source_Ptr := Sloc (N);
+      Tsk   : Node_Id;
+      Comp  : Entity_Id;
+      Stmts : constant List_Id    := New_List;
+      U_Typ : constant Entity_Id  := Underlying_Type (Typ);
+
+   begin
+      if Has_Discriminants (U_Typ)
+        and then Nkind (Parent (U_Typ)) = N_Full_Type_Declaration
+        and then
+          Nkind (Type_Definition (Parent (U_Typ))) = N_Record_Definition
+        and then
+          Present
+            (Variant_Part
+              (Component_List (Type_Definition (Parent (U_Typ)))))
+      then
+         --  For now, do not attempt to free a component that may appear in
+         --  a variant, and instead issue a warning. Doing this "properly"
+         --  would require building a case statement and would be quite a
+         --  mess. Note that the RM only requires that free "work" for the
+         --  case of a task access value, so already we go way beyond this
+         --  in that we deal with the array case and non-discriminated
+         --  record cases.
+
+         Error_Msg_N
+           ("task/protected object in variant record will not be freed?", N);
+         return New_List (Make_Null_Statement (Loc));
+      end if;
+
+      Comp := First_Component (Typ);
+
+      while Present (Comp) loop
+         if Has_Task (Etype (Comp))
+           or else Has_Simple_Protected_Object (Etype (Comp))
+         then
+            Tsk :=
+              Make_Selected_Component (Loc,
+                Prefix        => Duplicate_Subexpr_No_Checks (Obj),
+                Selector_Name => New_Occurrence_Of (Comp, Loc));
+            Set_Etype (Tsk, Etype (Comp));
+
+            if Is_Task_Type (Etype (Comp)) then
+               Append_To (Stmts, Cleanup_Task (N, Tsk));
+
+            elsif Is_Simple_Protected_Type (Etype (Comp)) then
+               Append_To (Stmts, Cleanup_Protected_Object (N, Tsk));
+
+            elsif Is_Record_Type (Etype (Comp)) then
+
+               --  Recurse, by generating the prefix of the argument to
+               --  the eventual cleanup call.
+
+               Append_List_To
+                 (Stmts, Cleanup_Record (N, Tsk, Etype (Comp)));
+
+            elsif Is_Array_Type (Etype (Comp)) then
+               Append_List_To
+                 (Stmts, Cleanup_Array (N, Tsk, Etype (Comp)));
+            end if;
+         end if;
+
+         Next_Component (Comp);
+      end loop;
+
+      return Stmts;
+   end Cleanup_Record;
+
+   ------------------------------
+   -- Cleanup_Protected_Object --
+   ------------------------------
+
+   function Cleanup_Protected_Object
+     (N   : Node_Id;
+      Ref : Node_Id) return Node_Id
+   is
+      Loc : constant Source_Ptr := Sloc (N);
+
+   begin
+      return
+        Make_Procedure_Call_Statement (Loc,
+          Name => New_Reference_To (RTE (RE_Finalize_Protection), Loc),
+          Parameter_Associations => New_List (
+            Concurrent_Ref (Ref)));
+   end Cleanup_Protected_Object;
+
+   ------------------------------------
+   -- Clean_Simple_Protected_Objects --
+   ------------------------------------
+
+   procedure Clean_Simple_Protected_Objects (N : Node_Id) is
+      Stmts : constant List_Id := Statements (Handled_Statement_Sequence (N));
+      Stmt  : Node_Id          := Last (Stmts);
+      E     : Entity_Id;
+
+   begin
+      E := First_Entity (Current_Scope);
+      while Present (E) loop
+         if (Ekind (E) = E_Variable
+              or else Ekind (E) = E_Constant)
+           and then Has_Simple_Protected_Object (Etype (E))
+           and then not Has_Task (Etype (E))
+           and then Nkind (Parent (E)) /= N_Object_Renaming_Declaration
+         then
+            declare
+               Typ : constant Entity_Id := Etype (E);
+               Ref : constant Node_Id := New_Occurrence_Of (E, Sloc (Stmt));
+
+            begin
+               if Is_Simple_Protected_Type (Typ) then
+                  Append_To (Stmts, Cleanup_Protected_Object (N, Ref));
+
+               elsif Has_Simple_Protected_Object (Typ) then
+                  if Is_Record_Type (Typ) then
+                     Append_List_To (Stmts, Cleanup_Record (N, Ref, Typ));
+
+                  elsif Is_Array_Type (Typ) then
+                     Append_List_To (Stmts, Cleanup_Array (N, Ref, Typ));
+                  end if;
+               end if;
+            end;
+         end if;
+
+         Next_Entity (E);
+      end loop;
+
+      --   Analyze inserted cleanup statements
+
+      if Present (Stmt) then
+         Stmt := Next (Stmt);
+
+         while Present (Stmt) loop
+            Analyze (Stmt);
+            Next (Stmt);
+         end loop;
+      end if;
+   end Clean_Simple_Protected_Objects;
+
+   ------------------
+   -- Cleanup_Task --
+   ------------------
+
+   function Cleanup_Task
+     (N   : Node_Id;
+      Ref : Node_Id) return Node_Id
+   is
+      Loc  : constant Source_Ptr := Sloc (N);
+   begin
+      return
+        Make_Procedure_Call_Statement (Loc,
+          Name => New_Reference_To (RTE (RE_Free_Task), Loc),
+          Parameter_Associations =>
+            New_List (Concurrent_Ref (Ref)));
+   end Cleanup_Task;
+
+   ---------------------------------
+   -- Has_Simple_Protected_Object --
+   ---------------------------------
+
+   function Has_Simple_Protected_Object (T : Entity_Id) return Boolean is
+      Comp : Entity_Id;
+
+   begin
+      if Is_Simple_Protected_Type (T) then
+         return True;
+
+      elsif Is_Array_Type (T) then
+         return Has_Simple_Protected_Object (Component_Type (T));
+
+      elsif Is_Record_Type (T) then
+         Comp := First_Component (T);
+
+         while Present (Comp) loop
+            if Has_Simple_Protected_Object (Etype (Comp)) then
+               return True;
+            end if;
+
+            Next_Component (Comp);
+         end loop;
+
+         return False;
+
+      else
+         return False;
+      end if;
+   end Has_Simple_Protected_Object;
+
+   ------------------------------
+   -- Is_Simple_Protected_Type --
+   ------------------------------
+
+   function Is_Simple_Protected_Type (T : Entity_Id) return Boolean is
+   begin
+      return Is_Protected_Type (T) and then not Has_Entries (T);
+   end Is_Simple_Protected_Type;
+
+   ------------------------------
+   -- Check_Visibly_Controlled --
+   ------------------------------
+
+   procedure Check_Visibly_Controlled
+     (Prim : Final_Primitives;
+      Typ  : Entity_Id;
+      E    : in out Entity_Id;
+      Cref : in out Node_Id)
+   is
+      Parent_Type : Entity_Id;
+      Op          : Entity_Id;
+
+   begin
+      if Is_Derived_Type (Typ)
+        and then Comes_From_Source (E)
+        and then not Is_Overriding_Operation (E)
+      then
+         --  We know that the explicit operation on the type does not override
+         --  the inherited operation of the parent, and that the derivation
+         --  is from a private type that is not visibly controlled.
+
+         Parent_Type := Etype (Typ);
+         Op := Find_Prim_Op (Parent_Type, Name_Of (Prim));
+
+         if Present (Op) then
+            E := Op;
+
+            --  Wrap the object to be initialized into the proper
+            --  unchecked conversion, to be compatible with the operation
+            --  to be called.
+
+            if Nkind (Cref) = N_Unchecked_Type_Conversion then
+               Cref := Unchecked_Convert_To (Parent_Type, Expression (Cref));
+            else
+               Cref := Unchecked_Convert_To (Parent_Type, Cref);
+            end if;
+         end if;
+      end if;
+   end Check_Visibly_Controlled;
+
    ---------------------
    -- Controlled_Type --
    ---------------------
@@ -466,12 +854,12 @@ package body Exp_Ch7 is
       --  If type is not frozen yet, check explicitly among its components,
       --  because flag is not necessarily set.
 
-      ------------------------------------
-      --  Has_Some_Controlled_Component --
-      ------------------------------------
+      -----------------------------------
+      -- Has_Some_Controlled_Component --
+      -----------------------------------
 
-      function Has_Some_Controlled_Component (Rec : Entity_Id)
-        return Boolean
+      function Has_Some_Controlled_Component
+        (Rec : Entity_Id) return Boolean
       is
          Comp : Entity_Id;
 
@@ -512,15 +900,26 @@ package body Exp_Ch7 is
       --  Class-wide types must be treated as controlled because they may
       --  contain an extension that has controlled components
 
+      --  We can skip this if finalization is not available
+
       return (Is_Class_Wide_Type (T)
-                and then not No_Run_Time
-                and then not In_Finalization_Root (T))
+                and then not In_Finalization_Root (T)
+                and then not Restriction_Active (No_Finalization))
         or else Is_Controlled (T)
         or else Has_Some_Controlled_Component (T)
         or else (Is_Concurrent_Type (T)
                    and then Present (Corresponding_Record_Type (T))
                    and then Controlled_Type (Corresponding_Record_Type (T)));
    end Controlled_Type;
+
+   ---------------------------
+   -- CW_Or_Controlled_Type --
+   ---------------------------
+
+   function CW_Or_Controlled_Type (T : Entity_Id) return Boolean is
+   begin
+      return Is_Class_Wide_Type (T) or else Controlled_Type (T);
+   end CW_Or_Controlled_Type;
 
    --------------------------
    -- Controller_Component --
@@ -578,8 +977,7 @@ package body Exp_Ch7 is
    function Convert_View
      (Proc : Entity_Id;
       Arg  : Node_Id;
-      Ind  : Pos := 1)
-      return Node_Id
+      Ind  : Pos := 1) return Node_Id
    is
       Fent : Entity_Id := First_Entity (Proc);
       Ftyp : Entity_Id;
@@ -600,14 +998,16 @@ package body Exp_Ch7 is
          Atyp := Etype (Arg);
       end if;
 
-      if Is_Abstract (Proc) and then Is_Tagged_Type (Ftyp) then
+      if Is_Abstract_Subprogram (Proc) and then Is_Tagged_Type (Ftyp) then
          return Unchecked_Convert_To (Class_Wide_Type (Ftyp), Arg);
 
       elsif Ftyp /= Atyp
         and then Present (Atyp)
         and then
           (Is_Private_Type (Ftyp) or else Is_Private_Type (Atyp))
-        and then Underlying_Type (Atyp) = Underlying_Type (Ftyp)
+        and then
+           Base_Type (Underlying_Type (Atyp)) =
+             Base_Type (Underlying_Type (Ftyp))
       then
          return Unchecked_Convert_To (Ftyp, Arg);
 
@@ -641,17 +1041,18 @@ package body Exp_Ch7 is
       Loc       : constant Source_Ptr := Sloc (N);
       Wrap_Node : Node_Id;
 
-      Sec_Stk : constant Boolean :=
-                  Sec_Stack and not Functions_Return_By_DSP_On_Target;
-      --  We never need a secondary stack if functions return by DSP
-
    begin
+      --  Nothing to do for virtual machines where memory is GCed
+
+      if VM_Target /= No_VM then
+         return;
+      end if;
+
       --  Do not create a transient scope if we are already inside one
 
       for S in reverse Scope_Stack.First .. Scope_Stack.Last loop
-
          if Scope_Stack.Table (S).Is_Transient then
-            if Sec_Stk then
+            if Sec_Stack then
                Set_Uses_Sec_Stack (Scope_Stack.Table (S).Entity);
             end if;
 
@@ -673,13 +1074,19 @@ package body Exp_Ch7 is
       if No (Wrap_Node) then
          null;
 
-      --  Transient scope is required
+      --  If the node to wrap is an iteration_scheme, the expression is
+      --  one of the bounds, and the expansion will make an explicit
+      --  declaration for it (see Analyze_Iteration_Scheme, sem_ch5.adb),
+      --  so do not apply any transformations here.
+
+      elsif Nkind (Wrap_Node) = N_Iteration_Scheme then
+         null;
 
       else
-         New_Scope (New_Internal_Entity (E_Block, Current_Scope, Loc, 'B'));
+         Push_Scope (New_Internal_Entity (E_Block, Current_Scope, Loc, 'B'));
          Set_Scope_Is_Transient;
 
-         if Sec_Stk then
+         if Sec_Stack then
             Set_Uses_Sec_Stack (Current_Scope);
             Check_Restriction (No_Secondary_Stack, N);
          end if;
@@ -699,51 +1106,48 @@ package body Exp_Ch7 is
    ----------------------------
 
    procedure Expand_Cleanup_Actions (N : Node_Id) is
-      Loc                  :  Source_Ptr;
-      S                    : constant Entity_Id  :=
-                               Current_Scope;
-      Flist                : constant Entity_Id  :=
-                               Finalization_Chain_Entity (S);
-      Is_Task              : constant Boolean    :=
-                               (Nkind (Original_Node (N)) = N_Task_Body);
-      Is_Master            : constant Boolean    :=
+      S       : constant Entity_Id  := Current_Scope;
+      Flist   : constant Entity_Id := Finalization_Chain_Entity (S);
+      Is_Task : constant Boolean := Nkind (Original_Node (N)) = N_Task_Body;
+
+      Is_Master            : constant Boolean :=
                                Nkind (N) /= N_Entry_Body
                                  and then Is_Task_Master (N);
-      Is_Protected         : constant Boolean    :=
+      Is_Protected         : constant Boolean :=
                                Nkind (N) = N_Subprogram_Body
                                  and then Is_Protected_Subprogram_Body (N);
-      Is_Task_Allocation   : constant Boolean    :=
+      Is_Task_Allocation   : constant Boolean :=
                                Nkind (N) = N_Block_Statement
                                  and then Is_Task_Allocation_Block (N);
-      Is_Asynchronous_Call : constant Boolean    :=
+      Is_Asynchronous_Call : constant Boolean :=
                                Nkind (N) = N_Block_Statement
                                  and then Is_Asynchronous_Call_Block (N);
 
       Clean     : Entity_Id;
+      Loc       : Source_Ptr;
       Mark      : Entity_Id := Empty;
-      New_Decls : List_Id   := New_List;
+      New_Decls : constant List_Id := New_List;
       Blok      : Node_Id;
+      End_Lab   : Node_Id;
       Wrapped   : Boolean;
       Chain     : Entity_Id := Empty;
       Decl      : Node_Id;
       Old_Poll  : Boolean;
 
    begin
+      --  If we are generating expanded code for debugging purposes, use
+      --  the Sloc of the point of insertion for the cleanup code. The Sloc
+      --  will be updated subsequently to reference the proper line in the
+      --  .dg file.  If we are not debugging generated code, use instead
+      --  No_Location, so that no debug information is generated for the
+      --  cleanup code. This makes the behavior of the NEXT command in GDB
+      --  monotonic, and makes the placement of breakpoints more accurate.
 
-      --  Compute a location that is not directly in the user code in
-      --  order to avoid to generate confusing debug info. A good
-      --  approximation is the name of the outer user-defined scope
-
-      declare
-         S1 : Entity_Id := S;
-
-      begin
-         while not Comes_From_Source (S1) and then S1 /= Standard_Standard loop
-            S1 := Scope (S1);
-         end loop;
-
-         Loc := Sloc (S1);
-      end;
+      if Debug_Generated_Code then
+         Loc := Sloc (S);
+      else
+         Loc := No_Location;
+      end if;
 
       --  There are cleanup actions only if the secondary stack needs
       --  releasing or some finalizations are needed or in the context
@@ -759,6 +1163,19 @@ package body Exp_Ch7 is
         and then not Is_Protected
         and then not Is_Task_Allocation
         and then not Is_Asynchronous_Call
+      then
+         Clean_Simple_Protected_Objects (N);
+         return;
+      end if;
+
+      --  If the current scope is the subprogram body that is the rewriting
+      --  of a task body, and the descriptors have not been delayed (due to
+      --  some nested instantiations) do not generate redundant cleanup
+      --  actions: the cleanup procedure already exists for this body.
+
+      if Nkind (N) = N_Subprogram_Body
+        and then Nkind (Original_Node (N)) = N_Task_Body
+        and then not Delay_Subprogram_Descriptors (Corresponding_Spec (N))
       then
          return;
       end if;
@@ -790,12 +1207,12 @@ package body Exp_Ch7 is
       --  If secondary stack is in use, expand:
       --    _Mxx : constant Mark_Id := SS_Mark;
 
-      --  Suppress calls to SS_Mark and SS_Release if Java_VM,
-      --  since we never use the secondary stack on the JVM.
+      --  Suppress calls to SS_Mark and SS_Release if VM_Target,
+      --  since we never use the secondary stack on the VM.
 
       if Uses_Sec_Stack (Current_Scope)
         and then not Sec_Stack_Needed_For_Return (Current_Scope)
-        and then not Java_VM
+        and then VM_Target = No_VM
       then
          Mark := Make_Defining_Identifier (Loc, New_Internal_Name ('M'));
          Append_To (New_Decls,
@@ -837,12 +1254,23 @@ package body Exp_Ch7 is
       --  exception handlers and an AT END call in the same scope.
 
       if Present (Exception_Handlers (Handled_Statement_Sequence (N))) then
+
+         --  Preserve end label to provide proper cross-reference information
+
+         End_Lab := End_Label (Handled_Statement_Sequence (N));
          Blok :=
            Make_Block_Statement (Loc,
              Handled_Statement_Sequence => Handled_Statement_Sequence (N));
          Set_Handled_Statement_Sequence (N,
            Make_Handled_Sequence_Of_Statements (Loc, New_List (Blok)));
+         Set_End_Label (Handled_Statement_Sequence (N), End_Lab);
          Wrapped := True;
+
+         --  Comment needed here, see RH for 1.306 ???
+
+         if Nkind (N) = N_Subprogram_Body then
+            Set_Has_Nested_Block_With_Handler (Current_Scope);
+         end if;
 
       --  Otherwise we do not wrap
 
@@ -910,7 +1338,7 @@ package body Exp_Ch7 is
       Set_Declarations (N, New_Decls);
       Analyze_Declarations (New_Decls);
 
-      --  The At_End call is attached to the sequence of statements.
+      --  The At_End call is attached to the sequence of statements
 
       declare
          HSS : Node_Id;
@@ -942,41 +1370,40 @@ package body Exp_Ch7 is
    -------------------------------
 
    procedure Expand_Ctrl_Function_Call (N : Node_Id) is
-      Loc    : constant Source_Ptr := Sloc (N);
-      Rtype  : constant Entity_Id  := Etype (N);
-      Utype  : constant Entity_Id  := Underlying_Type (Rtype);
-      Ref    : Node_Id;
-      Action : Node_Id;
+      Loc     : constant Source_Ptr := Sloc (N);
+      Rtype   : constant Entity_Id  := Etype (N);
+      Utype   : constant Entity_Id  := Underlying_Type (Rtype);
+      Ref     : Node_Id;
+      Action  : Node_Id;
+      Action2 : Node_Id := Empty;
 
       Attach_Level : Uint    := Uint_1;
       Len_Ref      : Node_Id := Empty;
 
       function Last_Array_Component
-        (Ref :  Node_Id;
-         Typ :  Entity_Id)
-         return Node_Id;
+        (Ref : Node_Id;
+         Typ : Entity_Id) return Node_Id;
       --  Creates a reference to the last component of the array object
       --  designated by Ref whose type is Typ.
 
+      --------------------------
+      -- Last_Array_Component --
+      --------------------------
+
       function Last_Array_Component
-        (Ref :  Node_Id;
-         Typ :  Entity_Id)
-         return Node_Id
+        (Ref : Node_Id;
+         Typ : Entity_Id) return Node_Id
       is
-         N          : Int;
-         Index_List : List_Id := New_List;
+         Index_List : constant List_Id := New_List;
 
       begin
-         N := 1;
-         while N <= Number_Dimensions (Typ) loop
+         for N in 1 .. Number_Dimensions (Typ) loop
             Append_To (Index_List,
               Make_Attribute_Reference (Loc,
-                Prefix         => Duplicate_Subexpr (Ref),
+                Prefix         => Duplicate_Subexpr_No_Checks (Ref),
                 Attribute_Name => Name_Last,
                 Expressions    => New_List (
                   Make_Integer_Literal (Loc, N))));
-
-            N := N + 1;
          end loop;
 
          return
@@ -988,12 +1415,12 @@ package body Exp_Ch7 is
    --  Start of processing for Expand_Ctrl_Function_Call
 
    begin
-      --  Optimization, if the returned value (which is on the sec-stack)
-      --  is returned again, no need to copy/readjust/finalize, we can just
-      --  pass the value thru (see Expand_N_Return_Statement), and thus no
+      --  Optimization, if the returned value (which is on the sec-stack) is
+      --  returned again, no need to copy/readjust/finalize, we can just pass
+      --  the value thru (see Expand_N_Simple_Return_Statement), and thus no
       --  attachment is needed
 
-      if Nkind (Parent (N)) = N_Return_Statement then
+      if Nkind (Parent (N)) = N_Simple_Return_Statement then
          return;
       end if;
 
@@ -1001,21 +1428,34 @@ package body Exp_Ch7 is
       --  because of the duplication
 
       Set_Analyzed (N);
-      Ref := Duplicate_Subexpr (N);
+      Ref := Duplicate_Subexpr_No_Checks (N);
 
       --  Now we can generate the Attach Call, note that this value is
       --  always in the (secondary) stack and thus is attached to a singly
       --  linked final list:
-      --
+
       --    Resx := F (X)'reference;
       --    Attach_To_Final_List (_Lx, Resx.all, 1);
+
       --  or when there are controlled components
+
       --    Attach_To_Final_List (_Lx, Resx._controller, 1);
-      --  or if it is an array with is_controlled components
+
+      --  or when it is both is_controlled and has_controlled_components
+
+      --    Attach_To_Final_List (_Lx, Resx._controller, 1);
+      --    Attach_To_Final_List (_Lx, Resx, 1);
+
+      --  or if it is an array with is_controlled (and has_controlled)
+
       --    Attach_To_Final_List (_Lx, Resx (Resx'last), 3);
       --    An attach level of 3 means that a whole array is to be
-      --    attached to the finalization list
-      --  or if it is an array with has_controlled components
+      --    attached to the finalization list (including the controlled
+      --    components)
+
+      --  or if it is an array with has_controlled components but not
+      --  is_controlled
+
       --    Attach_To_Final_List (_Lx, Resx (Resx'last)._controller, 3);
 
       if Has_Controlled_Component (Rtype) then
@@ -1027,7 +1467,9 @@ package body Exp_Ch7 is
             if Is_Array_Type (T2) then
                Len_Ref :=
                  Make_Attribute_Reference (Loc,
-                 Prefix => Duplicate_Subexpr (Unchecked_Convert_To (T2, Ref)),
+                 Prefix =>
+                   Duplicate_Subexpr_Move_Checks
+                     (Unchecked_Convert_To (T2, Ref)),
                  Attribute_Name => Name_Length);
             end if;
 
@@ -1035,16 +1477,26 @@ package body Exp_Ch7 is
                if T1 /= T2 then
                   Ref := Unchecked_Convert_To (T2, Ref);
                end if;
+
                Ref := Last_Array_Component (Ref, T2);
                Attach_Level := Uint_3;
                T1 := Component_Type (T2);
                T2 := Underlying_Type (T1);
             end loop;
 
-            if Has_Controlled_Component (T2) then
+            --  If the type has controlled components, go to the controller
+            --  except in the case of arrays of controlled objects since in
+            --  this case objects and their components are already chained
+            --  and the head of the chain is the last array element.
+
+            if Is_Array_Type (Rtype) and then Is_Controlled (T2) then
+               null;
+
+            elsif Has_Controlled_Component (T2) then
                if T1 /= T2 then
                   Ref := Unchecked_Convert_To (T2, Ref);
                end if;
+
                Ref :=
                  Make_Selected_Component (Loc,
                    Prefix        => Ref,
@@ -1060,6 +1512,16 @@ package body Exp_Ch7 is
              Obj_Ref      => Ref,
              Flist_Ref    => Find_Final_List (Current_Scope),
              With_Attach  => Make_Integer_Literal (Loc, Attach_Level));
+
+         --  If it is also Is_Controlled we need to attach the global object
+
+         if Is_Controlled (Rtype) then
+            Action2 :=
+              Make_Attach_Call (
+                Obj_Ref      => Duplicate_Subexpr_No_Checks (N),
+                Flist_Ref    => Find_Final_List (Current_Scope),
+                With_Attach  => Make_Integer_Literal (Loc, Attach_Level));
+         end if;
 
       else
          --  Here, we have a controlled type that does not seem to have
@@ -1093,45 +1555,42 @@ package body Exp_Ch7 is
       end if;
 
       Insert_Action (N, Action);
+      if Present (Action2) then
+         Insert_Action (N, Action2);
+      end if;
    end Expand_Ctrl_Function_Call;
 
    ---------------------------
    -- Expand_N_Package_Body --
    ---------------------------
 
-   --  Add call to Activate_Tasks if body is an activator (actual
-   --  processing is in chapter 9).
+   --  Add call to Activate_Tasks if body is an activator (actual processing
+   --  is in chapter 9).
 
    --  Generate subprogram descriptor for elaboration routine
 
-   --  ENcode entity names in package body
+   --  Encode entity names in package body
 
    procedure Expand_N_Package_Body (N : Node_Id) is
-      Ent : Entity_Id := Corresponding_Spec (N);
+      Ent : constant Entity_Id := Corresponding_Spec (N);
 
    begin
       --  This is done only for non-generic packages
 
       if Ekind (Ent) = E_Package then
-         New_Scope (Corresponding_Spec (N));
+         Push_Scope (Corresponding_Spec (N));
+
+         --  Build dispatch tables of library level tagged types
+
+         if Is_Compilation_Unit (Ent) then
+            Build_Static_Dispatch_Tables (N);
+         end if;
+
          Build_Task_Activation_Call (N);
          Pop_Scope;
       end if;
 
       Set_Elaboration_Flag (N, Corresponding_Spec (N));
-
-      --  Generate a subprogram descriptor for the elaboration routine of
-      --  a package body if the package body has no pending instantiations
-      --  and it has generated at least one exception handler
-
-      if Present (Handler_Records (Body_Entity (Ent)))
-        and then Is_Compilation_Unit (Ent)
-        and then not Delay_Subprogram_Descriptors (Body_Entity (Ent))
-      then
-         Generate_Subprogram_Descriptor_For_Package
-           (N, Body_Entity (Ent));
-      end if;
-
       Set_In_Package_Body (Ent, False);
 
       --  Set to encode entity names in package body before gigi is called
@@ -1143,21 +1602,89 @@ package body Exp_Ch7 is
    -- Expand_N_Package_Declaration --
    ----------------------------------
 
-   --  Add call to Activate_Tasks if there are tasks declared and the
-   --  package has no body. Note that in Ada83,  this may result in
-   --  premature activation of some tasks, given that we cannot tell
-   --  whether a body will eventually appear.
+   --  Add call to Activate_Tasks if there are tasks declared and the package
+   --  has no body. Note that in Ada83, this may result in premature activation
+   --  of some tasks, given that we cannot tell whether a body will eventually
+   --  appear.
 
    procedure Expand_N_Package_Declaration (N : Node_Id) is
+      Spec    : constant Node_Id   := Specification (N);
+      Id      : constant Entity_Id := Defining_Entity (N);
+      Decls   : List_Id;
+      No_Body : Boolean := False;
+      --  True in the case of a package declaration that is a compilation unit
+      --  and for which no associated body will be compiled in
+      --  this compilation.
+
    begin
-      if Nkind (Parent (N)) = N_Compilation_Unit
-        and then not Body_Required (Parent (N))
-        and then not Unit_Requires_Body (Defining_Entity (N))
-        and then Present (Activation_Chain_Entity (N))
+      --  Case of a package declaration other than a compilation unit
+
+      if Nkind (Parent (N)) /= N_Compilation_Unit then
+         null;
+
+      --  Case of a compilation unit that does not require a body
+
+      elsif not Body_Required (Parent (N))
+        and then not Unit_Requires_Body (Id)
       then
-         New_Scope (Defining_Entity (N));
-         Build_Task_Activation_Call (N);
+         No_Body := True;
+
+      --  Special case of generating calling stubs for a remote call interface
+      --  package: even though the package declaration requires one, the
+      --  body won't be processed in this compilation (so any stubs for RACWs
+      --  declared in the package must be generated here, along with the
+      --  spec).
+
+      elsif Parent (N) = Cunit (Main_Unit)
+        and then Is_Remote_Call_Interface (Id)
+        and then Distribution_Stub_Mode = Generate_Caller_Stub_Body
+      then
+         No_Body := True;
+      end if;
+
+      --  For a package declaration that implies no associated body, generate
+      --  task activation call and RACW supporting bodies now (since we won't
+      --  have a specific separate compilation unit for that).
+
+      if No_Body then
+         Push_Scope (Id);
+
+         if Has_RACW (Id) then
+
+            --  Generate RACW subprogram bodies
+
+            Decls := Private_Declarations (Spec);
+
+            if No (Decls) then
+               Decls := Visible_Declarations (Spec);
+            end if;
+
+            if No (Decls) then
+               Decls := New_List;
+               Set_Visible_Declarations (Spec, Decls);
+            end if;
+
+            Append_RACW_Bodies (Decls, Id);
+            Analyze_List (Decls);
+         end if;
+
+         if Present (Activation_Chain_Entity (N)) then
+
+            --  Generate task activation call as last step of elaboration
+
+            Build_Task_Activation_Call (N);
+         end if;
+
          Pop_Scope;
+      end if;
+
+      --  Build dispatch tables of library level tagged types
+
+      if Is_Compilation_Unit (Id)
+        or else (Is_Generic_Instance (Id)
+                   and then Is_Library_Level_Entity (Id))
+      then
+         Build_Static_Dispatch_Tables (N);
       end if;
 
       --  Note: it is not necessary to worry about generating a subprogram
@@ -1175,9 +1702,8 @@ package body Exp_Ch7 is
    ---------------------
 
    function Find_Final_List
-     (E    : Entity_Id;
-      Ref  : Node_Id := Empty)
-      return Node_Id
+     (E   : Entity_Id;
+      Ref : Node_Id := Empty) return Node_Id
    is
       Loc : constant Source_Ptr := Sloc (Ref);
       S   : Entity_Id;
@@ -1186,7 +1712,7 @@ package body Exp_Ch7 is
 
    begin
       --  Case of an internal component. The Final list is the record
-      --  controller of the enclosing record
+      --  controller of the enclosing record.
 
       if Present (Ref) then
          R := Ref;
@@ -1219,12 +1745,20 @@ package body Exp_Ch7 is
              Selector_Name => Make_Identifier (Loc, Name_F));
 
       --  Case of a dynamically allocated object. The final list is the
-      --  corresponding list controller (The next entity in the scope of
-      --  the access type with the right type). If the type comes from a
-      --  With_Type clause, no controller was created, and we use the
-      --  global chain instead.
+      --  corresponding list controller (the next entity in the scope of the
+      --  access type with the right type). If the type comes from a With_Type
+      --  clause, no controller was created, we use the global chain instead.
 
-      elsif Is_Access_Type (E) then
+      --  An anonymous access type either has a list created for it when the
+      --  allocator is a for an access parameter or an access discriminant,
+      --  or else it uses the list of the enclosing dynamic scope, when the
+      --  context is a declaration or an assignment.
+
+      elsif Is_Access_Type (E)
+        and then (Ekind (E) /= E_Anonymous_Access_Type
+                    or else
+                  Present (Associated_Final_Chain (E)))
+      then
          if not From_With_Type (E) then
             return
               Make_Selected_Component (Loc,
@@ -1257,15 +1791,15 @@ package body Exp_Ch7 is
             return New_Reference_To (RTE (RE_Global_Final_List), Sloc (E));
          else
             if No (Finalization_Chain_Entity (S)) then
-
-               Id := Make_Defining_Identifier (Sloc (S),
-                 New_Internal_Name ('F'));
+               Id :=
+                 Make_Defining_Identifier (Sloc (S),
+                   Chars => New_Internal_Name ('F'));
                Set_Finalization_Chain_Entity (S, Id);
 
                --  Set momentarily some semantics attributes to allow normal
                --  analysis of expansions containing references to this chain.
                --  Will be fully decorated during the expansion of the scope
-               --  itself
+               --  itself.
 
                Set_Ekind (Id, E_Variable);
                Set_Etype (Id, RTE (RE_Finalizable_Ptr));
@@ -1295,7 +1829,7 @@ package body Exp_Ch7 is
 
             --  Simple statement can be wrapped
 
-            when N_Pragma               =>
+            when N_Pragma =>
                return The_Parent;
 
             --  Usually assignments are good candidate for wrapping
@@ -1318,7 +1852,11 @@ package body Exp_Ch7 is
                  N_Procedure_Call_Statement =>
                if Nkind (Parent (The_Parent)) = N_Entry_Call_Alternative
                  and then
-                   Nkind (Parent (Parent (The_Parent))) = N_Timed_Entry_Call
+                   (Nkind (Parent (Parent (The_Parent)))
+                     = N_Timed_Entry_Call
+                   or else
+                     Nkind (Parent (Parent (The_Parent)))
+                       = N_Conditional_Entry_Call)
                then
                   return Parent (Parent (The_Parent));
                else
@@ -1354,7 +1892,7 @@ package body Exp_Ch7 is
                  N_Terminate_Alternative            =>
                return P;
 
-            when N_Attribute_Reference              =>
+            when N_Attribute_Reference =>
 
                if Is_Procedure_Attribute_Name
                     (Attribute_Name (The_Parent))
@@ -1362,14 +1900,19 @@ package body Exp_Ch7 is
                   return The_Parent;
                end if;
 
-            --  ??? No scheme yet for "for I in Expression'Range loop"
-            --  ??? the current scheme for Expression wrapping doesn't apply
-            --  ??? because a RANGE is NOT an expression. Tricky problem...
-            --  ??? while this problem is not solved we have a potential for
-            --  ??? leak and unfinalized intermediate objects here.
+            --  A raise statement can be wrapped. This will arise when the
+            --  expression in a raise_with_expression uses the secondary
+            --  stack, for example.
+
+            when N_Raise_Statement =>
+               return The_Parent;
+
+            --  If the expression is within the iteration scheme of a loop,
+            --  we must create a declaration for it, followed by an assignment
+            --  in order to have a usable statement to wrap.
 
             when N_Loop_Parameter_Specification =>
-               return Empty;
+               return Parent (The_Parent);
 
             --  The following nodes contains "dummy calls" which don't
             --  need to be wrapped.
@@ -1382,12 +1925,19 @@ package body Exp_Ch7 is
             --  The return statement is not to be wrapped when the function
             --  itself needs wrapping at the outer-level
 
-            when N_Return_Statement            =>
-               if Requires_Transient_Scope (Return_Type (The_Parent)) then
-                  return Empty;
-               else
-                  return The_Parent;
-               end if;
+            when N_Simple_Return_Statement =>
+               declare
+                  Applies_To : constant Entity_Id :=
+                                 Return_Applies_To
+                                   (Return_Statement_Entity (The_Parent));
+                  Return_Type : constant Entity_Id := Etype (Applies_To);
+               begin
+                  if Requires_Transient_Scope (Return_Type) then
+                     return Empty;
+                  else
+                     return The_Parent;
+                  end if;
+               end;
 
             --  If we leave a scope without having been able to find a node to
             --  wrap, something is going wrong but this can happen in error
@@ -1490,16 +2040,33 @@ package body Exp_Ch7 is
    ------------------------------------
 
    procedure Insert_Actions_In_Scope_Around (N : Node_Id) is
-      SE : Scope_Stack_Entry renames Scope_Stack.Table (Scope_Stack.Last);
+      SE     : Scope_Stack_Entry renames Scope_Stack.Table (Scope_Stack.Last);
+      Target : Node_Id;
 
    begin
+      --  If the node to be wrapped is the triggering statement of an
+      --  asynchronous select, it is not part of a statement list. The
+      --  actions must be inserted before the Select itself, which is
+      --  part of some list of statements. Note that the triggering
+      --  alternative includes the triggering statement and an optional
+      --  statement list. If the node to be wrapped is part of that list,
+      --  the normal insertion applies.
+
+      if Nkind (Parent (Node_To_Be_Wrapped)) = N_Triggering_Alternative
+        and then not Is_List_Member (Node_To_Be_Wrapped)
+      then
+         Target := Parent (Parent (Node_To_Be_Wrapped));
+      else
+         Target := N;
+      end if;
+
       if Present (SE.Actions_To_Be_Wrapped_Before) then
-         Insert_List_Before (N, SE.Actions_To_Be_Wrapped_Before);
+         Insert_List_Before (Target, SE.Actions_To_Be_Wrapped_Before);
          SE.Actions_To_Be_Wrapped_Before := No_List;
       end if;
 
       if Present (SE.Actions_To_Be_Wrapped_After) then
-         Insert_List_After (N, SE.Actions_To_Be_Wrapped_After);
+         Insert_List_After (Target, SE.Actions_To_Be_Wrapped_After);
          SE.Actions_To_Be_Wrapped_After := No_List;
       end if;
    end Insert_Actions_In_Scope_Around;
@@ -1509,11 +2076,11 @@ package body Exp_Ch7 is
    -----------------------
 
    function Make_Adjust_Call
-     (Ref          : Node_Id;
-      Typ          : Entity_Id;
-      Flist_Ref    : Node_Id;
-      With_Attach  : Node_Id)
-      return         List_Id
+     (Ref         : Node_Id;
+      Typ         : Entity_Id;
+      Flist_Ref   : Node_Id;
+      With_Attach : Node_Id;
+      Allocator   : Boolean := False) return List_Id
    is
       Loc    : constant Source_Ptr := Sloc (Ref);
       Res    : constant List_Id    := New_List;
@@ -1551,6 +2118,15 @@ package body Exp_Ch7 is
          Cref := Unchecked_Convert_To (Utyp, Cref);
       end if;
 
+      --  If the object is unanalyzed, set its expected type for use
+      --  in Convert_View in case an additional conversion is needed.
+
+      if No (Etype (Cref))
+        and then Nkind (Cref) /= N_Unchecked_Type_Conversion
+      then
+         Set_Etype (Cref, Typ);
+      end if;
+
       --  We do not need to attach to one of the Global Final Lists
       --  the objects whose type is Finalize_Storage_Only
 
@@ -1562,17 +2138,28 @@ package body Exp_Ch7 is
          Attach := Make_Integer_Literal (Loc, 0);
       end if;
 
+      --  Special case for allocators: need initialization of the chain
+      --  pointers. For the 0 case, reset them to null.
+
+      if Allocator then
+         pragma Assert (Nkind (Attach) = N_Integer_Literal);
+
+         if Intval (Attach) = 0 then
+            Set_Intval (Attach, Uint_4);
+         end if;
+      end if;
+
       --  Generate:
-      --    Deep_Adjust (Flist_Ref, Ref, With_Attach);
+      --    Deep_Adjust (Flist_Ref, Ref, Attach);
 
       if Has_Controlled_Component (Utyp)
         or else Is_Class_Wide_Type (Typ)
       then
          if Is_Tagged_Type (Utyp) then
-            Proc := Find_Prim_Op (Utyp, Deep_Name_Of (Adjust_Case));
+            Proc := Find_Prim_Op (Utyp, TSS_Deep_Adjust);
 
          else
-            Proc := TSS (Utyp, Deep_Name_Of (Adjust_Case));
+            Proc := TSS (Utyp, TSS_Deep_Adjust);
          end if;
 
          Cref := Convert_View (Proc, Cref, 2);
@@ -1601,14 +2188,6 @@ package body Exp_Ch7 is
            Parameter_Associations => New_List (Cref2)));
 
          Append_To (Res, Make_Attach_Call (Cref, Flist_Ref, Attach));
-
-         --  Treat this as a reference to Adjust if the Adjust routine
-         --  comes from source. The call is not explicit, but it is near
-         --  enough, and we won't typically get explicit adjust calls.
-
-         if Comes_From_Source (Proc) then
-            Generate_Reference (Proc, Ref);
-         end if;
       end if;
 
       return Res;
@@ -1622,10 +2201,9 @@ package body Exp_Ch7 is
    --    System.FI.Attach_To_Final_List (Flist, Ref, Nb_Link)
 
    function Make_Attach_Call
-     (Obj_Ref      : Node_Id;
-      Flist_Ref    : Node_Id;
-      With_Attach  : Node_Id)
-      return Node_Id
+     (Obj_Ref     : Node_Id;
+      Flist_Ref   : Node_Id;
+      With_Attach : Node_Id) return Node_Id
    is
       Loc : constant Source_Ptr := Sloc (Obj_Ref);
 
@@ -1661,17 +2239,15 @@ package body Exp_Ch7 is
       Is_Master                  : Boolean;
       Is_Protected_Subprogram    : Boolean;
       Is_Task_Allocation_Block   : Boolean;
-      Is_Asynchronous_Call_Block : Boolean)
-      return      Node_Id
+      Is_Asynchronous_Call_Block : Boolean) return Node_Id
    is
-      Loc : constant Source_Ptr := Sloc (Clean);
+      Loc  : constant Source_Ptr := Sloc (Clean);
+      Stmt : constant List_Id    := New_List;
 
-      Stmt         : List_Id := New_List;
       Sbody        : Node_Id;
       Spec         : Node_Id;
       Name         : Node_Id;
       Param        : Node_Id;
-      Unlock       : Node_Id;
       Param_Type   : Entity_Id;
       Pid          : Entity_Id := Empty;
       Cancel_Param : Entity_Id;
@@ -1686,7 +2262,7 @@ package body Exp_Ch7 is
          end if;
 
       elsif Is_Master then
-         if Restrictions (No_Task_Hierarchy) = False then
+         if Restriction_Active (No_Task_Hierarchy) = False then
             Append_To (Stmt, Build_Runtime_Call (Loc, RE_Complete_Master));
          end if;
 
@@ -1694,14 +2270,14 @@ package body Exp_Ch7 is
 
          --  Add statements to the cleanup handler of the (ordinary)
          --  subprogram expanded to implement a protected subprogram,
-         --  unlocking the protected object parameter and undeferring abortion.
+         --  unlocking the protected object parameter and undeferring abort.
          --  If this is a protected procedure, and the object contains
          --  entries, this also calls the entry service routine.
 
          --  NOTE: This cleanup handler references _object, a parameter
          --        to the procedure.
 
-         --  Find the _object parameter representing the protected object.
+         --  Find the _object parameter representing the protected object
 
          Spec := Parent (Corresponding_Spec (N));
 
@@ -1713,7 +2289,7 @@ package body Exp_Ch7 is
                Pid := Corresponding_Concurrent_Type (Param_Type);
             end if;
 
-            exit when not Present (Param) or else Present (Pid);
+            exit when No (Param) or else Present (Pid);
             Next (Param);
          end loop;
 
@@ -1732,7 +2308,7 @@ package body Exp_Ch7 is
            and then Has_Entries (Pid)
          then
             if Abort_Allowed
-              or else Restrictions (No_Entry_Queue) = False
+              or else Restriction_Active (No_Entry_Queue) = False
               or else Number_Entries (Pid) > 1
             then
                Name := New_Reference_To (RTE (RE_Service_Entries), Loc);
@@ -1752,50 +2328,55 @@ package body Exp_Ch7 is
                         Selector_Name =>
                           Make_Identifier (Loc, Name_uObject)),
                     Attribute_Name => Name_Unchecked_Access))));
-         end if;
-
-         --  Unlock (_object._object'Access);
-
-         --  _object is the record used to implement the protected object.
-         --  It is a parameter to the protected subprogram.
-
-         --  If the protected object is controlled (i.e it has entries or
-         --  needs finalization for interrupt handling), call Unlock_Entries,
-         --  except if the protected object follows the ravenscar profile, in
-         --  which case call Unlock_Entry, otherwise call the simplified
-         --  version, Unlock.
-
-         if Has_Entries (Pid)
-           or else Has_Interrupt_Handler (Pid)
-           or else Has_Attach_Handler (Pid)
-         then
-            if Abort_Allowed
-              or else Restrictions (No_Entry_Queue) = False
-              or else Number_Entries (Pid) > 1
-            then
-               Unlock := New_Reference_To (RTE (RE_Unlock_Entries), Loc);
-            else
-               Unlock := New_Reference_To (RTE (RE_Unlock_Entry), Loc);
-            end if;
 
          else
-            Unlock := New_Reference_To (RTE (RE_Unlock), Loc);
+            --  Unlock (_object._object'Access);
+
+            --  object is the record used to implement the protected object.
+            --  It is a parameter to the protected subprogram.
+
+            --  If the protected object is controlled (i.e it has entries or
+            --  needs finalization for interrupt handling), call
+            --  Unlock_Entries, except if the protected object follows the
+            --  ravenscar profile, in which case call Unlock_Entry, otherwise
+            --  call the simplified version, Unlock.
+
+            if Has_Entries (Pid)
+              or else Has_Interrupt_Handler (Pid)
+              or else (Has_Attach_Handler (Pid)
+                         and then not Restricted_Profile)
+              or else (Ada_Version >= Ada_05
+                         and then Present (Interface_List (Parent (Pid))))
+            then
+               if Abort_Allowed
+                 or else Restriction_Active (No_Entry_Queue) = False
+                 or else Number_Entries (Pid) > 1
+               then
+                  Name := New_Reference_To (RTE (RE_Unlock_Entries), Loc);
+               else
+                  Name := New_Reference_To (RTE (RE_Unlock_Entry), Loc);
+               end if;
+
+            else
+               Name := New_Reference_To (RTE (RE_Unlock), Loc);
+            end if;
+
+            Append_To (Stmt,
+              Make_Procedure_Call_Statement (Loc,
+                Name => Name,
+                Parameter_Associations => New_List (
+                  Make_Attribute_Reference (Loc,
+                    Prefix =>
+                      Make_Selected_Component (Loc,
+                        Prefix =>
+                          New_Reference_To (Defining_Identifier (Param), Loc),
+                        Selector_Name =>
+                          Make_Identifier (Loc, Name_uObject)),
+                    Attribute_Name => Name_Unchecked_Access))));
          end if;
 
-         Append_To (Stmt,
-           Make_Procedure_Call_Statement (Loc,
-             Name => Unlock,
-             Parameter_Associations => New_List (
-               Make_Attribute_Reference (Loc,
-                 Prefix =>
-                   Make_Selected_Component (Loc,
-                     Prefix =>
-                       New_Reference_To (Defining_Identifier (Param), Loc),
-                     Selector_Name =>
-                       Make_Identifier (Loc, Name_uObject)),
-                 Attribute_Name => Name_Unchecked_Access))));
-
          if Abort_Allowed then
+
             --  Abort_Undefer;
 
             Append_To (Stmt,
@@ -1966,8 +2547,7 @@ package body Exp_Ch7 is
 
    function Make_Deep_Array_Body
      (Prim : Final_Primitives;
-      Typ  : Entity_Id)
-      return List_Id
+      Typ  : Entity_Id) return List_Id
    is
       Loc : constant Source_Ptr := Sloc (Typ);
 
@@ -2077,14 +2657,12 @@ package body Exp_Ch7 is
    function Make_Deep_Proc
      (Prim  : Final_Primitives;
       Typ   : Entity_Id;
-      Stmts : List_Id)
-      return Entity_Id
+      Stmts : List_Id) return Entity_Id
    is
       Loc       : constant Source_Ptr := Sloc (Typ);
       Formals   : List_Id;
       Proc_Name : Entity_Id;
       Handler   : List_Id := No_List;
-      Subp_Body : Node_Id;
       Type_B    : Entity_Id;
 
    begin
@@ -2105,7 +2683,7 @@ package body Exp_Ch7 is
 
       Append_To (Formals,
         Make_Parameter_Specification (Loc,
-           Defining_Identifier => Make_Defining_Identifier (Loc, Name_V),
+          Defining_Identifier => Make_Defining_Identifier (Loc, Name_V),
           In_Present          => True,
           Out_Present         => True,
           Parameter_Type      => New_Reference_To (Typ, Loc)));
@@ -2116,17 +2694,14 @@ package body Exp_Ch7 is
           Parameter_Type      => New_Reference_To (Type_B, Loc)));
 
       if Prim = Finalize_Case or else Prim = Adjust_Case then
-         Handler := New_List (
-           Make_Exception_Handler (Loc,
-             Exception_Choices => New_List (Make_Others_Choice (Loc)),
-             Statements        => New_List (
-               Make_Raise_Program_Error (Loc,
-                 Reason => PE_Finalize_Raised_Exception))));
+         Handler := New_List (Make_Handler_For_Ctrl_Operation (Loc));
       end if;
 
-      Proc_Name := Make_Defining_Identifier (Loc, Deep_Name_Of (Prim));
+      Proc_Name :=
+        Make_Defining_Identifier (Loc,
+          Chars => Make_TSS_Name (Typ, Deep_Name_Of (Prim)));
 
-      Subp_Body :=
+      Discard_Node (
         Make_Subprogram_Body (Loc,
           Specification =>
             Make_Procedure_Specification (Loc,
@@ -2137,7 +2712,7 @@ package body Exp_Ch7 is
           Handled_Statement_Sequence =>
             Make_Handled_Sequence_Of_Statements (Loc,
               Statements         => Stmts,
-              Exception_Handlers => Handler));
+              Exception_Handlers => Handler)));
 
       return Proc_Name;
    end Make_Deep_Proc;
@@ -2152,8 +2727,7 @@ package body Exp_Ch7 is
 
    function Make_Deep_Record_Body
      (Prim : Final_Primitives;
-      Typ  : Entity_Id)
-      return List_Id
+      Typ  : Entity_Id) return List_Id
    is
       Loc            : constant Source_Ptr := Sloc (Typ);
       Controller_Typ : Entity_Id;
@@ -2163,9 +2737,10 @@ package body Exp_Ch7 is
                            Prefix        => Obj_Ref,
                            Selector_Name =>
                              Make_Identifier (Loc, Name_uController));
+      Res            : constant List_Id := New_List;
 
    begin
-      if Is_Return_By_Reference_Type (Typ) then
+      if Is_Inherently_Limited_Type (Typ) then
          Controller_Typ := RTE (RE_Limited_Record_Controller);
       else
          Controller_Typ := RTE (RE_Record_Controller);
@@ -2173,53 +2748,78 @@ package body Exp_Ch7 is
 
       case Prim is
          when Initialize_Case =>
-            declare
-               Res  : constant List_Id := New_List;
+            Append_List_To (Res,
+              Make_Init_Call (
+                Ref          => Controller_Ref,
+                Typ          => Controller_Typ,
+                Flist_Ref    => Make_Identifier (Loc, Name_L),
+                With_Attach  => Make_Identifier (Loc, Name_B)));
 
-            begin
-               Append_List_To (Res,
-                 Make_Init_Call (
-                   Ref          => Controller_Ref,
-                   Typ          => Controller_Typ,
-                   Flist_Ref    => Make_Identifier (Loc, Name_L),
-                   With_Attach  => Make_Identifier (Loc, Name_B)));
+            --  When the type is also a controlled type by itself,
+            --  Initialize it and attach it to the finalization chain
 
-               --  When the type is also a controlled type by itself,
-               --  Initialize it and attach it at the end of the internal
-               --  finalization chain
+            if Is_Controlled (Typ) then
+               Append_To (Res,
+                 Make_Procedure_Call_Statement (Loc,
+                   Name => New_Reference_To (
+                     Find_Prim_Op (Typ, Name_Of (Prim)), Loc),
+                   Parameter_Associations =>
+                     New_List (New_Copy_Tree (Obj_Ref))));
 
-               if Is_Controlled (Typ) then
-                  Append_To (Res,
-                    Make_Procedure_Call_Statement (Loc,
-                      Name => New_Reference_To (
-                        Find_Prim_Op (Typ, Name_Of (Prim)), Loc),
-
-                      Parameter_Associations =>
-                        New_List (New_Copy_Tree (Obj_Ref))));
-
-                  Append_To (Res, Make_Attach_Call (
-                    Obj_Ref      => New_Copy_Tree (Obj_Ref),
-                    Flist_Ref    =>
-                      Make_Selected_Component (Loc,
-                        Prefix        => New_Copy_Tree (Controller_Ref),
-                        Selector_Name => Make_Identifier (Loc, Name_F)),
-                    With_Attach => Make_Integer_Literal (Loc, 1)));
-               end if;
-
-               return Res;
-            end;
+               Append_To (Res, Make_Attach_Call (
+                 Obj_Ref      => New_Copy_Tree (Obj_Ref),
+                 Flist_Ref    => Make_Identifier (Loc, Name_L),
+                 With_Attach => Make_Identifier (Loc, Name_B)));
+            end if;
 
          when Adjust_Case =>
-            return
+            Append_List_To (Res,
               Make_Adjust_Call (Controller_Ref, Controller_Typ,
                 Make_Identifier (Loc, Name_L),
-                Make_Identifier (Loc, Name_B));
+                Make_Identifier (Loc, Name_B)));
+
+            --  When the type is also a controlled type by itself,
+            --  Adjust it it and attach it to the finalization chain
+
+            if Is_Controlled (Typ) then
+               Append_To (Res,
+                 Make_Procedure_Call_Statement (Loc,
+                   Name => New_Reference_To (
+                     Find_Prim_Op (Typ, Name_Of (Prim)), Loc),
+                   Parameter_Associations =>
+                     New_List (New_Copy_Tree (Obj_Ref))));
+
+               Append_To (Res, Make_Attach_Call (
+                 Obj_Ref      => New_Copy_Tree (Obj_Ref),
+                 Flist_Ref    => Make_Identifier (Loc, Name_L),
+                 With_Attach => Make_Identifier (Loc, Name_B)));
+            end if;
 
          when Finalize_Case =>
-            return
+            if Is_Controlled (Typ) then
+               Append_To (Res,
+                 Make_Implicit_If_Statement (Obj_Ref,
+                   Condition => Make_Identifier (Loc, Name_B),
+                   Then_Statements => New_List (
+                     Make_Procedure_Call_Statement (Loc,
+                       Name => New_Reference_To (RTE (RE_Finalize_One), Loc),
+                       Parameter_Associations => New_List (
+                         OK_Convert_To (RTE (RE_Finalizable),
+                           New_Copy_Tree (Obj_Ref))))),
+
+                   Else_Statements => New_List (
+                     Make_Procedure_Call_Statement (Loc,
+                       Name => New_Reference_To (
+                         Find_Prim_Op (Typ, Name_Of (Prim)), Loc),
+                       Parameter_Associations =>
+                        New_List (New_Copy_Tree (Obj_Ref))))));
+            end if;
+
+            Append_List_To (Res,
               Make_Final_Call (Controller_Ref, Controller_Typ,
-                Make_Identifier (Loc, Name_B));
+                Make_Identifier (Loc, Name_B)));
       end case;
+      return Res;
    end Make_Deep_Record_Body;
 
    ----------------------
@@ -2229,8 +2829,7 @@ package body Exp_Ch7 is
    function Make_Final_Call
      (Ref         : Node_Id;
       Typ         : Entity_Id;
-      With_Detach : Node_Id)
-      return        List_Id
+      With_Detach : Node_Id) return List_Id
    is
       Loc   : constant Source_Ptr := Sloc (Ref);
       Res   : constant List_Id    := New_List;
@@ -2262,13 +2861,27 @@ package body Exp_Ch7 is
       Utyp := Underlying_Type (Base_Type (Utyp));
       Set_Assignment_OK (Cref);
 
-      --  Deal with non-tagged derivation of private views
+      --  Deal with non-tagged derivation of private views. If the parent is
+      --  now known to be protected, the finalization routine is the one
+      --  defined on the corresponding record of the ancestor (corresponding
+      --  records do not automatically inherit operations, but maybe they
+      --  should???)
 
       if Is_Untagged_Derivation (Typ) then
-         Utyp := Underlying_Type (Root_Type (Base_Type (Typ)));
+         if Is_Protected_Type (Typ) then
+            Utyp := Corresponding_Record_Type (Root_Type (Base_Type (Typ)));
+         else
+            Utyp := Underlying_Type (Root_Type (Base_Type (Typ)));
+         end if;
+
          Cref := Unchecked_Convert_To (Utyp, Cref);
+
+         --  We need to set Assignment_OK to prevent problems with unchecked
+         --  conversions, where we do not want them to be converted back in the
+         --  case of untagged record derivation (see code in Make_*_Call
+         --  procedures for similar situations).
+
          Set_Assignment_OK (Cref);
-         --  To prevent problems with UC see 1.156 RH ???
       end if;
 
       --  If the underlying_type is a subtype, we are dealing with
@@ -2288,9 +2901,9 @@ package body Exp_Ch7 is
         or else Is_Class_Wide_Type (Typ)
       then
          if Is_Tagged_Type (Utyp) then
-            Proc := Find_Prim_Op (Utyp, Deep_Name_Of (Finalize_Case));
+            Proc := Find_Prim_Op (Utyp, TSS_Deep_Finalize);
          else
-            Proc := TSS (Utyp, Deep_Name_Of (Finalize_Case));
+            Proc := TSS (Utyp, TSS_Deep_Finalize);
          end if;
 
          Cref := Convert_View (Proc, Cref);
@@ -2344,15 +2957,63 @@ package body Exp_Ch7 is
          end if;
       end if;
 
-         --  Treat this as a reference to Finalize if the Finalize routine
-         --  comes from source. The call is not explicit, but it is near
-         --  enough, and we won't typically get explicit adjust calls.
-
-         if Comes_From_Source (Proc) then
-            Generate_Reference (Proc, Ref);
-         end if;
       return Res;
    end Make_Final_Call;
+
+   -------------------------------------
+   -- Make_Handler_For_Ctrl_Operation --
+   -------------------------------------
+
+   --  Generate:
+
+   --    when E : others =>
+   --      Raise_From_Controlled_Operation (X => E);
+
+   --  or:
+
+   --    when others =>
+   --      raise Program_Error [finalize raised exception];
+
+   --  depending on whether Raise_From_Controlled_Operation is available
+
+   function Make_Handler_For_Ctrl_Operation
+     (Loc : Source_Ptr) return Node_Id
+   is
+      E_Occ : Entity_Id;
+      --  Choice parameter (for the first case above)
+
+      Raise_Node : Node_Id;
+      --  Procedure call or raise statement
+
+   begin
+      if RTE_Available (RE_Raise_From_Controlled_Operation) then
+
+         --  Standard runtime: add choice parameter E, and pass it to
+         --  Raise_From_Controlled_Operation so that the original exception
+         --  name and message can be recorded in the exception message for
+         --  Program_Error.
+
+         E_Occ := Make_Defining_Identifier (Loc, Name_E);
+         Raise_Node := Make_Procedure_Call_Statement (Loc,
+                         Name =>
+                           New_Occurrence_Of (
+                             RTE (RE_Raise_From_Controlled_Operation), Loc),
+                         Parameter_Associations => New_List (
+                           New_Occurrence_Of (E_Occ, Loc)));
+
+      else
+         --  Restricted runtime: exception messages are not supported
+
+         E_Occ := Empty;
+         Raise_Node := Make_Raise_Program_Error (Loc,
+                         Reason => PE_Finalize_Raised_Exception);
+      end if;
+
+      return Make_Implicit_Exception_Handler (Loc,
+               Exception_Choices => New_List (Make_Others_Choice (Loc)),
+               Choice_Parameter  => E_Occ,
+               Statements        => New_List (Raise_Node));
+   end Make_Handler_For_Ctrl_Operation;
 
    --------------------
    -- Make_Init_Call --
@@ -2362,8 +3023,7 @@ package body Exp_Ch7 is
      (Ref          : Node_Id;
       Typ          : Entity_Id;
       Flist_Ref    : Node_Id;
-      With_Attach  : Node_Id)
-      return         List_Id
+      With_Attach  : Node_Id) return List_Id
    is
       Loc     : constant Source_Ptr := Sloc (Ref);
       Is_Conc : Boolean;
@@ -2452,6 +3112,8 @@ package body Exp_Ch7 is
 
       else -- Is_Controlled (Utyp)
          Proc  := Find_Prim_Op (Utyp, Name_Of (Initialize_Case));
+         Check_Visibly_Controlled (Initialize_Case, Typ, Proc, Cref);
+
          Cref  := Convert_View (Proc, Cref);
          Cref2 := New_Copy_Tree (Cref);
 
@@ -2462,14 +3124,6 @@ package body Exp_Ch7 is
 
          Append_To (Res,
            Make_Attach_Call (Cref, Flist_Ref, Attach));
-
-         --  Treat this as a reference to Initialize if Initialize routine
-         --  comes from source. The call is not explicit, but it is near
-         --  enough, and we won't typically get explicit adjust calls.
-
-         if Comes_From_Source (Proc) then
-            Generate_Reference (Proc, Ref);
-         end if;
       end if;
 
       return Res;
@@ -2487,8 +3141,7 @@ package body Exp_Ch7 is
 
    function Make_Transient_Block
      (Loc    : Source_Ptr;
-      Action : Node_Id)
-      return   Node_Id
+      Action : Node_Id) return Node_Id
    is
       Flist  : constant Entity_Id := Finalization_Chain_Entity (Current_Scope);
       Decls  : constant List_Id   := New_List;
@@ -2499,9 +3152,10 @@ package body Exp_Ch7 is
    begin
       --  Case where only secondary stack use is involved
 
-      if Uses_Sec_Stack (Current_Scope)
+      if VM_Target = No_VM
+        and then Uses_Sec_Stack (Current_Scope)
         and then No (Flist)
-        and then Nkind (Action) /= N_Return_Statement
+        and then Nkind (Action) /= N_Simple_Return_Statement
         and then Nkind (Par) /= N_Exception_Handler
       then
 
@@ -2528,10 +3182,8 @@ package body Exp_Ch7 is
                   Set_Uses_Sec_Stack (Current_Scope, False);
 
                   if not Requires_Transient_Scope (Etype (S)) then
-                     if not Functions_Return_By_DSP_On_Target then
-                        Set_Uses_Sec_Stack (S, True);
-                        Check_Restriction (No_Secondary_Stack, Action);
-                     end if;
+                     Set_Uses_Sec_Stack (S, True);
+                     Check_Restriction (No_Secondary_Stack, Action);
                   end if;
 
                   exit;
@@ -2549,11 +3201,8 @@ package body Exp_Ch7 is
                elsif K = E_Procedure
                  or else K = E_Block
                then
-                  if not Functions_Return_By_DSP_On_Target then
-                     Set_Uses_Sec_Stack (S, True);
-                     Check_Restriction (No_Secondary_Stack, Action);
-                  end if;
-
+                  Set_Uses_Sec_Stack (S, True);
+                  Check_Restriction (No_Secondary_Stack, Action);
                   Set_Uses_Sec_Stack (Current_Scope, False);
                   exit;
 
@@ -2571,7 +3220,6 @@ package body Exp_Ch7 is
 
       declare
          Last_Inserted : Node_Id := Prev (Action);
-
       begin
          if Present (Last_Inserted) then
             Freeze_All (First_Entity (Current_Scope), Last_Inserted);
@@ -2775,7 +3423,7 @@ package body Exp_Ch7 is
       --  released upon its exit unless this is a function that returns on
       --  the sec stack in which case this will be done by the caller.
 
-      if Uses_SS then
+      if VM_Target = No_VM and then Uses_SS then
          S := Enclosing_Dynamic_Scope (S);
 
          if Ekind (S) = E_Function
@@ -2823,7 +3471,7 @@ package body Exp_Ch7 is
       Loc  : constant Source_Ptr := Sloc (N);
       E    : constant Entity_Id :=
                Make_Defining_Identifier (Loc, New_Internal_Name ('E'));
-      Etyp : Entity_Id := Etype (N);
+      Etyp : constant Entity_Id := Etype (N);
 
    begin
       Insert_Actions (N, New_List (
@@ -2863,7 +3511,7 @@ package body Exp_Ch7 is
    --       end _Clean;
 
    --    begin
-   --       <Instr uction>;
+   --       <Instruction>;
    --    at end
    --       _Clean;
    --    end;

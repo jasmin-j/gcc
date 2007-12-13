@@ -1,11 +1,10 @@
 #if defined(__mips__) && defined(__sgi__)
 #include <sys/fpu.h>
 #endif /* defined(__mips__) && defined(__sgi__) */
-#include <limits.h>
-#if UINT_MAX != 4294967295u || (ULONG_LONG_MAX != 18446744073709551615ull && ULONG_MAX != 18446744073709551615ull)
+#if __INT_MAX__ != 2147483647 || (__LONG_LONG_MAX__ != 9223372036854775807ll && __LONG_MAX__ != 9223372036854775807ll)
 int main(void) { exit (0); }
 #else
-#if ULONG_MAX != 18446744073709551615ull
+#if __LONG_MAX__ != 9223372036854775807ll
 typedef unsigned long long ull;
 #else
 typedef unsigned long ull;
@@ -49,7 +48,7 @@ int main()
     exit (0);
   
   c(0x3690000000000000ULL, 0x00000000U);
-#if (defined __arm__ || defined __thumb__) && ! defined __ARMEB__
+#if (defined __arm__ || defined __thumb__) && ! (defined __ARMEB__ || defined __VFP_FP__)
   /* The ARM always stores FP numbers in big-wordian format,
      even when running in little-byteian mode.  */
   c(0x0000000136900000ULL, 0x00000001U);

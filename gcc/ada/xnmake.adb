@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -54,6 +52,7 @@ with Ada.Strings.Unbounded;         use Ada.Strings.Unbounded;
 with Ada.Strings.Unbounded.Text_IO; use Ada.Strings.Unbounded.Text_IO;
 with Ada.Strings.Maps;              use Ada.Strings.Maps;
 with Ada.Strings.Maps.Constants;    use Ada.Strings.Maps.Constants;
+with Ada.Streams.Stream_IO;         use Ada.Streams.Stream_IO;
 with Ada.Text_IO;                   use Ada.Text_IO;
 
 with GNAT.Spitbol;                  use GNAT.Spitbol;
@@ -77,7 +76,6 @@ procedure XNmake is
    Synonym    : VString := Nul;
    X          : VString := Nul;
 
-   Lineno : Natural;
    NWidth : Natural;
 
    FileS : VString := V ("nmake.ads");
@@ -87,13 +85,12 @@ procedure XNmake is
    Given_File : VString := Nul;
    --  File name given by command line argument
 
-   InS,  InT  : File_Type;
-   OutS, OutB : File_Type;
+   subtype Sfile is Ada.Streams.Stream_IO.File_Type;
 
-   wsp   : Pattern := Span (' ' & ASCII.HT);
+   InS,  InT  : Ada.Text_IO.File_Type;
+   OutS, OutB : Sfile;
 
-   --  Note: in following patterns, we break up the word revision to
-   --  avoid RCS getting enthusiastic about updating the reference!
+   wsp : Pattern := Span (' ' & ASCII.HT);
 
    Body_Only : Pattern := BreakX (' ') * X & Span (' ') & "--  body only";
    Spec_Only : Pattern := BreakX (' ') * X & Span (' ') & "--  spec only";
@@ -133,6 +130,10 @@ procedure XNmake is
    V_List_Id   : constant VString := V ("List_Id");
    V_Elist_Id  : constant VString := V ("Elist_Id");
    V_Boolean   : constant VString := V ("Boolean");
+
+   procedure Put_Line (F : Sfile; S : String);
+   procedure Put_Line (F : Sfile; S : VString);
+   --  Local version of Put_Line ensures Unix style line endings
 
    procedure WriteS  (S : String);
    procedure WriteB  (S : String);
@@ -192,12 +193,20 @@ procedure XNmake is
       end if;
    end WriteS;
 
+   procedure Put_Line (F : Sfile; S : String) is
+   begin
+      String'Write (Stream (F), S);
+      Character'Write (Stream (F), ASCII.LF);
+   end Put_Line;
+
+   procedure Put_Line (F : Sfile; S : VString) is
+   begin
+      Put_Line (F, To_String (S));
+   end Put_Line;
+
 --  Start of processing for XNmake
 
 begin
-   --  Capture our revision (following line updated by RCS)
-
-   Lineno := 0;
    NWidth := 28;
    Anchored_Mode := True;
 
@@ -273,7 +282,11 @@ begin
          end loop;
       end if;
 
+      --  Loop keeps going until "package" keyword written
+
       exit when Match (Line, "package");
+
+      --  Deal with WITH lines, writing to body or spec as appropriate
 
       if Match (Line, Body_Only, M) then
          Replace (M, X);
@@ -283,12 +296,16 @@ begin
          Replace (M, X);
          WriteS (Line);
 
+      --  Change header from Template to Spec and write to spec file
+
       else
          if Match (Line, Templ, M) then
             Replace (M, A &  "    S p e c    ");
          end if;
 
          WriteS (Line);
+
+         --  Write header line to body file
 
          if Match (Line, Spec, M) then
             Replace (M, A &  "B o d y");
@@ -354,12 +371,18 @@ begin
                then
                   Match (Field, Get_Field);
 
-                  if    Field = "Str"   then Field := V_String_Id;
-                  elsif Field = "Node"  then Field := V_Node_Id;
-                  elsif Field = "Name"  then Field := V_Name_Id;
-                  elsif Field = "List"  then Field := V_List_Id;
-                  elsif Field = "Elist" then Field := V_Elist_Id;
-                  elsif Field = "Flag"  then Field := V_Boolean;
+                  if    Field = "Str"   then
+                     Field := V_String_Id;
+                  elsif Field = "Node"  then
+                     Field := V_Node_Id;
+                  elsif Field = "Name"  then
+                     Field := V_Name_Id;
+                  elsif Field = "List"  then
+                     Field := V_List_Id;
+                  elsif Field = "Elist" then
+                     Field := V_Elist_Id;
+                  elsif Field = "Flag"  then
+                     Field := V_Boolean;
                   end if;
 
                   if Field = "Boolean" then

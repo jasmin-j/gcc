@@ -1,3 +1,10 @@
+/* This does not assemble on m68hc11 because the function is larger
+   than 64K.  */
+/* { dg-do assemble } */
+/* { dg-xfail-if "function larger than 64K" { m6811-*-* } { "*" } { "" } } */
+/* { dg-xfail-if "jump beyond 128K not supported" { xtensa-*-* } { "-O0" } { "" } } */
+/* { dg-skip-if "" { m32c-*-* } { "*" } { "" } } */
+
 /* This testcase exposed two branch shortening bugs on powerpc.  */
 
 #define C(a,b) \

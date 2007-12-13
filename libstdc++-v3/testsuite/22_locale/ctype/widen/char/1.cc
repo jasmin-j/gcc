@@ -1,6 +1,6 @@
 // 2002-05-24 bkoz
 
-// Copyright (C) 2002 Free Software Foundation, Inc.
+// Copyright (C) 2002, 2004 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -38,8 +38,7 @@ void test01()
   using namespace std;
   typedef char wide_type;
 
-  bool test = true;
-  const char dfault = '?';
+  bool test __attribute__((unused)) = true;
   const locale loc_c = locale::classic();
   const ctype<wide_type>& ctype_c = use_facet<ctype<wide_type> >(loc_c); 
 
@@ -48,15 +47,15 @@ void test01()
   vector<wide_type> 		wide_chars(narrow.length() + 1);
   
   // widen(char c) const
-  for (int i = 0; i < narrow.length(); ++i)
+  for (size_t i = 0; i < narrow.length(); ++i)
     {
       char c = ctype_c.widen(narrow[i]);
       VERIFY( c == wide[i] );
     }
 
   // widen(const char* low, const char* high, charT* dest) const
-  ctype_c.widen(&narrow[0], &narrow[narrow.length()], &wide_chars[0]);  
-  for (int i = 0; i < narrow.length(); ++i)
+  ctype_c.widen(&narrow[0], &narrow[0] + narrow.length(), &wide_chars[0]);  
+  for (size_t i = 0; i < narrow.length(); ++i)
     VERIFY( wide_chars[i] == wide[i] );
 }
 

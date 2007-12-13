@@ -1,29 +1,128 @@
 /* Definitions of target machine for GNU compiler, for Sun SPARC.
    Copyright (C) 1987, 1988, 1989, 1992, 1994, 1995, 1996, 1997, 1998, 1999
-   2000, 2001, 2002 Free Software Foundation, Inc.
+   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com).
-   64 bit SPARC V9 support by Michael Tiemann, Jim Wilson, and Doug Evans,
+   64-bit SPARC-V9 support by Michael Tiemann, Jim Wilson, and Doug Evans,
    at Cygnus Support.
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
+
+#include "config/vxworks-dummy.h"
 
 /* Note that some other tm.h files include this one and then override
    whatever definitions are necessary.  */
+
+/* Define the specific costs for a given cpu */
+
+struct processor_costs {
+  /* Integer load */
+  const int int_load;
+
+  /* Integer signed load */
+  const int int_sload;
+
+  /* Integer zeroed load */
+  const int int_zload;
+
+  /* Float load */
+  const int float_load;
+
+  /* fmov, fneg, fabs */
+  const int float_move;
+
+  /* fadd, fsub */
+  const int float_plusminus;
+
+  /* fcmp */
+  const int float_cmp;
+
+  /* fmov, fmovr */
+  const int float_cmove;
+
+  /* fmul */
+  const int float_mul;
+
+  /* fdivs */
+  const int float_div_sf;
+
+  /* fdivd */
+  const int float_div_df;
+
+  /* fsqrts */
+  const int float_sqrt_sf;
+
+  /* fsqrtd */
+  const int float_sqrt_df;
+
+  /* umul/smul */
+  const int int_mul;
+
+  /* mulX */
+  const int int_mulX;
+
+  /* integer multiply cost for each bit set past the most
+     significant 3, so the formula for multiply cost becomes:
+
+	if (rs1 < 0)
+	  highest_bit = highest_clear_bit(rs1);
+	else
+	  highest_bit = highest_set_bit(rs1);
+	if (highest_bit < 3)
+	  highest_bit = 3;
+	cost = int_mul{,X} + ((highest_bit - 3) / int_mul_bit_factor);
+
+     A value of zero indicates that the multiply costs is fixed,
+     and not variable.  */
+  const int int_mul_bit_factor;
+
+  /* udiv/sdiv */
+  const int int_div;
+
+  /* divX */
+  const int int_divX;
+
+  /* movcc, movr */
+  const int int_cmove;
+
+  /* penalty for shifts, due to scheduling rules etc. */
+  const int shift_penalty;
+};
+
+extern const struct processor_costs *sparc_costs;
+
+/* Target CPU builtins.  FIXME: Defining sparc is for the benefit of
+   Solaris only; otherwise just define __sparc__.  Sadly the headers
+   are such a mess there is no Solaris-specific header.  */
+#define TARGET_CPU_CPP_BUILTINS()		\
+  do						\
+    {						\
+	builtin_define_std ("sparc");		\
+	if (TARGET_64BIT)			\
+	  { 					\
+	    builtin_assert ("cpu=sparc64");	\
+	    builtin_assert ("machine=sparc64");	\
+	  }					\
+	else					\
+	  { 					\
+	    builtin_assert ("cpu=sparc");	\
+	    builtin_assert ("machine=sparc");	\
+	  }					\
+    }						\
+  while (0)
 
 /* Specify this in a cover file to provide bi-architecture (32/64) support.  */
 /* #define SPARC_BI_ARCH */
@@ -49,35 +148,41 @@ Boston, MA 02111-1307, USA.  */
 #endif /* IN_LIBGCC2 */
 #define TARGET_ARCH64 (! TARGET_ARCH32)
 
-/* Code model selection.
-   -mcmodel is used to select the v9 code model.
-   Different code models aren't supported for v7/8 code.
+/* Code model selection in 64-bit environment.
 
-   TARGET_CM_32:     32 bit address space, top 32 bits = 0,
-		     pointers are 32 bits.  Note that this isn't intended
-                     to imply a v7/8 abi.
+   The machine mode used for addresses is 32-bit wide:
 
-   TARGET_CM_MEDLOW: 32 bit address space, top 32 bits = 0,
-                     avoid generating %uhi and %ulo terms,
-		     pointers are 64 bits.
+   TARGET_CM_32:     32-bit address space.
+                     It is the code model used when generating 32-bit code.
 
-   TARGET_CM_MEDMID: 64 bit address space.
-                     The executable must be in the low 16 TB of memory.
-                     This corresponds to the low 44 bits, and the %[hml]44
-                     relocs are used.  The text segment has a maximum size
-                     of 31 bits.
+   The machine mode used for addresses is 64-bit wide:
 
-   TARGET_CM_MEDANY: 64 bit address space.
-                     The text and data segments have a maximum size of 31
-                     bits and may be located anywhere.  The maximum offset
-                     from any instruction to the label _GLOBAL_OFFSET_TABLE_
-                     is 31 bits.
+   TARGET_CM_MEDLOW: 32-bit address space.
+                     The executable must be in the low 32 bits of memory.
+                     This avoids generating %uhi and %ulo terms.  Programs
+                     can be statically or dynamically linked.
 
-   TARGET_CM_EMBMEDANY: 64 bit address space.
-                     The text and data segments have a maximum size of 31 bits
-                     and may be located anywhere.  Register %g4 contains
-                     the start address of the data segment.
-*/
+   TARGET_CM_MEDMID: 44-bit address space.
+                     The executable must be in the low 44 bits of memory,
+                     and the %[hml]44 terms are used.  The text and data
+                     segments have a maximum size of 2GB (31-bit span).
+                     The maximum offset from any instruction to the label
+                     _GLOBAL_OFFSET_TABLE_ is 2GB (31-bit span).
+
+   TARGET_CM_MEDANY: 64-bit address space.
+                     The text and data segments have a maximum size of 2GB
+                     (31-bit span) and may be located anywhere in memory.
+                     The maximum offset from any instruction to the label
+                     _GLOBAL_OFFSET_TABLE_ is 2GB (31-bit span).
+
+   TARGET_CM_EMBMEDANY: 64-bit address space.
+                     The text and data segments have a maximum size of 2GB
+                     (31-bit span) and may be located anywhere in memory.
+                     The global register %g4 contains the start address of
+                     the data segment.  Programs are statically linked and
+                     PIC is not supported.
+
+   Different code models are not supported in 32-bit environment.  */
 
 enum cmodel {
   CM_32,
@@ -87,8 +192,6 @@ enum cmodel {
   CM_EMBMEDANY
 };
 
-/* Value of -mcmodel specified by user.  */
-extern const char *sparc_cmodel_string;
 /* One of CM_FOO.  */
 extern enum cmodel sparc_cmodel;
 
@@ -99,6 +202,20 @@ extern enum cmodel sparc_cmodel;
 #define TARGET_CM_EMBMEDANY (sparc_cmodel == CM_EMBMEDANY)
 
 #define SPARC_DEFAULT_CMODEL CM_32
+
+/* The SPARC-V9 architecture defines a relaxed memory ordering model (RMO)
+   which requires the following macro to be true if enabled.  Prior to V9,
+   there are no instructions to even talk about memory synchronization.
+   Note that the UltraSPARC III processors don't implement RMO, unlike the
+   UltraSPARC II processors.  Niagara and Niagara-2 do not implement RMO
+   either.
+
+   Default to false; for example, Solaris never enables RMO, only ever uses
+   total memory ordering (TMO).  */
+#define SPARC_RELAXED_ORDERING false
+
+/* Do not use the .note.GNU-stack convention by default.  */
+#define NEED_INDICATE_EXEC_STACK 0
 
 /* This is call-clobbered in the normal ABI, but is reserved in the
    home grown (aka upward compatible) embedded ABI.  */
@@ -123,10 +240,14 @@ extern enum cmodel sparc_cmodel;
 #define TARGET_CPU_sparc64	7	/* alias */
 #define TARGET_CPU_ultrasparc	8
 #define TARGET_CPU_ultrasparc3	9
+#define TARGET_CPU_niagara	10
+#define TARGET_CPU_niagara2	11
 
 #if TARGET_CPU_DEFAULT == TARGET_CPU_v9 \
  || TARGET_CPU_DEFAULT == TARGET_CPU_ultrasparc \
- || TARGET_CPU_DEFAULT == TARGET_CPU_ultrasparc3
+ || TARGET_CPU_DEFAULT == TARGET_CPU_ultrasparc3 \
+ || TARGET_CPU_DEFAULT == TARGET_CPU_niagara \
+ || TARGET_CPU_DEFAULT == TARGET_CPU_niagara2
 
 #define CPP_CPU32_DEFAULT_SPEC ""
 #define ASM_CPU32_DEFAULT_SPEC ""
@@ -144,6 +265,14 @@ extern enum cmodel sparc_cmodel;
 #define ASM_CPU64_DEFAULT_SPEC "-Av9a"
 #endif
 #if TARGET_CPU_DEFAULT == TARGET_CPU_ultrasparc3
+#define CPP_CPU64_DEFAULT_SPEC "-D__sparc_v9__"
+#define ASM_CPU64_DEFAULT_SPEC "-Av9b"
+#endif
+#if TARGET_CPU_DEFAULT == TARGET_CPU_niagara
+#define CPP_CPU64_DEFAULT_SPEC "-D__sparc_v9__"
+#define ASM_CPU64_DEFAULT_SPEC "-Av9b"
+#endif
+#if TARGET_CPU_DEFAULT == TARGET_CPU_niagara2
 #define CPP_CPU64_DEFAULT_SPEC "-D__sparc_v9__"
 #define ASM_CPU64_DEFAULT_SPEC "-Av9b"
 #endif
@@ -237,17 +366,12 @@ extern enum cmodel sparc_cmodel;
 %{mcpu=v9:-D__sparc_v9__} \
 %{mcpu=ultrasparc:-D__sparc_v9__} \
 %{mcpu=ultrasparc3:-D__sparc_v9__} \
+%{mcpu=niagara:-D__sparc_v9__} \
+%{mcpu=niagara2:-D__sparc_v9__} \
 %{!mcpu*:%{!mcypress:%{!msparclite:%{!mf930:%{!mf934:%{!mv8:%{!msupersparc:%(cpp_cpu_default)}}}}}}} \
 "
-
-/* ??? The GCC_NEW_VARARGS macro is now obsolete, because gcc always uses
-   the right varags.h file when bootstrapping.  */
-/* ??? It's not clear what value we want to use for -Acpu/machine for
-   sparc64 in 32 bit environments, so for now we only use `sparc64' in
-   64 bit environments.  */
-
-#define CPP_ARCH32_SPEC "-D__GCC_NEW_VARARGS__ -Acpu=sparc -Amachine=sparc"
-#define CPP_ARCH64_SPEC "-D__arch64__ -Acpu=sparc64 -Amachine=sparc64"
+#define CPP_ARCH32_SPEC ""
+#define CPP_ARCH64_SPEC "-D__arch64__"
 
 #define CPP_ARCH_DEFAULT_SPEC \
 (DEFAULT_ARCH32_P ? CPP_ARCH32_SPEC : CPP_ARCH64_SPEC)
@@ -293,6 +417,8 @@ extern enum cmodel sparc_cmodel;
 %{mcpu=v9:-Av9} \
 %{mcpu=ultrasparc:%{!mv8plus:-Av9a}} \
 %{mcpu=ultrasparc3:%{!mv8plus:-Av9b}} \
+%{mcpu=niagara:%{!mv8plus:-Av9b}} \
+%{mcpu=niagara2:%{!mv8plus:-Av9b}} \
 %{!mcpu*:%{!mcypress:%{!msparclite:%{!mf930:%{!mf934:%{!mv8:%{!msupersparc:%(asm_cpu_default)}}}}}}} \
 "
 
@@ -323,7 +449,7 @@ extern enum cmodel sparc_cmodel;
 /* Special flags to the Sun-4 assembler when using pipe for input.  */
 
 #define ASM_SPEC "\
-%{R} %{!pg:%{!p:%{fpic:-k} %{fPIC:-k}}} %{keep-local-as-symbols:-L} \
+%{R} %{!pg:%{!p:%{fpic|fPIC|fpie|fPIE:-k}}} %{keep-local-as-symbols:-L} \
 %(asm_cpu) %(asm_relax)"
 
 #define AS_NEEDS_DASH_FOR_PIPED_INPUT
@@ -333,7 +459,7 @@ extern enum cmodel sparc_cmodel;
    is an initializer with a subgrouping for each command option.
 
    Each subgrouping contains a string constant, that defines the
-   specification name, and a string constant that used by the GNU CC driver
+   specification name, and a string constant that used by the GCC driver
    program.
 
    Do not define this macro if it does not need to do anything.  */
@@ -373,135 +499,18 @@ extern enum cmodel sparc_cmodel;
 /* Show we can debug even without a frame pointer.  */
 #define CAN_DEBUG_WITHOUT_FP
 
+/* Option handling.  */
+
 #define OVERRIDE_OPTIONS  sparc_override_options ()
-
-/* Generate DBX debugging information.  */
-
-#define DBX_DEBUGGING_INFO 1
 
-/* Run-time compilation parameters selecting different hardware subsets.  */
-
-extern int target_flags;
-
-/* Nonzero if we should generate code to use the fpu.  */
-#define MASK_FPU 1
-#define TARGET_FPU (target_flags & MASK_FPU)
-
-/* Nonzero if we should assume that double pointers might be unaligned.
-   This can happen when linking gcc compiled code with other compilers,
-   because the ABI only guarantees 4 byte alignment.  */
-#define MASK_UNALIGNED_DOUBLES 4
-#define TARGET_UNALIGNED_DOUBLES (target_flags & MASK_UNALIGNED_DOUBLES)
-
-/* Nonzero means that we should generate code for a v8 sparc.  */
-#define MASK_V8 0x8
-#define TARGET_V8 (target_flags & MASK_V8)
-
-/* Nonzero means that we should generate code for a sparclite.
-   This enables the sparclite specific instructions, but does not affect
-   whether FPU instructions are emitted.  */
-#define MASK_SPARCLITE 0x10
-#define TARGET_SPARCLITE (target_flags & MASK_SPARCLITE)
-
-/* Nonzero if we're compiling for the sparclet.  */
-#define MASK_SPARCLET 0x20
-#define TARGET_SPARCLET (target_flags & MASK_SPARCLET)
-
-/* Nonzero if we're compiling for v9 sparc.
-   Note that v9's can run in 32 bit mode so this doesn't necessarily mean
-   the word size is 64.  */
-#define MASK_V9 0x40
-#define TARGET_V9 (target_flags & MASK_V9)
-
-/* Nonzero to generate code that uses the instructions deprecated in
-   the v9 architecture.  This option only applies to v9 systems.  */
-/* ??? This isn't user selectable yet.  It's used to enable such insns
-   on 32 bit v9 systems and for the moment they're permanently disabled
-   on 64 bit v9 systems.  */
-#define MASK_DEPRECATED_V8_INSNS 0x80
-#define TARGET_DEPRECATED_V8_INSNS (target_flags & MASK_DEPRECATED_V8_INSNS)
-
 /* Mask of all CPU selection flags.  */
 #define MASK_ISA \
 (MASK_V8 + MASK_SPARCLITE + MASK_SPARCLET + MASK_V9 + MASK_DEPRECATED_V8_INSNS)
 
-/* Nonzero means don't pass `-assert pure-text' to the linker.  */
-#define MASK_IMPURE_TEXT 0x100
-#define TARGET_IMPURE_TEXT (target_flags & MASK_IMPURE_TEXT)
-
-/* Nonzero means that we should generate code using a flat register window
-   model, i.e. no save/restore instructions are generated, which is
-   compatible with normal sparc code.
-   The frame pointer is %i7 instead of %fp.  */
-#define MASK_FLAT 0x200
-#define TARGET_FLAT (target_flags & MASK_FLAT)
-
-/* Nonzero means use the registers that the SPARC ABI reserves for
-   application software.  This must be the default to coincide with the
-   setting in FIXED_REGISTERS.  */
-#define MASK_APP_REGS 0x400
-#define TARGET_APP_REGS (target_flags & MASK_APP_REGS)
-
-/* Option to select how quad word floating point is implemented.
-   When TARGET_HARD_QUAD is true, we use the hardware quad instructions.
-   Otherwise, we use the SPARC ABI quad library functions.  */
-#define MASK_HARD_QUAD 0x800
-#define TARGET_HARD_QUAD (target_flags & MASK_HARD_QUAD)
-
-/* Nonzero on little-endian machines.  */
-/* ??? Little endian support currently only exists for sparclet-aout and
-   sparc64-elf configurations.  May eventually want to expand the support
-   to all targets, but for now it's kept local to only those two.  */
-#define MASK_LITTLE_ENDIAN 0x1000
-#define TARGET_LITTLE_ENDIAN (target_flags & MASK_LITTLE_ENDIAN)
-
-/* 0x2000, 0x4000 are unused */
-
-/* Nonzero if pointers are 64 bits.  */
-#define MASK_PTR64 0x8000
-#define TARGET_PTR64 (target_flags & MASK_PTR64)
-
-/* Nonzero if generating code to run in a 64 bit environment.
-   This is intended to only be used by TARGET_ARCH{32,64} as they are the
-   mechanism used to control compile time or run time selection.  */
-#define MASK_64BIT 0x10000
-#define TARGET_64BIT (target_flags & MASK_64BIT)
-
-/* 0x20000,0x40000 unused */
-
-/* Nonzero means use a stack bias of 2047.  Stack offsets are obtained by
-   adding 2047 to %sp.  This option is for v9 only and is the default.  */
-#define MASK_STACK_BIAS 0x80000
-#define TARGET_STACK_BIAS (target_flags & MASK_STACK_BIAS)
-
-/* 0x100000,0x200000 unused */
-
-/* Nonzero means -m{,no-}fpu was passed on the command line.  */
-#define MASK_FPU_SET 0x400000
-#define TARGET_FPU_SET (target_flags & MASK_FPU_SET)
-
-/* Use the UltraSPARC Visual Instruction Set extensions.  */
-#define MASK_VIS 0x1000000
-#define TARGET_VIS (target_flags & MASK_VIS)
-
-/* Compile for Solaris V8+.  32 bit Solaris preserves the high bits of
-   the current out and global registers and Linux 2.2+ as well.  */
-#define MASK_V8PLUS 0x2000000
-#define TARGET_V8PLUS (target_flags & MASK_V8PLUS)
-
-/* Force a the fastest alignment on structures to take advantage of
-   faster copies.  */
-#define MASK_FASTER_STRUCTS 0x4000000
-#define TARGET_FASTER_STRUCTS (target_flags & MASK_FASTER_STRUCTS)
-
-/* Use IEEE quad long double.  */
-#define MASK_LONG_DOUBLE_128 0x8000000
-#define TARGET_LONG_DOUBLE_128 (target_flags & MASK_LONG_DOUBLE_128)
-
 /* TARGET_HARD_MUL: Use hardware multiply instructions but not %y.
    TARGET_HARD_MUL32: Use hardware multiply instructions with rd %y
    to get high 32 bits.  False in V8+ or V9 because multiply stores
-   a 64 bit result in a register.  */
+   a 64-bit result in a register.  */
 
 #define TARGET_HARD_MUL32				\
   ((TARGET_V8 || TARGET_SPARCLITE			\
@@ -512,96 +521,10 @@ extern int target_flags;
   (TARGET_V8 || TARGET_SPARCLITE || TARGET_SPARCLET	\
    || TARGET_DEPRECATED_V8_INSNS || TARGET_V8PLUS)
 
-
-/* Macro to define tables used to set the flags.
-   This is a list in braces of pairs in braces,
-   each pair being { "NAME", VALUE }
-   where VALUE is the bits to set or minus the bits to clear.
-   An empty string NAME is used to identify the default VALUE.  */
-
-#define TARGET_SWITCHES  \
-  { {"fpu", MASK_FPU | MASK_FPU_SET,					\
-     N_("Use hardware fp") },						\
-    {"no-fpu", -MASK_FPU,						\
-     N_("Do not use hardware fp") },					\
-    {"no-fpu", MASK_FPU_SET,				NULL, },	\
-    {"hard-float", MASK_FPU | MASK_FPU_SET,				\
-     N_("Use hardware fp") },						\
-    {"soft-float", -MASK_FPU,						\
-     N_("Do not use hardware fp") },					\
-    {"soft-float", MASK_FPU_SET,			NULL },		\
-    {"unaligned-doubles", MASK_UNALIGNED_DOUBLES,			\
-     N_("Assume possible double misalignment") },			\
-    {"no-unaligned-doubles", -MASK_UNALIGNED_DOUBLES,			\
-     N_("Assume all doubles are aligned") },				\
-    {"impure-text", MASK_IMPURE_TEXT,					\
-     N_("Pass -assert pure-text to linker") }, 				\
-    {"no-impure-text", -MASK_IMPURE_TEXT,				\
-     N_("Do not pass -assert pure-text to linker") }, 			\
-    {"flat", MASK_FLAT,							\
-     N_("Use flat register window model") }, 				\
-    {"no-flat", -MASK_FLAT,						\
-     N_("Do not use flat register window model") }, 			\
-    {"app-regs", MASK_APP_REGS,						\
-     N_("Use ABI reserved registers") },				\
-    {"no-app-regs", -MASK_APP_REGS,					\
-     N_("Do not use ABI reserved registers") }, 			\
-    {"hard-quad-float", MASK_HARD_QUAD,					\
-     N_("Use hardware quad fp instructions") }, 			\
-    {"soft-quad-float", -MASK_HARD_QUAD,				\
-     N_("Do not use hardware quad fp instructions") }, 			\
-    {"v8plus", MASK_V8PLUS,						\
-     N_("Compile for v8plus ABI") },					\
-    {"no-v8plus", -MASK_V8PLUS,						\
-     N_("Do not compile for v8plus ABI") }, 				\
-    {"vis", MASK_VIS,							\
-     N_("Utilize Visual Instruction Set") }, 				\
-    {"no-vis", -MASK_VIS,						\
-     N_("Do not utilize Visual Instruction Set") }, 			\
-    /* ??? These are deprecated, coerced to -mcpu=.  Delete in 2.9.  */ \
-    {"cypress", 0,							\
-     N_("Optimize for Cypress processors") }, 				\
-    {"sparclite", 0,							\
-     N_("Optimize for SPARCLite processors") }, 			\
-    {"f930", 0,								\
-     N_("Optimize for F930 processors") }, 				\
-    {"f934", 0,								\
-     N_("Optimize for F934 processors") }, 				\
-    {"v8", 0,								\
-     N_("Use V8 SPARC ISA") }, 						\
-    {"supersparc", 0,							\
-     N_("Optimize for SuperSPARC processors") }, 			\
-    /* End of deprecated options.  */					\
-    {"ptr64", MASK_PTR64,						\
-     N_("Pointers are 64-bit") }, 					\
-    {"ptr32", -MASK_PTR64,						\
-     N_("Pointers are 32-bit") }, 					\
-    {"32", -MASK_64BIT,							\
-     N_("Use 32-bit ABI") }, 						\
-    {"64", MASK_64BIT,							\
-     N_("Use 64-bit ABI") }, 						\
-    {"stack-bias", MASK_STACK_BIAS,					\
-     N_("Use stack bias") }, 						\
-    {"no-stack-bias", -MASK_STACK_BIAS,					\
-     N_("Do not use stack bias") }, 					\
-    {"faster-structs", MASK_FASTER_STRUCTS,				\
-     N_("Use structs on stronger alignment for double-word copies") }, 	\
-    {"no-faster-structs", -MASK_FASTER_STRUCTS,				\
-     N_("Do not use structs on stronger alignment for double-word copies") }, \
-    {"relax", 0,							\
-     N_("Optimize tail call instructions in assembler and linker") },	\
-    {"no-relax", 0,							\
-     N_("Do not optimize tail call instructions in assembler or linker") }, \
-    SUBTARGET_SWITCHES			\
-    { "", TARGET_DEFAULT, ""}}
-
 /* MASK_APP_REGS must always be the default because that's what
    FIXED_REGISTERS is set to and -ffixed- is processed before
    CONDITIONAL_REGISTER_USAGE is called (where we process -mno-app-regs).  */
 #define TARGET_DEFAULT (MASK_APP_REGS + MASK_FPU)
-
-/* This is meant to be redefined in target specific files.  */
-#define SUBTARGET_SWITCHES
 
 /* Processor type.
    These must match the values for the cpu attribute in sparc.md.  */
@@ -619,7 +542,9 @@ enum processor_type {
   PROCESSOR_TSC701,
   PROCESSOR_V9,
   PROCESSOR_ULTRASPARC,
-  PROCESSOR_ULTRASPARC3
+  PROCESSOR_ULTRASPARC3,
+  PROCESSOR_NIAGARA,
+  PROCESSOR_NIAGARA2
 };
 
 /* This is set from -m{cpu,tune}=xxx.  */
@@ -629,19 +554,15 @@ extern enum processor_type sparc_cpu;
    Every file includes us, but not every file includes insn-attr.h.  */
 #define sparc_cpu_attr ((enum attr_cpu) sparc_cpu)
 
-#define TARGET_OPTIONS \
-{								\
-  { "cpu=",  &sparc_select[1].string,				\
-    N_("Use features of and schedule code for given CPU") },	\
-  { "tune=", &sparc_select[2].string,				\
-    N_("Schedule code for given CPU") },			\
-  { "cmodel=", &sparc_cmodel_string,				\
-    N_("Use given SPARC code model") },				\
-  SUBTARGET_OPTIONS 						\
-}
-
-/* This is meant to be redefined in target specific files.  */
-#define SUBTARGET_OPTIONS
+/* Support for a compile-time default CPU, et cetera.  The rules are:
+   --with-cpu is ignored if -mcpu is specified.
+   --with-tune is ignored if -mtune is specified.
+   --with-float is ignored if -mhard-float, -msoft-float, -mfpu, or -mno-fpu
+     are specified.  */
+#define OPTION_DEFAULT_SPECS \
+  {"cpu", "%{!mcpu=*:-mcpu=%(VALUE)}" }, \
+  {"tune", "%{!mtune=*:-mtune=%(VALUE)}" }, \
+  {"float", "%{!msoft-float:%{!mhard-float:%{!fpu:%{!no-fpu:-m%(VALUE)-float}}}}" }
 
 /* sparc_select[0] is reserved for the default cpu.  */
 struct sparc_cpu_select
@@ -685,6 +606,8 @@ extern struct sparc_cpu_select sparc_select[];
 #define MIN_UNITS_PER_WORD	4
 #endif
 
+#define UNITS_PER_SIMD_WORD	(TARGET_VIS ? 8 : UNITS_PER_WORD)
+
 /* Now define the sizes of the C data types.  */
 
 #define SHORT_TYPE_SIZE		16
@@ -693,18 +616,9 @@ extern struct sparc_cpu_select sparc_select[];
 #define LONG_LONG_TYPE_SIZE	64
 #define FLOAT_TYPE_SIZE		32
 #define DOUBLE_TYPE_SIZE	64
-
-#ifdef SPARC_BI_ARCH
-#define MAX_LONG_TYPE_SIZE	64
-#endif
-
-#if 0
-/* ??? This does not work in SunOS 4.x, so it is not enabled here.
-   Instead, it is enabled in sol2.h, because it does work under Solaris.  */
-/* Define for support of TFmode long double.
-   SPARC ABI says that long double is 4 words.  */
-#define LONG_DOUBLE_TYPE_SIZE 128
-#endif
+/* LONG_DOUBLE_TYPE_SIZE is defined per OS even though the
+   SPARC ABI says that it is 128-bit wide.  */
+/* #define LONG_DOUBLE_TYPE_SIZE	128 */
 
 /* Width in bits of a pointer.
    See also the macro `Pmode' defined below.  */
@@ -715,49 +629,25 @@ extern struct sparc_cpu_select sparc_select[];
    if ptr_mode and Pmode are the same.  */
 #define POINTERS_EXTEND_UNSIGNED 1
 
-/* A macro to update MODE and UNSIGNEDP when an object whose type
-   is TYPE and which has the specified mode and signedness is to be
-   stored in a register.  This macro is only called when TYPE is a
-   scalar type.  */
-#define PROMOTE_MODE(MODE, UNSIGNEDP, TYPE) \
-if (TARGET_ARCH64				\
-    && GET_MODE_CLASS (MODE) == MODE_INT	\
-    && GET_MODE_SIZE (MODE) < UNITS_PER_WORD)	\
-  (MODE) = DImode;
-
-/* Define this macro if the promotion described by PROMOTE_MODE
-   should also be done for outgoing function arguments.  */
-/* This is only needed for TARGET_ARCH64, but since PROMOTE_MODE is a no-op
-   for TARGET_ARCH32 this is ok.  Otherwise we'd need to add a runtime test
-   for this value.  */
-#define PROMOTE_FUNCTION_ARGS
-
-/* Define this macro if the promotion described by PROMOTE_MODE
-   should also be done for the return value of functions.
-   If this macro is defined, FUNCTION_VALUE must perform the same
-   promotions done by PROMOTE_MODE.  */
-/* This is only needed for TARGET_ARCH64, but since PROMOTE_MODE is a no-op
-   for TARGET_ARCH32 this is ok.  Otherwise we'd need to add a runtime test
-   for this value.  */
-#define PROMOTE_FUNCTION_RETURN
-
-/* Define this macro if the promotion described by PROMOTE_MODE
-   should _only_ be performed for outgoing function arguments or
-   function return values, as specified by PROMOTE_FUNCTION_ARGS
-   and PROMOTE_FUNCTION_RETURN, respectively.  */
-/* This is only needed for TARGET_ARCH64, but since PROMOTE_MODE is a no-op
-   for TARGET_ARCH32 this is ok.  Otherwise we'd need to add a runtime test
-   for this value.  For TARGET_ARCH64 we need it, as we don't have instructions
+/* For TARGET_ARCH64 we need this, as we don't have instructions
    for arithmetic operations which do zero/sign extension at the same time,
    so without this we end up with a srl/sra after every assignment to an
    user variable,  which means very very bad code.  */
-#define PROMOTE_FOR_CALL_ONLY
+#define PROMOTE_FUNCTION_MODE(MODE, UNSIGNEDP, TYPE) \
+if (TARGET_ARCH64				\
+    && GET_MODE_CLASS (MODE) == MODE_INT	\
+    && GET_MODE_SIZE (MODE) < UNITS_PER_WORD)	\
+  (MODE) = word_mode;
 
 /* Allocation boundary (in *bits*) for storing arguments in argument list.  */
 #define PARM_BOUNDARY (TARGET_ARCH64 ? 64 : 32)
 
 /* Boundary (in *bits*) on which stack pointer should be aligned.  */
+/* FIXME, this is wrong when TARGET_ARCH64 and TARGET_STACK_BIAS, because
+   then %sp+2047 is 128-bit aligned so %sp is really only byte-aligned.  */
 #define STACK_BOUNDARY (TARGET_ARCH64 ? 128 : 64)
+/* Temporary hack until the FIXME above is fixed.  */
+#define SPARC_STACK_BOUNDARY_HACK (TARGET_ARCH64 && TARGET_STACK_BIAS)
 
 /* ALIGN FRAMES on double word boundaries */
 
@@ -811,6 +701,9 @@ if (TARGET_ARCH64				\
    && TYPE_MODE (TREE_TYPE (TYPE)) == QImode	\
    && (ALIGN) < FASTEST_ALIGNMENT ? FASTEST_ALIGNMENT : (ALIGN))
 
+/* Make local arrays of chars word-aligned for the same reasons.  */
+#define LOCAL_ALIGNMENT(TYPE, ALIGN) DATA_ALIGNMENT (TYPE, ALIGN)
+
 /* Set this nonzero if move instructions will actually fail to work
    when given unaligned data.  */
 #define STRICT_ALIGNMENT 1
@@ -819,15 +712,6 @@ if (TARGET_ARCH64				\
    because the linker fails to align the text section enough!
    Put them in the data section.  This macro is only used in this file.  */
 #define MAX_TEXT_ALIGN 32
-
-/* This forces all variables and constants to the data section when PIC.
-   This is because the SunOS 4 shared library scheme thinks everything in
-   text is a function, and patches the address to point to a loader stub.  */
-/* This is defined to zero for every system which doesn't use the a.out object
-   file format.  */
-#ifndef SUNOS4_SHARED_LIBRARIES
-#define SUNOS4_SHARED_LIBRARIES 0
-#endif
 
 /* Standard register usage.  */
 
@@ -838,9 +722,9 @@ if (TARGET_ARCH64				\
    even those that are not normally considered general registers.
 
    SPARC has 32 integer registers and 32 floating point registers.
-   64 bit SPARC has 32 additional fp regs, but the odd numbered ones are not
+   64-bit SPARC has 32 additional fp regs, but the odd numbered ones are not
    accessible.  We still account for them to simplify register computations
-   (eg: in CLASS_MAX_NREGS).  There are also 4 fp condition code registers, so
+   (e.g.: in CLASS_MAX_NREGS).  There are also 4 fp condition code registers, so
    32+32+32+4 == 100.
    Register 100 is used as the integer condition code register.
    Register 101 is used as the soft frame pointer register.  */
@@ -865,7 +749,7 @@ if (TARGET_ARCH64				\
 
 /* Argument passing regs.  */
 #define SPARC_OUTGOING_INT_ARG_FIRST 8
-#define SPARC_INCOMING_INT_ARG_FIRST (TARGET_FLAT ? 8 : 24)
+#define SPARC_INCOMING_INT_ARG_FIRST 24
 #define SPARC_FP_ARG_FIRST           32
 
 /* 1 for registers that have pervasive standard uses
@@ -986,19 +870,6 @@ do								\
       fixed_regs[4] = 1;					\
     else if (fixed_regs[4] == 2)				\
       fixed_regs[4] = 0;					\
-    if (TARGET_FLAT)						\
-      {								\
-	int regno;						\
-	/* Let the compiler believe the frame pointer is still	\
-	   %fp, but output it as %i7.  */			\
-	fixed_regs[31] = 1;					\
-	reg_names[HARD_FRAME_POINTER_REGNUM] = "%i7";		\
-	/* Disable leaf functions */				\
-	memset (sparc_leaf_regs, 0, FIRST_PSEUDO_REGISTER);	\
-	/* Make LEAF_REG_REMAP a noop.  */			\
-	for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)	\
-	  leaf_reg_remap [regno] = regno;			\
-      }								\
   }								\
 while (0)
 
@@ -1020,7 +891,7 @@ while (0)
       : (GET_MODE_SIZE (MODE) + 3) / 4)					\
    : ((GET_MODE_SIZE (MODE) + UNITS_PER_WORD - 1) / UNITS_PER_WORD))
 
-/* Due to the ARCH64 descrepancy above we must override this next
+/* Due to the ARCH64 discrepancy above we must override this next
    macro too.  */
 #define REGMODE_NATURAL_SIZE(MODE) \
   ((TARGET_ARCH64 && FLOAT_MODE_P (MODE)) ? 4 : UNITS_PER_WORD)
@@ -1035,6 +906,11 @@ extern int sparc_mode_class[];
    ??? RTL generation.  This only matters on arch32.  */
 #define HARD_REGNO_MODE_OK(REGNO, MODE) \
   ((hard_regno_mode_classes[REGNO] & sparc_mode_class[MODE]) != 0)
+
+/* Value is 1 if it is OK to rename a hard register FROM to another hard
+   register TO.  We cannot rename %g1 as it may be used before the save
+   register window instruction in the prologue.  */
+#define HARD_REGNO_RENAME_OK(FROM, TO) ((FROM) != 1)
 
 /* Value is 1 if it is a good idea to tie two pseudo registers
    when one has mode MODE1 and one has mode MODE2.
@@ -1053,9 +929,6 @@ extern int sparc_mode_class[];
 
 /* Specify the registers used for certain standard purposes.
    The values of these macros are register numbers.  */
-
-/* SPARC pc isn't overloaded on a register that the compiler knows about.  */
-/* #define PC_REGNUM  */
 
 /* Register to use for pushing function arguments.  */
 #define STACK_POINTER_REGNUM 14
@@ -1090,17 +963,9 @@ extern int sparc_mode_class[];
 /* Value should be nonzero if functions must have frame pointers.
    Zero means the frame pointer need not be set up (and parms
    may be accessed via the stack pointer) in functions that seem suitable.
-   This is computed in `reload', in reload1.c.
-   Used in flow.c, global.c, and reload1.c.
-
-   Being a non-leaf function does not mean a frame pointer is needed in the
-   flat window model.  However, the debugger won't be able to backtrace through
-   us with out it.  */
-#define FRAME_POINTER_REQUIRED				\
-  (TARGET_FLAT						\
-   ? (current_function_calls_alloca			\
-      || !leaf_function_p ())				\
-   : ! (leaf_function_p () && only_leaf_regs_used ()))
+   Used in flow.c, global.c, ra.c and reload1.c.  */
+#define FRAME_POINTER_REQUIRED	\
+  (! (leaf_function_p () && only_leaf_regs_used ()))
 
 /* Base register for access to arguments of the function.  */
 #define ARG_POINTER_REGNUM FRAME_POINTER_REGNUM
@@ -1120,38 +985,12 @@ extern int sparc_mode_class[];
 
 #define DEFAULT_PCC_STRUCT_RETURN -1
 
-/* SPARC ABI says that quad-precision floats and all structures are returned
-   in memory.
-   For v9: unions <= 32 bytes in size are returned in int regs,
-   structures up to 32 bytes are returned in int and fp regs.  */
-
-#define RETURN_IN_MEMORY(TYPE)				\
-(TARGET_ARCH32						\
- ? (TYPE_MODE (TYPE) == BLKmode				\
-    || TYPE_MODE (TYPE) == TFmode			\
-    || TYPE_MODE (TYPE) == TCmode)			\
- : (TYPE_MODE (TYPE) == BLKmode				\
-    && (unsigned HOST_WIDE_INT) int_size_in_bytes (TYPE) > 32))
-
 /* Functions which return large structures get the address
    to place the wanted value at offset 64 from the frame.
    Must reserve 64 bytes for the in and local registers.
    v9: Functions which return large structures get the address to place the
    wanted value from an invisible first argument.  */
-/* Used only in other #defines in this file.  */
 #define STRUCT_VALUE_OFFSET 64
-
-#define STRUCT_VALUE \
-  (TARGET_ARCH64					\
-   ? 0							\
-   : gen_rtx_MEM (Pmode, plus_constant (stack_pointer_rtx, \
-					STRUCT_VALUE_OFFSET)))
-
-#define STRUCT_VALUE_INCOMING \
-  (TARGET_ARCH64						\
-   ? 0								\
-   : gen_rtx_MEM (Pmode, plus_constant (frame_pointer_rtx,	\
-					STRUCT_VALUE_OFFSET)))
 
 /* Define the classes of registers for register constraints in the
    machine description.  Also define ranges of constants.
@@ -1190,11 +1029,12 @@ extern int sparc_mode_class[];
    because reg_class_subunion[GENERAL_REGS][FP_REGS] will yield FP_REGS,
    because FP_REGS > GENERAL_REGS.
 
-   It is also important that one class contain all the general and all the
-   fp regs.  Otherwise when spilling a DFmode reg, it may be from EXTRA_FP_REGS
-   but find_reloads() may use class GENERAL_OR_FP_REGS. This will cause
-   allocate_reload_reg() to bypass it causing an abort because the compiler
-   thinks it doesn't have a spill reg when in fact it does.
+   It is also important that one class contain all the general and all
+   the fp regs.  Otherwise when spilling a DFmode reg, it may be from
+   EXTRA_FP_REGS but find_reloads() may use class
+   GENERAL_OR_FP_REGS. This will cause allocate_reload_reg() to die
+   because the compiler thinks it doesn't have a spill reg when in
+   fact it does.
 
    v9 also has 4 floating point condition code registers.  Since we don't
    have a class that is the union of FPCC_REGS with either of the others,
@@ -1235,6 +1075,20 @@ enum reg_class { NO_REGS, FPCC_REGS, I64_REGS, GENERAL_REGS, FP_REGS,
    {-1, -1, -1, 0x20},	/* GENERAL_OR_EXTRA_FP_REGS */	\
    {-1, -1, -1, 0x3f}}	/* ALL_REGS */
 
+/* Defines invalid mode changes.  Borrowed from pa64-regs.h.
+
+   SImode loads to floating-point registers are not zero-extended.
+   The definition for LOAD_EXTEND_OP specifies that integer loads
+   narrower than BITS_PER_WORD will be zero-extended.  As a result,
+   we inhibit changes from SImode unless they are to a mode that is
+   identical in size.  */
+
+#define CANNOT_CHANGE_MODE_CLASS(FROM, TO, CLASS)		\
+  (TARGET_ARCH64						\
+   && (FROM) == SImode						\
+   && GET_MODE_SIZE (FROM) != GET_MODE_SIZE (TO)		\
+   ? reg_classes_intersect_p (CLASS, FP_REGS) : 0)
+
 /* The same information, inverted:
    Return the class number of the smallest class containing
    reg number REGNO.  This could be a conditional expression
@@ -1255,7 +1109,7 @@ extern enum reg_class sparc_regno_reg_class[FIRST_PSEUDO_REGISTER];
 
    We know in this case that we will not end up with a leaf function.
 
-   The register allocater is given the global and out registers first
+   The register allocator is given the global and out registers first
    because these registers are call clobbered and thus less useful to
    global register allocation.
 
@@ -1357,8 +1211,8 @@ extern char leaf_reg_remap[];
     : (C) == 'c' ? FPCC_REGS			\
     : NO_REGS))
 
-/* The letters I, J, K, L and M in a register constraint string
-   can be used to stand for particular ranges of immediate operands.
+/* The letters I, J, K, L, M, N, O, P in a register constraint string
+   can be used to stand for particular ranges of CONST_INTs.
    This macro defines what the ranges are.
    C is the letter, and VALUE is a constant value.
    Return 1 if VALUE is in the range specified by C.
@@ -1368,20 +1222,33 @@ extern char leaf_reg_remap[];
    `K' is used for constants which can be loaded with a single sethi insn.
    `L' is used for the range of constants supported by the movcc insns.
    `M' is used for the range of constants supported by the movrcc insns.
-   `N' is like K, but for constants wider than 32 bits.  */
+   `N' is like K, but for constants wider than 32 bits.
+   `O' is used for the range which is just 4096.
+   `P' is free.  */
 
+/* Predicates for 10-bit, 11-bit and 13-bit signed constants.  */
 #define SPARC_SIMM10_P(X) ((unsigned HOST_WIDE_INT) (X) + 0x200 < 0x400)
 #define SPARC_SIMM11_P(X) ((unsigned HOST_WIDE_INT) (X) + 0x400 < 0x800)
 #define SPARC_SIMM13_P(X) ((unsigned HOST_WIDE_INT) (X) + 0x1000 < 0x2000)
-/* 10 and 11 bit immediates are only used for a few specific insns.
+
+/* 10- and 11-bit immediates are only used for a few specific insns.
    SMALL_INT is used throughout the port so we continue to use it.  */
 #define SMALL_INT(X) (SPARC_SIMM13_P (INTVAL (X)))
-/* 13 bit immediate, considering only the low 32 bits */
-#define SMALL_INT32(X) (SPARC_SIMM13_P (trunc_int_for_mode \
-					(INTVAL (X), SImode)))
+
+/* Predicate for constants that can be loaded with a sethi instruction.
+   This is the general, 64-bit aware, bitwise version that ensures that
+   only constants whose representation fits in the mask
+
+     0x00000000fffffc00
+
+   are accepted.  It will reject, for example, negative SImode constants
+   on 64-bit hosts, so correct handling is to mask the value beforehand
+   according to the mode of the instruction.  */
 #define SPARC_SETHI_P(X) \
   (((unsigned HOST_WIDE_INT) (X) \
     & ((unsigned HOST_WIDE_INT) 0x3ff - GET_MODE_MASK (SImode) - 1)) == 0)
+
+/* Version of the above predicate for SImode constants and below.  */
 #define SPARC_SETHI32_P(X) \
   (SPARC_SETHI_P ((unsigned HOST_WIDE_INT) (X) & GET_MODE_MASK (SImode)))
 
@@ -1392,13 +1259,14 @@ extern char leaf_reg_remap[];
    : (C) == 'L' ? SPARC_SIMM11_P (VALUE)		\
    : (C) == 'M' ? SPARC_SIMM10_P (VALUE)		\
    : (C) == 'N' ? SPARC_SETHI_P (VALUE)			\
+   : (C) == 'O' ? (VALUE) == 4096			\
    : 0)
 
-/* Similar, but for floating constants, and defining letters G and H.
+/* Similar, but for CONST_DOUBLEs, and defining letters G and H.
    Here VALUE is the CONST_DOUBLE rtx itself.  */
 
 #define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C)	\
-  ((C) == 'G' ? fp_zero_operand (VALUE, GET_MODE (VALUE))	\
+  ((C) == 'G' ? const_zero_operand (VALUE, GET_MODE (VALUE))	\
    : (C) == 'H' ? arith_double_operand (VALUE, DImode)		\
    : 0)
 
@@ -1422,7 +1290,7 @@ extern char leaf_reg_remap[];
        || (GET_MODE_CLASS (GET_MODE (X)) == MODE_FLOAT	\
 	   && ! TARGET_FPU)				\
        || (GET_MODE (X) == TFmode			\
-	   && ! fp_zero_operand (X, TFmode)))		\
+	   && ! const_zero_operand (X, TFmode)))	\
       ? NO_REGS						\
       : (!FP_REG_CLASS_P (CLASS)			\
          && GET_MODE_CLASS (GET_MODE (X)) == MODE_INT)	\
@@ -1514,40 +1382,25 @@ extern char leaf_reg_remap[];
 
 /* Stack layout; function entry, exit and calling.  */
 
-/* Define the number of register that can hold parameters.
-   This macro is only used in other macro definitions below and in sparc.c.
-   MODE is the mode of the argument.
-   !v9: All args are passed in %o0-%o5.
-   v9: %o0-%o5 and %f0-%f31 are cumulatively used to pass values.
-   See the description in sparc.c.  */
-#define NPARM_REGS(MODE) \
-(TARGET_ARCH64 \
- ? (GET_MODE_CLASS (MODE) == MODE_FLOAT ? 32 : 6) \
- : 6)
-
 /* Define this if pushing a word on the stack
    makes the stack pointer a smaller address.  */
 #define STACK_GROWS_DOWNWARD
 
-/* Define this if the nominal address of the stack frame
+/* Define this to nonzero if the nominal address of the stack frame
    is at the high-address end of the local variables;
    that is, each additional local variable allocated
    goes at a more negative offset in the frame.  */
-#define FRAME_GROWS_DOWNWARD
+#define FRAME_GROWS_DOWNWARD 1
 
 /* Offset within stack frame to start allocating local variables at.
    If FRAME_GROWS_DOWNWARD, this is the offset to the END of the
    first local allocated.  Otherwise, it is the offset to the BEGINNING
    of the first local allocated.  */
-/* This allows space for one TFmode floating point value.  */
+/* This allows space for one TFmode floating point value, which is used
+   by SECONDARY_MEMORY_NEEDED_RTX.  */
 #define STARTING_FRAME_OFFSET \
   (TARGET_ARCH64 ? -16 \
    : (-SPARC_STACK_ALIGN (LONG_DOUBLE_TYPE_SIZE / BITS_PER_UNIT)))
-
-/* If we generate an insn to push BYTES bytes,
-   this says how many the stack pointer really advances by.
-   On SPARC, don't define this because there are no push insns.  */
-/*  #define PUSH_ROUNDING(BYTES) */
 
 /* Offset of first parameter from the argument pointer register value.
    !v9: This is 64 for the ins and locals, plus 4 for the struct-return reg
@@ -1573,7 +1426,6 @@ extern char leaf_reg_remap[];
 #define REG_PARM_STACK_SPACE(DECL) (6 * UNITS_PER_WORD)
 
 /* Definitions for register elimination.  */
-/* ??? In TARGET_FLAT mode we needn't have a hard frame pointer.  */
 
 #define ELIMINABLE_REGS \
   {{ FRAME_POINTER_REGNUM, STACK_POINTER_REGNUM}, \
@@ -1586,22 +1438,16 @@ extern char leaf_reg_remap[];
 #define CAN_ELIMINATE(FROM, TO) \
   ((TO) == HARD_FRAME_POINTER_REGNUM || !FRAME_POINTER_REQUIRED)
 
-#define INITIAL_ELIMINATION_OFFSET(FROM, TO, OFFSET) \
-  do {								\
-    (OFFSET) = 0;						\
-    if ((TO) == STACK_POINTER_REGNUM)				\
-      {								\
-	/* Note, we always pretend that this is a leaf function	\
-	   because if it's not, there's no point in trying to	\
-	   eliminate the frame pointer.  If it is a leaf	\
-	   function, we guessed right!  */			\
-	if (TARGET_FLAT)					\
-	  (OFFSET) =						\
-	    sparc_flat_compute_frame_size (get_frame_size ());	\
-	else							\
-	  (OFFSET) = compute_frame_size (get_frame_size (), 1);	\
-      }								\
-    (OFFSET) += SPARC_STACK_BIAS;				\
+/* We always pretend that this is a leaf function because if it's not,
+   there's no point in trying to eliminate the frame pointer.  If it
+   is a leaf function, we guessed right!  */
+#define INITIAL_ELIMINATION_OFFSET(FROM, TO, OFFSET) 			\
+  do {									\
+    if ((TO) == STACK_POINTER_REGNUM)					\
+      (OFFSET) = sparc_compute_frame_size (get_frame_size (), 1);	\
+    else								\
+      (OFFSET) = 0;							\
+    (OFFSET) += SPARC_STACK_BIAS;					\
   } while (0)
 
 /* Keep the stack pointer constant throughout the function.
@@ -1619,40 +1465,13 @@ extern char leaf_reg_remap[];
 
 #define RETURN_POPS_ARGS(FUNDECL,FUNTYPE,SIZE) 0
 
-/* Some subroutine macros specific to this machine.
-   When !TARGET_FPU, put float return values in the general registers,
-   since we don't have any fp registers.  */
-#define BASE_RETURN_VALUE_REG(MODE)					\
-  (TARGET_ARCH64							\
-   ? (TARGET_FPU && FLOAT_MODE_P (MODE) ? 32 : 8)			\
-   : (((MODE) == SFmode || (MODE) == DFmode) && TARGET_FPU ? 32 : 8))
-
-#define BASE_OUTGOING_VALUE_REG(MODE)				\
-  (TARGET_ARCH64						\
-   ? (TARGET_FPU && FLOAT_MODE_P (MODE) ? 32			\
-      : TARGET_FLAT ? 8 : 24)					\
-   : (((MODE) == SFmode || (MODE) == DFmode) && TARGET_FPU ? 32	\
-      : (TARGET_FLAT ? 8 : 24)))
-
-#define BASE_PASSING_ARG_REG(MODE)				\
-  (TARGET_ARCH64						\
-   ? (TARGET_FPU && FLOAT_MODE_P (MODE) ? 32 : 8)		\
-   : 8)
-
-/* ??? FIXME -- seems wrong for v9 structure passing...  */
-#define BASE_INCOMING_ARG_REG(MODE)				\
-  (TARGET_ARCH64						\
-   ? (TARGET_FPU && FLOAT_MODE_P (MODE) ? 32			\
-      : TARGET_FLAT ? 8 : 24)					\
-   : (TARGET_FLAT ? 8 : 24))
-
 /* Define this macro if the target machine has "register windows".  This
    C expression returns the register number as seen by the called function
    corresponding to register number OUT as seen by the calling function.
    Return OUT if register number OUT is not an outbound register.  */
 
 #define INCOMING_REGNO(OUT) \
- ((TARGET_FLAT || (OUT) < 8 || (OUT) > 15) ? (OUT) : (OUT) + 16)
+ (((OUT) < 8 || (OUT) > 15) ? (OUT) : (OUT) + 16)
 
 /* Define this macro if the target machine has "register windows".  This
    C expression returns the register number as seen by the calling function
@@ -1660,14 +1479,14 @@ extern char leaf_reg_remap[];
    Return IN if register number IN is not an inbound register.  */
 
 #define OUTGOING_REGNO(IN) \
- ((TARGET_FLAT || (IN) < 24 || (IN) > 31) ? (IN) : (IN) - 16)
+ (((IN) < 24 || (IN) > 31) ? (IN) : (IN) - 16)
 
 /* Define this macro if the target machine has register windows.  This
    C expression returns true if the register is call-saved but is in the
    register window.  */
 
 #define LOCAL_REGNO(REGNO) \
-  (TARGET_FLAT ? 0 : (REGNO) >= 16 && (REGNO) <= 31)
+  ((REGNO) >= 16 && (REGNO) <= 31)
 
 /* Define how to find the value returned by a function.
    VALTYPE is the data type of the value (as a tree).
@@ -1700,7 +1519,7 @@ extern char leaf_reg_remap[];
 /* Define the size of space to allocate for the return value of an
    untyped_call.  */
 
-#define APPLY_RESULT_SIZE 16
+#define APPLY_RESULT_SIZE (TARGET_ARCH64 ? 24 : 16)
 
 /* 1 if N is a possible register number for function argument passing.
    On SPARC, these are the "output" registers.  v9 also uses %f0-%f31.  */
@@ -1734,8 +1553,8 @@ struct sparc_args {
    for a call to a function whose data type is FNTYPE.
    For a library call, FNTYPE is 0.  */
 
-#define INIT_CUMULATIVE_ARGS(CUM, FNTYPE, LIBNAME, INDIRECT) \
-init_cumulative_args (& (CUM), (FNTYPE), (LIBNAME), (INDIRECT));
+#define INIT_CUMULATIVE_ARGS(CUM, FNTYPE, LIBNAME, FNDECL, N_NAMED_ARGS) \
+init_cumulative_args (& (CUM), (FNTYPE), (LIBNAME), (FNDECL));
 
 /* Update the data in CUM to advance over an argument
    of mode MODE and data type TYPE.
@@ -1743,13 +1562,6 @@ init_cumulative_args (& (CUM), (FNTYPE), (LIBNAME), (INDIRECT));
 
 #define FUNCTION_ARG_ADVANCE(CUM, MODE, TYPE, NAMED) \
 function_arg_advance (& (CUM), (MODE), (TYPE), (NAMED))
-
-/* Nonzero if we do not know how to pass TYPE solely in registers.  */
-
-#define MUST_PASS_IN_STACK(MODE,TYPE)			\
-  ((TYPE) != 0						\
-   && (TREE_CODE (TYPE_SIZE (TYPE)) != INTEGER_CST	\
-       || TREE_ADDRESSABLE (TYPE)))
 
 /* Determine where to put an argument to a function.
    Value is zero to push the argument on the stack,
@@ -1772,22 +1584,6 @@ function_arg (& (CUM), (MODE), (TYPE), (NAMED), 0)
 
 #define FUNCTION_INCOMING_ARG(CUM, MODE, TYPE, NAMED) \
 function_arg (& (CUM), (MODE), (TYPE), (NAMED), 1)
-
-/* For an arg passed partly in registers and partly in memory,
-   this is the number of registers used.
-   For args passed entirely in registers or entirely in memory, zero.  */
-
-#define FUNCTION_ARG_PARTIAL_NREGS(CUM, MODE, TYPE, NAMED) \
-function_arg_partial_nregs (& (CUM), (MODE), (TYPE), (NAMED))
-
-/* A C expression that indicates when an argument must be passed by reference.
-   If nonzero for an argument, a copy of that argument is made in memory and a
-   pointer to the argument is passed instead of the argument itself.
-   The pointer is passed in whatever way is appropriate for passing a pointer
-   to that type.  */
-
-#define FUNCTION_ARG_PASS_BY_REFERENCE(CUM, MODE, TYPE, NAMED) \
-function_arg_pass_by_reference (& (CUM), (MODE), (TYPE), (NAMED))
 
 /* If defined, a C expression which determines whether, and in which direction,
    to pad out an argument with extra space.  The value should be of type
@@ -1814,6 +1610,7 @@ function_arg_padding ((MODE), (TYPE))
 
 extern GTY(()) rtx sparc_compare_op0;
 extern GTY(()) rtx sparc_compare_op1;
+extern GTY(()) rtx sparc_compare_emitted;
 
 
 /* Generate the special assembly code needed to tell the assembler whatever
@@ -1841,7 +1638,7 @@ extern GTY(()) rtx sparc_compare_op1;
    case of a global register variable occupying more than one register
    we prefix the second and following registers with .gnu.part1. etc.  */
 
-extern char sparc_hard_reg_printed[8];
+extern GTY(()) char sparc_hard_reg_printed[8];
 
 #ifdef HAVE_AS_REGISTER_PSEUDO_OP
 #define ASM_DECLARE_REGISTER_GLOBAL(FILE, DECL, REGNO, NAME)		\
@@ -1883,15 +1680,9 @@ do {									\
  (get_frame_size () != 0	\
   || current_function_calls_alloca || current_function_outgoing_args_size)
 
-#define DELAY_SLOTS_FOR_EPILOGUE \
-  (TARGET_FLAT ? sparc_flat_epilogue_delay_slots () : 1)
-#define ELIGIBLE_FOR_EPILOGUE_DELAY(trial, slots_filled) \
-  (TARGET_FLAT ? sparc_flat_eligible_for_epilogue_delay (trial, slots_filled) \
-   : eligible_for_epilogue_delay (trial, slots_filled))
-
 /* Define registers used by the epilogue and return instruction.  */
-#define EPILOGUE_USES(REGNO) \
-  (!TARGET_FLAT && REGNO == 31)
+#define EPILOGUE_USES(REGNO) ((REGNO) == 31 \
+  || (current_function_calls_eh_return && (REGNO) == 1))
 
 /* Length in units of the trampoline for entering a nested function.  */
 
@@ -1909,31 +1700,6 @@ do {									\
     else							\
       sparc_initialize_trampoline (TRAMP, FNADDR, CXT)
 
-/* Generate necessary RTL for __builtin_saveregs().  */
-
-#define EXPAND_BUILTIN_SAVEREGS() sparc_builtin_saveregs ()
-
-/* Implement `va_start' for varargs and stdarg.  */
-#define EXPAND_BUILTIN_VA_START(valist, nextarg) \
-  sparc_va_start (valist, nextarg)
-
-/* Implement `va_arg'.  */
-#define EXPAND_BUILTIN_VA_ARG(valist, type) \
-  sparc_va_arg (valist, type)
-
-/* Define this macro if the location where a function argument is passed
-   depends on whether or not it is a named argument.
-
-   This macro controls how the NAMED argument to FUNCTION_ARG
-   is set for varargs and stdarg functions.  With this macro defined,
-   the NAMED argument is always true for named arguments, and false for
-   unnamed arguments.  If this is not defined, but SETUP_INCOMING_VARARGS
-   is defined, then all arguments are treated as named.  Otherwise, all named
-   arguments except the last are treated as named.
-   For the v9 we want NAMED to mean what it says it means.  */
-
-#define STRICT_ARGUMENT_NAMING TARGET_V9
-
 /* Generate RTL to flush the register windows so as to make arbitrary frames
    available.  */
 #define SETUP_FRAME_ADDRESSES()		\
@@ -1941,10 +1707,13 @@ do {									\
 
 /* Given an rtx for the address of a frame,
    return an rtx for the address of the word in the frame
-   that holds the dynamic chain--the previous frame's address.
-   ??? -mflat support? */
+   that holds the dynamic chain--the previous frame's address.  */
 #define DYNAMIC_CHAIN_ADDRESS(frame)	\
   plus_constant (frame, 14 * UNITS_PER_WORD + SPARC_STACK_BIAS)
+
+/* Given an rtx for the frame pointer,
+   return an rtx for the address of the frame.  */
+#define FRAME_ADDR_RTX(frame) plus_constant (frame, SPARC_STACK_BIAS)
 
 /* The return address isn't on the stack, it is in a register, so we can't
    access it from the current frame pointer.  We can access it from the
@@ -2073,27 +1842,18 @@ do {									\
    When PIC, we do not accept an address that would require a scratch reg
    to load into a register.  */
 
-#define CONSTANT_ADDRESS_P(X)   \
-  (GET_CODE (X) == LABEL_REF || GET_CODE (X) == SYMBOL_REF		\
-   || GET_CODE (X) == CONST_INT || GET_CODE (X) == HIGH			\
-   || (GET_CODE (X) == CONST						\
-       && ! (flag_pic && pic_address_needs_scratch (X))))
+#define CONSTANT_ADDRESS_P(X) constant_address_p (X)
 
 /* Define this, so that when PIC, reload won't try to reload invalid
    addresses which require two reload registers.  */
 
-#define LEGITIMATE_PIC_OPERAND_P(X)  (! pic_address_needs_scratch (X))
+#define LEGITIMATE_PIC_OPERAND_P(X) legitimate_pic_operand_p (X)
 
 /* Nonzero if the constant value X is a legitimate general operand.
    Anything can be made to work except floating point constants.
    If TARGET_VIS, 0.0 can be made to work as well.  */
 
-#define LEGITIMATE_CONSTANT_P(X) 					\
-  (GET_CODE (X) != CONST_DOUBLE || GET_MODE (X) == VOIDmode || 		\
-   (TARGET_VIS &&							\
-    (GET_MODE (X) == SFmode || GET_MODE (X) == DFmode ||		\
-     GET_MODE (X) == TFmode) &&						\
-    fp_zero_operand (X, GET_MODE (X))))
+#define LEGITIMATE_CONSTANT_P(X) legitimate_constant_p (X)
 
 /* The macros REG_OK_FOR..._P assume that the arg is a REG rtx
    and check its validity for a certain class.
@@ -2126,7 +1886,9 @@ do {									\
        integer register, needed for ldd/std instructions.
 
    'W' handles the memory operand when moving operands in/out
-       of 'e' constraint floating point registers.  */
+       of 'e' constraint floating point registers.
+
+   'Y' handles the zero vector constant.  */
 
 #ifndef REG_OK_STRICT
 
@@ -2180,6 +1942,8 @@ do {									\
 
    If you change this, execute "rm explow.o recog.o reload.o".  */
 
+#define SYMBOLIC_CONST(X) symbolic_operand (X, VOIDmode)
+
 #define RTX_OK_FOR_BASE_P(X)						\
   ((GET_CODE (X) == REG && REG_OK_FOR_BASE_P (X))			\
   || (GET_CODE (X) == SUBREG						\
@@ -2198,107 +1962,46 @@ do {									\
 #define RTX_OK_FOR_OLO10_P(X)						\
   (GET_CODE (X) == CONST_INT && INTVAL (X) >= -0x1000 && INTVAL (X) < 0xc00 - 8)
 
+#ifdef REG_OK_STRICT
 #define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)		\
-{ if (RTX_OK_FOR_BASE_P (X))				\
+{							\
+  if (legitimate_address_p (MODE, X, 1))		\
     goto ADDR;						\
-  else if (GET_CODE (X) == PLUS)			\
+}
+#else
+#define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)		\
+{							\
+  if (legitimate_address_p (MODE, X, 0))		\
+    goto ADDR;						\
+}
+#endif
+
+/* Go to LABEL if ADDR (a legitimate address expression)
+   has an effect that depends on the machine mode it is used for.
+
+   In PIC mode,
+
+      (mem:HI [%l7+a])
+
+   is not equivalent to
+   
+      (mem:QI [%l7+a]) (mem:QI [%l7+a+1])
+
+   because [%l7+a+1] is interpreted as the address of (a+1).  */
+
+#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR, LABEL)	\
+{							\
+  if (flag_pic == 1)					\
     {							\
-      register rtx op0 = XEXP (X, 0);			\
-      register rtx op1 = XEXP (X, 1);			\
-      if (flag_pic && op0 == pic_offset_table_rtx)	\
+      if (GET_CODE (ADDR) == PLUS)			\
 	{						\
-	  if (RTX_OK_FOR_BASE_P (op1))			\
-	    goto ADDR;					\
-	  else if (flag_pic == 1			\
-		   && GET_CODE (op1) != REG		\
-		   && GET_CODE (op1) != LO_SUM		\
-		   && GET_CODE (op1) != MEM		\
-		   && (GET_CODE (op1) != CONST_INT	\
-		       || SMALL_INT (op1)))		\
-	    goto ADDR;					\
-	}						\
-      else if (RTX_OK_FOR_BASE_P (op0))			\
-	{						\
-	  if ((RTX_OK_FOR_INDEX_P (op1)			\
- 	      /* We prohibit REG + REG for TFmode when	\
-		 there are no instructions which accept	\
-		 REG+REG instructions.  We do this	\
-		 because REG+REG is not an offsetable	\
-		 address.  If we get the situation	\
-		 in reload where source and destination	\
-		 of a movtf pattern are both MEMs with	\
-		 REG+REG address, then only one of them	\
-		 gets converted to an offsetable	\
-		 address.  */				\
- 	       && (MODE != TFmode			\
-		   || (TARGET_FPU && TARGET_ARCH64	\
-		       && TARGET_V9			\
-		       && TARGET_HARD_QUAD))		\
-	      /* We prohibit REG + REG on ARCH32 if	\
-		 not optimizing for DFmode/DImode	\
-		 because then mem_min_alignment is	\
-		 likely to be zero after reload and the \
-		 forced split would lack a matching	\
-		 splitter pattern.  */			\
-	       && (TARGET_ARCH64 || optimize		\
-		   || (MODE != DFmode			\
-		       && MODE != DImode)))		\
-	      || RTX_OK_FOR_OFFSET_P (op1))		\
-	    goto ADDR;					\
-	}						\
-      else if (RTX_OK_FOR_BASE_P (op1))			\
-	{						\
-	  if ((RTX_OK_FOR_INDEX_P (op0)			\
- 	      /* See the previous comment.  */		\
- 	       && (MODE != TFmode			\
-		  || (TARGET_FPU && TARGET_ARCH64	\
-		      && TARGET_V9			\
-		      && TARGET_HARD_QUAD))		\
-	       && (TARGET_ARCH64 || optimize		\
-		   || (MODE != DFmode			\
-		       && MODE != DImode)))		\
-	      || RTX_OK_FOR_OFFSET_P (op0))		\
-	    goto ADDR;					\
-	}						\
-      else if (USE_AS_OFFSETABLE_LO10			\
-	       && GET_CODE (op0) == LO_SUM		\
-	       && TARGET_ARCH64				\
-	       && ! TARGET_CM_MEDMID			\
-	       && RTX_OK_FOR_OLO10_P (op1))		\
-	{						\
-	  register rtx op00 = XEXP (op0, 0);		\
-	  register rtx op01 = XEXP (op0, 1);		\
-	  if (RTX_OK_FOR_BASE_P (op00)			\
-	      && CONSTANT_P (op01))			\
-	    goto ADDR;					\
-	}						\
-      else if (USE_AS_OFFSETABLE_LO10			\
-	       && GET_CODE (op1) == LO_SUM		\
-	       && TARGET_ARCH64				\
-	       && ! TARGET_CM_MEDMID			\
-	       && RTX_OK_FOR_OLO10_P (op0))		\
-	{						\
-	  register rtx op10 = XEXP (op1, 0);		\
-	  register rtx op11 = XEXP (op1, 1);		\
-	  if (RTX_OK_FOR_BASE_P (op10)			\
-	      && CONSTANT_P (op11))			\
-	    goto ADDR;					\
+	  rtx op0 = XEXP (ADDR, 0);			\
+	  rtx op1 = XEXP (ADDR, 1);			\
+	  if (op0 == pic_offset_table_rtx		\
+	      && SYMBOLIC_CONST (op1))			\
+	    goto LABEL;					\
 	}						\
     }							\
-  else if (GET_CODE (X) == LO_SUM)			\
-    {							\
-      register rtx op0 = XEXP (X, 0);			\
-      register rtx op1 = XEXP (X, 1);			\
-      if (RTX_OK_FOR_BASE_P (op0)			\
-	  && CONSTANT_P (op1)				\
-	  /* We can't allow TFmode, because an offset	\
-	     greater than or equal to the alignment (8)	\
-	     may cause the LO_SUM to overflow if !v9.  */\
-	  && (MODE != TFmode || TARGET_V9))		\
-	goto ADDR;					\
-    }							\
-  else if (GET_CODE (X) == CONST_INT && SMALL_INT (X))	\
-    goto ADDR;						\
 }
 
 /* Try machine-dependent ways of modifying an illegitimate address
@@ -2316,33 +2019,11 @@ do {									\
 
 /* On SPARC, change REG+N into REG+REG, and REG+(X*Y) into REG+REG.  */
 #define LEGITIMIZE_ADDRESS(X,OLDX,MODE,WIN)	\
-{ rtx sparc_x = (X);						\
-  if (GET_CODE (X) == PLUS && GET_CODE (XEXP (X, 0)) == MULT)	\
-    (X) = gen_rtx_PLUS (Pmode, XEXP (X, 1),			\
-			force_operand (XEXP (X, 0), NULL_RTX));	\
-  if (GET_CODE (X) == PLUS && GET_CODE (XEXP (X, 1)) == MULT)	\
-    (X) = gen_rtx_PLUS (Pmode, XEXP (X, 0),			\
-			force_operand (XEXP (X, 1), NULL_RTX));	\
-  if (GET_CODE (X) == PLUS && GET_CODE (XEXP (X, 0)) == PLUS)	\
-    (X) = gen_rtx_PLUS (Pmode, force_operand (XEXP (X, 0), NULL_RTX),\
-			XEXP (X, 1));				\
-  if (GET_CODE (X) == PLUS && GET_CODE (XEXP (X, 1)) == PLUS)	\
-    (X) = gen_rtx_PLUS (Pmode, XEXP (X, 0),			\
-			force_operand (XEXP (X, 1), NULL_RTX));	\
-  if (sparc_x != (X) && memory_address_p (MODE, X))		\
-    goto WIN;							\
-  if (flag_pic) (X) = legitimize_pic_address (X, MODE, 0);	\
-  else if (GET_CODE (X) == PLUS && CONSTANT_ADDRESS_P (XEXP (X, 1)))	\
-    (X) = gen_rtx_PLUS (Pmode, XEXP (X, 0),			\
-			copy_to_mode_reg (Pmode, XEXP (X, 1)));	\
-  else if (GET_CODE (X) == PLUS && CONSTANT_ADDRESS_P (XEXP (X, 0)))	\
-    (X) = gen_rtx_PLUS (Pmode, XEXP (X, 1),			\
-			copy_to_mode_reg (Pmode, XEXP (X, 0)));	\
-  else if (GET_CODE (X) == SYMBOL_REF || GET_CODE (X) == CONST	\
-	   || GET_CODE (X) == LABEL_REF)			\
-    (X) = copy_to_suggested_reg (X, NULL_RTX, Pmode); 		\
-  if (memory_address_p (MODE, X))				\
-    goto WIN; }
+{						\
+  (X) = legitimize_address (X, OLDX, MODE);	\
+  if (memory_address_p (MODE, X))		\
+    goto WIN;					\
+}
 
 /* Try a machine-dependent way of reloading an illegitimate address
    operand.  If we find one, push the reload and jump to WIN.  This
@@ -2377,12 +2058,6 @@ do {                                                                    \
     }									\
   /* ??? 64-bit reloads.  */						\
 } while (0)
-
-/* Go to LABEL if ADDR (a legitimate address expression)
-   has an effect that depends on the machine mode it is used for.
-   On the SPARC this is never true.  */
-
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)
 
 /* Specify the machine mode that this machine uses
    for the index in the tablejump instruction.  */
@@ -2398,12 +2073,6 @@ do {                                                                    \
 (! TARGET_PTR64 ? SImode : flag_pic ? DImode : TARGET_CM_MEDLOW ? SImode : DImode)
 #endif
 
-/* Define as C expression which evaluates to nonzero if the tablejump
-   instruction expects the table to contain offsets from the address of the
-   table.
-   Do not define this if the table should contain absolute addresses.  */
-/* #define CASE_VECTOR_PC_RELATIVE 1 */
-
 /* Define this as 1 if `char' should by default be signed; else as 0.  */
 #define DEFAULT_SIGNED_CHAR 1
 
@@ -2411,15 +2080,10 @@ do {                                                                    \
    in one reasonably fast instruction.  */
 #define MOVE_MAX 8
 
-#if 0 /* Sun 4 has matherr, so this is no good.  */
-/* This is the value of the error code EDOM for this machine,
-   used by the sqrt instruction.  */
-#define TARGET_EDOM 33
+/* If a memory-to-memory move would take MOVE_RATIO or more simple
+   move-instruction pairs, we will do a movmem or libcall instead.  */
 
-/* This is how to refer to the variable errno.  */
-#define GEN_ERRNO_RTX \
-  gen_rtx_MEM (SImode, gen_rtx_SYMBOL_REF (Pmode, "errno"))
-#endif /* 0 */
+#define MOVE_RATIO (optimize_size ? 3 : 8)
 
 /* Define if operations between registers always perform the operation
    on the full register even if a narrower mode is specified.  */
@@ -2428,7 +2092,7 @@ do {                                                                    \
 /* Define if loading in MODE, an integral mode narrower than BITS_PER_WORD
    will either zero-extend or sign-extend.  The value of this macro should
    be the code that says which one of the two operations is implicitly
-   done, NIL if none.  */
+   done, UNKNOWN if none.  */
 #define LOAD_EXTEND_OP(MODE) ZERO_EXTEND
 
 /* Nonzero if access to memory by bytes is slow and undesirable.
@@ -2436,14 +2100,6 @@ do {                                                                    \
    better than access by words when possible, so grab a whole word
    and maybe make use of that.  */
 #define SLOW_BYTE_ACCESS 1
-
-/* We assume that the store-condition-codes instructions store 0 for false
-   and some other value for true.  This is the value stored for true.  */
-
-#define STORE_FLAG_VALUE 1
-
-/* When a prototype says `char' or `short', really pass an `int'.  */
-#define PROMOTE_PROTOTYPES (TARGET_ARCH32)
 
 /* Define this to be nonzero if shift instructions ignore all but the low-order
    few bits.  */
@@ -2453,13 +2109,8 @@ do {                                                                    \
    is done just by pretending it is already truncated.  */
 #define TRULY_NOOP_TRUNCATION(OUTPREC, INPREC) 1
 
-/* Specify the machine mode that pointers have.
-   After generation of rtl, the compiler makes no further distinction
-   between pointers and any other objects of this machine mode.  */
+/* Specify the machine mode used for addresses.  */
 #define Pmode (TARGET_ARCH64 ? DImode : SImode)
-
-/* Generate calls to memcpy, memcmp and memset.  */
-#define TARGET_MEM_FUNCTIONS
 
 /* Given a comparison code (EQ, NE, etc.) and the first operand of a COMPARE,
    return the mode to be used for the comparison.  For floating-point,
@@ -2486,100 +2137,20 @@ do {                                                                    \
 /* alloca should avoid clobbering the old register save area.  */
 #define SETJMP_VIA_SAVE_AREA
 
-/* Define subroutines to call to handle multiply and divide.
-   Use the subroutines that Sun's library provides.
-   The `*' prevents an underscore from being prepended by the compiler.  */
-
-#define DIVSI3_LIBCALL "*.div"
-#define UDIVSI3_LIBCALL "*.udiv"
-#define MODSI3_LIBCALL "*.rem"
-#define UMODSI3_LIBCALL "*.urem"
-/* .umul is a little faster than .mul.  */
-#define MULSI3_LIBCALL "*.umul"
-
-/* Define library calls for quad FP operations.  These are all part of the
-   SPARC 32bit ABI.  */
-#define ADDTF3_LIBCALL "_Q_add"
-#define SUBTF3_LIBCALL "_Q_sub"
-#define NEGTF2_LIBCALL "_Q_neg"
-#define MULTF3_LIBCALL "_Q_mul"
-#define DIVTF3_LIBCALL "_Q_div"
-#define FLOATSITF2_LIBCALL "_Q_itoq"
-#define FIX_TRUNCTFSI2_LIBCALL "_Q_qtoi"
-#define FIXUNS_TRUNCTFSI2_LIBCALL "_Q_qtou"
-#define EXTENDSFTF2_LIBCALL "_Q_stoq"
-#define TRUNCTFSF2_LIBCALL "_Q_qtos"
-#define EXTENDDFTF2_LIBCALL "_Q_dtoq"
-#define TRUNCTFDF2_LIBCALL "_Q_qtod"
-#define EQTF2_LIBCALL "_Q_feq"
-#define NETF2_LIBCALL "_Q_fne"
-#define GTTF2_LIBCALL "_Q_fgt"
-#define GETF2_LIBCALL "_Q_fge"
-#define LTTF2_LIBCALL "_Q_flt"
-#define LETF2_LIBCALL "_Q_fle"
+/* The _Q_* comparison libcalls return booleans.  */
+#define FLOAT_LIB_COMPARE_RETURNS_BOOL(MODE, COMPARISON) ((MODE) == TFmode)
 
 /* Assume by default that the _Qp_* 64-bit libcalls are implemented such
    that the inputs are fully consumed before the output memory is clobbered.  */
 
 #define TARGET_BUGGY_QP_LIB	0
 
-/* We can define the TFmode sqrt optab only if TARGET_FPU.  This is because
-   with soft-float, the SFmode and DFmode sqrt instructions will be absent,
-   and the compiler will notice and try to use the TFmode sqrt instruction
-   for calls to the builtin function sqrt, but this fails.  */
-#define INIT_TARGET_OPTABS						\
-  do {									\
-    if (TARGET_ARCH32)							\
-      {									\
-	add_optab->handlers[(int) TFmode].libfunc			\
-	  = init_one_libfunc (ADDTF3_LIBCALL);				\
-	sub_optab->handlers[(int) TFmode].libfunc			\
-	  = init_one_libfunc (SUBTF3_LIBCALL);				\
-	neg_optab->handlers[(int) TFmode].libfunc			\
-	  = init_one_libfunc (NEGTF2_LIBCALL);				\
-	smul_optab->handlers[(int) TFmode].libfunc			\
-	  = init_one_libfunc (MULTF3_LIBCALL);				\
-	sdiv_optab->handlers[(int) TFmode].libfunc			\
-	  = init_one_libfunc (DIVTF3_LIBCALL);				\
-	eqtf2_libfunc = init_one_libfunc (EQTF2_LIBCALL);		\
-	netf2_libfunc = init_one_libfunc (NETF2_LIBCALL);		\
-	gttf2_libfunc = init_one_libfunc (GTTF2_LIBCALL);		\
-	getf2_libfunc = init_one_libfunc (GETF2_LIBCALL);		\
-	lttf2_libfunc = init_one_libfunc (LTTF2_LIBCALL);		\
-	letf2_libfunc = init_one_libfunc (LETF2_LIBCALL);		\
-	trunctfsf2_libfunc = init_one_libfunc (TRUNCTFSF2_LIBCALL);	\
-	trunctfdf2_libfunc = init_one_libfunc (TRUNCTFDF2_LIBCALL);	\
-	extendsftf2_libfunc = init_one_libfunc (EXTENDSFTF2_LIBCALL);	\
-	extenddftf2_libfunc = init_one_libfunc (EXTENDDFTF2_LIBCALL);	\
-	floatsitf_libfunc = init_one_libfunc (FLOATSITF2_LIBCALL);	\
-	fixtfsi_libfunc = init_one_libfunc (FIX_TRUNCTFSI2_LIBCALL);	\
-	fixunstfsi_libfunc						\
-	  = init_one_libfunc (FIXUNS_TRUNCTFSI2_LIBCALL);		\
-	if (TARGET_FPU)							\
-	  sqrt_optab->handlers[(int) TFmode].libfunc			\
-	    = init_one_libfunc ("_Q_sqrt");				\
-      }									\
-    if (TARGET_ARCH64)							\
-      {									\
-        /* In the SPARC 64bit ABI, these libfuncs do not exist in the	\
-           library.  Make sure the compiler does not emit calls to them	\
-	   by accident.  */						\
-	sdiv_optab->handlers[(int) SImode].libfunc = NULL;		\
-	udiv_optab->handlers[(int) SImode].libfunc = NULL;		\
-	smod_optab->handlers[(int) SImode].libfunc = NULL;		\
-	umod_optab->handlers[(int) SImode].libfunc = NULL;		\
-        smul_optab->handlers[(int) SImode].libfunc = NULL;		\
-      }									\
-    INIT_SUBTARGET_OPTABS;						\
-  } while (0)
+/* Assume by default that we do not have the Solaris-specific conversion
+   routines nor 64-bit integer multiply and divide routines.  */
 
-/* This is meant to be redefined in the host dependent files */
-#define INIT_SUBTARGET_OPTABS
-
-/* Nonzero if a floating point comparison library call for
-   mode MODE that will return a boolean value.  Zero if one
-   of the libgcc2 functions is used.  */
-#define FLOAT_LIB_COMPARE_RETURNS_BOOL(MODE, COMPARISON) ((MODE) == TFmode)
+#define SUN_CONVERSION_LIBFUNCS 	0
+#define DITF_CONVERSION_LIBFUNCS	0
+#define SUN_INTEGER_MULTIPLY_64 	0
 
 /* Compute extra cost of moving data between one register class
    and another.  */
@@ -2589,7 +2160,9 @@ do {                                                                    \
     || (GENERAL_OR_I64 (CLASS1) && FP_REG_CLASS_P (CLASS2)) \
     || (CLASS1) == FPCC_REGS || (CLASS2) == FPCC_REGS)		\
    ? ((sparc_cpu == PROCESSOR_ULTRASPARC \
-       || sparc_cpu == PROCESSOR_ULTRASPARC3) ? 12 : 6) : 2)
+       || sparc_cpu == PROCESSOR_ULTRASPARC3 \
+       || sparc_cpu == PROCESSOR_NIAGARA \
+       || sparc_cpu == PROCESSOR_NIAGARA2) ? 12 : 6) : 2)
 
 /* Provide the cost of a branch.  For pre-v9 processors we use
    a value of 3 to take into account the potential annulling of
@@ -2599,54 +2172,27 @@ do {                                                                    \
 
    On v9 and later, which have branch prediction facilities, we set
    it to the depth of the pipeline as that is the cost of a
-   mispredicted branch.  */
+   mispredicted branch.
+
+   On Niagara, normal branches insert 3 bubbles into the pipe
+   and annulled branches insert 4 bubbles.
+
+   On Niagara-2, a not-taken branch costs 1 cycle whereas a taken
+   branch costs 6 cycles.  */
 
 #define BRANCH_COST \
 	((sparc_cpu == PROCESSOR_V9 \
 	  || sparc_cpu == PROCESSOR_ULTRASPARC) \
 	 ? 7 \
          : (sparc_cpu == PROCESSOR_ULTRASPARC3 \
-            ? 9 : 3))
-
-/* The cases that RTX_COSTS handles.  */
-
-#define RTX_COSTS_CASES	\
-case PLUS: case MINUS: case ABS: case NEG: \
-case FLOAT: case UNSIGNED_FLOAT: \
-case FIX: case UNSIGNED_FIX: \
-case FLOAT_EXTEND: case FLOAT_TRUNCATE: \
-case SQRT: \
-case COMPARE: case IF_THEN_ELSE: \
-case MEM: \
-case MULT: case DIV: case UDIV: case MOD: case UMOD: \
-case CONST_INT: case HIGH: case CONST: \
-case LABEL_REF: case SYMBOL_REF: case CONST_DOUBLE:
-
-/* Provide the costs of a rtl expression.  This is in the body of a
-   switch on CODE.  */
-
-#define RTX_COSTS(X,CODE,OUTER_CODE)			\
-  RTX_COSTS_CASES					\
-    return sparc_rtx_costs(X,CODE,OUTER_CODE);
-
-#define ADDRESS_COST(RTX)  1
-
-#define PREFETCH_BLOCK \
-	((sparc_cpu == PROCESSOR_ULTRASPARC \
-          || sparc_cpu == PROCESSOR_ULTRASPARC3) \
-         ? 64 : 32)
-
-#define SIMULTANEOUS_PREFETCHES \
-	((sparc_cpu == PROCESSOR_ULTRASPARC) \
-         ? 2 \
-         : (sparc_cpu == PROCESSOR_ULTRASPARC3 \
-            ? 8 : 3))
+            ? 9 \
+	 : (sparc_cpu == PROCESSOR_NIAGARA \
+	    ? 4 \
+	 : (sparc_cpu == PROCESSOR_NIAGARA2 \
+	    ? 5 \
+	 : 3))))
 
 /* Control the assembler format that we output.  */
-
-/* Output at beginning of assembler file.  */
-
-#define ASM_FILE_START(file)
 
 /* A C string constant describing how to begin a comment in the target
    assembler language.  The compiler assumes that the comment will end at
@@ -2663,12 +2209,6 @@ case LABEL_REF: case SYMBOL_REF: case CONST_DOUBLE:
    no longer contain unusual constructs.  */
 
 #define ASM_APP_OFF ""
-
-/* ??? Try to make the style consistent here (_OP?).  */
-
-#define ASM_FLOAT	".single"
-#define ASM_DOUBLE	".double"
-#define ASM_LONGDOUBLE	".xxx"		/* ??? Not known (or used yet).  */
 
 /* How to refer to registers in assembler output.
    This sequence is indexed by compiler's hard-register-number (see above).  */
@@ -2789,7 +2329,7 @@ do {									\
     fprintf (FILE, "\t.align %d,0x1000000\n", (1<<(LOG)))
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf (FILE, "\t.skip %u\n", (SIZE))
+  fprintf (FILE, "\t.skip "HOST_WIDE_INT_PRINT_UNSIGNED"\n", (SIZE))
 
 /* This says how to output an assembler line
    to define a global common symbol.  */
@@ -2797,7 +2337,7 @@ do {									\
 #define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs ("\t.common ", (FILE)),		\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%u,\"bss\"\n", (SIZE)))
+  fprintf ((FILE), ","HOST_WIDE_INT_PRINT_UNSIGNED",\"bss\"\n", (SIZE)))
 
 /* This says how to output an assembler line to define a local common
    symbol.  */
@@ -2805,7 +2345,7 @@ do {									\
 #define ASM_OUTPUT_ALIGNED_LOCAL(FILE, NAME, SIZE, ALIGNED)		\
 ( fputs ("\t.reserve ", (FILE)),					\
   assemble_name ((FILE), (NAME)),					\
-  fprintf ((FILE), ",%u,\"bss\",%u\n",					\
+  fprintf ((FILE), ","HOST_WIDE_INT_PRINT_UNSIGNED",\"bss\",%u\n",	\
 	   (SIZE), ((ALIGNED) / BITS_PER_UNIT)))
 
 /* A C statement (sans semicolon) to output to the stdio stream
@@ -2815,9 +2355,6 @@ do {									\
 
 #define ASM_OUTPUT_ALIGNED_BSS(FILE, DECL, NAME, SIZE, ALIGN)	\
   do {								\
-    fputs (".globl ", (FILE));					\
-    assemble_name ((FILE), (NAME));				\
-    fputs ("\n", (FILE));					\
     ASM_OUTPUT_ALIGNED_LOCAL (FILE, NAME, SIZE, ALIGN);		\
   } while (0)
 
@@ -2828,8 +2365,25 @@ do {									\
 #define ASM_OUTPUT_IDENT(FILE, NAME) \
   fprintf (FILE, "%s\"%s\"\n", IDENT_ASM_OP, NAME);
 
+/* Prettify the assembly.  */
+
+extern int sparc_indent_opcode;
+
+#define ASM_OUTPUT_OPCODE(FILE, PTR)	\
+  do {					\
+    if (sparc_indent_opcode)		\
+      {					\
+	putc (' ', FILE);		\
+	sparc_indent_opcode = 0;	\
+      }					\
+  } while (0)
+
+#define SPARC_SYMBOL_REF_TLS_P(RTX) \
+  (GET_CODE (RTX) == SYMBOL_REF && SYMBOL_REF_TLS_MODEL (RTX) != 0)
+
 #define PRINT_OPERAND_PUNCT_VALID_P(CHAR) \
-  ((CHAR) == '#' || (CHAR) == '*' || (CHAR) == '^' || (CHAR) == '(' || (CHAR) == '_')
+  ((CHAR) == '#' || (CHAR) == '*' || (CHAR) == '('		\
+   || (CHAR) == ')' || (CHAR) == '_' || (CHAR) == '&')
 
 /* Print operand X (an rtx) in assembler syntax to file FILE.
    CODE is a letter or dot (`z' in `%z0') or 0 if no letter was specified.
@@ -2855,10 +2409,9 @@ do {									\
 	base = XEXP (addr, 0), index = XEXP (addr, 1);		\
       if (GET_CODE (base) == LO_SUM)				\
 	{							\
-	  if (! USE_AS_OFFSETABLE_LO10				\
-	      || TARGET_ARCH32					\
-	      || TARGET_CM_MEDMID)				\
-	    abort ();						\
+	  gcc_assert (USE_AS_OFFSETABLE_LO10			\
+	      	      && TARGET_ARCH64				\
+		      && ! TARGET_CM_MEDMID);			\
 	  output_operand (XEXP (base, 0), 0);			\
 	  fputs ("+%lo(", FILE);				\
 	  output_address (XEXP (base, 1));			\
@@ -2872,9 +2425,10 @@ do {									\
 	  else if (GET_CODE (index) == REG)			\
 	    fprintf (FILE, "+%s", reg_names[REGNO (index)]);	\
 	  else if (GET_CODE (index) == SYMBOL_REF		\
+		   || GET_CODE (index) == LABEL_REF		\
 		   || GET_CODE (index) == CONST)		\
 	    fputc ('+', FILE), output_addr_const (FILE, index);	\
-	  else abort ();					\
+	  else gcc_unreachable ();				\
 	}							\
     }								\
   else if (GET_CODE (addr) == MINUS				\
@@ -2916,56 +2470,16 @@ do {									\
     }								\
 }
 
-/* Define the codes that are matched by predicates in sparc.c.  */
+/* TLS support defaulting to original Sun flavor.  GNU extensions
+   must be activated in separate configuration files.  */
+#ifdef HAVE_AS_TLS
+#define TARGET_TLS 1
+#else
+#define TARGET_TLS 0
+#endif
 
-#define PREDICATE_CODES							\
-{"reg_or_0_operand", {SUBREG, REG, CONST_INT, CONST_DOUBLE}},		\
-{"const1_operand", {CONST_INT}},					\
-{"fp_zero_operand", {CONST_DOUBLE}},					\
-{"fp_register_operand", {SUBREG, REG}},					\
-{"intreg_operand", {SUBREG, REG}},					\
-{"fcc_reg_operand", {REG}},						\
-{"fcc0_reg_operand", {REG}},						\
-{"icc_or_fcc_reg_operand", {REG}},					\
-{"restore_operand", {REG}},						\
-{"call_operand", {MEM}},						\
-{"call_operand_address", {SYMBOL_REF, LABEL_REF, CONST, CONST_DOUBLE,	\
-	ADDRESSOF, SUBREG, REG, PLUS, LO_SUM, CONST_INT}},		\
-{"symbolic_operand", {SYMBOL_REF, LABEL_REF, CONST}},			\
-{"symbolic_memory_operand", {SUBREG, MEM}},				\
-{"label_ref_operand", {LABEL_REF}},					\
-{"sp64_medium_pic_operand", {CONST}},					\
-{"data_segment_operand", {SYMBOL_REF, PLUS, CONST}},			\
-{"text_segment_operand", {LABEL_REF, SYMBOL_REF, PLUS, CONST}},		\
-{"reg_or_nonsymb_mem_operand", {SUBREG, REG, MEM}},			\
-{"splittable_symbolic_memory_operand", {MEM}},				\
-{"splittable_immediate_memory_operand", {MEM}},				\
-{"eq_or_neq", {EQ, NE}},						\
-{"normal_comp_operator", {GE, GT, LE, LT, GTU, LEU}},			\
-{"noov_compare_op", {NE, EQ, GE, GT, LE, LT, GEU, GTU, LEU, LTU}},	\
-{"noov_compare64_op", {NE, EQ, GE, GT, LE, LT, GEU, GTU, LEU, LTU}},	\
-{"v9_regcmp_op", {EQ, NE, GE, LT, LE, GT}},				\
-{"extend_op", {SIGN_EXTEND, ZERO_EXTEND}},				\
-{"cc_arithop", {AND, IOR, XOR}},					\
-{"cc_arithopn", {AND, IOR}},						\
-{"arith_operand", {SUBREG, REG, CONST_INT}},				\
-{"arith_add_operand", {SUBREG, REG, CONST_INT}},			\
-{"arith11_operand", {SUBREG, REG, CONST_INT}},				\
-{"arith10_operand", {SUBREG, REG, CONST_INT}},				\
-{"arith_double_operand", {SUBREG, REG, CONST_INT, CONST_DOUBLE}},	\
-{"arith_double_add_operand", {SUBREG, REG, CONST_INT, CONST_DOUBLE}},	\
-{"arith11_double_operand", {SUBREG, REG, CONST_INT, CONST_DOUBLE}},	\
-{"arith10_double_operand", {SUBREG, REG, CONST_INT, CONST_DOUBLE}},	\
-{"small_int", {CONST_INT}},						\
-{"small_int_or_double", {CONST_INT, CONST_DOUBLE}},			\
-{"uns_small_int", {CONST_INT}},						\
-{"uns_arith_operand", {SUBREG, REG, CONST_INT}},			\
-{"clobbered_register", {REG}},						\
-{"input_operand", {SUBREG, REG, CONST_INT, MEM, CONST}},		\
-{"const64_operand", {CONST_INT, CONST_DOUBLE}},				\
-{"const64_high_operand", {CONST_INT, CONST_DOUBLE}},
+#define TARGET_SUN_TLS TARGET_TLS
+#define TARGET_GNU_TLS 0
 
 /* The number of Pmode words for the setjmp buffer.  */
 #define JMP_BUF_SIZE 12
-
-#define DONT_ACCESS_GBLS_AFTER_EPILOGUE (flag_pic)

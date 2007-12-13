@@ -1,6 +1,7 @@
 // The  -*- C++ -*- type traits classes for internal use in libstdc++
 
-// Copyright (C) 2000, 2001 Free Software Foundation, Inc.
+// Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -27,22 +28,24 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
-// Written by Gabriel Dos Reis <dosreis@cmla.ens-cachan.fr>
-
 /** @file cpp_type_traits.h
  *  This is an internal header file, included by other library headers.
  *  You should not attempt to use it directly.
  */
 
-#ifndef _CPP_BITS_CPP_TYPE_TRAITS_H
-#define _CPP_BITS_CPP_TYPE_TRAITS_H 1
+// Written by Gabriel Dos Reis <dosreis@cmla.ens-cachan.fr>
+
+#ifndef _CPP_TYPE_TRAITS_H
+#define _CPP_TYPE_TRAITS_H 1
 
 #pragma GCC system_header
+
+#include <bits/c++config.h>
 
 //
 // This file provides some compile-time information about various types.
 // These representations were designed, on purpose, to be constant-expressions
-// and not types as found in <stl/bits/type_traits.h>.  In particular, they
+// and not types as found in <bits/type_traits.h>.  In particular, they
 // can be used in control structures and the optimizer hopefully will do
 // the obvious thing.
 //
@@ -63,25 +66,68 @@
 //
 // -- Gaby (dosreis@cmla.ens-cachan.fr) 2000-03-06.
 //
+// Update 2005: types are also provided and <bits/type_traits.h> has been
+// removed.
+//
 
-namespace std
-{
+// Forward declaration hack, should really include this from somewhere.
+_GLIBCXX_BEGIN_NAMESPACE(__gnu_cxx)
+
+  template<typename _Iterator, typename _Container>
+    class __normal_iterator;
+
+_GLIBCXX_END_NAMESPACE
+
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
+  struct __true_type { };
+  struct __false_type { };
+
+  template<bool>
+    struct __truth_type
+    { typedef __false_type __type; };
+
+  template<>
+    struct __truth_type<true>
+    { typedef __true_type __type; };
+
+  // N.B. The conversions to bool are needed due to the issue
+  // explained in c++/19404.
+  template<class _Sp, class _Tp>
+    struct __traitor
+    {
+      enum { __value = bool(_Sp::__value) || bool(_Tp::__value) };
+      typedef typename __truth_type<__value>::__type __type;
+    };
+
+  // Compare for equality of types.
+  template<typename, typename>
+    struct __are_same
+    {
+      enum { __value = 0 };
+      typedef __false_type __type;
+    };
+
+  template<typename _Tp>
+    struct __are_same<_Tp, _Tp>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+
+  // Holds if the template-argument is a void type.
   template<typename _Tp>
     struct __is_void
     {
-      enum
-      {
-        _M_type = 0
-      };
+      enum { __value = 0 };
+      typedef __false_type __type;
     };
 
   template<>
     struct __is_void<void>
     {
-      enum
-      {
-        _M_type = 1
-      };
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
 
   //
@@ -90,10 +136,8 @@ namespace std
   template<typename _Tp>
     struct __is_integer
     {
-      enum
-      {
-	_M_type = 0
-      };
+      enum { __value = 0 };
+      typedef __false_type __type;
     };
 
   // Thirteen specializations (yes there are eleven standard integer
@@ -102,199 +146,263 @@ namespace std
   template<>
     struct __is_integer<bool>
     {
-      enum
-      {
-	_M_type = 1
-      };
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  
+
   template<>
     struct __is_integer<char>
     {
-      enum
-      {
-	_M_type = 1
-      };
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
 
   template<>
     struct __is_integer<signed char>
     {
-      enum
-      {
-	_M_type = 1
-      };
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  
-  template<>
-  struct __is_integer<unsigned char>
-  {
-    enum
-    {
-      _M_type = 1
-    };
-  };
 
-# ifdef _GLIBCPP_USE_WCHAR_T
   template<>
-  struct __is_integer<wchar_t>
-  {
-    enum
+    struct __is_integer<unsigned char>
     {
-      _M_type = 1
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  };
+
+# ifdef _GLIBCXX_USE_WCHAR_T
+  template<>
+    struct __is_integer<wchar_t>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
 # endif
-  
-  template<>
-  struct __is_integer<short>
-  {
-    enum
-    {
-      _M_type = 1
-    };
-  };
 
   template<>
-  struct __is_integer<unsigned short>
-  {
-    enum
+    struct __is_integer<short>
     {
-      _M_type = 1
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  };
 
   template<>
-  struct __is_integer<int>
-  {
-    enum
+    struct __is_integer<unsigned short>
     {
-      _M_type = 1
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  };
 
   template<>
-  struct __is_integer<unsigned int>
-  {
-    enum
+    struct __is_integer<int>
     {
-      _M_type = 1
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  };
 
   template<>
-  struct __is_integer<long>
-  {
-    enum
+    struct __is_integer<unsigned int>
     {
-      _M_type = 1
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  };
 
   template<>
-  struct __is_integer<unsigned long>
-  {
-    enum
+    struct __is_integer<long>
     {
-      _M_type = 1
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  };
 
   template<>
-  struct __is_integer<long long>
-  {
-    enum
+    struct __is_integer<unsigned long>
     {
-      _M_type = 1
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  };
 
   template<>
-  struct __is_integer<unsigned long long>
-  {
-    enum
+    struct __is_integer<long long>
     {
-      _M_type = 1
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  };
+
+  template<>
+    struct __is_integer<unsigned long long>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
 
   //
   // Floating point types
   //
   template<typename _Tp>
-  struct __is_floating
-  {
-    enum
+    struct __is_floating
     {
-      _M_type = 0
+      enum { __value = 0 };
+      typedef __false_type __type;
     };
-  };
 
   // three specializations (float, double and 'long double')
   template<>
-  struct __is_floating<float>
-  {
-    enum
+    struct __is_floating<float>
     {
-      _M_type = 1
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  };
 
   template<>
-  struct __is_floating<double>
-  {
-    enum
+    struct __is_floating<double>
     {
-      _M_type = 1
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  };
 
   template<>
-  struct __is_floating<long double>
-  {
-    enum
+    struct __is_floating<long double>
     {
-      _M_type = 1
+      enum { __value = 1 };
+      typedef __true_type __type;
     };
-  };
+
+  //
+  // Pointer types
+  //
+  template<typename _Tp>
+    struct __is_pointer
+    {
+      enum { __value = 0 };
+      typedef __false_type __type;
+    };
+
+  template<typename _Tp>
+    struct __is_pointer<_Tp*>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+
+  //
+  // Normal iterator type
+  //
+  template<typename _Tp>
+    struct __is_normal_iterator
+    {
+      enum { __value = 0 };
+      typedef __false_type __type;
+    };
+
+  template<typename _Iterator, typename _Container>
+    struct __is_normal_iterator< __gnu_cxx::__normal_iterator<_Iterator,
+							      _Container> >
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
 
   //
   // An arithmetic type is an integer type or a floating point type
   //
   template<typename _Tp>
-  struct __is_arithmetic
-  {
-    enum
-    {
-      _M_type = __is_integer<_Tp>::_M_type || __is_floating<_Tp>::_M_type
-    };
-  };
+    struct __is_arithmetic
+    : public __traitor<__is_integer<_Tp>, __is_floating<_Tp> >
+    { };
 
   //
   // A fundamental type is `void' or and arithmetic type
   //
   template<typename _Tp>
-  struct __is_fundamental
-  {
-    enum
-    {
-      _M_type = __is_void<_Tp>::_M_type || __is_arithmetic<_Tp>::_M_type
-    };
-  };
+    struct __is_fundamental
+    : public __traitor<__is_void<_Tp>, __is_arithmetic<_Tp> >
+    { };
 
   //
-  // For the immediate use, the following is a good approximation
+  // A scalar type is an arithmetic type or a pointer type
+  // 
+  template<typename _Tp>
+    struct __is_scalar
+    : public __traitor<__is_arithmetic<_Tp>, __is_pointer<_Tp> >
+    { };
+
+  //
+  // For use in std::copy and std::find overloads for streambuf iterators.
   //
   template<typename _Tp>
-  struct __is_pod
-  {
-    enum
+    struct __is_char
     {
-      _M_type = __is_fundamental<_Tp>::_M_type
+      enum { __value = 0 };
+      typedef __false_type __type;
     };
-  };
 
-} // namespace std
+  template<>
+    struct __is_char<char>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
 
+#ifdef _GLIBCXX_USE_WCHAR_T
+  template<>
+    struct __is_char<wchar_t>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+#endif
 
-#endif //_CPP_BITS_CPP_TYPE_TRAITS_H
+  template<typename _Tp>
+    struct __is_byte
+    {
+      enum { __value = 0 };
+      typedef __false_type __type;
+    };
+
+  template<>
+    struct __is_byte<char>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+
+  template<>
+    struct __is_byte<signed char>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+
+  template<>
+    struct __is_byte<unsigned char>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+
+  //
+  // Move iterator type
+  //
+  template<typename _Tp>
+    struct __is_move_iterator
+    {
+      enum { __value = 0 };
+      typedef __false_type __type;
+    };
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+  template<typename _Iterator>
+    class move_iterator;
+
+  template<typename _Iterator>
+    struct __is_move_iterator< move_iterator<_Iterator> >
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+#endif
+
+_GLIBCXX_END_NAMESPACE
+
+#endif //_CPP_TYPE_TRAITS_H

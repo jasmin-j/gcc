@@ -2,7 +2,12 @@
 
 #include <string.h>
 #include <stdlib.h>
+
+#ifdef __NEXT_RUNTIME__
+#include "next_mapping.h"
+#else
 #include <objc/NXConstStr.h>
+#endif
 
 #define STRING "this is a string"
 

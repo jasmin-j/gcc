@@ -1,10 +1,10 @@
-// Build don't link:
+// { dg-do assemble  }
 
-template <class T = int> // ERROR - original definition
+template <class T = int> // { dg-error "note: original definition" }
 struct S
-{ // ERROR - redefinition of default arg
+{ 
   template <class U = int>
-  friend class S;
+  friend class S; // { dg-error "redefinition of default argument" }
 };
 
 template struct S<int>;

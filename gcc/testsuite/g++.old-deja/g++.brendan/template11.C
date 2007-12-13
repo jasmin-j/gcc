@@ -1,4 +1,4 @@
-// Build don't link: 
+// { dg-do assemble  }
 // GROUPS passed templates
 template <class Called>
 class aCallback
@@ -34,7 +34,7 @@ int aCallback<Called>::callback()
 
 struct myStruct
 {
-  int action() {return 24;};
+  int action() {return 24;}
 };
 
 int main()

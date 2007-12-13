@@ -13,7 +13,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -35,13 +35,13 @@ typedef char char_type;
 // Per Liboriussen <liborius@stofanet.dk>
 void test03()
 {
-  bool test = true;
+  bool test __attribute__((unused)) = true;
   std::ctype_base::mask maskdata[256];
   for (int i = 0; i < 256; ++i)
     maskdata[i] = std::ctype_base::alpha;
   std::ctype<char>* f = new std::ctype<char>(maskdata);
-  std::locale global;
-  std::locale loc(global, f);
+  std::locale loc_c = std::locale::classic();
+  std::locale loc(loc_c, f);
   for (int i = 0; i < 256; ++i) 
     {
       char_type ch = i;

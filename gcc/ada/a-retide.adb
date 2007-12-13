@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                 GNU ADA RUNTIME LIBRARY (GNARL) COMPONENTS               --
+--                  GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                --
 --                                                                          --
 --                   A D A . R E A L _ T I M E . D E L A Y S                --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---                                                                          --
---         Copyright (C) 1992-2001, Free Software Foundation, Inc.          --
+--         Copyright (C) 1992-2006, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,12 +31,24 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Ada.Exceptions;
+--  Used for Raise_Exception
+
+with System.Tasking;
+--  Used for Task_Id
+--           Initialize
+
 with System.Task_Primitives.Operations;
 --  Used for Timed_Delay
+--           Self
 
 package body Ada.Real_Time.Delays is
 
    package STPO renames System.Task_Primitives.Operations;
+
+   ----------------
+   -- Local Data --
+   ----------------
 
    Absolute_RT : constant := 2;
 
@@ -46,8 +57,21 @@ package body Ada.Real_Time.Delays is
    -----------------
 
    procedure Delay_Until (T : Time) is
+      Self_Id : constant System.Tasking.Task_Id := STPO.Self;
+
    begin
-      STPO.Timed_Delay (STPO.Self, To_Duration (T), Absolute_RT);
+      --  If pragma Detect_Blocking is active, Program_Error must be
+      --  raised if this potentially blocking operation is called from a
+      --  protected action.
+
+      if System.Tasking.Detect_Blocking
+        and then Self_Id.Common.Protected_Action_Nesting > 0
+      then
+         Ada.Exceptions.Raise_Exception
+           (Program_Error'Identity, "potentially blocking operation");
+      else
+         STPO.Timed_Delay (Self_Id, To_Duration (T), Absolute_RT);
+      end if;
    end Delay_Until;
 
    -----------------
@@ -59,4 +83,10 @@ package body Ada.Real_Time.Delays is
       return To_Duration (Time_Span (T));
    end To_Duration;
 
+begin
+   --  Ensure that the tasking run time is initialized when using delay
+   --  operations. The initialization routine has the required machinery to
+   --  prevent multiple calls to Initialize.
+
+   System.Tasking.Initialize;
 end Ada.Real_Time.Delays;

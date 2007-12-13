@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                            G N A T . T A B L E                           --
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---            Copyright (C) 1998-2001 Ada Core Technologies, Inc.           --
+--                     Copyright (C) 1998-2007, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -27,7 +26,8 @@
 -- however invalidate  any other reasons why  the executable file  might be --
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
--- GNAT is maintained by Ada Core Technologies Inc (http://www.gnat.com).   --
+-- GNAT was originally developed  by the GNAT team at  New York University. --
+-- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
@@ -56,7 +56,7 @@ generic
    Table_Increment : Natural;
 
 package GNAT.Table is
-pragma Elaborate_Body (Table);
+   pragma Elaborate_Body;
 
    --  Table_Component_Type and Table_Index_Type specify the type of the
    --  array, Table_Low_Bound is the lower bound. Index_type must be an
@@ -89,6 +89,19 @@ pragma Elaborate_Body (Table);
    --  Note: we do not make the table components aliased, since this would
    --  restrict the use of table for discriminated types. If it is necessary
    --  to take the access of a table element, use Unrestricted_Access.
+
+   --  WARNING: On HPPA, the virtual addressing approach used in this unit
+   --  is incompatible with the indexing instructions on the HPPA. So when
+   --  using this unit, compile your application with -mdisable-indexing.
+
+   --  WARNING: If the table is reallocated, then the address of all its
+   --  components will change. So do not capture the address of an element
+   --  and then use the address later after the table may be reallocated.
+   --  One tricky case of this is passing an element of the table to a
+   --  subprogram by reference where the table gets reallocated during
+   --  the execution of the subprogram. The best rule to follow is never
+   --  to pass a table element as a parameter except for the case of IN
+   --  mode parameters with scalar values.
 
    type Table_Type is
      array (Table_Index_Type range <>) of Table_Component_Type;
@@ -138,7 +151,7 @@ pragma Elaborate_Body (Table);
    --  array value. Current array values are not affected by this call.
 
    procedure Free;
-   --  Free all allocated memory for the table. A call to init is required
+   --  Free all allocated memory for the table. A call to Init is required
    --  before any use of this table after calling Free.
 
    First : constant Table_Index_Type := Table_Low_Bound;
@@ -155,11 +168,11 @@ pragma Elaborate_Body (Table);
 
    procedure Increment_Last;
    pragma Inline (Increment_Last);
-   --  Adds 1 to Last (same as Set_Last (Last + 1).
+   --  Adds 1 to Last (same as Set_Last (Last + 1)
 
    procedure Decrement_Last;
    pragma Inline (Decrement_Last);
-   --  Subtracts 1 from Last (same as Set_Last (Last - 1).
+   --  Subtracts 1 from Last (same as Set_Last (Last - 1)
 
    procedure Append (New_Val : Table_Component_Type);
    pragma Inline (Append);

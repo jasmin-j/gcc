@@ -1,3 +1,4 @@
+// { dg-do run  }
 template <class T> struct A {
   template <class U> struct B {
     template <class V> static void f () { }
@@ -14,7 +15,7 @@ void f ()
   b.A<T>::template B<U>::~B();
 }
 
-template <class T> struct C: public A<T>::B<T> { };
+template <class T> struct C: public A<T>::template B<T> { };
   
 int main ()
 {

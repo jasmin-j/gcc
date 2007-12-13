@@ -1,6 +1,8 @@
+// { dg-require-namedlocale "" }
+
 // 2001-09-17 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.5.3.1 time_put members
@@ -29,30 +31,15 @@ void test02()
   using namespace std;
   typedef ostreambuf_iterator<char> iterator_type;
 
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
-  // create "C" time objects
-  tm time1 = { 0, 0, 12, 4, 3, 71 };
-  const char* all = "%a %A %b %B %c %d %H %I %j %m %M %p %s %U "
-    "%w %W %x %X %y %Y %Z %%";
-  const char* date = "%A, the second of %B";
-  const char* date_ex = "%Ex";
+  // create "C" time object
+  const tm time1 = __gnu_test::test_tm(0, 0, 12, 4, 3, 71, 0, 93, 0);
 
-  // basic construction and sanity checks.
+  // basic construction and sanity check
   locale loc_c = locale::classic();
-  locale loc_hk("en_HK");
-  locale loc_fr("fr_FR@euro");
-  locale loc_de("de_DE");
-  VERIFY( loc_hk != loc_c );
-  VERIFY( loc_hk != loc_fr );
-  VERIFY( loc_hk != loc_de );
-  VERIFY( loc_de != loc_fr );
-
-  // cache the __timepunct facets, for quicker gdb inspection
-  const __timepunct<char>& time_c = use_facet<__timepunct<char> >(loc_c); 
-  const __timepunct<char>& time_de = use_facet<__timepunct<char> >(loc_de); 
-  const __timepunct<char>& time_hk = use_facet<__timepunct<char> >(loc_hk); 
-  const __timepunct<char>& time_fr = use_facet<__timepunct<char> >(loc_fr); 
+  locale loc_de = locale("de_DE");
+  VERIFY( loc_de != loc_c );
 
   // create an ostream-derived object, cache the time_put facet
   const string empty;
@@ -62,20 +49,27 @@ void test02()
 
   iterator_type os_it02 = tim_put.put(oss.rdbuf(), oss, '*', &time1, 'a');
   string result2 = oss.str();
-  VERIFY( result2 == "Son" );
+  VERIFY( result2 == "Son" || result2 == "So" );
 
   oss.str(empty); // "%d.%m.%Y"
   iterator_type os_it23 = tim_put.put(oss.rdbuf(), oss, '*', &time1, 'x');
   string result23 = oss.str(); // "04.04.1971"
+  VERIFY( result23 == "04.04.1971" );
+
   oss.str(empty); // "%T"
   iterator_type os_it24 = tim_put.put(oss.rdbuf(), oss, '*', &time1, 'X');
   string result24 = oss.str(); // "12:00:00"
+  VERIFY( result24 == "12:00:00" );
+
   oss.str(empty);
   iterator_type os_it33 = tim_put.put(oss.rdbuf(), oss, '*', &time1, 'x', 'E');
   string result33 = oss.str(); // "04.04.1971"
+  VERIFY( result33 == "04.04.1971" );
+
   oss.str(empty);
   iterator_type os_it34 = tim_put.put(oss.rdbuf(), oss, '*', &time1, 'X', 'E');
   string result34 = oss.str(); // "12:00:00"
+  VERIFY( result34 == "12:00:00" );
 }
 
 int main()

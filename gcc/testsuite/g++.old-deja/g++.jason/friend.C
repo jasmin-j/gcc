@@ -1,3 +1,4 @@
+// { dg-do run  }
 // Bug: g++ doesn't keep track of the lexical context of friends properly.
 
 extern "C" void exit(int);
@@ -9,10 +10,11 @@ struct A {
 
 struct B {
   static void f () { exit (0); }
-  friend void g () { f (); }
+  friend void g (B) { f (); }
 };
 
 int main ()
 {
-  g ();
+  B b;
+  g (b);
 }

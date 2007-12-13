@@ -1,6 +1,8 @@
+// { dg-require-namedlocale "" }
+
 // 2001-09-21 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.5.1.1 time_get members
@@ -26,27 +28,17 @@
 
 void test02()
 {
- using namespace std;
-  typedef time_base::dateorder dateorder;
-  typedef istreambuf_iterator<char> iterator_type;
+  using namespace std;
+  bool test __attribute__((unused)) = true;
 
-  bool test = true;
+  typedef istreambuf_iterator<char> iterator_type;
 
   // basic construction and sanity checks.
   locale loc_c = locale::classic();
-  locale loc_hk("en_HK");
-  locale loc_fr("fr_FR@euro");
-  locale loc_de("de_DE");
+  locale loc_hk = locale("en_HK");
+  locale loc_de = locale("de_DE");
   VERIFY( loc_hk != loc_c );
-  VERIFY( loc_hk != loc_fr );
   VERIFY( loc_hk != loc_de );
-  VERIFY( loc_de != loc_fr );
-
-  // cache the __timepunct facets, for quicker gdb inspection
-  const __timepunct<char>& time_c = use_facet<__timepunct<char> >(loc_c); 
-  const __timepunct<char>& time_de = use_facet<__timepunct<char> >(loc_de); 
-  const __timepunct<char>& time_hk = use_facet<__timepunct<char> >(loc_hk); 
-  const __timepunct<char>& time_fr = use_facet<__timepunct<char> >(loc_fr); 
 
   const string empty;
 
@@ -60,7 +52,7 @@ void test02()
   ios_base::iostate errorstate = good;
 
   // create "C" time objects
-  const tm time_bday = { 0, 0, 12, 4, 3, 71 };
+  const tm time_bday = __gnu_test::test_tm(0, 0, 12, 4, 3, 71, 0, 93, 0);
 
   // inspection of named locales, de_DE
   iss.imbue(loc_de);

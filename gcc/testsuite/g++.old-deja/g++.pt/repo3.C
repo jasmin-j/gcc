@@ -1,8 +1,10 @@
+// { dg-do link }
+// { dg-options "-frepo" }
+// { dg-require-host-local "" }
 // Test that we properly generate the vtable and such for C.
 // Contributed by scott snyder <snyder@fnal.gov>
 
 // Build then link:
-// Special g++ Options: -frepo
 
 struct A
 {
@@ -29,3 +31,5 @@ main ()
 {
   D<int> x;
 }
+
+// { dg-final { cleanup-repo-files } }

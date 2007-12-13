@@ -1,5 +1,5 @@
 /* SelectorProviderImpl.java -- 
-   Copyright (C) 2002 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003 Free Software Foundation, Inc.
 
 This file is part of GNU Classpath.
 
@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -37,12 +37,13 @@ exception statement from your version. */
 
 package gnu.java.nio;
 
+import java.io.IOException;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.Pipe;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.nio.channels.spi.SelectorProvider;
 import java.nio.channels.spi.AbstractSelector;
+import java.nio.channels.spi.SelectorProvider;
 
 public class SelectorProviderImpl extends SelectorProvider
 {
@@ -51,27 +52,33 @@ public class SelectorProviderImpl extends SelectorProvider
   }
 
   public DatagramChannel openDatagramChannel ()
+    throws IOException
   {
     return new DatagramChannelImpl (this);
   }
 
   public Pipe openPipe ()
+    throws IOException
   {
-    return new PipeImpl ();
+    return new PipeImpl (this);
   }
     
   public AbstractSelector openSelector ()
+    throws IOException
   {
     return new SelectorImpl (this);
   }
 
   public ServerSocketChannel openServerSocketChannel ()
+    throws IOException
   {
     return new ServerSocketChannelImpl (this);
   }
 
   public SocketChannel openSocketChannel ()
+    throws IOException
   {
     return new SocketChannelImpl (this);
   }
+
 }

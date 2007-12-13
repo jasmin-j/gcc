@@ -1,9 +1,5 @@
-# This doesn't work on m68k-motorola-sysv
-# It also doesn't work on m88k-motorola-sysv3
-
-global target_triplet
-if { [istarget "m68k-motorola-sysv"] || [istarget "m88k-motorola-sysv3"] } {
-      set torture_compile_xfail "$target_triplet"
+if [istarget "m68k-*-linux*"] {
+    # the executable is at the same position the test tries to remap
+    return 1
 }
-
 return 0

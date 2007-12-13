@@ -6,12 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---            Copyright (C) 1999-2001 Ada Core Technologies, Inc.           --
---                                                                          --
--- This specification is derived from the Ada Reference Manual for use with --
--- GNAT. The copyright notice above, and the license provisions that follow --
--- apply solely to the  contents of the part following the private keyword. --
+--                     Copyright (C) 1999-2007, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -21,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,7 +27,7 @@
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
--- It is now maintained by Ada Core Technologies Inc (http://www.gnat.com). --
+-- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
@@ -45,7 +40,7 @@ package body GNAT.Calendar.Time_IO is
 
    type Month_Name is
      (January,
-      Febuary,
+      February,
       March,
       April,
       May,
@@ -59,35 +54,38 @@ package body GNAT.Calendar.Time_IO is
 
    type Padding_Mode is (None, Zero, Space);
 
+   type Sec_Number is mod 2 ** 64;
+   --  Type used to compute the number of seconds since 01/01/1970. A 32 bit
+   --  number will cover only a period of 136 years. This means that for date
+   --  past 2106 the computation is not possible. A 64 bits number should be
+   --  enough for a very large period of time.
+
    -----------------------
    -- Local Subprograms --
    -----------------------
 
    function Am_Pm (H : Natural) return String;
-   --  return AM or PM depending on the hour H
+   --  Return AM or PM depending on the hour H
 
    function Hour_12 (H : Natural) return Positive;
-   --  Convert a 1-24h format to a 0-12 hour format.
+   --  Convert a 1-24h format to a 0-12 hour format
 
    function Image (Str : String; Length : Natural := 0) return String;
    --  Return Str capitalized and cut to length number of characters. If
-   --  length is set to 0 it does not cut it.
+   --  length is 0, then no cut operation is performed.
 
    function Image
-     (N       : Long_Integer;
+     (N       : Sec_Number;
       Padding : Padding_Mode := Zero;
-      Length  : Natural := 0)
-      return    String;
-   --  Return image of N. This number is eventually padded with zeros or
-   --  spaces depending of the length required. If length is 0 then no padding
-   --  occurs.
+      Length  : Natural := 0) return String;
+   --  Return image of N. This number is eventually padded with zeros or spaces
+   --  depending of the length required. If length is 0 then no padding occurs.
 
    function Image
-     (N       : Integer;
+     (N       : Natural;
       Padding : Padding_Mode := Zero;
-      Length  : Natural := 0)
-      return    String;
-   --  As above with N provided in Integer format.
+      Length  : Natural := 0) return String;
+   --  As above with N provided in Integer format
 
    -----------
    -- Am_Pm --
@@ -123,12 +121,12 @@ package body GNAT.Calendar.Time_IO is
 
    function Image
      (Str    : String;
-      Length : Natural := 0)
-      return   String
+      Length : Natural := 0) return String
    is
       use Ada.Characters.Handling;
-      Local : String := To_Upper (Str (1)) & To_Lower (Str (2 .. Str'Last));
-
+      Local : constant String :=
+                To_Upper (Str (Str'First)) &
+                  To_Lower (Str (Str'First + 1 .. Str'Last));
    begin
       if Length = 0 then
          return Local;
@@ -142,22 +140,24 @@ package body GNAT.Calendar.Time_IO is
    -----------
 
    function Image
-     (N       : Integer;
+     (N       : Natural;
       Padding : Padding_Mode := Zero;
-      Length  : Natural := 0)
-      return    String
+      Length  : Natural := 0) return String
    is
    begin
-      return Image (Long_Integer (N), Padding, Length);
+      return Image (Sec_Number (N), Padding, Length);
    end Image;
 
    function Image
-     (N       : Long_Integer;
+     (N       : Sec_Number;
       Padding : Padding_Mode := Zero;
-      Length  : Natural := 0)
-      return    String
+      Length  : Natural := 0) return String
    is
       function Pad_Char return String;
+
+      --------------
+      -- Pad_Char --
+      --------------
 
       function Pad_Char return String is
       begin
@@ -168,7 +168,7 @@ package body GNAT.Calendar.Time_IO is
          end case;
       end Pad_Char;
 
-      NI  : constant String := Long_Integer'Image (N);
+      NI  : constant String := Sec_Number'Image (N);
       NIP : constant String := Pad_Char & NI (2 .. NI'Last);
 
    --  Start of processing for Image
@@ -176,7 +176,6 @@ package body GNAT.Calendar.Time_IO is
    begin
       if Length = 0 or else Padding = None then
          return NI (2 .. NI'Last);
-
       else
          return NIP (NIP'Last - Length + 1 .. NIP'Last);
       end if;
@@ -188,13 +187,12 @@ package body GNAT.Calendar.Time_IO is
 
    function Image
      (Date    : Ada.Calendar.Time;
-      Picture : Picture_String)
-      return    String
+      Picture : Picture_String) return String
    is
-      Padding    : Padding_Mode := Zero;
+      Padding : Padding_Mode := Zero;
       --  Padding is set for one directive
 
-      Result     : Unbounded_String;
+      Result : Unbounded_String;
 
       Year       : Year_Number;
       Month      : Month_Number;
@@ -204,20 +202,32 @@ package body GNAT.Calendar.Time_IO is
       Second     : Second_Number;
       Sub_Second : Second_Duration;
 
-      P : Positive := Picture'First;
+      P : Positive;
 
    begin
+      --  Get current time in split format
+
       Split (Date, Year, Month, Day, Hour, Minute, Second, Sub_Second);
 
-      loop
+      --  Null picture string is error
+
+      if Picture = "" then
+         raise Picture_Error with "null picture string";
+      end if;
+
+      --  Loop through characters of picture string, building result
+
+      Result := Null_Unbounded_String;
+      P := Picture'First;
+      while P <= Picture'Last loop
+
          --  A directive has the following format "%[-_]."
 
          if Picture (P) = '%' then
-
             Padding := Zero;
 
             if P = Picture'Last then
-               raise Picture_Error;
+               raise Picture_Error with "picture string ends with '%";
             end if;
 
             --  Check for GNU extension to change the padding
@@ -225,13 +235,14 @@ package body GNAT.Calendar.Time_IO is
             if Picture (P + 1) = '-' then
                Padding := None;
                P := P + 1;
+
             elsif Picture (P + 1) = '_' then
                Padding := Space;
                P := P + 1;
             end if;
 
             if P = Picture'Last then
-               raise Picture_Error;
+               raise Picture_Error with "picture string ends with '- or '_";
             end if;
 
             case Picture (P + 1) is
@@ -290,19 +301,38 @@ package body GNAT.Calendar.Time_IO is
                     Image (Second, Padding, Length => 2) & ' ' &
                     Am_Pm (Hour);
 
-               --   Seconds  since 1970-01-01  00:00:00 UTC
+               --   Seconds since 1970-01-01  00:00:00 UTC
                --   (a nonstandard extension)
 
                when 's' =>
                   declare
-                     Sec : constant Long_Integer :=
-                             Long_Integer
-                               ((Julian_Day (Year, Month, Day) -
-                                  Julian_Day (1970, 1, 1)) * 86_400 +
-                                Hour * 3_600 + Minute * 60 + Second);
+                     --  Compute the number of seconds using Ada.Calendar.Time
+                     --  values rather than Julian days to account for Daylight
+                     --  Savings Time.
+
+                     Neg : Boolean  := False;
+                     Sec : Duration := Date - Time_Of (1970, 1, 1, 0.0);
 
                   begin
-                     Result := Result & Image (Sec, None);
+                     --  Avoid rounding errors and perform special processing
+                     --  for dates earlier than the Unix Epoc.
+
+                     if Sec > 0.0 then
+                        Sec := Sec - 0.5;
+                     elsif Sec < 0.0 then
+                        Neg := True;
+                        Sec := abs (Sec + 0.5);
+                     end if;
+
+                     --  Prepend a minus sign to the result since Sec_Number
+                     --  cannot handle negative numbers.
+
+                     if Neg then
+                        Result :=
+                          Result & "-" & Image (Sec_Number (Sec), None);
+                     else
+                        Result := Result & Image (Sec_Number (Sec), None);
+                     end if;
                   end;
 
                --  Second (00..59)
@@ -310,11 +340,44 @@ package body GNAT.Calendar.Time_IO is
                when 'S' =>
                   Result := Result & Image (Second, Padding, Length => 2);
 
+               --  Milliseconds (3 digits)
+               --  Microseconds (6 digits)
+               --  Nanoseconds  (9 digits)
+
+               when 'i' | 'e' | 'o' =>
+                  declare
+                     Sub_Sec : constant Long_Integer :=
+                                 Long_Integer (Sub_Second * 1_000_000_000);
+
+                     Img1  : constant String := Sub_Sec'Img;
+                     Img2  : constant String :=
+                               "00000000" & Img1 (Img1'First + 1 .. Img1'Last);
+                     Nanos : constant String :=
+                               Img2 (Img2'Last - 8 .. Img2'Last);
+
+                  begin
+                     case Picture (P + 1) is
+                        when 'i' =>
+                           Result := Result &
+                             Nanos (Nanos'First .. Nanos'First + 2);
+
+                        when 'e' =>
+                           Result := Result &
+                             Nanos (Nanos'First .. Nanos'First + 5);
+
+                        when 'o' =>
+                           Result := Result & Nanos;
+
+                        when others =>
+                           null;
+                     end case;
+                  end;
+
                --  Time, 24-hour (hh:mm:ss)
 
                when 'T' =>
                   Result := Result &
-                    Image (Hour, Padding, Length => 2) & ':' &
+                    Image (Hour, Padding, Length => 2)   & ':' &
                     Image (Minute, Padding, Length => 2) & ':' &
                     Image (Second, Padding, Length => 2);
 
@@ -338,7 +401,7 @@ package body GNAT.Calendar.Time_IO is
                     Image (Month_Name'Image (Month_Name'Val (Month - 1)), 3);
 
                --  Locale's full month name, variable length
-               --  (January..December)
+               --  (January..December).
 
                when 'B' =>
                   Result := Result &
@@ -365,9 +428,9 @@ package body GNAT.Calendar.Time_IO is
 
                when 'D' | 'x' =>
                   Result := Result &
-                    Image (Month, Padding, 2) & '/' &
-                    Image (Day, Padding, 2) & '/' &
-                    Image (Year, Padding, 2);
+                              Image (Month, Padding, 2) & '/' &
+                              Image (Day, Padding, 2) & '/' &
+                              Image (Year, Padding, 2);
 
                --  Day of year (001..366)
 
@@ -421,7 +484,6 @@ package body GNAT.Calendar.Time_IO is
                when 'y' =>
                   declare
                      Y : constant Natural := Year - (Year / 100) * 100;
-
                   begin
                      Result := Result & Image (Y, Padding, 2);
                   end;
@@ -432,22 +494,200 @@ package body GNAT.Calendar.Time_IO is
                   Result := Result & Image (Year, None, 4);
 
                when others =>
-                  raise Picture_Error;
+                  raise Picture_Error with
+                    "unknown format character in picture string";
+
             end case;
 
+            --  Skip past % and format character
+
             P := P + 2;
+
+         --  Character other than % is copied into the result
 
          else
             Result := Result & Picture (P);
             P := P + 1;
          end if;
-
-         exit when P > Picture'Last;
-
       end loop;
 
       return To_String (Result);
    end Image;
+
+   -----------
+   -- Value --
+   -----------
+
+   function Value (Date : String) return Ada.Calendar.Time is
+      D          : String (1 .. 19);
+      D_Length   : constant Natural := Date'Length;
+
+      Year       : Year_Number;
+      Month      : Month_Number;
+      Day        : Day_Number;
+      Hour       : Hour_Number;
+      Minute     : Minute_Number;
+      Second     : Second_Number;
+      Sub_Second : Second_Duration;
+
+      procedure Extract_Date
+        (Year  : out Year_Number;
+         Month : out Month_Number;
+         Day   : out Day_Number;
+         Y2K   : Boolean := False);
+      --  Try and extract a date value from string D. Set Y2K to True to
+      --  account for the 20YY case. Raise Constraint_Error if the portion
+      --  of D corresponding to the date is not well formatted.
+
+      procedure Extract_Time
+        (Index       : Positive;
+         Hour        : out Hour_Number;
+         Minute      : out Minute_Number;
+         Second      : out Second_Number;
+         Check_Space : Boolean := False);
+      --  Try and extract a time value from string D starting from position
+      --  Index. Set Check_Space to True to check whether the character at
+      --  Index - 1 is a space. Raise Constraint_Error if the portion of D
+      --  corresponding to the date is not well formatted.
+
+      ------------------
+      -- Extract_Date --
+      ------------------
+
+      procedure Extract_Date
+        (Year  : out Year_Number;
+         Month : out Month_Number;
+         Day   : out Day_Number;
+         Y2K   : Boolean := False)
+      is
+         Delim_Index : Positive := 5;
+
+      begin
+         if Y2K then
+            Delim_Index := 3;
+         end if;
+
+         if (D (Delim_Index) /= '-' or else D (Delim_Index + 3) /= '-')
+           and then
+            (D (Delim_Index) /= '/' or else D (Delim_Index + 3) /= '/')
+         then
+            raise Constraint_Error;
+         end if;
+
+         if Y2K then
+            Year  := Year_Number'Value ("20" & D (1 .. 2));
+            Month := Month_Number'Value       (D (4 .. 5));
+            Day   := Day_Number'Value         (D (7 .. 8));
+         else
+            Year  := Year_Number'Value  (D (1 .. 4));
+            Month := Month_Number'Value (D (6 .. 7));
+            Day   := Day_Number'Value   (D (9 .. 10));
+         end if;
+      end Extract_Date;
+
+      ------------------
+      -- Extract_Time --
+      ------------------
+
+      procedure Extract_Time
+        (Index       : Positive;
+         Hour        : out Hour_Number;
+         Minute      : out Minute_Number;
+         Second      : out Second_Number;
+         Check_Space : Boolean := False) is
+
+      begin
+         if Check_Space and then D (Index - 1) /= ' ' then
+            raise Constraint_Error;
+         end if;
+
+         if D (Index + 2) /= ':' or else D (Index + 5) /= ':' then
+            raise Constraint_Error;
+         end if;
+
+         Hour   := Hour_Number'Value   (D (Index     .. Index + 1));
+         Minute := Minute_Number'Value (D (Index + 3 .. Index + 4));
+         Second := Second_Number'Value (D (Index + 6 .. Index + 7));
+      end Extract_Time;
+
+   --  Start of processing for Value
+
+   begin
+      Split (Clock, Year, Month, Day, Hour, Minute, Second, Sub_Second);
+      Sub_Second := 0.0;
+
+      --  Length checks
+
+      if D_Length /= 8
+        and then D_Length /= 10
+        and then D_Length /= 17
+        and then D_Length /= 19
+      then
+         raise Constraint_Error;
+      end if;
+
+      --  After the correct length has been determined, it is safe to create
+      --  a local string copy in order to avoid String'First N arithmetic.
+
+      D (1 .. D_Length) := Date;
+
+      --  Case 1:
+
+      --    hh:mm:ss
+      --    yy*mm*dd
+
+      if D_Length = 8 then
+
+         if D (3) = ':' then
+            Extract_Time (1, Hour, Minute, Second);
+         else
+            Extract_Date (Year, Month, Day, True);
+            Hour   := 0;
+            Minute := 0;
+            Second := 0;
+         end if;
+
+      --  Case 2:
+
+      --    yyyy*mm*dd
+
+      elsif D_Length = 10 then
+         Extract_Date (Year, Month, Day);
+         Hour   := 0;
+         Minute := 0;
+         Second := 0;
+
+      --  Case 3:
+
+      --    yy*mm*dd hh:mm:ss
+
+      elsif D_Length = 17 then
+         Extract_Date (Year, Month, Day, True);
+         Extract_Time (10, Hour, Minute, Second, True);
+
+      --  Case 4:
+
+      --    yyyy*mm*dd hh:mm:ss
+
+      else
+         Extract_Date (Year, Month, Day);
+         Extract_Time (12, Hour, Minute, Second, True);
+      end if;
+
+      --  Sanity checks
+
+      if not Year'Valid
+        or else not Month'Valid
+        or else not Day'Valid
+        or else not Hour'Valid
+        or else not Minute'Valid
+        or else not Second'Valid
+      then
+         raise Constraint_Error;
+      end if;
+
+      return Time_Of (Year, Month, Day, Hour, Minute, Second, Sub_Second);
+   end Value;
 
    --------------
    -- Put_Time --

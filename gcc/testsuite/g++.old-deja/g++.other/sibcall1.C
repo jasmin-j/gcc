@@ -1,8 +1,9 @@
-// Special g++ Options: -O2
+// { dg-do run  }
+// { dg-options "-O2" }
 
 #include <iostream>
 
-std::ostream& foo (char *x, std::ostream &y)
+std::ostream& foo (const char *x, std::ostream &y)
 {
   return y << "" << x;
 }

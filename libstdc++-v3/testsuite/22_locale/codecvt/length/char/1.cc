@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.1.5 - Template class codecvt [lib.locale.codecvt]
@@ -31,28 +31,16 @@ void test01()
   typedef codecvt_base::result			result;
   typedef codecvt<char, char, mbstate_t> 	c_codecvt;
 
-  bool 			test = true;
+  bool test __attribute__((unused)) = true;
   const char* 		c_lit = "black pearl jasmine tea";
-  const char* 	        from_next;
-  int 			size = 25;
-  char* 		c_arr = new char[size];
-  char*                 c_ref = new char[size];
-  char*			to_next;
+  int 			size = 23;
 
   locale 		loc = locale::classic();
   c_codecvt::state_type state;
   const c_codecvt* 	cvt = &use_facet<c_codecvt>(loc); 
 
-  // According to the resolution of DR19 (see also libstd++/9168), in
-  // case of degenerate conversion ('noconv'), "there are no changes to
-  // the values in [to, to_limit)."
-  memset(c_ref, 'X', size);
-
   int j = cvt->length(state, c_lit, c_lit + size, 5);
   VERIFY( j == 5 );
-
-  delete [] c_arr;
-  delete [] c_ref;
 }
 
 int main ()

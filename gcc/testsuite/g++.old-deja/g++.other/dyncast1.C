@@ -1,3 +1,4 @@
+// { dg-do run  }
 // Author: Alfred Miniarik <a8601248@unet.univie.ac.at>
 // test of dynamic_cast
 // runtime detecting of nonpublic
@@ -95,7 +96,7 @@ test03 ()
 
 // 2. crosscast
 
-struct J {virtual ~J(){};};
+struct J {virtual ~J(){}};
 struct K : CC, private J {}; 
 class KK : J, CC{};
 		

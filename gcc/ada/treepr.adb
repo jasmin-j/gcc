@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2002 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -540,8 +538,39 @@ package body Treepr is
          Print_Eol;
       end if;
 
-      Write_Entity_Flags (Ent, Prefix);
+      if Field_Present (Field24 (Ent)) then
+         Print_Str (Prefix);
+         Write_Field24_Name (Ent);
+         Write_Str (" = ");
+         Print_Field (Field24 (Ent));
+         Print_Eol;
+      end if;
 
+      if Field_Present (Field25 (Ent)) then
+         Print_Str (Prefix);
+         Write_Field25_Name (Ent);
+         Write_Str (" = ");
+         Print_Field (Field25 (Ent));
+         Print_Eol;
+      end if;
+
+      if Field_Present (Field26 (Ent)) then
+         Print_Str (Prefix);
+         Write_Field26_Name (Ent);
+         Write_Str (" = ");
+         Print_Field (Field26 (Ent));
+         Print_Eol;
+      end if;
+
+      if Field_Present (Field27 (Ent)) then
+         Print_Str (Prefix);
+         Write_Field27_Name (Ent);
+         Write_Str (" = ");
+         Print_Field (Field27 (Ent));
+         Print_Eol;
+      end if;
+
+      Write_Entity_Flags (Ent, Prefix);
    end Print_Entity_Info;
 
    ---------------
@@ -597,19 +626,6 @@ package body Treepr is
          Write_Str (" (Ureal = ");
          Write_Int (Int (Val));
          Write_Char (')');
-
-      elsif Val in Char_Code_Range then
-         Write_Str ("Character code = ");
-
-         declare
-            C : Char_Code := Char_Code (Val - Char_Code_Bias);
-
-         begin
-            Write_Int (Int (C));
-            Write_Str (" ('");
-            Write_Char_Code (C);
-            Write_Str ("')");
-         end;
 
       else
          Print_Str ("****** Incorrect value = ");
@@ -727,11 +743,14 @@ package body Treepr is
          elsif N = Error_Name then
             Print_Str ("<Error_Name>");
 
-         else
+         elsif Is_Valid_Name (N) then
             Get_Name_String (N);
             Print_Char ('"');
             Write_Name (N);
             Print_Char ('"');
+
+         else
+            Print_Str ("<invalid name ???>");
          end if;
       end if;
    end Print_Name;
@@ -775,6 +794,12 @@ package body Treepr is
       Print_Node_Ref (N);
 
       Notes := False;
+
+      if N > Atree_Private_Part.Nodes.Last then
+         Print_Str (" (no such node)");
+         Print_Eol;
+         return;
+      end if;
 
       if Comes_From_Source (N) then
          Notes := True;
@@ -869,9 +894,8 @@ package body Treepr is
 
          if Nkind (N) in N_Op
            or else Nkind (N) = N_And_Then
-           or else Nkind (N) = N_In
-           or else Nkind (N) = N_Not_In
            or else Nkind (N) = N_Or_Else
+           or else Nkind (N) in N_Membership_Test
          then
             --  Print Left_Opnd if present
 
@@ -978,9 +1002,7 @@ package body Treepr is
          --  Print Etype field if present (printing of this field for entities
          --  is handled by the Print_Entity_Info procedure).
 
-         if Nkind (N) in N_Has_Etype
-           and then Present (Etype (N))
-         then
+         if Nkind (N) in N_Has_Etype and then Present (Etype (N)) then
             Print_Str (Prefix_Str_Char);
             Print_Str ("Etype = ");
             Print_Node_Ref (Etype (N));
@@ -1838,6 +1860,16 @@ package body Treepr is
          Visit_Descendent (Field21 (N));
          Visit_Descendent (Field22 (N));
          Visit_Descendent (Field23 (N));
+
+         --  Now an interesting kludge. Normally parents are always printed
+         --  since we traverse the tree in a downwards direction. There is
+         --  however an exception to this rule, which is the case where a
+         --  parent is constructed by the compiler and is not referenced
+         --  elsewhere in the tree. The following catches this case
+
+         if not Comes_From_Source (N) then
+            Visit_Descendent (Union_Id (Parent (N)));
+         end if;
 
          --  You may be wondering why we omitted Field2 above. The answer
          --  is that this is the Next_Entity field, and we want to treat

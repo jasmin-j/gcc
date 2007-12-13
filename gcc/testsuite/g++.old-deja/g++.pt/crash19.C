@@ -1,4 +1,4 @@
-// Build don't link:
+// { dg-do assemble  }
 
 template <int I>
 void f()
@@ -9,7 +9,7 @@ void f()
     void g() {
       C e;
       e.c = 3;
-    };
+    }
   };
 
   S s;

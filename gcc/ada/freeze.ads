@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -122,14 +121,19 @@ package Freeze is
    --  base types, where the freeze node is preallocated at the point of
    --  declaration, so that the First_Subtype_Link field can be set.
 
+   Freezing_Library_Level_Tagged_Type : Boolean := False;
+   --  Flag used to indicate that we are freezing the primitives of a library
+   --  level tagged types. Used to disable checks on premature freezing.
+   --  More documentation needed??? why is this flag needed? what are these
+   --  checks? why do they need disabling in some cases?
+
    -----------------
    -- Subprograms --
    -----------------
 
    function Build_Renamed_Body
      (Decl  : Node_Id;
-      New_S : Entity_Id)
-   return Node_Id;
+      New_S : Entity_Id) return Node_Id;
    --  Rewrite renaming declaration as a subprogram body, whose single
    --  statement is a call to the renamed entity. New_S is the entity that
    --  appears in the renaming declaration. If this is a Renaming_As_Body,
@@ -171,6 +175,13 @@ package Freeze is
    --  do not allow a size clause if the size would not otherwise be known at
    --  compile time in any case.
 
+   procedure Expand_Atomic_Aggregate (E : Entity_Id; Typ : Entity_Id);
+   --  If an atomic object is initialized with an aggregate or is assigned
+   --  an aggregate, we have to prevent a piecemeal access or assignment
+   --  to the object, even if the aggregate is to be expanded. we create
+   --  a temporary for the aggregate, and assign the temporary instead,
+   --  so that the back end can generate an atomic move for it.
+
    function Freeze_Entity (E : Entity_Id; Loc : Source_Ptr) return List_Id;
    --  Freeze an entity, and return Freeze nodes, to be inserted at the
    --  point of call. Loc is a source location which corresponds to the
@@ -194,7 +205,7 @@ package Freeze is
    --  frozen entities.
 
    procedure Freeze_Before (N : Node_Id; T : Entity_Id);
-   --  Freeze T then Insert the generated Freeze nodes before the node N.
+   --  Freeze T then Insert the generated Freeze nodes before the node N
 
    procedure Freeze_Expression (N : Node_Id);
    --  Freezes the required entities when the Expression N causes freezing.

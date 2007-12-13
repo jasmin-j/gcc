@@ -6,8 +6,7 @@
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *                                                                          *
- *          Copyright (C) 1992-2002 Free Software Foundation, Inc.          *
+ *         Copyright (C) 1992-2006, Free Software Foundation, Inc.          *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -17,8 +16,8 @@
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
  * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
+ * Boston, MA 02110-1301, USA.                                              *
  *                                                                          *
  * As a  special  exception,  if you  link  this file  with other  files to *
  * produce an executable,  this file does not by itself cause the resulting *
@@ -45,10 +44,20 @@
 #include "tsystem.h"
 #include <fcntl.h>
 #include <sys/stat.h>
-#include "time.h"
+#ifdef VMS
+#include <unixio.h>
+#endif
 #else
 #include "config.h"
 #include "system.h"
+#endif
+
+#include <time.h>
+
+#if defined (sun) && defined (__SVR4) && !defined (__vxworks)
+/* The declaration is present in <time.h> but conditionalized
+   on a couple of macros we don't define.  */
+extern struct tm *localtime_r(const time_t *, struct tm *);
 #endif
 
 #include "adaint.h"
@@ -158,15 +167,13 @@ static const char *mode_append_binary_plus = "a+b";
 const char __gnat_text_translation_required = 1;
 
 void
-__gnat_set_binary_mode (handle)
-     int handle;
+__gnat_set_binary_mode (int handle)
 {
   _setmode (handle, O_BINARY);
 }
 
 void
-__gnat_set_text_mode (handle)
-     int handle;
+__gnat_set_text_mode (int handle)
 {
   _setmode (handle, O_TEXT);
 }
@@ -179,8 +186,7 @@ __gnat_set_text_mode (handle)
    "console".  */
 
 char *
-__gnat_ttyname (filedes)
-     int filedes;
+__gnat_ttyname (int filedes)
 {
   if (isatty (filedes))
     return "console";
@@ -188,7 +194,7 @@ __gnat_ttyname (filedes)
     return NULL;
 }
 
-/* This function is needed to fix a bug under Win95/98. Under these plateforms
+/* This function is needed to fix a bug under Win95/98. Under these platforms
    doing :
                 ch1 = getch();
 		ch2 = fgetc (stdin);
@@ -204,26 +210,28 @@ __gnat_ttyname (filedes)
    This problem occurs when using Text_IO.Get_Line after Text_IO.Get_Immediate
    for example.
 
-   Calling FlushConsoleInputBuffer just after getch() fix the bug under 
+   Calling FlushConsoleInputBuffer just after getch() fix the bug under
    95/98. */
 
-static void winflush_init PARAMS ((void));
+static void winflush_init (void);
 
-static void winflush_95 PARAMS ((void));
+static void winflush_95 (void);
 
-static void winflush_nt PARAMS ((void));
+static void winflush_nt (void);
+
+int __gnat_is_windows_xp (void);
 
 /* winflusfunction is set first to the winflushinit function which will check
    the OS version 95/98 or NT/2000 */
 
-static void (*winflush_function) PARAMS ((void)) = winflush_init;
+static void (*winflush_function) (void) = winflush_init;
 
 /* This function does the runtime check of the OS version and then sets
-   winflush_function to the appropriate function and then call it. */ 
+   winflush_function to the appropriate function and then call it. */
 
 static void
-winflush_init ()
-{ 
+winflush_init (void)
+{
   DWORD dwVersion = GetVersion();
 
   if (dwVersion < 0x80000000)                /* Windows NT/2000 */
@@ -235,15 +243,40 @@ winflush_init ()
 
 }
 
-static void winflush_95 ()
-{ 
+static void
+winflush_95 (void)
+{
   FlushConsoleInputBuffer (GetStdHandle (STD_INPUT_HANDLE));
 }
 
-static void winflush_nt ()
+static void
+winflush_nt (void)
 {
   /* Does nothing as there is no problem under NT.  */
 }
+
+int
+__gnat_is_windows_xp (void)
+{
+  static int is_win_xp=0, is_win_xp_checked=0;
+
+  if (!is_win_xp_checked)
+    {
+      OSVERSIONINFO version;
+
+      is_win_xp_checked = 1;
+
+      memset (&version, 0, sizeof (version));
+      version.dwOSVersionInfoSize = sizeof (version);
+
+      is_win_xp = GetVersionEx (&version)
+        && version.dwPlatformId == VER_PLATFORM_WIN32_NT
+        && (version.dwMajorVersion > 5
+            || (version.dwMajorVersion == 5 && version.dwMinorVersion >= 1));
+    }
+  return is_win_xp;
+}
+
 #endif
 
 #else
@@ -265,22 +298,19 @@ const char __gnat_text_translation_required = 0;
 /* These functions do nothing in non-DOS systems. */
 
 void
-__gnat_set_binary_mode (handle)
-     int handle ATTRIBUTE_UNUSED;
+__gnat_set_binary_mode (int handle ATTRIBUTE_UNUSED)
 {
 }
 
 void
-__gnat_set_text_mode (handle)
-     int handle ATTRIBUTE_UNUSED;
+__gnat_set_text_mode (int handle ATTRIBUTE_UNUSED)
 {
 }
 char *
-__gnat_ttyname (filedes)
-     int filedes;
+__gnat_ttyname (int filedes)
 {
 #ifndef __vxworks
-  extern char *ttyname PARAMS ((int));
+  extern char *ttyname (int);
 
   return ttyname (filedes);
 
@@ -293,10 +323,19 @@ __gnat_ttyname (filedes)
 
 #if defined (linux) || defined (sun) || defined (sgi) || defined (__EMX__) \
   || (defined (__osf__) && ! defined (__alpha_vxworks)) || defined (WINNT) \
-  || defined (__MACHTEN__) || defined (hpux) || defined (_AIX) \
+  || defined (__MACHTEN__) || defined (__hpux__) || defined (_AIX) \
   || (defined (__svr4__) && defined (i386)) || defined (__Lynx__) \
-  || defined (__CYGWIN__)
+  || defined (__CYGWIN__) || defined (__FreeBSD__)
+
+#ifdef __MINGW32__
+#if OLD_MINGW
 #include <termios.h>
+#else
+#include <conio.h>  /* for getch(), kbhit() */
+#endif
+#else
+#include <termios.h>
+#endif
 
 #else
 #if defined (VMS)
@@ -308,18 +347,14 @@ static int initted = 0;
 /* Implements the common processing for getc_immediate and
    getc_immediate_nowait. */
 
-extern void getc_immediate		PARAMS ((FILE *, int *, int *));
-extern void getc_immediate_nowait	PARAMS ((FILE *, int *, int *, int *));
-extern void getc_immediate_common	PARAMS ((FILE *, int *, int *,
-						 int *, int));
+extern void getc_immediate (FILE *, int *, int *);
+extern void getc_immediate_nowait (FILE *, int *, int *, int *);
+extern void getc_immediate_common (FILE *, int *, int *, int *, int);
 
 /* Called by Get_Immediate (Foo); */
 
 void
-getc_immediate (stream, ch, end_of_file)
-     FILE *stream;
-     int *ch;
-     int *end_of_file;
+getc_immediate (FILE *stream, int *ch, int *end_of_file)
 {
   int avail;
 
@@ -329,11 +364,7 @@ getc_immediate (stream, ch, end_of_file)
 /* Called by Get_Immediate (Foo, Available); */
 
 void
-getc_immediate_nowait (stream, ch, end_of_file, avail)
-     FILE *stream;
-     int *ch;
-     int *end_of_file;
-     int *avail;
+getc_immediate_nowait (FILE *stream, int *ch, int *end_of_file, int *avail)
 {
   getc_immediate_common (stream, ch, end_of_file, avail, 0);
 }
@@ -341,18 +372,17 @@ getc_immediate_nowait (stream, ch, end_of_file, avail)
 /* Called by getc_immediate () and getc_immediate_nowait () */
 
 void
-getc_immediate_common (stream, ch, end_of_file, avail, waiting)
-     FILE *stream;
-     int *ch;
-     int *end_of_file;
-     int *avail;
-     int waiting;
+getc_immediate_common (FILE *stream,
+                       int *ch,
+                       int *end_of_file,
+                       int *avail,
+                       int waiting)
 {
 #if defined (linux) || defined (sun) || defined (sgi) || defined (__EMX__) \
     || (defined (__osf__) && ! defined (__alpha_vxworks)) \
-    || defined (__CYGWIN__) || defined (__MACHTEN__) || defined (hpux) \
+    || defined (__CYGWIN32__) || defined (__MACHTEN__) || defined (__hpux__) \
     || defined (_AIX) || (defined (__svr4__) && defined (i386)) \
-    || defined (__Lynx__)
+    || defined (__Lynx__) || defined (__FreeBSD__)
   char c;
   int nread;
   int good_one = 0;
@@ -369,9 +399,9 @@ getc_immediate_common (stream, ch, end_of_file, avail, waiting)
       termios_rec.c_lflag = termios_rec.c_lflag & ~ICANON & ~ECHO;
 
 #if defined(linux) || defined (sun) || defined (sgi) || defined (__EMX__) \
-    || defined (__osf__) || defined (__MACHTEN__) || defined (hpux) \
+    || defined (__osf__) || defined (__MACHTEN__) || defined (__hpux__) \
     || defined (_AIX) || (defined (__svr4__) && defined (i386)) \
-    || defined (__Lynx__)
+    || defined (__Lynx__) || defined (__FreeBSD__)
       eof_ch = termios_rec.c_cc[VEOF];
 
       /* If waiting (i.e. Get_Immediate (Char)), set MIN = 1 and wait for
@@ -498,7 +528,7 @@ getc_immediate_common (stream, ch, end_of_file, avail, waiting)
 #elif defined (__vxworks)
   /* Bit masks of file descriptors to read from.  */
   struct fd_set readFds;
-  /* Timeout before select returns if nothing can be read.  */ 
+  /* Timeout before select returns if nothing can be read.  */
   struct timeval timeOut;
   char c;
   int fd = fileno (stream);
@@ -508,14 +538,14 @@ getc_immediate_common (stream, ch, end_of_file, avail, waiting)
   int status;
   int width;
 
-  if (isatty (fd)) 
+  if (isatty (fd))
     {
       /* If we do not want to wait, we have to set up fd in RAW mode. This
 	 should be done outside this function as setting fd in RAW mode under
 	 vxWorks flushes the buffer of fd. If the RAW mode was set here, the
 	 buffer would be empty and we would always return that no character
 	 is available */
-      if (! waiting) 
+      if (! waiting)
 	{
 	  /* Initialization of timeOut for its use with select.  */
 	  timeOut.tv_sec  = 0;
@@ -537,19 +567,19 @@ getc_immediate_common (stream, ch, end_of_file, avail, waiting)
 	  else
 	    {
 	      nread = read (fd, &c, 1);
-	      if (nread > 0) 
+	      if (nread > 0)
 		*avail = 1, *end_of_file = 0;
 	      /* End Of File. */
-	      else if (nread == 0) 
+	      else if (nread == 0)
 		*avail = 0, *end_of_file = 1;
 	      /* Error.  */
-	      else 
+	      else
 		*avail = -1, *end_of_file = -1;
-	    }   
+	    }
 	}
 
       /* We have to wait until we get a character */
-      else 
+      else
 	{
 	  *avail = -1;
 	  *end_of_file = -1;
@@ -559,13 +589,13 @@ getc_immediate_common (stream, ch, end_of_file, avail, waiting)
 
 	  /* Set FD in RAW mode.  */
 	  status = ioctl (fd, FIOSETOPTIONS, OPT_RAW);
-	  if (status != -1) 
+	  if (status != -1)
 	    {
 	      nread = read (fd, &c, 1);
-	      if (nread > 0) 
+	      if (nread > 0)
 		*avail = 1, *end_of_file = 0;
 	      /* End of file.  */
-	      else if (nread == 0) 
+	      else if (nread == 0)
 		*avail = 0, *end_of_file = 1;
 	      /* Else there is an ERROR.  */
 	    }
@@ -607,33 +637,33 @@ getc_immediate_common (stream, ch, end_of_file, avail, waiting)
    will want to import these).  We use the same names as the routines used
    by AdaMagic for compatibility.  */
 
-char *rts_get_hInstance     PARAMS ((void));
-char *rts_get_hPrevInstance PARAMS ((void));
-char *rts_get_lpCommandLine PARAMS ((void));
-int   rts_get_nShowCmd      PARAMS ((void));
+char *rts_get_hInstance (void);
+char *rts_get_hPrevInstance (void);
+char *rts_get_lpCommandLine (void);
+int   rts_get_nShowCmd (void);
 
 char *
-rts_get_hInstance () 
-{ 
-  return GetModuleHandleA (0); 
+rts_get_hInstance (void)
+{
+  return (char *)GetModuleHandleA (0);
 }
 
 char *
-rts_get_hPrevInstance () 
-{ 
-  return 0; 
+rts_get_hPrevInstance (void)
+{
+  return 0;
 }
 
 char *
-rts_get_lpCommandLine () 
-{ 
-  return GetCommandLineA (); 
+rts_get_lpCommandLine (void)
+{
+  return GetCommandLineA ();
 }
 
-int   
-rts_get_nShowCmd () 
-{ 
-  return 1; 
+int
+rts_get_nShowCmd (void)
+{
+  return 1;
 }
 
 #endif /* WINNT */
@@ -641,12 +671,10 @@ rts_get_nShowCmd ()
 
 /* This gets around a problem with using the old threads library on VMS 7.0. */
 
-#include <time.h>
-
-extern long get_gmtoff PARAMS ((void));
+extern long get_gmtoff (void);
 
 long
-get_gmtoff ()
+get_gmtoff (void)
 {
   time_t t;
   struct tm *ts;
@@ -657,32 +685,57 @@ get_gmtoff ()
 }
 #endif
 
+/* This value is returned as the time zone offset when a valid value
+   cannot be determined. It is simply a bizarre value that will never
+   occur. It is 3 days plus 73 seconds (offset is in seconds). */
+
+long __gnat_invalid_tzoff = 259273;
+
 /* Definition of __gnat_locatime_r used by a-calend.adb */
 
-#if defined (_AIX) || defined (__EMX__)
+#if defined (__EMX__) || defined (__MINGW32__)
+
+#ifdef CERT
+
+/* For the Cert run times on native Windows we use dummy functions
+   for locking and unlocking tasks since we do not support multiple
+   threads on this configuration (Cert run time on native Windows). */
+
+void dummy (void) {}
+
+void (*Lock_Task) ()   = &dummy;
+void (*Unlock_Task) () = &dummy;
+
+#else
+
 #define Lock_Task system__soft_links__lock_task
-extern void (*Lock_Task) PARAMS ((void));
+extern void (*Lock_Task) (void);
 
 #define Unlock_Task system__soft_links__unlock_task
-extern void (*Unlock_Task) PARAMS ((void));
+extern void (*Unlock_Task) (void);
 
-/* Provide reentrant version of localtime on Aix and OS/2. Note that AiX does
-   provide localtime_r, but in the library libc_r which doesn't get included
-   systematically, so we can't use it. */
+#endif
 
-extern void struct tm *__gnat_localtime_r PARAMS ((const time_t *,
-						   struct tm *));
+/* Reentrant localtime for Windows and OS/2. */
+
+extern struct tm *
+__gnat_localtime_tzoff (const time_t *, struct tm *, long *);
 
 struct tm *
-__gnat_localtime_r (timer, tp)
-     const time_t *timer;
-     struct tm *tp;
+__gnat_localtime_tzoff (const time_t *timer, struct tm *tp, long *off)
 {
+  DWORD dwRet;
   struct tm *tmp;
+  TIME_ZONE_INFORMATION tzi;
 
   (*Lock_Task) ();
   tmp = localtime (timer);
   memcpy (tp, tmp, sizeof (struct tm));
+  dwRet = GetTimeZoneInformation (&tzi);
+  *off = tzi.Bias;
+  if (tp->tm_isdst > 0)
+    *off = *off + tzi.DaylightBias;
+  *off = *off * -60;
   (*Unlock_Task) ();
   return tp;
 }
@@ -696,35 +749,153 @@ __gnat_localtime_r (timer, tp)
    spec is required. Only use when ___THREADS_POSIX4ad4__ is defined,
    the Lynx convention when building against the legacy API. */
 
-extern struct tm *__gnat_localtime_r PARAMS ((const time_t *, struct tm *));
+extern struct tm *
+__gnat_localtime_tzoff (const time_t *, struct tm *, long *);
 
 struct tm *
-__gnat_localtime_r (timer, tp)
-     const time_t *timer;
-     struct tm *tp;
+__gnat_localtime_tzoff (const time_t *timer, struct tm *tp, long *off)
 {
+  /* Treat all time values in GMT */
   localtime_r (tp, timer);
+  *off = 0;
   return NULL;
 }
 
 #else
-#if defined (VMS) || defined (__MINGW32__)
+#if defined (VMS)
 
-/* __gnat_localtime_r is not needed on NT and VMS */
+/* __gnat_localtime_tzoff is not needed on VMS */
 
 #else
 
 /* All other targets provide a standard localtime_r */
 
-extern struct tm *__gnat_localtime_r PARAMS ((const time_t *, struct tm *));
+extern struct tm *
+__gnat_localtime_tzoff (const time_t *, struct tm *, long *);
 
 struct tm *
-__gnat_localtime_r (timer, tp)
-     const time_t *timer;
-     struct tm *tp;
+__gnat_localtime_tzoff (const time_t *timer, struct tm *tp, long *off)
 {
-  return (struct tm *) localtime_r (timer, tp);
+   localtime_r (timer, tp);
+
+/* AIX, HPUX, SGI Irix, Sun Solaris */
+#if defined (_AIX) || defined (__hpux__) || defined (sgi) || defined (sun)
+  /* The contents of external variable "timezone" may not always be
+     initialized. Instead of returning an incorrect offset, treat the local
+     time zone as 0 (UTC). The value of 28 hours is the maximum valid offset
+     allowed by Ada.Calendar.Time_Zones. */
+  if ((timezone < -28 * 3600) || (timezone > 28 * 3600))
+    *off = 0;
+  else
+  {
+    *off = (long) -timezone;
+    if (tp->tm_isdst > 0)
+      *off = *off + 3600;
+   }
+/* Lynx - Treat all time values in GMT */
+#elif defined (__Lynx__)
+  *off = 0;
+
+/* VxWorks */
+#elif defined (__vxworks)
+#include <stdlib.h>
+{
+  /* Try to read the environment variable TIMEZONE. The variable may not have
+     been initialize, in that case return an offset of zero (0) for UTC. */
+  char *tz_str = getenv ("TIMEZONE");
+
+  if ((tz_str == NULL) || (*tz_str == '\0'))
+    *off = 0;
+  else
+  {
+    char *tz_start, *tz_end;
+
+    /* The format of the data contained in TIMEZONE is N::U:S:E where N is the
+       name of the time zone, U are the minutes difference from UTC, S is the
+       start of DST in mmddhh and E is the end of DST in mmddhh. Extracting
+       the value of U involves setting two pointers, one at the beginning and
+       one at the end of the value. The end pointer is then set to null in
+       order to delimit a string slice for atol to process. */
+    tz_start = index (tz_str, ':') + 2;
+    tz_end = index (tz_start, ':');
+    tz_end = '\0';
+
+    /* The Ada layer expects an offset in seconds */
+    *off = atol (tz_start) * 60;
+  }
 }
+
+/* Darwin, Free BSD, Linux, Tru64, where there exists a component tm_gmtoff
+   in struct tm */
+#elif defined (__APPLE__) || defined (__FreeBSD__) || defined (linux) ||\
+     (defined (__alpha__) && defined (__osf__))
+  *off = tp->tm_gmtoff;
+
+/* All other platforms: Treat all time values in GMT */
+#else
+  *off = 0;
+#endif
+   return NULL;
+}
+
 #endif
 #endif
+#endif
+
+#ifdef __vxworks
+
+#include <taskLib.h>
+
+/* __gnat_get_task_options is used by s-taprop.adb only for VxWorks. This
+   function returns the options to be set when creating a new task. It fetches
+   the options assigned to the current task (parent), so offering some user
+   level control over the options for a task hierarchy. It forces VX_FP_TASK
+   because it is almost always required. */
+extern int __gnat_get_task_options (void);
+
+int
+__gnat_get_task_options (void)
+{
+  int options;
+
+  /* Get the options for the task creator */
+  taskOptionsGet (taskIdSelf (), &options);
+
+  /* Force VX_FP_TASK because it is almost always required */
+  options |= VX_FP_TASK;
+
+  /* Mask those bits that are not under user control */
+#ifdef VX_USR_TASK_OPTIONS
+  return options & VX_USR_TASK_OPTIONS;
+#else
+  return options;
+#endif
+}
+
+typedef struct
+{
+  int  size;
+  char *base;
+  char *end;
+} stack_info;
+
+/* __gnat_get_stack_info is used by s-stchop.adb only for VxWorks. This
+   procedure fills the stack information associated to the currently
+   executing task. */
+extern void __gnat_get_stack_info (stack_info *vxworks_stack_info);
+
+void
+__gnat_get_stack_info (stack_info *vxworks_stack_info)
+{
+  TASK_DESC descriptor;
+
+  /* Ask the VxWorks kernel about stack values */
+  taskInfoGet (taskIdSelf (), &descriptor);
+
+  /* Fill the stack data with the information provided by the kernel */
+  vxworks_stack_info->size = descriptor.td_stackSize;
+  vxworks_stack_info->base = descriptor.td_pStackBase;
+  vxworks_stack_info->end  = descriptor.td_pStackEnd;
+}
+
 #endif

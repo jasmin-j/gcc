@@ -1,3 +1,4 @@
+// { dg-do run  }
 // PRMS Id: 6826
 // Check that unnecessary templates are not instantiated.
 
@@ -28,13 +29,13 @@ void Test<T>::doThat()
 class A 
 { 
  public: 
-  void thiss() {}; 
+  void thiss() {}
 };
 
 class B
 { 
  public: 
-  void that() {}; 
+  void that() {}
 };
 
 int main() 

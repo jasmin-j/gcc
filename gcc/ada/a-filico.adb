@@ -1,13 +1,12 @@
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 --                                                                          --
 --                         GNAT COMPILER COMPONENTS                         --
 --                                                                          --
---                S Y S T E M . L I S T _ F I N A L I Z A T I O N           --
+--     A D A . F I N A L I Z A T I O N . L I S T _ C O N T R O L L E R      --
 --                                                                          --
 --                                B o d y                                   --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -47,6 +46,17 @@ package body Ada.Finalization.List_Controller is
       Last_Ptr : constant SFR.Finalizable_Ptr := Object.Last'Unchecked_Access;
 
    begin
+      --  First take note of the fact that finalization of this collection has
+      --  started.
+
+      Object.F := SFI.Collection_Finalization_Started;
+
+      --  Then finalize all the objects. Note that finalization can call
+      --  Unchecked_Deallocation on other objects in the same collection,
+      --  which will cause them to be removed from the list if we have not
+      --  gotten to them yet. However, allocation in the collection will raise
+      --  Program_Error, due to the above Collection_Finalization_Started.
+
       while Object.First.Next /= Last_Ptr loop
          SFI.Finalize_One (Object.First.Next.all);
       end loop;

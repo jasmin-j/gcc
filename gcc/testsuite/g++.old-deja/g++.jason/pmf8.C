@@ -1,8 +1,9 @@
+// { dg-do run  }
 // PRMS Id: 6905
 
 class Parent {
 public:
-  void DoSomething() { return; };
+  void DoSomething() { return; }
   int i;
 };
 

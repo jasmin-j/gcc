@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---           Copyright (C) 1997-1999 Ada Core Technologies, Inc.            --
+--                     Copyright (C) 1997-2006, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -27,7 +26,8 @@
 -- however invalidate  any other reasons why  the executable file  might be --
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
--- GNAT is maintained by Ada Core Technologies Inc (http://www.gnat.com).   --
+-- GNAT was originally developed  by the GNAT team at  New York University. --
+-- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
@@ -65,12 +65,11 @@
 --       language is modeled on context free grammars, with context sensitive
 --       extensions that provide full (type 0) computational capabilities.
 
-with Ada.Finalization; use Ada.Finalization;
 with Ada.Strings.Maps; use Ada.Strings.Maps;
 with Ada.Text_IO;      use Ada.Text_IO;
 
 package GNAT.Spitbol.Patterns is
-pragma Elaborate_Body (Patterns);
+   pragma Elaborate_Body;
 
    -------------------------------
    -- Pattern Matching Tutorial --
@@ -85,7 +84,6 @@ pragma Elaborate_Body (Patterns);
    --  match fails, or it succeeds matching a contiguous substring. If a
    --  replacement string is specified, then the subject string is modified
    --  by replacing the matched substring with the given replacement.
-
 
    --  Concatenation and Alternation
    --  =============================
@@ -135,7 +133,6 @@ pragma Elaborate_Body (Patterns);
    --    Here we use the dot simply to separate the pieces of the string
    --    matched by the three separate elements.
 
-
    --  Moving the Start Point
    --  ======================
 
@@ -172,7 +169,6 @@ pragma Elaborate_Body (Patterns);
 
    --    We will also see later how the effect of an anchored match can be
    --    obtained for a single specified anchor point if this is desired.
-
 
    --  Other Pattern Elements
    --  ======================
@@ -216,7 +212,6 @@ pragma Elaborate_Body (Patterns);
    --                the alternation ("" or "" or "" ....). This is a special
    --                pattern element, which is useful in conjunction with some
    --                of the special pattern elements that have side effects.
-
 
    --  Pattern Construction Functions
    --  ==============================
@@ -312,7 +307,6 @@ pragma Elaborate_Body (Patterns);
    --    but the use of recursive patterns in the general case can construct
    --    complex patterns which could not otherwise be built.
 
-
    --  Pattern Assignment Operations
    --  =============================
 
@@ -353,7 +347,6 @@ pragma Elaborate_Body (Patterns);
    --    Text_IO.File_Access. The effect is to do a Put_Line operation of
    --    the matched substring. These are particularly useful in debugging
    --    pattern matches.
-
 
    --  Deferred Matching
    --  =================
@@ -611,7 +604,6 @@ pragma Elaborate_Body (Patterns);
    --    define patterns and the functions they call at the outer level
    --    where possible, to avoid such problems.
 
-
    --  Correspondence with Pattern Matching in SPITBOL
    --  ===============================================
 
@@ -638,7 +630,7 @@ pragma Elaborate_Body (Patterns);
    --          Abort        Cancel
    --          Rem          Rest
 
-   --    where we have clashes with Ada reserved names.
+   --    where we have clashes with Ada reserved names
 
    --    Ada requires the use of 'Access to refer to functions used in the
    --    pattern match, and often the use of 'Unrestricted_Access may be
@@ -711,7 +703,7 @@ pragma Elaborate_Body (Patterns);
    function "&"  (L : PChar;   R : Pattern) return Pattern;
    function "&"  (L : Pattern; R : PChar)   return Pattern;
 
-   --  Pattern concatenation. Matches L followed by R.
+   --  Pattern concatenation. Matches L followed by R
 
    function "or" (L : Pattern; R : Pattern) return Pattern;
    function "or" (L : PString; R : Pattern) return Pattern;
@@ -790,7 +782,7 @@ pragma Elaborate_Body (Patterns);
    function Any    (Str : VString)                          return Pattern;
    function Any    (Str : Character)                        return Pattern;
    function Any    (Str : Character_Set)                    return Pattern;
-   function Any    (Str : access VString)                   return Pattern;
+   function Any    (Str : not null access VString)          return Pattern;
    function Any    (Str : VString_Func)                     return Pattern;
    --  Constructs a pattern that matches a single character that is one of
    --  the characters in the given argument. The pattern fails if the current
@@ -805,7 +797,7 @@ pragma Elaborate_Body (Patterns);
    function Break  (Str : VString)                          return Pattern;
    function Break  (Str : Character)                        return Pattern;
    function Break  (Str : Character_Set)                    return Pattern;
-   function Break  (Str : access VString)                   return Pattern;
+   function Break  (Str : not null access VString)          return Pattern;
    function Break  (Str : VString_Func)                     return Pattern;
    --  Constructs a pattern that matches a (possibly null) string which
    --  is immediately followed by a character in the given argument. This
@@ -817,7 +809,7 @@ pragma Elaborate_Body (Patterns);
    function BreakX (Str : VString)                          return Pattern;
    function BreakX (Str : Character)                        return Pattern;
    function BreakX (Str : Character_Set)                    return Pattern;
-   function BreakX (Str : access VString)                   return Pattern;
+   function BreakX (Str : not null access VString)          return Pattern;
    function BreakX (Str : VString_Func)                     return Pattern;
    --  Like Break, but the pattern attempts to extend on a failure to find
    --  the next occurrence of a character in Str, and only fails when the
@@ -827,7 +819,7 @@ pragma Elaborate_Body (Patterns);
    --  Constructs a pattern that immediately aborts the entire match
 
    function Fail                                            return Pattern;
-   --  Constructs a pattern that always fails.
+   --  Constructs a pattern that always fails
 
    function Fence                                           return Pattern;
    --  Constructs a pattern that matches null on the first attempt, and then
@@ -841,7 +833,7 @@ pragma Elaborate_Body (Patterns);
    --  one attempt is made to match P, without trying alternatives.
 
    function Len    (Count : Natural)                        return Pattern;
-   function Len    (Count : access Natural)                 return Pattern;
+   function Len    (Count : not null access Natural)        return Pattern;
    function Len    (Count : Natural_Func)                   return Pattern;
    --  Constructs a pattern that matches exactly the given number of
    --  characters. The pattern fails if fewer than this number of characters
@@ -851,7 +843,7 @@ pragma Elaborate_Body (Patterns);
    function NotAny (Str : VString)                          return Pattern;
    function NotAny (Str : Character)                        return Pattern;
    function NotAny (Str : Character_Set)                    return Pattern;
-   function NotAny (Str : access VString)                   return Pattern;
+   function NotAny (Str : not null access VString)          return Pattern;
    function NotAny (Str : VString_Func)                     return Pattern;
    --  Constructs a pattern that matches a single character that is not
    --  one of the characters in the given argument. The pattern Fails if
@@ -861,14 +853,14 @@ pragma Elaborate_Body (Patterns);
    function NSpan  (Str : VString)                          return Pattern;
    function NSpan  (Str : Character)                        return Pattern;
    function NSpan  (Str : Character_Set)                    return Pattern;
-   function NSpan  (Str : access VString)                   return Pattern;
+   function NSpan  (Str : not null access VString)          return Pattern;
    function NSpan  (Str : VString_Func)                     return Pattern;
    --  Constructs a pattern that matches the longest possible string
    --  consisting entirely of characters from the given argument. The
    --  string may be empty, so this pattern always succeeds.
 
    function Pos    (Count : Natural)                        return Pattern;
-   function Pos    (Count : access Natural)                 return Pattern;
+   function Pos    (Count : not null access Natural)        return Pattern;
    function Pos    (Count : Natural_Func)                   return Pattern;
    --  Constructs a pattern that matches the null string if exactly Count
    --  characters have already been matched, and otherwise fails.
@@ -878,19 +870,19 @@ pragma Elaborate_Body (Patterns);
    --  unmatched characters in the pattern.
 
    function Rpos   (Count : Natural)                        return Pattern;
-   function Rpos   (Count : access Natural)                 return Pattern;
+   function Rpos   (Count : not null access Natural)        return Pattern;
    function Rpos   (Count : Natural_Func)                   return Pattern;
    --  Constructs a pattern that matches the null string if exactly Count
    --  characters remain to be matched in the string, and otherwise fails.
 
    function Rtab   (Count : Natural)                        return Pattern;
-   function Rtab   (Count : access Natural)                 return Pattern;
+   function Rtab   (Count : not null access Natural)        return Pattern;
    function Rtab   (Count : Natural_Func)                   return Pattern;
    --  Constructs a pattern that matches from the current location until
    --  exactly Count characters remain to be matched in the string. The
    --  pattern fails if fewer than Count characters remain to be matched.
 
-   function Setcur (Var : access Natural)                   return Pattern;
+   function Setcur (Var : not null access Natural)          return Pattern;
    --  Constructs a pattern that matches the null string, and assigns the
    --  current cursor position in the string. This value is the number of
    --  characters matched so far. So it is zero at the start of the match.
@@ -899,7 +891,7 @@ pragma Elaborate_Body (Patterns);
    function Span   (Str : VString)                          return Pattern;
    function Span   (Str : Character)                        return Pattern;
    function Span   (Str : Character_Set)                    return Pattern;
-   function Span   (Str : access VString)                   return Pattern;
+   function Span   (Str : not null access VString)          return Pattern;
    function Span   (Str : VString_Func)                     return Pattern;
    --  Constructs a pattern that matches the longest possible string
    --  consisting entirely of characters from the given argument. The
@@ -912,7 +904,7 @@ pragma Elaborate_Body (Patterns);
    --  infinite alternation of null strings.
 
    function Tab    (Count : Natural)                        return Pattern;
-   function Tab    (Count : access Natural)                 return Pattern;
+   function Tab    (Count : not null access Natural)        return Pattern;
    function Tab    (Count : Natural_Func)                   return Pattern;
    --  Constructs a pattern that from the current location until Count
    --  characters have been matched. The pattern fails if more than Count
@@ -960,23 +952,19 @@ pragma Elaborate_Body (Patterns);
 
    function Match
      (Subject : VString;
-      Pat     : Pattern)
-      return    Boolean;
+      Pat     : Pattern) return Boolean;
 
    function Match
      (Subject : VString;
-      Pat     : PString)
-      return    Boolean;
+      Pat     : PString) return Boolean;
 
    function Match
      (Subject : String;
-      Pat     : Pattern)
-      return    Boolean;
+      Pat     : Pattern) return Boolean;
 
    function Match
      (Subject : String;
-      Pat     : PString)
-      return    Boolean;
+      Pat     : PString) return Boolean;
 
    --  Replacement functions. The subject is matched against the pattern.
    --  Any immediate or deferred assignments or writes are executed, and
@@ -987,26 +975,22 @@ pragma Elaborate_Body (Patterns);
    function Match
      (Subject : VString_Var;
       Pat     : Pattern;
-      Replace : VString)
-      return    Boolean;
+      Replace : VString) return Boolean;
 
    function Match
      (Subject : VString_Var;
       Pat     : PString;
-      Replace : VString)
-      return    Boolean;
+      Replace : VString) return Boolean;
 
    function Match
      (Subject : VString_Var;
       Pat     : Pattern;
-      Replace : String)
-      return    Boolean;
+      Replace : String) return Boolean;
 
    function Match
      (Subject : VString_Var;
       Pat     : PString;
-      Replace : String)
-      return    Boolean;
+      Replace : String) return Boolean;
 
    --  Simple match procedures. The subject is matched against the pattern.
    --  Any immediate or deferred assignments or writes are executed. No
@@ -1070,8 +1054,7 @@ pragma Elaborate_Body (Patterns);
    function Match
      (Subject : VString_Var;
       Pat     : Pattern;
-      Result  : Match_Result_Var)
-      return    Boolean;
+      Result  : Match_Result_Var) return Boolean;
 
    procedure Match
      (Subject : in out VString;
@@ -1111,12 +1094,11 @@ pragma Elaborate_Body (Patterns);
    --  except that instead of setting the value of a variable, the matched
    --  substring is written to the appropriate file. This can be useful in
    --  following the progress of a match without generating the full amount
-
    --  of information obtained by setting Debug_Mode to True.
 
    Terminal : constant File_Access := Standard_Error;
    Output   : constant File_Access := Standard_Output;
-   --  Two handy synonyms for use with the above pattern write operations.
+   --  Two handy synonyms for use with the above pattern write operations
 
    --  Finally we have some routines that are useful for determining what
    --  patterns are in use, particularly if they are constructed dynamically.
@@ -1161,14 +1143,12 @@ private
    --  Pattern reference. PE's use PE_Ptr values to reference other PE's
 
    type Pattern is new Controlled with record
-
-      Stk : Natural;
+      Stk : Natural := 0;
       --  Maximum number of stack entries required for matching this
       --  pattern. See description of pattern history stack in body.
 
-      P   : PE_Ptr;
+      P : PE_Ptr := null;
       --  Pointer to initial pattern element for pattern
-
    end record;
 
    pragma Finalize_Storage_Only (Pattern);
@@ -1177,19 +1157,19 @@ private
    --  Adjust routine used to copy pattern objects
 
    procedure Finalize (Object : in out Pattern);
-   --  Finalization routine used to release storage allocated for a pattern.
+   --  Finalization routine used to release storage allocated for a pattern
 
    type VString_Ptr is access all VString;
 
    type Match_Result is record
-      Var   : VString_Ptr;
-      --  Pointer to subject string. Set to null if match failed.
+      Var : VString_Ptr;
+      --  Pointer to subject string. Set to null if match failed
 
-      Start : Natural;
+      Start : Natural := 1;
       --  Starting index position (1's origin) of matched section of
       --  subject string. Only valid if Var is non-null.
 
-      Stop  : Natural;
+      Stop : Natural := 0;
       --  Ending index position (1's origin) of matched section of
       --  subject string. Only valid if Var is non-null.
 

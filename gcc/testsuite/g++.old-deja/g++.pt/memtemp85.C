@@ -1,5 +1,4 @@
-// Build don't link:
-// crash test - XFAIL *-*-*
+// { dg-do assemble }
 
 // by Paul Burchard <burchard@pobox.com>, Level Set Systems, Inc.
 // Copyright (C) 1999 Free Software Foundation

@@ -13,7 +13,8 @@ construct the file @file{Makefile} from the template file
 fragments from the @file{config} directory.  These are used to set
 Makefile parameters that are not amenable to being calculated by
 autoconf.  The list of fragments to incorporate is set by
-@file{config.gcc}; @xref{System Config}.
+@file{config.gcc} (and occasionally @file{config.build}
+and @file{config.host}); @xref{System Config}.
 
 Fragments are named either @file{t-@var{target}} or @file{x-@var{host}},
 depending on whether they are relevant to configuring GCC to produce
@@ -134,12 +135,12 @@ specified, there are combinations that should not be built.  In that
 case, set @code{MULTILIB_EXCEPTIONS} to be all of the switch exceptions
 in shell case syntax that should not be built.
 
-For example, in the PowerPC embedded ABI support, it is not desirable
-to build libraries compiled with the @option{-mcall-aix} option
-and either of the @option{-fleading-underscore} or @option{-mlittle} options
-at the same time.  Therefore @code{MULTILIB_EXCEPTIONS} is set to
+For example the ARM processor cannot execute both hardware floating
+point instructions and the reduced size THUMB instructions at the same
+time, so there is no need to build libraries with both of these
+options enabled.  Therefore @code{MULTILIB_EXCEPTIONS} is set to:
 @smallexample
-*mcall-aix/*fleading-underscore* *mlittle/*mcall-aix*
+*mthumb/*mhard-float*
 @end smallexample
 
 @findex MULTILIB_EXTRA_OPTS
@@ -149,6 +150,12 @@ Sometimes it is desirable that when building multiple versions of
 compiler.  In that case, set @code{MULTILIB_EXTRA_OPTS} to be the list
 of options to be used for all builds.  If you set this, you should
 probably set @code{CRTSTUFF_T_CFLAGS} to a dash followed by it.
+
+@findex NATIVE_SYSTEM_HEADER_DIR
+@item NATIVE_SYSTEM_HEADER_DIR
+If the default location for system headers is not @file{/usr/include},
+you must set this to the directory containing the headers.  This value
+should match the value of the @code{SYSTEM_INCLUDE_DIR} macro.
 
 @findex SPECS
 @item SPECS
@@ -185,7 +192,7 @@ Variables provided for host fragments to set include:
 @itemx X_CPPFLAGS
 These are extra flags to pass to the C compiler and preprocessor,
 respectively.  They are used both when building GCC, and when compiling
-things with the just-built GCC.
+things with the just-built GCC@.
 
 @item XCFLAGS
 These are extra flags to use when building the compiler.  They are not

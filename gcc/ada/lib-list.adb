@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-1999 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2005, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,8 +31,6 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Output; use Output;
-
 separate (Lib)
 procedure List (File_Names_Only : Boolean := False) is
 
@@ -42,9 +39,6 @@ procedure List (File_Names_Only : Boolean := False) is
 
    Sorted_Units : Unit_Ref_Table (1 .. Num_Units);
    --  Table of unit numbers that we will sort
-
-   Unit_Node : Node_Id;
-   --  Compilation unit node for current unit
 
    Unit_Hed : constant String := "Unit name                        ";
    Unit_Und : constant String := "---------                        ";
@@ -85,8 +79,6 @@ begin
    end if;
 
    for R in Sorted_Units'Range loop
-      Unit_Node := Cunit (Sorted_Units (R));
-
       if File_Names_Only then
          if not Is_Internal_File_Name
                   (File_Name (Source_Index (Sorted_Units (R))))

@@ -1,6 +1,8 @@
+// { dg-require-namedlocale "" }
+
 // 2001-11-19 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2004, 2005 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.2.2.1  num_put members
@@ -29,35 +31,24 @@ void test01()
   using namespace std;
   typedef ostreambuf_iterator<char> iterator_type;
 
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   // basic construction
   locale loc_c = locale::classic();
-  locale loc_hk("en_HK");
-  locale loc_fr("fr_FR@euro");
-  locale loc_de("de_DE");
+  locale loc_de  = locale("de_DE");
   VERIFY( loc_c != loc_de );
-  VERIFY( loc_hk != loc_fr );
-  VERIFY( loc_hk != loc_de );
-  VERIFY( loc_de != loc_fr );
 
   // cache the numpunct facets
-  const numpunct<char>& numpunct_c = use_facet<numpunct<char> >(loc_c); 
   const numpunct<char>& numpunct_de = use_facet<numpunct<char> >(loc_de); 
-  const numpunct<char>& numpunct_hk = use_facet<numpunct<char> >(loc_hk); 
 
   // sanity check the data is correct.
   const string empty;
   string result1;
   string result2;
-  char c;
 
   bool b1 = true;
   bool b0 = false;
-  long l1 = 2147483647;
-  long l2 = -2147483647;
   unsigned long ul1 = 1294967294;
-  unsigned long ul2 = 0;
   double d1 =  1.7976931348623157e+308;
   double d2 = 2.2250738585072014e-308;
   long double ld1 = 1.7976931348623157e+308;
@@ -74,7 +65,6 @@ void test01()
   iterator_type os_it01 = np.put(os_it00, oss, '+', b1);
   result1 = oss.str();
   VERIFY( result1 == "1" );
-  //  VERIFY( os_it00 != os_it01 );
 
   oss.str(empty);
   np.put(oss.rdbuf(), oss, '+', b0);
@@ -143,7 +133,7 @@ void test01()
   result1 = oss.str();
   VERIFY( result1 == "0" );
 
-  // const void
+  // const void*
   oss.str(empty);
   oss.clear();
   np.put(oss.rdbuf(), oss, '+', cv);
@@ -155,9 +145,8 @@ void test01()
   // Should contain an 'x'.
   VERIFY( result1.find('x') == 1 );
 
-#ifdef _GLIBCPP_USE_LONG_LONG
+#ifdef _GLIBCXX_USE_LONG_LONG
   long long ll1 = 9223372036854775807LL;
-  long long ll2 = -9223372036854775807LL;
 
   oss.str(empty);
   oss.clear();

@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --            ADA.NUMERICS.GENERIC_COMPLEX_ELEMENTARY_FUNCTIONS             --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.
+--          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -306,6 +305,8 @@ package body Ada.Numerics.Generic_Complex_Elementary_Functions is
       Result : Complex;
 
    begin
+      --  For very small argument, sin (x) = x
+
       if abs Re (X) < Square_Root_Epsilon and then
          abs Im (X) < Square_Root_Epsilon
       then
@@ -322,6 +323,8 @@ package body Ada.Numerics.Generic_Complex_Elementary_Functions is
          elsif Im (Result) < -PI_2 then
             Set_Im (Result, -(PI + Im (X)));
          end if;
+
+         return Result;
       end if;
 
       Result := -Complex_I * Log (Complex_I * X + Sqrt (1.0 - X * X));
@@ -417,7 +420,7 @@ package body Ada.Numerics.Generic_Complex_Elementary_Functions is
       return
         Compose_From_Cartesian
           (Cos (Re (X))  * Cosh (Im (X)),
-           -Sin (Re (X)) * Sinh (Im (X)));
+           -(Sin (Re (X)) * Sinh (Im (X))));
    end Cos;
 
    ----------
@@ -480,16 +483,15 @@ package body Ada.Numerics.Generic_Complex_Elementary_Functions is
    ---------
 
    function Exp (X : Complex) return Complex is
-      EXP_RE_X : Real'Base := Exp (Re (X));
+      EXP_RE_X : constant Real'Base := Exp (Re (X));
 
    begin
       return Compose_From_Cartesian (EXP_RE_X * Cos (Im (X)),
                                      EXP_RE_X * Sin (Im (X)));
    end Exp;
 
-
    function Exp (X : Imaginary) return Complex is
-      ImX : Real'Base := Im (X);
+      ImX : constant Real'Base := Im (X);
 
    begin
       return Compose_From_Cartesian (Cos (ImX), Sin (ImX));
@@ -640,7 +642,7 @@ package body Ada.Numerics.Generic_Complex_Elementary_Functions is
          end if;
       end if;
 
-      if Im (X) < 0.0 then                 -- halve angle, Sqrt of magnitude
+      if Im (X) < 0.0 then -- halve angle, Sqrt of magnitude
          R_Y := -R_Y;
       end if;
       return Compose_From_Cartesian (R_X, R_Y);
@@ -648,7 +650,7 @@ package body Ada.Numerics.Generic_Complex_Elementary_Functions is
    exception
       when Constraint_Error =>
 
-         --  Rescale and try again.
+         --  Rescale and try again
 
          R := Modulus (Compose_From_Cartesian (Re (X / 4.0), Im (X / 4.0)));
          R_X := 2.0 * Sqrt (0.5 * R + 0.5 * Re (X / 4.0));

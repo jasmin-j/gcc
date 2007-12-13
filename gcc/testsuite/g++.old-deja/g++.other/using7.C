@@ -1,8 +1,8 @@
-// Build don't link:
+// { dg-do assemble  }
 
 class A {
 protected:
-  static void f() {};
+  static void f() {}
 };
 
 class B : A {

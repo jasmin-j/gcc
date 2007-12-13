@@ -1,6 +1,6 @@
 // Specific definitions for generic platforms  -*- C++ -*-
 
-// Copyright (C) 2000 Free Software Foundation, Inc.
+// Copyright (C) 2000, 2001, 2002, 2003, 2005 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -27,11 +27,29 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
+/** @file os_defines.h
+ *  This is an internal header file, included by other library headers.
+ *  You should not attempt to use it directly.
+ */
 
-#ifndef _GLIBCPP_OS_DEFINES
-#  define _GLIBCPP_OS_DEFINES
+#ifndef _GLIBCXX_OS_DEFINES
+#  define _GLIBCXX_OS_DEFINES
 
 // System-specific #define, typedefs, corrections, etc, go here.  This
 // file will come before all others.
+
+//  Define as 0, if you want, to enable inlining of gthread functions.
+//  By default, don't pollute libstdc++ with win32api names.
+#if !defined (__GTHREAD_HIDE_WIN32API)
+# define __GTHREAD_HIDE_WIN32API 1
+#endif
+
+// Don't let win32api windef.h define min and max as macros
+// if included after c++config.h.
+#undef NOMINMAX
+#define NOMINMAX 1
+
+// See libstdc++/20806.
+#define _GLIBCXX_HAVE_DOS_BASED_FILESYSTEM 1
 
 #endif

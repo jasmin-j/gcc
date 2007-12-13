@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -46,6 +44,7 @@ with Ada.Command_Line;              use Ada.Command_Line;
 with Ada.Strings.Unbounded;         use Ada.Strings.Unbounded;
 with Ada.Strings.Unbounded.Text_IO; use Ada.Strings.Unbounded.Text_IO;
 with Ada.Text_IO;                   use Ada.Text_IO;
+with Ada.Streams.Stream_IO;         use Ada.Streams.Stream_IO;
 
 with GNAT.Spitbol;                  use GNAT.Spitbol;
 with GNAT.Spitbol.Patterns;         use GNAT.Spitbol.Patterns;
@@ -76,13 +75,15 @@ procedure XTreeprs is
    Synonym    : VString := Nul;
    Term       : VString := Nul;
 
-   OutS : File_Type;
+   subtype Sfile is Ada.Streams.Stream_IO.File_Type;
+
+   OutS : Sfile;
    --  Output file
 
-   InS : File_Type;
+   InS : Ada.Text_IO.File_Type;
    --  Read sinfo.ads
 
-   InT : File_Type;
+   InT : Ada.Text_IO.File_Type;
    --  Read treeprs.adt
 
    Special : TB.Table (20);
@@ -137,6 +138,23 @@ procedure XTreeprs is
    Chop_SP  : Pattern := Len (Sp'Unrestricted_Access) * S1;
 
    M : Match_Result;
+
+   procedure Put_Line (F : Sfile; S : String);
+   procedure Put_Line (F : Sfile; S : VString);
+   --  Local version of Put_Line ensures Unix style line endings
+
+   procedure Put_Line (F : Sfile; S : String) is
+   begin
+      String'Write (Stream (F), S);
+      Character'Write (Stream (F), ASCII.LF);
+   end Put_Line;
+
+   procedure Put_Line (F : Sfile; S : VString) is
+   begin
+      Put_Line (F, To_String (S));
+   end Put_Line;
+
+--  Start of processing for XTreeprs
 
 begin
    Anchored_Mode := True;
@@ -304,7 +322,7 @@ begin
 
       loop
          Sp := 79 - 4 - Length (Prefix);
-         exit when (Size (S) <= Sp);
+         exit when Size (S) <= Sp;
          Match (S, Chop_SP, "");
          Put_Line (OutS, Prefix & '"' & S1 & """ &");
          Prefix := V ("         ");

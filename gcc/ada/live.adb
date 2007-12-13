@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 2000-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 2000-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -59,7 +57,7 @@ package body Live is
    --  The problem of finding live entities is solved in two steps:
 
    procedure Mark (Root : Node_Id; Marks : out Name_Set);
-   --  Mark all live entities in Root as Marked.
+   --  Mark all live entities in Root as Marked
 
    procedure Sweep (Root : Node_Id; Marks : Name_Set);
    --  For all unmarked entities in Root set Is_Eliminated to true
@@ -92,9 +90,9 @@ package body Live is
    -------------
 
    function Body_Of (E : Entity_Id) return Node_Id is
-      Decl    : Node_Id := Unit_Declaration_Node (E);
-      Result  : Node_Id;
-      Kind    : Node_Kind := Nkind (Decl);
+      Decl   : constant Node_Id   := Unit_Declaration_Node (E);
+      Kind   : constant Node_Kind := Nkind (Decl);
+      Result : Node_Id;
 
    begin
       if Kind = N_Subprogram_Body then
@@ -280,6 +278,8 @@ package body Live is
 
       procedure Process (N : Node_Id) is
          Result : Traverse_Result;
+         pragma Warnings (Off, Result);
+
       begin
          Result := Process (N);
       end Process;

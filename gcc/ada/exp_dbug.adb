@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1996-2002 Free Software Foundation, Inc.          --
+--          Copyright (C) 1996-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -29,11 +27,6 @@ with Alloc;    use Alloc;
 with Atree;    use Atree;
 with Debug;    use Debug;
 with Einfo;    use Einfo;
-with Exp_Util; use Exp_Util;
-with Freeze;   use Freeze;
-with Lib;      use Lib;
-with Hostparm; use Hostparm;
-with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Nmake;    use Nmake;
 with Opt;      use Opt;
@@ -41,13 +34,11 @@ with Output;   use Output;
 with Sem_Eval; use Sem_Eval;
 with Sem_Util; use Sem_Util;
 with Sinfo;    use Sinfo;
-with Snames;   use Snames;
 with Stand;    use Stand;
 with Stringt;  use Stringt;
 with Table;
+with Tbuild;   use Tbuild;
 with Urealp;   use Urealp;
-
-with GNAT.HTable;
 
 package body Exp_Dbug is
 
@@ -62,36 +53,6 @@ package body Exp_Dbug is
      Table_Initial        => Alloc.Name_Qualify_Units_Initial,
      Table_Increment      => Alloc.Name_Qualify_Units_Increment,
      Table_Name           => "Name_Qualify_Units");
-
-   --  Define hash table for compressed debug names
-
-   --  This hash table keeps track of qualification prefix strings
-   --  that have been compressed. The element is the corresponding
-   --  hash value used in the compressed symbol.
-
-   type Hindex is range 0 .. 4096;
-   --  Type to define range of headers
-
-   function SHash (S : String_Ptr) return Hindex;
-   --  Hash function for this table
-
-   function SEq (F1, F2 : String_Ptr) return Boolean;
-   --  Equality function for this table
-
-   type Elmt is record
-      W : Word;
-      S : String_Ptr;
-   end record;
-
-   No_Elmt : Elmt := (0, null);
-
-   package CDN is new GNAT.HTable.Simple_HTable (
-     Header_Num => Hindex,
-     Element    => Elmt,
-     No_Element => No_Elmt,
-     Key        => String_Ptr,
-     Hash       => SHash,
-     Equal      => SEq);
 
    --------------------------------
    -- Use of Qualification Flags --
@@ -170,25 +131,8 @@ package body Exp_Dbug is
    --  Determine whether the bounds of E match the size of the type. This is
    --  used to determine whether encoding is required for a discrete type.
 
-   function CDN_Hash (S : String) return Word;
-   --  This is the hash function used to compress debug symbols. The string
-   --  S is the prefix which is a list of qualified names separated by double
-   --  underscore (no trailing double underscore). The returned value is the
-   --  hash value used in the compressed names. It is also used for the hash
-   --  table used to keep track of what prefixes have been compressed so far.
-
-   procedure Compress_Debug_Name (E : Entity_Id);
-   --  If the name of the entity E is too long, or compression is to be
-   --  attempted on all names (Compress_Debug_Names set), then an attempt
-   --  is made to compress the name of the entity.
-
-   function Double_Underscore (S : String; J : Natural) return Boolean;
-   --  Returns True if J is the start of a double underscore
-   --  sequence in the string S (defined as two underscores
-   --  which are preceded and followed by a non-underscore)
-
    procedure Output_Homonym_Numbers_Suffix;
-   --  If homonym numbers are stored, then output them into Name_Buffer.
+   --  If homonym numbers are stored, then output them into Name_Buffer
 
    procedure Prepend_String_To_Buffer (S : String);
    --  Prepend given string to the contents of the string buffer, updating
@@ -196,9 +140,6 @@ package body Exp_Dbug is
 
    procedure Prepend_Uint_To_Buffer (U : Uint);
    --  Prepend image of universal integer to Name_Buffer, updating Name_Len
-
-   procedure Put_Hex (W : Word; N : Natural);
-   --  Output W as 8 hex digits (0-9, a-f) in Name_Buffer (N .. N + 7)
 
    procedure Qualify_Entity_Name (Ent : Entity_Id);
    --  If not already done, replaces the Chars field of the given entity
@@ -274,7 +215,7 @@ package body Exp_Dbug is
 
          begin
             while Present (H) loop
-               if (Scope (H) = Scope (E)) then
+               if Scope (H) = Scope (E) then
                   Nr := Nr + 1;
                end if;
 
@@ -307,9 +248,9 @@ package body Exp_Dbug is
       then
          return True;
 
-      --  Here we check if the static bounds match the natural size, which
-      --  is the size passed through with the debugging information. This
-      --  is the Esize rounded up to 8, 16, 32 or 64 as appropriate.
+      --  Here we check if the static bounds match the natural size, which is
+      --  the size passed through with the debugging information. This is the
+      --  Esize rounded up to 8, 16, 32 or 64 as appropriate.
 
       else
          declare
@@ -346,108 +287,6 @@ package body Exp_Dbug is
       end if;
    end Bounds_Match_Size;
 
-   --------------
-   -- CDN_Hash --
-   --------------
-
-   function CDN_Hash (S : String) return Word is
-      H : Word;
-
-      function Rotate_Left (Value : Word; Amount : Natural) return Word;
-      pragma Import (Intrinsic, Rotate_Left);
-
-   begin
-      H := 0;
-      for J in S'Range loop
-         H := Rotate_Left (H, 3) + Character'Pos (S (J));
-      end loop;
-
-      return H;
-   end CDN_Hash;
-
-   -------------------------
-   -- Compress_Debug_Name --
-   -------------------------
-
-   procedure Compress_Debug_Name (E : Entity_Id) is
-      Ptr  : Natural;
-      Sptr : String_Ptr;
-      Cod  : Word;
-
-   begin
-      if not Compress_Debug_Names
-        and then Length_Of_Name (Chars (E)) <= Max_Debug_Name_Length
-      then
-         return;
-      end if;
-
-      Get_Name_String (Chars (E));
-
-      --  Find rightmost double underscore
-
-      Ptr := Name_Len - 2;
-      loop
-         exit when Double_Underscore (Name_Buffer, Ptr);
-
-         --  Cannot compress if no double underscore anywhere
-
-         if Ptr < 2 then
-            return;
-         end if;
-
-         Ptr := Ptr  - 1;
-      end loop;
-
-      --  At this stage we have
-
-      --    Name_Buffer (1 .. Ptr - 1)         string to compress
-      --    Name_Buffer (Ptr)                  underscore
-      --    Name_Buffer (Ptr + 1)              underscore
-      --    Name_Buffer (Ptr + 2 .. Name_Len)  simple name to retain
-
-      --  See if we already have an entry for the compression string
-
-      --  No point in compressing if it does not make things shorter
-
-      if Name_Len <= (2 + 8 + 1) + (Name_Len - (Ptr + 1)) then
-         return;
-      end if;
-
-      --  Do not compress any reference to entity in internal file
-
-      if Name_Buffer (1 .. 5) = "ada__"
-           or else
-         Name_Buffer (1 .. 8) = "system__"
-           or else
-         Name_Buffer (1 .. 6) = "gnat__"
-           or else
-         Name_Buffer (1 .. 12) = "interfaces__"
-           or else
-             (OpenVMS and then Name_Buffer (1 .. 5) = "dec__")
-      then
-         return;
-      end if;
-
-      Sptr := Name_Buffer (1 .. Ptr - 1)'Unrestricted_Access;
-      Cod := CDN.Get (Sptr).W;
-
-      if Cod = 0 then
-         Cod := CDN_Hash (Sptr.all);
-         Sptr := new String'(Sptr.all);
-         CDN.Set (Sptr, (Cod, Sptr));
-      end if;
-
-      Name_Buffer (1) := 'X';
-      Name_Buffer (2) := 'C';
-      Put_Hex (Cod, 3);
-      Name_Buffer (11) := '_';
-      Name_Buffer (12 .. Name_Len - Ptr + 10) :=
-        Name_Buffer (Ptr + 2 .. Name_Len);
-      Name_Len := Name_Len - Ptr + 10;
-
-      Set_Chars (E, Name_Enter);
-   end Compress_Debug_Name;
-
    --------------------------------
    -- Debug_Renaming_Declaration --
    --------------------------------
@@ -456,20 +295,18 @@ package body Exp_Dbug is
       Loc : constant Source_Ptr := Sloc (N);
       Ent : constant Node_Id    := Defining_Entity (N);
       Nam : constant Node_Id    := Name (N);
-      Rnm : Name_Id;
       Ren : Node_Id;
-      Lit : Entity_Id;
       Typ : Entity_Id;
+      Obj : Entity_Id;
       Res : Node_Id;
-      Def : Entity_Id;
 
       function Output_Subscript (N : Node_Id; S : String) return Boolean;
-      --  Outputs a single subscript value as ?nnn (subscript is compile
-      --  time known value with value nnn) or as ?e (subscript is local
-      --  constant with name e), where S supplies the proper string to
-      --  use for ?. Returns False if the subscript is not of an appropriate
-      --  type to output in one of these two forms. The result is prepended
-      --  to the name stored in Name_Buffer.
+      --  Outputs a single subscript value as ?nnn (subscript is compile time
+      --  known value with value nnn) or as ?e (subscript is local constant
+      --  with name e), where S supplies the proper string to use for ?.
+      --  Returns False if the subscript is not of an appropriate type to
+      --  output in one of these two forms. The result is prepended to the
+      --  name stored in Name_Buffer.
 
       ----------------------
       -- Output_Subscript --
@@ -497,29 +334,11 @@ package body Exp_Dbug is
    --  Start of processing for Debug_Renaming_Declaration
 
    begin
-      if not Comes_From_Source (N) then
+      if not Comes_From_Source (N)
+        and then not Needs_Debug_Info (Ent)
+      then
          return Empty;
       end if;
-
-      --  Prepare entity name for type declaration
-
-      Get_Name_String (Chars (Ent));
-
-      case Nkind (N) is
-         when N_Object_Renaming_Declaration =>
-            Add_Str_To_Name_Buffer ("___XR");
-
-         when N_Exception_Renaming_Declaration =>
-            Add_Str_To_Name_Buffer ("___XRE");
-
-         when N_Package_Renaming_Declaration =>
-            Add_Str_To_Name_Buffer ("___XRP");
-
-         when others =>
-            return Empty;
-      end case;
-
-      Rnm := Name_Find;
 
       --  Get renamed entity and compute suffix
 
@@ -533,8 +352,8 @@ package body Exp_Dbug is
 
             when N_Expanded_Name =>
 
-               --  The entity field for an N_Expanded_Name is on the
-               --  expanded name node itself, so we are done here too.
+               --  The entity field for an N_Expanded_Name is on the expanded
+               --  name node itself, so we are done here too.
 
                exit;
 
@@ -578,6 +397,7 @@ package body Exp_Dbug is
                Ren := Prefix (Ren);
 
             when N_Explicit_Dereference =>
+               Set_Materialize_Entity (Ent);
                Prepend_String_To_Buffer ("XA");
                Ren := Prefix (Ren);
 
@@ -591,9 +411,43 @@ package body Exp_Dbug is
 
       Prepend_String_To_Buffer ("___XE");
 
-      --  For now, the literal name contains only the suffix. The Entity_Id
-      --  value for the name is used to create a link from this literal name
-      --  to the renamed entity using the Debug_Renaming_Link field. Then the
+      --  Include the designation of the form of renaming
+
+      case Nkind (N) is
+         when N_Object_Renaming_Declaration =>
+            Prepend_String_To_Buffer ("___XR");
+
+         when N_Exception_Renaming_Declaration =>
+            Prepend_String_To_Buffer ("___XRE");
+
+         when N_Package_Renaming_Declaration =>
+            Prepend_String_To_Buffer ("___XRP");
+
+         when others =>
+            return Empty;
+      end case;
+
+      --  Add the name of the renaming entity to the front
+
+      Prepend_String_To_Buffer (Get_Name_String (Chars (Ent)));
+
+      --  If it is a child unit create a fully qualified name, to disambiguate
+      --  multiple child units with the same name and different parents.
+
+      if Nkind (N) = N_Package_Renaming_Declaration
+        and then Is_Child_Unit (Ent)
+      then
+         Prepend_String_To_Buffer ("__");
+         Prepend_String_To_Buffer
+           (Get_Name_String (Chars (Scope (Ent))));
+      end if;
+
+      --  Create the special object whose name is the debug encoding for the
+      --  renaming declaration.
+
+      --  For now, the object name contains the suffix encoding for the renamed
+      --  object, but not the name of the leading entity. The object is linked
+      --  the renamed entity using the Debug_Renaming_Link field. Then the
       --  Qualify_Entity_Name procedure uses this link to create the proper
       --  fully qualified name.
 
@@ -601,23 +455,22 @@ package body Exp_Dbug is
       --  qualification of the renamed entity, and it is really much easier to
       --  do this after the renamed entity has itself been fully qualified.
 
-      Lit := Make_Defining_Identifier (Loc, Chars => Name_Enter);
-      Set_Debug_Renaming_Link (Lit, Entity (Ren));
-
-      --  Return the appropriate enumeration type
-
-      Def := Make_Defining_Identifier (Loc, Chars => Rnm);
+      Obj := Make_Defining_Identifier (Loc, Chars => Name_Enter);
       Res :=
-        Make_Full_Type_Declaration (Loc,
-          Defining_Identifier => Def,
-          Type_Definition =>
-            Make_Enumeration_Type_Definition (Loc,
-              Literals => New_List (Lit)));
+        Make_Object_Declaration (Loc,
+          Defining_Identifier => Obj,
+          Object_Definition   => New_Reference_To
+                                   (Standard_Debug_Renaming_Type, Loc));
 
-      Set_Needs_Debug_Info (Def);
-      Set_Needs_Debug_Info (Lit);
+      Set_Debug_Renaming_Link (Obj, Entity (Ren));
 
-      Set_Discard_Names (Defining_Identifier (Res));
+      Set_Needs_Debug_Info (Obj);
+
+      --  Mark the object as internal so that it won't be initialized when
+      --  pragma Initialize_Scalars or Normalize_Scalars is in use.
+
+      Set_Is_Internal (Obj);
+
       return Res;
 
    --  If we get an exception, just figure it is a case that we cannot
@@ -629,132 +482,6 @@ package body Exp_Dbug is
          return Make_Null_Statement (Loc);
    end Debug_Renaming_Declaration;
 
-   -----------------------
-   -- Double_Underscore --
-   -----------------------
-
-   function Double_Underscore (S : String; J : Natural) return Boolean is
-   begin
-      if J = S'First or else J > S'Last - 2 then
-         return False;
-
-      else
-         return S (J) = '_'
-           and then S (J + 1) = '_'
-           and then S (J - 1) /= '_'
-           and then S (J + 2) /= '_';
-      end if;
-   end Double_Underscore;
-
-   ------------------------------
-   -- Generate_Auxiliary_Types --
-   ------------------------------
-
-   --  Note: right now there is only one auxiliary type to be generated,
-   --  namely the enumeration type for the compression sequences if used.
-
-   procedure Generate_Auxiliary_Types is
-      Loc     : constant Source_Ptr := Sloc (Cunit (Current_Sem_Unit));
-      E       : Elmt;
-      Code    : Entity_Id;
-      Lit     : Entity_Id;
-      Start   : Natural;
-      Ptr     : Natural;
-      Discard : List_Id;
-
-      Literal_List : List_Id := New_List;
-      --  Gathers the list of literals for the declaration
-
-      procedure Output_Literal;
-      --  Adds suffix of form Xnnn to name in Name_Buffer, where nnn is
-      --  a serial number that is one greater on each call, and then
-      --  builds an enumeration literal and adds it to the literal list.
-
-      Serial : Nat := 0;
-      --  Current serial number
-
-      procedure Output_Literal is
-      begin
-         Serial := Serial + 1;
-         Add_Char_To_Name_Buffer ('X');
-         Add_Nat_To_Name_Buffer (Serial);
-
-         Lit :=
-           Make_Defining_Identifier (Loc,
-             Chars => Name_Find);
-         Set_Has_Qualified_Name (Lit, True);
-         Append (Lit, Literal_List);
-      end Output_Literal;
-
-   --  Start of processing for Auxiliary_Types
-
-   begin
-      E := CDN.Get_First;
-      if E.S /= null then
-         while E.S /= null loop
-
-            --  We have E.S a String_Ptr that contains a string of the form:
-
-            --    b__c__d
-
-            --  In E.W is a 32-bit word representing the hash value
-
-            --  Our mission is to construct a type
-
-            --     type XChhhhhhhh is (b,c,d);
-
-            --  where hhhhhhhh is the 8 hex digits of the E.W value.
-            --  and append this type declaration to the result list
-
-            Name_Buffer (1) := 'X';
-            Name_Buffer (2) := 'C';
-            Put_Hex (E.W, 3);
-            Name_Len := 10;
-            Output_Literal;
-
-            Start := E.S'First;
-            Ptr   := E.S'First;
-            while Ptr <= E.S'Last loop
-               if Ptr = E.S'Last
-                 or else Double_Underscore (E.S.all, Ptr + 1)
-               then
-                  Name_Len := Ptr - Start + 1;
-                  Name_Buffer (1 .. Name_Len) := E.S (Start .. Ptr);
-                  Output_Literal;
-                  Start := Ptr + 3;
-                  Ptr := Start;
-               else
-                  Ptr := Ptr + 1;
-               end if;
-            end loop;
-
-            E := CDN.Get_Next;
-         end loop;
-
-         Name_Buffer (1) := 'X';
-         Name_Buffer (2) := 'C';
-         Name_Len := 2;
-
-         Code :=
-           Make_Defining_Identifier (Loc,
-             Chars => Name_Find);
-         Set_Has_Qualified_Name (Code, True);
-
-         Insert_Library_Level_Action (
-           Make_Full_Type_Declaration (Loc,
-             Defining_Identifier => Code,
-             Type_Definition =>
-               Make_Enumeration_Type_Definition (Loc,
-                 Literals => Literal_List)));
-
-         --  We have to manually freeze this entity, since it is inserted
-         --  very late on into the tree, and otherwise will not be frozen.
-         --  No freeze actions are generated, so we can discard the result.
-
-         Discard := Freeze_Entity (Code,  Loc);
-      end if;
-   end Generate_Auxiliary_Types;
-
    ----------------------
    -- Get_Encoded_Name --
    ----------------------
@@ -765,6 +492,25 @@ package body Exp_Dbug is
       Has_Suffix : Boolean;
 
    begin
+      --  If not generating code, there is no need to create encoded names, and
+      --  problems when the back-end is called to annotate types without full
+      --  code generation. See comments in Get_External_Name_With_Suffix for
+      --  additional details.
+
+      --  However we do create encoded names if the back end is active, even
+      --  if Operating_Mode got reset. Otherwise any serious error reported
+      --  by the backend calling Error_Msg changes the Compilation_Mode to
+      --  Check_Semantics, which disables the functionality of this routine,
+      --  causing the generation of spurious additional errors.
+
+      --  Couldn't we just test Original_Operating_Mode here? ???
+
+      if Operating_Mode /= Generate_Code
+        and then not Generating_Code
+      then
+         return;
+      end if;
+
       Get_Name_String (Chars (E));
 
       --  Nothing to do if we do not have a type
@@ -809,7 +555,6 @@ package body Exp_Dbug is
       --  Vax floating-point case
 
       elsif Vax_Float (E) then
-
          if Digits_Value (Base_Type (E)) = 6 then
             Get_External_Name_With_Suffix (E, "XFF");
 
@@ -826,18 +571,12 @@ package body Exp_Dbug is
       elsif Is_Discrete_Type (E)
         and then not Bounds_Match_Size (E)
       then
-         if Has_Biased_Representation (E) then
-            Get_External_Name_With_Suffix (E, "XB");
-         else
-            Get_External_Name_With_Suffix (E, "XD");
-         end if;
-
          declare
             Lo : constant Node_Id := Type_Low_Bound (E);
             Hi : constant Node_Id := Type_High_Bound (E);
 
-            Lo_Stat : constant Boolean := Is_OK_Static_Expression (Lo);
-            Hi_Stat : constant Boolean := Is_OK_Static_Expression (Hi);
+            Lo_Con : constant Boolean := Compile_Time_Known_Value (Lo);
+            Hi_Con : constant Boolean := Compile_Time_Known_Value (Hi);
 
             Lo_Discr : constant Boolean :=
                          Nkind (Lo) = N_Identifier
@@ -849,22 +588,34 @@ package body Exp_Dbug is
                            and then
                          Ekind (Entity (Hi)) = E_Discriminant;
 
-            Lo_Encode : constant Boolean := Lo_Stat or Lo_Discr;
-            Hi_Encode : constant Boolean := Hi_Stat or Hi_Discr;
+            Lo_Encode : constant Boolean := Lo_Con or Lo_Discr;
+            Hi_Encode : constant Boolean := Hi_Con or Hi_Discr;
+
+            Biased : constant Boolean := Has_Biased_Representation (E);
 
          begin
+            if Biased then
+               Get_External_Name_With_Suffix (E, "XB");
+            else
+               Get_External_Name_With_Suffix (E, "XD");
+            end if;
+
             if Lo_Encode or Hi_Encode then
-               if Lo_Encode then
-                  if Hi_Encode then
-                     Add_Str_To_Name_Buffer ("LU_");
-                  else
-                     Add_Str_To_Name_Buffer ("L_");
-                  end if;
+               if Biased then
+                  Add_Str_To_Name_Buffer ("_");
                else
-                  Add_Str_To_Name_Buffer ("U_");
+                  if Lo_Encode then
+                     if Hi_Encode then
+                        Add_Str_To_Name_Buffer ("LU_");
+                     else
+                        Add_Str_To_Name_Buffer ("L_");
+                     end if;
+                  else
+                     Add_Str_To_Name_Buffer ("U_");
+                  end if;
                end if;
 
-               if Lo_Stat then
+               if Lo_Con then
                   Add_Uint_To_Buffer (Expr_Rep_Value (Lo));
                elsif Lo_Discr then
                   Get_Name_String_And_Append (Chars (Entity (Lo)));
@@ -874,7 +625,7 @@ package body Exp_Dbug is
                   Add_Str_To_Name_Buffer ("__");
                end if;
 
-               if Hi_Stat then
+               if Hi_Con then
                   Add_Uint_To_Buffer (Expr_Rep_Value (Hi));
                elsif Hi_Discr then
                   Get_Name_String_And_Append (Chars (Entity (Hi)));
@@ -904,8 +655,7 @@ package body Exp_Dbug is
    -- Get_External_Name --
    -----------------------
 
-   procedure Get_External_Name (Entity : Entity_Id; Has_Suffix : Boolean)
-   is
+   procedure Get_External_Name (Entity : Entity_Id; Has_Suffix : Boolean) is
       E    : Entity_Id := Entity;
       Kind : Entity_Kind;
 
@@ -924,7 +674,7 @@ package body Exp_Dbug is
 
          --  If the front end has already computed a fully qualified name,
          --  then it is also the case that no further qualification is
-         --  required
+         --  required.
 
          if Present (Scope (Scope (Entity)))
            and then not Has_Fully_Qualified_Name (Entity)
@@ -937,13 +687,13 @@ package body Exp_Dbug is
          else
             Get_Name_String_And_Append (Chars (Entity));
          end if;
-
       end Get_Qualified_Name_And_Append;
 
    --  Start of processing for Get_External_Name
 
    begin
-      Name_Len := 0;
+      Name_Len    := 0;
+      Homonym_Len := 0;
 
       --  If this is a child unit, we want the child
 
@@ -964,14 +714,6 @@ package body Exp_Dbug is
         and then No (Address_Clause (E))
         and then not Has_Suffix
       then
-         --  The following code needs explanation ???
-
-         if Convention (E) = Convention_Stdcall
-            and then Ekind (E) = E_Variable
-         then
-            Add_Str_To_Name_Buffer ("_imp__");
-         end if;
-
          Add_String_To_Name_Buffer (Strval (Interface_Name (E)));
 
       --  All other cases besides the interface name case
@@ -980,6 +722,7 @@ package body Exp_Dbug is
          --  If this is a library level subprogram (i.e. a subprogram that is a
          --  compilation unit other than a subunit), then we prepend _ada_ to
          --  ensure distinctions required as described in the spec.
+
          --  Check explicitly for child units, because those are not flagged
          --  as Compilation_Units by lib. Should they be ???
 
@@ -997,6 +740,10 @@ package body Exp_Dbug is
          if Is_Generic_Instance (E)
            and then Is_Subprogram (E)
            and then not Is_Compilation_Unit (Scope (E))
+           and then (Ekind (Scope (E)) = E_Package
+                      or else
+                     Ekind (Scope (E)) = E_Package_Body)
+           and then Present (Related_Instance (Scope (E)))
          then
             E := Related_Instance (Scope (E));
          end if;
@@ -1016,13 +763,27 @@ package body Exp_Dbug is
       Suffix : String)
    is
       Has_Suffix : constant Boolean := (Suffix /= "");
+
    begin
+      --  If we are not in code generation mode, this procedure may still be
+      --  called from Back_End (more specifically - from gigi for doing type
+      --  representation annotation or some representation-specific checks).
+      --  But in this mode there is no need to mess with external names.
+
+      --  Furthermore, the call causes difficulties in this case because the
+      --  string representing the homonym number is not correctly reset as a
+      --  part of the call to Output_Homonym_Numbers_Suffix (which is not
+      --  called in gigi).
+
+      if Operating_Mode /= Generate_Code then
+         return;
+      end if;
+
       Get_External_Name (Entity, Has_Suffix);
 
       if Has_Suffix then
          Add_Str_To_Name_Buffer ("___");
          Add_Str_To_Name_Buffer (Suffix);
-
          Name_Buffer (Name_Len + 1) := ASCII.Nul;
       end if;
    end Get_External_Name_With_Suffix;
@@ -1044,9 +805,8 @@ package body Exp_Dbug is
 
       procedure Choice_Val (Typ : Character; Choice : Node_Id) is
       begin
-         Add_Char_To_Name_Buffer (Typ);
-
          if Nkind (Choice) = N_Integer_Literal then
+            Add_Char_To_Name_Buffer (Typ);
             Add_Uint_To_Buffer (Intval (Choice));
 
          --  Character literal with no entity present (this is the case
@@ -1055,8 +815,8 @@ package body Exp_Dbug is
          elsif Nkind (Choice) = N_Character_Literal
            and then No (Entity (Choice))
          then
-            Add_Uint_To_Buffer
-              (UI_From_Int (Int (Char_Literal_Value (Choice))));
+            Add_Char_To_Name_Buffer (Typ);
+            Add_Uint_To_Buffer (Char_Literal_Value (Choice));
 
          else
             declare
@@ -1064,6 +824,7 @@ package body Exp_Dbug is
 
             begin
                if Ekind (Ent) = E_Enumeration_Literal then
+                  Add_Char_To_Name_Buffer (Typ);
                   Add_Uint_To_Buffer (Enumeration_Rep (Ent));
 
                else
@@ -1129,6 +890,40 @@ package body Exp_Dbug is
       end if;
    end Get_Variant_Encoding;
 
+   ------------------------------------
+   -- Get_Secondary_DT_External_Name --
+   ------------------------------------
+
+   procedure Get_Secondary_DT_External_Name
+     (Typ          : Entity_Id;
+      Ancestor_Typ : Entity_Id;
+      Suffix_Index : Int)
+   is
+   begin
+      Get_External_Name (Typ, Has_Suffix => False);
+
+      if Ancestor_Typ /= Typ then
+         declare
+            Len      : constant Natural := Name_Len;
+            Save_Str : constant String (1 .. Name_Len)
+                         := Name_Buffer (1 .. Name_Len);
+         begin
+            Get_External_Name (Ancestor_Typ, Has_Suffix => False);
+
+            --  Append the extended name of the ancestor to the
+            --  extended name of Typ
+
+            Name_Buffer (Len + 2 .. Len + Name_Len + 1) :=
+              Name_Buffer (1 .. Name_Len);
+            Name_Buffer (1 .. Len) := Save_Str;
+            Name_Buffer (Len + 1) := '_';
+            Name_Len := Len + Name_Len + 1;
+         end;
+      end if;
+
+      Add_Nat_To_Name_Buffer (Suffix_Index);
+   end Get_Secondary_DT_External_Name;
+
    ---------------------------------
    -- Make_Packed_Array_Type_Name --
    ---------------------------------
@@ -1174,12 +969,7 @@ package body Exp_Dbug is
 
          --  If we exit the loop then suffix must be output
 
-         if No_Dollar_In_Label then
-            Add_Str_To_Name_Buffer ("__");
-         else
-            Add_Char_To_Name_Buffer ('$');
-         end if;
-
+         Add_Str_To_Name_Buffer ("__");
          Add_Str_To_Name_Buffer (Homonym_Numbers (1 .. Homonym_Len));
          Homonym_Len := 0;
       end if;
@@ -1191,7 +981,6 @@ package body Exp_Dbug is
 
    procedure Prepend_String_To_Buffer (S : String) is
       N : constant Integer := S'Length;
-
    begin
       Name_Buffer (1 + N .. Name_Len + N) := Name_Buffer (1 .. Name_Len);
       Name_Buffer (1 .. N) := S;
@@ -1213,24 +1002,6 @@ package body Exp_Dbug is
       end if;
    end Prepend_Uint_To_Buffer;
 
-   -------------
-   -- Put_Hex --
-   -------------
-
-   procedure Put_Hex (W : Word; N : Natural) is
-      Hex : constant array (Word range 0 .. 15) of Character :=
-              "0123456789abcdef";
-
-      Cod : Word;
-
-   begin
-      Cod := W;
-      for J in reverse N .. N + 7 loop
-         Name_Buffer (J) := Hex (Cod and 16#F#);
-         Cod := Cod / 16;
-      end loop;
-   end Put_Hex;
-
    ------------------------------
    -- Qualify_All_Entity_Names --
    ------------------------------
@@ -1244,31 +1015,25 @@ package body Exp_Dbug is
          E := Defining_Entity (Name_Qualify_Units.Table (J));
          Qualify_Entity_Name (E);
 
-         Ent := First_Entity (E);
-         while Present (Ent) loop
-            Qualify_Entity_Name (Ent);
-            Next_Entity (Ent);
+         --  Normally entities in the qualification list are scopes, but in the
+         --  case of a library-level package renaming there is an associated
+         --  variable that encodes the debugger name and that variable is
+         --  entered in the list since it occurs in the Aux_Decls list of the
+         --  compilation and doesn't have a normal scope.
 
-            --  There are odd cases where Last_Entity (E) = E. This happens
-            --  in the case of renaming of packages. This test avoids getting
-            --  stuck in such cases.
+         if Ekind (E) /= E_Variable then
+            Ent := First_Entity (E);
+            while Present (Ent) loop
+               Qualify_Entity_Name (Ent);
+               Next_Entity (Ent);
 
-            exit when Ent = E;
-         end loop;
-      end loop;
+               --  There are odd cases where Last_Entity (E) = E. This happens
+               --  in the case of renaming of packages. This test avoids
+               --  getting stuck in such cases.
 
-      --  Second loop compresses any names that need compressing
-
-      for J in Name_Qualify_Units.First .. Name_Qualify_Units.Last loop
-         E := Defining_Entity (Name_Qualify_Units.Table (J));
-         Compress_Debug_Name (E);
-
-         Ent := First_Entity (E);
-         while Present (Ent) loop
-            Compress_Debug_Name (Ent);
-            Next_Entity (Ent);
-            exit when Ent = E;
-         end loop;
+               exit when Ent = E;
+            end loop;
+         end if;
       end loop;
    end Qualify_All_Entity_Names;
 
@@ -1368,9 +1133,11 @@ package body Exp_Dbug is
                Get_Name_String (Chars (E));
             end if;
 
+            --  Here we do one step of the qualification
+
             Full_Qualify_Name
               (Full_Qualify_Len + 1 .. Full_Qualify_Len + Name_Len) :=
-                Name_Buffer (1 .. Name_Len);
+                 Name_Buffer (1 .. Name_Len);
             Full_Qualify_Len := Full_Qualify_Len + Name_Len;
             Append_Homonym_Number (E);
          end if;
@@ -1438,7 +1205,6 @@ package body Exp_Dbug is
          else
             Add_Char_To_Name_Buffer ('X');
          end if;
-
       end Set_BNPE_Suffix;
 
       ---------------------
@@ -1494,17 +1260,69 @@ package body Exp_Dbug is
       if Has_Qualified_Name (Ent) then
          return;
 
-      --  Here is where we create the proper link for renaming
+      --  If the entity is a variable encoding the debug name for an object
+      --  renaming, then the qualified name of the entity associated with the
+      --  renamed object can now be incorporated in the debug name.
 
-      elsif Ekind (Ent) = E_Enumeration_Literal
+      elsif Ekind (Ent) = E_Variable
         and then Present (Debug_Renaming_Link (Ent))
       then
          Name_Len := 0;
-         Set_Entity_Name (Debug_Renaming_Link (Ent));
+         Qualify_Entity_Name (Debug_Renaming_Link (Ent));
          Get_Name_String (Chars (Ent));
-         Prepend_String_To_Buffer
-           (Get_Name_String (Chars (Debug_Renaming_Link (Ent))));
+
+         --  Retrieve the now-qualified name of the renamed entity and insert
+         --  it in the middle of the name, just preceding the suffix encoding
+         --  describing the renamed object.
+
+         declare
+            Renamed_Id : constant String :=
+                           Get_Name_String (Chars (Debug_Renaming_Link (Ent)));
+            Insert_Len : constant Integer := Renamed_Id'Length + 1;
+            Index      : Natural := Name_Len - 3;
+
+         begin
+            --  Loop backwards through the name to find the start of the "___"
+            --  sequence associated with the suffix.
+
+            while Index >= Name_Buffer'First
+              and then (Name_Buffer (Index + 1) /= '_'
+                         or else Name_Buffer (Index + 2) /= '_'
+                         or else Name_Buffer (Index + 3) /= '_')
+            loop
+               Index := Index - 1;
+            end loop;
+
+            pragma Assert (Name_Buffer (Index + 1 .. Index + 3) = "___");
+
+            --  Insert an underscore separator and the entity name just in
+            --  front of the suffix.
+
+            Name_Buffer (Index + 1 + Insert_Len .. Name_Len + Insert_Len) :=
+              Name_Buffer (Index + 1 .. Name_Len);
+            Name_Buffer (Index + 1) := '_';
+            Name_Buffer (Index + 2 .. Index + Insert_Len) := Renamed_Id;
+            Name_Len := Name_Len + Insert_Len;
+         end;
+
+         --  Reset the name of the variable to the new name that includes the
+         --  name of the renamed entity.
+
          Set_Chars (Ent, Name_Enter);
+
+         --  If the entity needs qualification by its scope then develop it
+         --  here, add the variable's name, and again reset the entity name.
+
+         if Qualify_Needed (Scope (Ent)) then
+            Name_Len := 0;
+            Set_Entity_Name (Scope (Ent));
+            Add_Str_To_Name_Buffer ("__");
+
+            Get_Name_String_And_Append (Chars (Ent));
+
+            Set_Chars (Ent, Name_Enter);
+         end if;
+
          Set_Has_Qualified_Name (Ent);
          return;
 
@@ -1567,31 +1385,15 @@ package body Exp_Dbug is
       Name_Qualify_Units.Append (N);
    end Qualify_Entity_Names;
 
-   ---------
-   -- SEq --
-   ---------
-
-   function SEq (F1, F2 : String_Ptr) return Boolean is
-   begin
-      return F1.all = F2.all;
-   end SEq;
-
-   -----------
-   -- SHash --
-   -----------
-
-   function SHash (S : String_Ptr) return Hindex is
-   begin
-      return Hindex
-        (Hindex'First + Hindex (CDN_Hash (S.all) mod Hindex'Range_Length));
-   end SHash;
-
    --------------------
    -- Strip_Suffixes --
    --------------------
 
    procedure Strip_Suffixes (BNPE_Suffix_Found : in out Boolean) is
       SL : Natural;
+
+      pragma Warnings (Off, BNPE_Suffix_Found);
+      --  Since this procedure only ever sets the flag
 
    begin
       --  Search for and strip BNPE suffix
@@ -1608,54 +1410,27 @@ package body Exp_Dbug is
 
       --  Search for and strip homonym numbers suffix
 
-      --  Case of __ used for homonym numbers suffix
-
-      if No_Dollar_In_Label then
-         for J in reverse 2 .. Name_Len - 2 loop
-            if Name_Buffer (J) = '_'
-              and then Name_Buffer (J + 1) = '_'
-            then
-               if Name_Buffer (J + 2) in '0' .. '9' then
-                  if Homonym_Len > 0 then
-                     Homonym_Len := Homonym_Len + 1;
-                     Homonym_Numbers (Homonym_Len) := '-';
-                  end if;
-
-                  SL := Name_Len - (J + 1);
-
-                  Homonym_Numbers (Homonym_Len + 1 .. Homonym_Len + SL) :=
-                    Name_Buffer (J + 2 .. Name_Len);
-                  Name_Len := J - 1;
-                  Homonym_Len := Homonym_Len + SL;
+      for J in reverse 2 .. Name_Len - 2 loop
+         if Name_Buffer (J) = '_'
+           and then Name_Buffer (J + 1) = '_'
+         then
+            if Name_Buffer (J + 2) in '0' .. '9' then
+               if Homonym_Len > 0 then
+                  Homonym_Len := Homonym_Len + 1;
+                  Homonym_Numbers (Homonym_Len) := '-';
                end if;
 
-               exit;
+               SL := Name_Len - (J + 1);
+
+               Homonym_Numbers (Homonym_Len + 1 .. Homonym_Len + SL) :=
+                 Name_Buffer (J + 2 .. Name_Len);
+               Name_Len := J - 1;
+               Homonym_Len := Homonym_Len + SL;
             end if;
-         end loop;
 
-      --  Case of $ used for homonym numbers suffix
-
-      else
-         for J in reverse 2 .. Name_Len - 1 loop
-            if Name_Buffer (J) = '$' then
-               if Name_Buffer (J + 1) in '0' .. '9' then
-                  if Homonym_Len > 0 then
-                     Homonym_Len := Homonym_Len + 1;
-                     Homonym_Numbers (Homonym_Len) := '-';
-                  end if;
-
-                  SL := Name_Len - J;
-
-                  Homonym_Numbers (Homonym_Len + 1 .. Homonym_Len + SL) :=
-                    Name_Buffer (J + 1 .. Name_Len);
-                  Name_Len := J - 1;
-                  Homonym_Len := Homonym_Len + SL;
-               end if;
-
-               exit;
-            end if;
-         end loop;
-      end if;
+            exit;
+         end if;
+      end loop;
    end Strip_Suffixes;
 
 end Exp_Dbug;

@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2005, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -100,6 +99,7 @@ package Stringt is
    --  Returns length of previously stored string
 
    function Get_String_Char (Id : String_Id; Index : Int) return Char_Code;
+   pragma Inline (Get_String_Char);
    --  Obtains the specified character from a stored string. The lower bound
    --  of stored strings is always 1, so the range is 1 .. String_Length (Id).
 
@@ -128,12 +128,13 @@ package Stringt is
    --  Return address of Strings table (used by Back_End call to Gigi)
 
    procedure Tree_Read;
-   --  Initializes internal tables from current tree file using Tree_Read.
-   --  Note that Initialize should not be called if Tree_Read is used.
-   --  Tree_Read includes all necessary initialization.
+   --  Initializes internal tables from current tree file using the relevant
+   --  Table.Tree_Read routines. Note that Initialize should not be called if
+   --  Tree_Read is used. Tree_Read includes all necessary initialization.
 
    procedure Tree_Write;
-   --  Writes out internal tables to current tree file using Tree_Write
+   --  Writes out internal tables to current tree file using the relevant
+   --  Table.Tree_Write routines.
 
    procedure Write_Char_Code (Code : Char_Code);
    --  Procedure to write a character code value, used for debugging purposes
@@ -153,8 +154,8 @@ package Stringt is
    --  ASCII graphics (except for double quote) are output literally.
    --  The double quote appears as two successive double quotes.
    --  All other codes, are output as described for Write_Char_Code. For
-   --  example, the string created by folding "A" & ASCII.LF & "Hello" will
-   --  print as "A["0a"]Hello". A No_String value prints simply as "no string"
+   --  example, the string created by folding "A" & ASCII.HT & "Hello" will
+   --  print as "A["09"]Hello". A No_String value prints simply as "no string"
    --  without surrounding quote marks.
 
 private

@@ -1,3 +1,4 @@
+// { dg-do run  }
 // Author: Alfred Miniarik <a8601248@unet.univie.ac.at>
 // test of dynamic_cast
 // runtime detecting of valid 
@@ -18,7 +19,7 @@ void error(int i)
 // 1. downcast
 // 1.1 single inheritance case
 
-struct A {virtual ~A(){};int i;};
+struct A {virtual ~A(){} int i;};
 struct B : A {int i;};
 struct C : B {int i;};
 struct CC : C {};

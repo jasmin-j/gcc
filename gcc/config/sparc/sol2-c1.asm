@@ -23,8 +23,8 @@
 ! 
 ! You should have received a copy of the GNU General Public License
 ! along with this program; see the file COPYING.  If not, write to
-! the Free Software Foundation, 59 Temple Place - Suite 330,
-! Boston, MA 02111-1307, USA.
+! the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+! Boston, MA 02110-1301, USA.
 ! 
 !    As a special exception, if you link this library with files
 !    compiled with GCC to produce an executable, this does not cause
@@ -92,6 +92,10 @@ _start:
 	! access those data anyway.  Instead, go straight to main:
 	mov	%l0, %o0	! argc
 	mov	%l1, %o1	! argv
+#ifdef GCRT1
+	setn(___Argv, %o4, %o3)
+	stn	%o1, [%o3]      ! *___Argv
+#endif
 	! Skip argc words past argv, to env:
 	sll	%l0, CPTRSHIFT, %o2
 	add	%o2, CPTRSIZE, %o2

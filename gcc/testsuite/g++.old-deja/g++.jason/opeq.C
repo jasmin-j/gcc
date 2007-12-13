@@ -1,3 +1,4 @@
+// { dg-do run  }
 // PRMS Id: 4297 (related to 3525)
 // Bug: Generating default op= didn't set TYPE_HAS_ASSIGNMENT, so it wasn't
 // found.
@@ -7,7 +8,7 @@ extern "C" int printf (const char *, ...);
 class Y 
 {
 public:
-    Y(char*) {}
+    Y(const char*) {}
     Y& operator = (const Y&) { return *this; }
 };
     
@@ -15,7 +16,7 @@ public:
 class X
 {
 public:
-    X(int v, char* m) : _v(v), _m (m) {}
+    X(int v, const char* m) : _v(v), _m (m) {}
     X () : _v(0), _m("Unknown") {}
     // Defining our own op= here makes things work correctly.
 

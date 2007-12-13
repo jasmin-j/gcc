@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-1998 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -21,8 +20,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -44,8 +43,7 @@
 --  excellent randomness properties. For further details, see the
 --  paper "Fast Generation of Trustworthy Random Numbers", by Robert
 --  Eachus, which describes both the algorithm and the efficient
---  implementation approach used here. This paper is available at
---  the Ada Core Technologies web site (http://www.gnat.com).
+--  implementation approach used here.
 
 with Interfaces;
 
@@ -71,12 +69,15 @@ package Ada.Numerics.Float_Random is
 
    Max_Image_Width : constant := 80;
 
-   function Image (Of_State :    State)  return String;
+   function Image (Of_State    : State)  return String;
    function Value (Coded_State : String) return State;
 
 private
    type Int is new Interfaces.Integer_32;
-   type Flt is digits 14;
+
+   --  We prefer to use 14 digits for Flt, but some targets are more limited
+
+   type Flt is digits Positive'Min (14, Long_Long_Float'Digits);
 
    K1   : constant := 94_833_359;
    K1F  : constant := 94_833_359.0;

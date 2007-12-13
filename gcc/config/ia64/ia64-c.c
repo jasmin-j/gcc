@@ -1,23 +1,22 @@
 /* Definitions of C specific functions for GNU compiler.
-   Copyright (C) 2002 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
    Contributed by Steve Ellcey <sje@cup.hp.com>
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -28,28 +27,28 @@ Boston, MA 02111-1307, USA.  */
 #include "c-common.h"
 #include "c-pragma.h"
 #include "toplev.h"
+#include "tm_p.h"
 
-static void ia64_hpux_add_pragma_builtin PARAMS ((tree func));
+static void ia64_hpux_add_pragma_builtin (tree func);
 
 void
-ia64_hpux_handle_builtin_pragma (pfile)
-	cpp_reader *pfile ATTRIBUTE_UNUSED;
+ia64_hpux_handle_builtin_pragma (cpp_reader *pfile ATTRIBUTE_UNUSED)
 {
   /* #pragma builtin name, name, name */
 
   enum cpp_ttype type;
   tree x;
 
-  type = c_lex (&x);
+  type = pragma_lex (&x);
   while (type == CPP_NAME)
     {
       ia64_hpux_add_pragma_builtin (x);
-      type = c_lex (&x);
+      type = pragma_lex (&x);
       if (type == CPP_COMMA)
-	type = c_lex (&x);
+	type = pragma_lex (&x);
     }
   if (type != CPP_EOF)
-    warning ("malformed #pragma builtin");
+    warning (OPT_Wpragmas, "malformed #pragma builtin");
 }
 
 /* List of standard math functions which do not set matherr by default
@@ -60,7 +59,7 @@ ia64_hpux_handle_builtin_pragma (pfile)
 typedef struct c89_mathlib_names
 {
         const char *realname; /* User visible function name.  */
-        const char *c89name;  /* libm special name needed to set errno. */
+        const char *c89name;  /* libm special name needed to set errno.  */
 } c89_mathlib_names;
 
 static const c89_mathlib_names c89_mathlib_name_list [] =
@@ -172,8 +171,7 @@ static const c89_mathlib_names c89_mathlib_name_list [] =
 };
 
 static void
-ia64_hpux_add_pragma_builtin (func)
-	tree func;
+ia64_hpux_add_pragma_builtin (tree func)
 {
   size_t i;
 

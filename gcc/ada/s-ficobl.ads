@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---            Copyright (C) 1992-2000 Free Software Foundation, Inc.        --
+--            Copyright (C) 1992-2007, Free Software Foundation, Inc.       --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -40,12 +39,13 @@
 
 with Ada.Streams;
 with Interfaces.C_Streams;
+with System.CRTL;
 
 package System.File_Control_Block is
 
-   -----------------------------
-   --  Ada File Control Block --
-   -----------------------------
+   ----------------------------
+   -- Ada File Control Block --
+   ----------------------------
 
    --  The Ada file control block is an abstract extension of the root
    --  stream type. This allows a file to be treated directly as a stream
@@ -78,7 +78,7 @@ package System.File_Control_Block is
    --  stream with the semantics specified in the RM for file sharing. All
    --  files opened with "shared=no" will have their own stream.
 
-   type AFCB;
+   type AFCB is tagged;
    type AFCB_Ptr is access all AFCB'Class;
 
    type AFCB is abstract new Ada.Streams.Root_Stream_Type with record
@@ -90,6 +90,9 @@ package System.File_Control_Block is
       --  A pointer to the file name. The file name is null for temporary
       --  files, and also for standard files (stdin, stdout, stderr). The
       --  name is always null-terminated if it is non-null.
+
+      Encoding : System.CRTL.Filename_Encoding;
+      --  Encoding used to specified the filename
 
       Form : Pstring;
       --  A pointer to the form string. This is the string used in the
@@ -144,13 +147,13 @@ package System.File_Control_Block is
    --  that the argument Control_Block is not used other than as the argument
    --  that controls which version of AFCB_Allocate is called.
 
-   procedure AFCB_Close (File : access AFCB) is abstract;
+   procedure AFCB_Close (File : not null access AFCB) is abstract;
    --  Performs any specialized close actions on a file before the file is
    --  actually closed at the system level. This is called by Close, and
    --  the reason we need the primitive operation is for the automatic
    --  close operations done as part of finalization.
 
-   procedure AFCB_Free (File : access AFCB) is abstract;
+   procedure AFCB_Free (File : not null access AFCB) is abstract;
    --  Frees the AFCB referenced by the given parameter. It is not necessary
    --  to free the strings referenced by the Form and Name fields, but if the
    --  extension has any other heap objects, they must be freed as well. This

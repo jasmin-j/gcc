@@ -1,24 +1,23 @@
 /* Definitions of target machine for GNU compiler, for the pdp-11
-   Copyright (C) 1994, 1995, 1996, 1998, 1999, 2000, 2001, 2002
-   Free Software Foundation, Inc.
+   Copyright (C) 1994, 1995, 1996, 1998, 1999, 2000, 2001, 2002, 2004, 2005,
+   2006, 2007 Free Software Foundation, Inc.
    Contributed by Michael K. Gschwind (mike@vlsivie.tuwien.ac.at).
 
-This file is part of GNU CC.
+This file is part of GCC.
 
-GNU CC is free software; you can redistribute it and/or modify
+GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
-GNU CC is distributed in the hope that it will be useful,
+GCC is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #define CONSTANT_POOL_BEFORE_FUNCTION	0
 
@@ -30,7 +29,12 @@ Boston, MA 02111-1307, USA.  */
 
 /* Names to predefine in the preprocessor for this target machine.  */
 
-#define CPP_PREDEFINES "-Dpdp11"
+#define TARGET_CPU_CPP_BUILTINS()		\
+  do						\
+    {						\
+      builtin_define_std ("pdp11");		\
+    }						\
+  while (0)
 
 /* Print subsidiary information on the compiler version in use.  */
 #define TARGET_VERSION fprintf (stderr, " (pdp11)");
@@ -40,91 +44,9 @@ Boston, MA 02111-1307, USA.  */
 
 /* #define DBX_DEBUGGING_INFO */
 
-/* Run-time compilation parameters selecting different hardware subsets.
-*/
-
-extern int target_flags;
-
-/* Macro to define tables used to set the flags.
-   This is a list in braces of triplets in braces,
-   each triplet being { "NAME", VALUE, DOC }
-   where VALUE is the bits to set or minus the bits to clear and DOC
-   is the documentation for --help (NULL if intentionally undocumented).
-   An empty string NAME is used to identify the default VALUE.  */
-
-#define TARGET_SWITCHES  \
-{   { "fpu", 1, N_("Use hardware floating point") },			\
-    { "soft-float", -1, N_("Do not use hardware floating point") },	\
-/* return float result in ac0 */					\
-    { "ac0", 2, N_("Return floating point results in ac0") },		\
-    { "no-ac0", -2, N_("Return floating point results in memory") },	\
-/* is 11/40 */								\
-    { "40", 4, N_("Generate code for an 11/40") },			\
-    { "no-40", -4, "" },						\
-/* is 11/45 */								\
-    { "45", 8, N_("Generate code for an 11/45") },			\
-    { "no-45", -8, "" },						\
-/* is 11/10 */								\
-    { "10", -12, N_("Generate code for an 11/10") },			\
-/* use movstrhi for bcopy */						\
-    { "bcopy", 16, NULL },						\
-    { "bcopy-builtin", -16, NULL },					\
-/* use 32 bit for int */						\
-    { "int32", 32, N_("Use 32 bit int") },				\
-    { "no-int16", 32, N_("Use 32 bit int") },				\
-    { "int16", -32, N_("Use 16 bit int") },				\
-    { "no-int32", -32, N_("Use 16 bit int") },				\
-/* use 32 bit for float */						\
-    { "float32", 64, N_("Use 32 bit float") },				\
-    { "no-float64", 64, N_("Use 32 bit float") },			\
-    { "float64", -64, N_("Use 64 bit float") },				\
-    { "no-float32", -64, N_("Use 64 bit float") },			\
-/* allow abshi pattern? - can trigger "optimizations" which make code SLOW! */\
-    { "abshi", 128, NULL },						\
-    { "no-abshi", -128, NULL },						\
-/* is branching expensive - on a PDP, it's actually really cheap */ \
-/* this is just to play around and check what code gcc generates */ \
-    { "branch-expensive", 256, NULL }, 					\
-    { "branch-cheap", -256, NULL },					\
-/* split instruction and data memory? */ 				\
-    { "split", 1024, N_("Target has split I&D") },			\
-    { "no-split", -1024, N_("Target does not have split I&D") },	\
-/* UNIX assembler syntax?  */						\
-    { "unix-asm", 2048, N_("Use UNIX assembler syntax") },		\
-    { "dec-asm", -2048, N_("Use DEC assembler syntax") },		\
-/* default */			\
-    { "", TARGET_DEFAULT, NULL}	\
-}
-
-#define TARGET_DEFAULT (1 | 8 | 128 | TARGET_UNIX_ASM_DEFAULT)
-
-#define TARGET_FPU 		(target_flags & 1)
-#define TARGET_SOFT_FLOAT 	(!TARGET_FPU)
-
-#define TARGET_AC0		((target_flags & 2) && TARGET_FPU)
-#define TARGET_NO_AC0		(! TARGET_AC0)
-
-#define TARGET_45		(target_flags & 8)
-#define TARGET_40_PLUS		((target_flags & 4) || (target_flags & 8))
+#define TARGET_40_PLUS		(TARGET_40 || TARGET_45)
 #define TARGET_10		(! TARGET_40_PLUS)
 
-#define TARGET_BCOPY_BUILTIN	(! (target_flags & 16))
-
-#define TARGET_INT16		(! TARGET_INT32)
-#define TARGET_INT32		(target_flags & 32)
-
-#define TARGET_FLOAT32		(target_flags & 64)
-#define TARGET_FLOAT64		(! TARGET_FLOAT32)
-
-#define TARGET_ABSHI_BUILTIN	(target_flags & 128)
-
-#define TARGET_BRANCH_EXPENSIVE	(target_flags & 256)
-#define TARGET_BRANCH_CHEAP 	(!TARGET_BRANCH_EXPENSIVE)
-
-#define TARGET_SPLIT		(target_flags & 1024)
-#define TARGET_NOSPLIT		(! TARGET_SPLIT)
-
-#define TARGET_UNIX_ASM		(target_flags & 2048)
 #define TARGET_UNIX_ASM_DEFAULT	0
 
 #define ASSEMBLER_DIALECT	(TARGET_UNIX_ASM ? 1 : 0)
@@ -162,13 +84,26 @@ extern int target_flags;
 /* Define this if most significant byte of a word is the lowest numbered.  */
 #define BYTES_BIG_ENDIAN 0
 
-/* Define this if most significant word of a multiword number is numbered.  */
+/* Define this if most significant word of a multiword number is first.  */
 #define WORDS_BIG_ENDIAN 1
+
+/* Define that floats are in VAX order, not high word first as for ints.  */
+#define FLOAT_WORDS_BIG_ENDIAN 0
 
 /* Width of a word, in units (bytes). 
 
    UNITS OR BYTES - seems like units */
 #define UNITS_PER_WORD 2
+
+/* This machine doesn't use IEEE floats.  */
+/* Because the pdp11 (at least Unix) convention for 32-bit ints is
+   big endian, opposite for what you need for float, the vax float
+   conversion routines aren't actually used directly.  But the underlying
+   format is indeed the vax/pdp11 float format.  */
+#define TARGET_FLOAT_FORMAT VAX_FLOAT_FORMAT
+
+extern const struct real_format pdp11_f_format;
+extern const struct real_format pdp11_d_format;
 
 /* Maximum sized of reasonable data type 
    DImode or Dfmode ...*/
@@ -327,13 +262,6 @@ extern int target_flags;
 /* Register in which static-chain is passed to a function.  */
 /* ??? - i don't want to give up a reg for this! */
 #define STATIC_CHAIN_REGNUM 4
-
-/* Register in which address to store a structure value
-   is passed to a function.  
-   let's make it an invisible first argument!!! */
-
-#define STRUCT_VALUE 0
-
 
 /* Define the classes of registers for register constraints in the
    machine description.  Also define ranges of constants.
@@ -357,10 +285,10 @@ extern int target_flags;
    
 /* The pdp has a couple of classes:
 
-MUL_REGS are used for odd numbered regs, to use in 16 bit multiplication
-         (even numbered do 32 bit multiply)
+MUL_REGS are used for odd numbered regs, to use in 16-bit multiplication
+         (even numbered do 32-bit multiply)
 LMUL_REGS long multiply registers (even numbered regs )
-	  (don't need them, all 32 bit regs are even numbered!)
+	  (don't need them, all 32-bit regs are even numbered!)
 GENERAL_REGS is all cpu
 LOAD_FPU_REGS is the first four cpu regs, they are easier to load
 NO_LOAD_FPU_REGS is ac4 and ac5, currently - difficult to load them
@@ -379,7 +307,7 @@ enum reg_class { NO_REGS, MUL_REGS, GENERAL_REGS, LOAD_FPU_REGS, NO_LOAD_FPU_REG
 
 /* #define GENERAL_REGS ALL_REGS */
 
-/* Give names of register classes as strings for dump file.   */
+/* Give names of register classes as strings for dump file.  */
 
 #define REG_CLASS_NAMES {"NO_REGS", "MUL_REGS", "GENERAL_REGS", "LOAD_FPU_REGS", "NO_LOAD_FPU_REGS", "FPU_REGS", "ALL_REGS" }
 
@@ -448,8 +376,8 @@ enum reg_class { NO_REGS, MUL_REGS, GENERAL_REGS, LOAD_FPU_REGS, NO_LOAD_FPU_REG
    operand as its first argument and the constraint letter as its
    second operand.
 
-   `Q'	is for memory references using take more than 1 instruction.
-   `R'	is for memory references which take 1 word for the instruction.  */
+   `Q'	is for memory references that require an extra word after the opcode.
+   `R'	is for memory references which are encoded within the opcode.  */
 
 #define EXTRA_CONSTRAINT(OP,CODE)					\
   ((GET_CODE (OP) != MEM) ? 0						\
@@ -486,12 +414,12 @@ loading is easier into LOAD_FPU_REGS than FPU_REGS! */
    makes the stack pointer a smaller address.  */
 #define STACK_GROWS_DOWNWARD
 
-/* Define this if the nominal address of the stack frame
+/* Define this to nonzero if the nominal address of the stack frame
    is at the high-address end of the local variables;
    that is, each additional local variable allocated
    goes at a more negative offset in the frame.
 */
-#define FRAME_GROWS_DOWNWARD
+#define FRAME_GROWS_DOWNWARD 1
 
 /* Offset within stack frame to start allocating local variables at.
    If FRAME_GROWS_DOWNWARD, this is the offset to the END of the
@@ -512,7 +440,7 @@ extern int current_first_parm_offset;
    For the pdp11, this is nonzero to account for the return address.
 	1 - return address
 	2 - frame pointer (always saved, even when not used!!!!)
-		-- chnage some day !!!:q!
+		-- change some day !!!:q!
 
 */
 #define FIRST_PARM_OFFSET(FNDECL) 4
@@ -557,18 +485,6 @@ maybe ac0 ? - as option someday! */
 
 #define FUNCTION_VALUE_REGNO_P(N) (((N) == 0) || (TARGET_AC0 && (N) == 8))
 
-/* should probably return DImode and DFmode in memory,lest
-   we fill up all regs!
-
- have to, else we crash - exception: maybe return result in 
- ac0 if DFmode and FPU present - compatibility problem with
- libraries for non-floating point ...
-*/
-
-#define RETURN_IN_MEMORY(TYPE)	\
-  (TYPE_MODE(TYPE) == DImode || (TYPE_MODE(TYPE) == DFmode && ! TARGET_AC0))
-
-
 /* 1 if N is a possible register number for function argument passing.
    - not used on pdp */
 
@@ -592,7 +508,7 @@ maybe ac0 ? - as option someday! */
    when the function gets a structure-value-address as an
    invisible first argument.  */
 
-#define INIT_CUMULATIVE_ARGS(CUM,FNTYPE,LIBNAME,INDIRECT)	\
+#define INIT_CUMULATIVE_ARGS(CUM, FNTYPE, LIBNAME, INDIRECT, N_NAMED_ARGS) \
  ((CUM) = 0)
 
 /* Update the data in CUM to advance over an argument
@@ -629,17 +545,11 @@ maybe ac0 ? - as option someday! */
   FUNCTION_ARG (CUM, MODE, TYPE, NAMED)
 */
 
-/* For an arg passed partly in registers and partly in memory,
-   this is the number of registers used.
-   For args passed entirely in registers or entirely in memory, zero.  */
-
-#define FUNCTION_ARG_PARTIAL_NREGS(CUM, MODE, TYPE, NAMED) 0
-
 /* Output assembler code to FILE to increment profiler label # LABELNO
    for profiling a function entry.  */
 
 #define FUNCTION_PROFILER(FILE, LABELNO)  \
-   abort ();
+   gcc_unreachable ();
 
 /* EXIT_IGNORE_STACK should be nonzero if, when returning from a function,
    the stack pointer does not matter.  The value is tested only in
@@ -655,10 +565,10 @@ extern int may_call_alloca;
   int offset, regno;		      				\
   offset = get_frame_size();					\
   for (regno = 0; regno < 8; regno++)				\
-    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
+    if (df_regs_ever_live_p (regno) && ! call_used_regs[regno])	\
       offset += 2;						\
   for (regno = 8; regno < 14; regno++)				\
-    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
+    if (df_regs_ever_live_p (regno) && ! call_used_regs[regno])	\
       offset += 8;						\
   /* offset -= 2;   no fp on stack frame */			\
   (DEPTH_VAR) = offset;						\
@@ -692,7 +602,7 @@ extern int may_call_alloca;
 
 /* Maximum number of registers that can appear in a valid memory address.  */
 
-#define MAX_REGS_PER_ADDRESS 2
+#define MAX_REGS_PER_ADDRESS 1
 
 /* Recognize any constant value that is a valid address.  */
 
@@ -701,7 +611,8 @@ extern int may_call_alloca;
 /* Nonzero if the constant value X is a legitimate general operand.
    It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.  */
 
-#define LEGITIMATE_CONSTANT_P(X) (TARGET_FPU? 1: !(GET_CODE(X) == CONST_DOUBLE))
+#define LEGITIMATE_CONSTANT_P(X)                                        \
+  (GET_CODE (X) != CONST_DOUBLE || legitimate_const_double_p (X))
 
 /* The macros REG_OK_FOR..._P assume that the arg is a REG rtx
    and check its validity for a certain class.
@@ -846,30 +757,12 @@ extern int may_call_alloca;
 }
 
 
-/* Try machine-dependent ways of modifying an illegitimate address
-   to be legitimate.  If we find one, return the new, valid address.
-   This macro is used in only one place: `memory_address' in explow.c.
-
-   OLDX is the address as it was before break_out_memory_refs was called.
-   In some cases it is useful to look at this to decide what needs to be done.
-
-   MODE and WIN are passed so that this macro can use
-   GO_IF_LEGITIMATE_ADDRESS.
-
-   It is always safe for this macro to do nothing.  It exists to recognize
-   opportunities to optimize the output.  */
-
-#define LEGITIMIZE_ADDRESS(X,OLDX,MODE,WIN)	{}
-
-
 /* Go to LABEL if ADDR (a legitimate address expression)
    has an effect that depends on the machine mode it is used for.
-   On the pdp this is for predec/postinc */
+   On the pdp this is for predec/postinc, and this is now treated
+   generically in recog.c.  */
 
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)	\
- { if (GET_CODE (ADDR) == POST_INC || GET_CODE (ADDR) == PRE_DEC)	\
-     goto LABEL; 							\
- }
+#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)
 
 
 /* Specify the machine mode that this machine uses
@@ -879,12 +772,6 @@ extern int may_call_alloca;
 /* Define this if a raw index is all that is needed for a
    `tablejump' insn.  */
 #define CASE_TAKES_INDEX_RAW
-
-/* Define as C expression which evaluates to nonzero if the tablejump
-   instruction expects the table to contain offsets from the address of the
-   table.
-   Do not define this if the table should contain absolute addresses. */
-/* #define CASE_VECTOR_PC_RELATIVE 1 */
 
 /* Define this as 1 if `char' should by default be signed; else as 0.  */
 #define DEFAULT_SIGNED_CHAR 1
@@ -908,15 +795,10 @@ extern int may_call_alloca;
 
 /* Give a comparison code (EQ, NE etc) and the first operand of a COMPARE,
    return the mode to be used for the comparison.  For floating-point, CCFPmode
-   should be used. */
+   should be used.  */
 
 #define SELECT_CC_MODE(OP,X,Y)	\
 (GET_MODE_CLASS(GET_MODE(X)) == MODE_FLOAT? CCFPmode : CCmode)
-
-/* We assume that the store-condition-codes instructions store 0 for false
-   and some other value for true.  This is the value stored for true.  */
-
-/* #define STORE_FLAG_VALUE 1 */
 
 /* Specify the machine mode that pointers have.
    After generation of rtl, the compiler makes no further distinction
@@ -934,28 +816,6 @@ extern int may_call_alloca;
    but a CALL with constant address is cheap.  */
 /* #define NO_FUNCTION_CSE */
 
-/* Compute the cost of computing a constant rtl expression RTX
-   whose rtx-code is CODE.  The body of this macro is a portion
-   of a switch statement.  If the code is computed here,
-   return it with a return statement.  Otherwise, break from the switch. 
-
-   -1, 0, 1 are cheaper for add, sub ... 
-*/
-
-#define CONST_COSTS(RTX,CODE,OUTER_CODE) \
-  case CONST_INT:						\
-    if (INTVAL(RTX) == 0					\
-	|| INTVAL(RTX) == -1					\
-	|| INTVAL(RTX) == 1)					\
-      return 0;							\
-  case CONST:							\
-  case LABEL_REF:						\
-  case SYMBOL_REF:						\
-    /* twice as expensive as REG */				\
-    return 2;							\
-  case CONST_DOUBLE:						\
-    /* twice (or 4 times) as expensive as 16 bit */		\
-    return 4;
 
 /* cost of moving one register class to another */
 #define REGISTER_MOVE_COST(MODE, CLASS1, CLASS2) \
@@ -1012,20 +872,6 @@ extern struct rtx_def *cc0_reg_rtx;
 
 /* Control the assembler format that we output.  */
 
-/* Output at beginning of assembler file.  */
-
-#if 0
-#define ASM_FILE_START(FILE) \
-(								\
-fprintf (FILE, "\t.data\n"),					\
-fprintf (FILE, "$help$: . = .+8 ; space for tmp moves!\n")	\
-/* do we need reg def's R0 = %0 etc ??? */			\
-)
-#else
-#define ASM_FILE_START(FILE)
-#endif
-
-
 /* Output to assembler file text saying following lines
    may contain character constants, extra white space, comments, etc.  */
 
@@ -1054,7 +900,7 @@ fprintf (FILE, "$help$: . = .+8 ; space for tmp moves!\n")	\
 /* Globalizing directive for a label.  */
 #define GLOBAL_ASM_OP "\t.globl "
 
-/* The prefix to add to user-visible assembler symbols. */
+/* The prefix to add to user-visible assembler symbols.  */
 
 #define USER_LABEL_PREFIX "_"
 
@@ -1064,7 +910,7 @@ fprintf (FILE, "$help$: . = .+8 ; space for tmp moves!\n")	\
    This is suitable for output with `assemble_name'.  */
 
 #define ASM_GENERATE_INTERNAL_LABEL(LABEL,PREFIX,NUM)	\
-  sprintf (LABEL, "*%s_%d", PREFIX, NUM)
+  sprintf (LABEL, "*%s_%lu", PREFIX, (unsigned long)(NUM))
 
 #define ASM_OUTPUT_ASCII(FILE, P, SIZE)  \
   output_ascii (FILE, P, SIZE)
@@ -1075,7 +921,7 @@ fprintf (FILE, "$help$: . = .+8 ; space for tmp moves!\n")	\
   fprintf (FILE, "\t%sL_%d\n", TARGET_UNIX_ASM ? "" : ".word ", VALUE)
 
 /* This is how to output an element of a case-vector that is relative.
-   Don't define this if it is not supported. */
+   Don't define this if it is not supported.  */
 
 /* #define ASM_OUTPUT_ADDR_DIFF_ELT(FILE, VALUE, REL) */
 
@@ -1095,7 +941,7 @@ fprintf (FILE, "$help$: . = .+8 ; space for tmp moves!\n")	\
 	fprintf (FILE, "\t.even\n");	\
 	break;				\
       default:				\
-	abort ();			\
+	gcc_unreachable ();		\
     }
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
@@ -1133,9 +979,11 @@ fprintf (FILE, "$help$: . = .+8 ; space for tmp moves!\n")	\
   else if (GET_CODE (X) == MEM)						\
     output_address (XEXP (X, 0));					\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != SImode)	\
-    { char buf[30];							\
-      real_to_decimal (buf, CONST_DOUBLE_REAL_VALUE (X), sizeof (buf), 0, 1); \
-      fprintf (FILE, "$0F%s", buf); }					\
+    { REAL_VALUE_TYPE r;						\
+      long sval[2];							\
+      REAL_VALUE_FROM_CONST_DOUBLE (r, X);				\
+      REAL_VALUE_TO_TARGET_DOUBLE (r, sval);				\
+      fprintf (FILE, "$%#lo", sval[0] >> 16); }				\
   else { putc ('$', FILE); output_addr_const_pdp11 (FILE, X); }}
 
 /* Print a memory address as an operand to reference that memory location.  */
@@ -1165,8 +1013,7 @@ JMP	FUNCTION	0x0058  0x0000 <- FUNCTION
 
 #define TRAMPOLINE_TEMPLATE(FILE)	\
 {					\
-  if (TARGET_SPLIT)			\
-    abort();				\
+  gcc_assert (!TARGET_SPLIT);		\
 					\
   assemble_aligned_integer (2, GEN_INT (0x9400+STATIC_CHAIN_REGNUM));	\
   assemble_aligned_integer (2, const0_rtx);				\
@@ -1183,8 +1030,7 @@ JMP	FUNCTION	0x0058  0x0000 <- FUNCTION
 
 #define INITIALIZE_TRAMPOLINE(TRAMP,FNADDR,CXT)	\
 {					\
-  if (TARGET_SPLIT)			\
-    abort();				\
+  gcc_assert (!TARGET_SPLIT);		\
 					\
   emit_move_insn (gen_rtx_MEM (HImode, plus_constant (TRAMP, 2)), CXT); \
   emit_move_insn (gen_rtx_MEM (HImode, plus_constant (TRAMP, 6)), FNADDR); \
@@ -1205,95 +1051,10 @@ JMP	FUNCTION	0x0058  0x0000 <- FUNCTION
 {									\
   if (LEVEL >= 3)							\
     {									\
-      if (! SIZE)							\
-        flag_inline_functions		= 1;				\
       flag_omit_frame_pointer		= 1;				\
       /* flag_unroll_loops			= 1; */			\
     }									\
 }
-
-
-/* Provide the costs of a rtl expression.  This is in the body of a
-   switch on CODE. 
-
-   we don't say how expensive SImode is - pretty expensive!!!
-
-   there is something wrong in MULT because MULT is not 
-   as cheap as total = 2 even if we can shift!
-
-   if optimizing for size make mult etc cheap, but not 1, so when 
-   in doubt the faster insn is chosen.
-*/
-
-#define RTX_COSTS(X,CODE,OUTER_CODE) \
-  case MULT:								\
-    if (optimize_size)							\
-      total = COSTS_N_INSNS(2);						\
-    else								\
-      total = COSTS_N_INSNS (11);					\
-    break;								\
-  case DIV:								\
-    if (optimize_size)							\
-      total = COSTS_N_INSNS(2);						\
-    else								\
-      total = COSTS_N_INSNS (25);					\
-    break;								\
-  case MOD:								\
-    if (optimize_size)							\
-      total = COSTS_N_INSNS(2);						\
-    else								\
-      total = COSTS_N_INSNS (26);					\
-    break;								\
-  case ABS:								\
-    /* equivalent to length, so same for optimize_size */		\
-    total = COSTS_N_INSNS (3);						\
-    break;								\
-  case ZERO_EXTEND:							\
-    /* only used for: qi->hi */						\
-    total = COSTS_N_INSNS(1);						\
-    break;								\
-  case SIGN_EXTEND:							\
-    if (GET_MODE(X) == HImode)						\
-      	total = COSTS_N_INSNS(1);					\
-    else if (GET_MODE(X) == SImode)					\
-	total = COSTS_N_INSNS(6);					\
-    else								\
-	total = COSTS_N_INSNS(2);					\
-    break;								\
-  /* case LSHIFT: */		       					\
-  case ASHIFT:								\
-  case LSHIFTRT:							\
-  case ASHIFTRT:							\
-    if (optimize_size)							\
-      total = COSTS_N_INSNS(1);						\
-    else if (GET_MODE(X) ==  QImode)					\
-    {									\
-      if (GET_CODE(XEXP (X,1)) != CONST_INT)				\
-   	total = COSTS_N_INSNS(8); /* worst case */ 			\
-      else                                                              \
-	total = COSTS_N_INSNS(INTVAL(XEXP (X,1)));			\
-    }									\
-    else if (GET_MODE(X) == HImode)					\
-    {									\
-      if (GET_CODE(XEXP (X,1)) == CONST_INT)				\
-      {									\
-	if (abs (INTVAL (XEXP (X, 1))) == 1)				\
-          total = COSTS_N_INSNS(1);					\
-        else								\
-	  total = COSTS_N_INSNS(2.5 + 0.5 *INTVAL(XEXP(X,1)));		\
-      }									\
-      else /* worst case */						\
-        total = COSTS_N_INSNS (10);					\
-    }									\
-    else if (GET_MODE(X) == SImode)					\
-    {									\
-      if (GET_CODE(XEXP (X,1)) == CONST_INT)				\
-	  total = COSTS_N_INSNS(2.5 + 0.5 *INTVAL(XEXP(X,1)));		\
-      else /* worst case */						\
-        total = COSTS_N_INSNS(18);					\
-    }									\
-    break;
-
 
 /* there is no point in avoiding branches on a pdp, 
    since branches are really cheap - I just want to find out

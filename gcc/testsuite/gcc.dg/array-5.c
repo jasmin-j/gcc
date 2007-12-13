@@ -24,7 +24,7 @@ void func(int n, int m)
     /* Invalid: not compatible because 4 != 6.  */
     int a[n][6][m];
     int (*p)[4][n+1];
-    p = a;			/* { dg-error "incompatible" } */
+    p = a;			/* { dg-warning "incompatible" } */
   }
   {
     /* Compatible, but defined behavior only if n == 6 and m == n+1.  */
@@ -37,6 +37,6 @@ void func(int n, int m)
        expression, and thus A is a VLA.  */
     int a[6][(2, 2)];
     int (*p)[3];
-    p = a; /* { dg-bogus "incompatible" "bad vla handling" { xfail *-*-* } } */
+    p = a; /* { dg-bogus "incompatible" "bad vla handling" } */
   }
 }

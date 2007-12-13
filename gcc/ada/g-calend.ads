@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1999-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1999-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -66,14 +65,20 @@ package GNAT.Calendar is
    --  Second_Duration precision depends on the target clock precision.
 
    function Day_Of_Week (Date : Ada.Calendar.Time) return Day_Name;
-   --  Return the day name.
+   --  Return the day name
 
    function Day_In_Year (Date : Ada.Calendar.Time) return Day_In_Year_Number;
    --  Returns the day number in the year. (1st January is day 1 and 31st
    --  December is day 365 or 366 for leap year).
 
    function Week_In_Year (Date : Ada.Calendar.Time) return Week_In_Year_Number;
-   --  Returns the week number in the year with Monday as first day of week
+   --  Returns the week number as defined in ISO 8601. A week always starts on
+   --  a Monday and the first week of a particular year is the one containing
+   --  the first Thursday. A year may have 53 weeks when January 1st is a
+   --  Wednesday and the year is leap or January 1st is a Thursday. Note that
+   --  the last days of December may belong to the first week on the next year
+   --  and conversely, the first days of January may belong to the last week
+   --  of the last year.
 
    procedure Split
      (Date       : Ada.Calendar.Time;
@@ -94,9 +99,8 @@ package GNAT.Calendar is
       Hour       : Hour_Number;
       Minute     : Minute_Number;
       Second     : Second_Number;
-      Sub_Second : Second_Duration := 0.0)
-      return Ada.Calendar.Time;
-   --  Returns an Ada.Calendar.Time data built from the date and time values.
+      Sub_Second : Second_Duration := 0.0) return Ada.Calendar.Time;
+   --  Returns an Ada.Calendar.Time data built from the date and time values
 
    --  C timeval conversion
 
@@ -108,7 +112,7 @@ package GNAT.Calendar is
 
    type timeval is private;
 
-   function To_Duration (T : access timeval) return Duration;
+   function To_Duration (T : not null access timeval) return Duration;
    function To_Timeval  (D : Duration) return timeval;
 
 private
@@ -120,11 +124,11 @@ private
    function Julian_Day
      (Year  : Ada.Calendar.Year_Number;
       Month : Ada.Calendar.Month_Number;
-      Day   : Ada.Calendar.Day_Number)
-      return  Integer;
-   --  Compute Julian day number.
+      Day   : Ada.Calendar.Day_Number) return Integer;
+   --  Compute Julian day number
    --
-   --  The code of this function is a modified version of algorithm
-   --  199 from the Collected Algorithms of the ACM.
-   --  The author of algorithm 199 is Robert G. Tantzen.
+   --  The code of this function is a modified version of algorithm 199 from
+   --  the Collected Algorithms of the ACM. The author of algorithm 199 is
+   --  Robert G. Tantzen.
+
 end GNAT.Calendar;

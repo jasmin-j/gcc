@@ -4,14 +4,9 @@
 --                                                                          --
 --                         S Y S T E M . M E M O R Y                        --
 --                                                                          --
---                                 S p e c                                  --
+--                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---             Copyright (C) 2001 Free Software Foundation, Inc.            --
---                                                                          --
--- This specification is derived from the Ada Reference Manual for use with --
--- GNAT. The copyright notice above, and the license provisions that follow --
--- apply solely to the  contents of the part following the private keyword. --
+--          Copyright (C) 2001-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -21,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -36,48 +31,62 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This version contains allocation tracking capability.
+--  This version contains allocation tracking capability
+
 --  The object file corresponding to this instrumented version is to be found
 --  in libgmem.
+
 --  When enabled, the subsystem logs all the calls to __gnat_malloc and
 --  __gnat_free. This log can then be processed by gnatmem to detect
 --  dynamic memory leaks.
---
+
 --  To use this functionality, you must compile your application with -g
 --  and then link with this object file:
---
+
 --     gnatmake -g program -largs -lgmem
---
+
 --  After compilation, you may use your program as usual except that upon
 --  completion, it will generate in the current directory the file gmem.out.
---
+
 --  You can then investigate for possible memory leaks and mismatch by calling
 --  gnatmem with this file as an input:
---
+
 --    gnatmem -i gmem.out program
---
---  See gnatmem section in the GNAT User's Guide for more details.
---
+
+--  See gnatmem section in the GNAT User's Guide for more details
+
 --  NOTE: This capability is currently supported on the following targets:
---
+
 --    Windows
+--    AIX
 --    GNU/Linux
 --    HP-UX
 --    Irix
 --    Solaris
 --    Tru64
+--    Alpha OpenVMS
+
+--  NOTE FOR FUTURE PLATFORMS SUPPORT: It is assumed that type Duration is
+--  64 bit. If the need arises to support architectures where this assumption
+--  is incorrect, it will require changing the way timestamps of allocation
+--  events are recorded.
 
 pragma Source_File_Name (System.Memory, Body_File_Name => "memtrack.adb");
 
 with Ada.Exceptions;
 with System.Soft_Links;
 with System.Traceback;
+with System.Traceback_Entries;
+with GNAT.IO;
+with System.OS_Primitives;
 
 package body System.Memory is
 
    use Ada.Exceptions;
    use System.Soft_Links;
    use System.Traceback;
+   use System.Traceback_Entries;
+   use GNAT.IO;
 
    function c_malloc (Size : size_t) return System.Address;
    pragma Import (C, c_malloc, "malloc");
@@ -89,10 +98,14 @@ package body System.Memory is
      (Ptr : System.Address; Size : size_t) return System.Address;
    pragma Import (C, c_realloc, "realloc");
 
-   type File_Ptr is new System.Address;
+   subtype File_Ptr is System.Address;
 
    function fopen (Path : String; Mode : String) return File_Ptr;
    pragma Import (C, fopen);
+
+   procedure OS_Exit (Status : Integer);
+   pragma Import (C, OS_Exit, "__gnat_os_exit");
+   pragma No_Return (OS_Exit);
 
    procedure fwrite
      (Ptr    : System.Address;
@@ -114,35 +127,38 @@ package body System.Memory is
    pragma Import (C, fclose);
 
    procedure Finalize;
-   --  Replace the default __gnat_finalize to properly close the log file.
    pragma Export (C, Finalize, "__gnat_finalize");
+   --  Replace the default __gnat_finalize to properly close the log file
 
-   Address_Size    : constant := System.Address'Max_Size_In_Storage_Elements;
+   Address_Size : constant := System.Address'Max_Size_In_Storage_Elements;
    --  Size in bytes of a pointer
 
-   Max_Call_Stack  : constant := 200;
+   Max_Call_Stack : constant := 200;
    --  Maximum number of frames supported
 
-   Skip_Frame : constant := 1;
-   --  Number of frames to remove from the call stack to hide functions from
-   --  this unit.
-
-   Tracebk   : aliased array (0 .. Max_Call_Stack) of System.Address;
+   Tracebk   : aliased array (0 .. Max_Call_Stack) of Traceback_Entry;
    Num_Calls : aliased Integer := 0;
-   --  Store the current call stack from Alloc and Free
 
    Gmemfname : constant String := "gmem.out" & ASCII.NUL;
    --  Allocation log of a program is saved in a file gmem.out
    --  ??? What about Ada.Command_Line.Command_Name & ".out" instead of static
    --  gmem.out
 
-   Gmemfile  : File_Ptr;
+   Gmemfile : File_Ptr;
    --  Global C file pointer to the allocation log
+
+   Needs_Init : Boolean := True;
+   --  Reset after first call to Gmem_Initialize
 
    procedure Gmem_Initialize;
    --  Initialization routine; opens the file and writes a header string. This
    --  header string is used as a magic-tag to know if the .out file is to be
    --  handled by GDB or by the GMEM (instrumented malloc/free) implementation.
+
+   First_Call : Boolean := True;
+   --  Depending on implementation, some of the traceback routines may
+   --  themselves do dynamic allocation. We use First_Call flag to avoid
+   --  infinite recursion
 
    -----------
    -- Alloc --
@@ -151,6 +167,7 @@ package body System.Memory is
    function Alloc (Size : size_t) return System.Address is
       Result      : aliased System.Address;
       Actual_Size : aliased size_t := Size;
+      Timestamp   : aliased Duration;
 
    begin
       if Size = size_t'Last then
@@ -170,21 +187,41 @@ package body System.Memory is
 
       Result := c_malloc (Actual_Size);
 
-      --  Logs allocation call
-      --  format is:
-      --   'A' <mem addr> <size chunk> <len backtrace> <addr1> ... <addrn>
+      if First_Call then
 
-      Gmem_Initialize;
-      Call_Chain (Tracebk'Address, Max_Call_Stack, Num_Calls);
-      Num_Calls := Num_Calls - Skip_Frame;
-      fputc (Character'Pos ('A'), Gmemfile);
-      fwrite (Result'Address, Address_Size, 1, Gmemfile);
-      fwrite (Actual_Size'Address, size_t'Max_Size_In_Storage_Elements, 1,
-              Gmemfile);
-      fwrite (Num_Calls'Address, Integer'Max_Size_In_Storage_Elements, 1,
-              Gmemfile);
-      fwrite (Tracebk (Skip_Frame)'Address, Address_Size, size_t (Num_Calls),
-              Gmemfile);
+         --  Logs allocation call
+         --  format is:
+         --   'A' <mem addr> <size chunk> <len backtrace> <addr1> ... <addrn>
+
+         First_Call := False;
+
+         if Needs_Init then
+            Gmem_Initialize;
+         end if;
+
+         Timestamp := System.OS_Primitives.Clock;
+         Call_Chain (Tracebk'Address, Max_Call_Stack, Num_Calls,
+                     Skip_Frames => 2);
+         fputc (Character'Pos ('A'), Gmemfile);
+         fwrite (Result'Address, Address_Size, 1, Gmemfile);
+         fwrite (Actual_Size'Address, size_t'Max_Size_In_Storage_Elements, 1,
+                 Gmemfile);
+         fwrite (Timestamp'Address, Duration'Max_Size_In_Storage_Elements, 1,
+                 Gmemfile);
+         fwrite (Num_Calls'Address, Integer'Max_Size_In_Storage_Elements, 1,
+                 Gmemfile);
+
+         for J in Tracebk'First .. Tracebk'First + Num_Calls - 1 loop
+            declare
+               Ptr : System.Address := PC_For (Tracebk (J));
+            begin
+               fwrite (Ptr'Address, Address_Size, 1, Gmemfile);
+            end;
+         end loop;
+
+         First_Call := True;
+
+      end if;
 
       Unlock_Task.all;
 
@@ -199,9 +236,6 @@ package body System.Memory is
    -- Finalize --
    --------------
 
-   Needs_Init : Boolean := True;
-   --  Reset after first call to Gmem_Initialize
-
    procedure Finalize is
    begin
       if not Needs_Init then
@@ -214,25 +248,46 @@ package body System.Memory is
    ----------
 
    procedure Free (Ptr : System.Address) is
-      Addr : aliased constant System.Address := Ptr;
+      Addr      : aliased constant System.Address := Ptr;
+      Timestamp : aliased Duration;
+
    begin
       Lock_Task.all;
 
-      --  Logs deallocation call
-      --  format is:
-      --   'D' <mem addr> <len backtrace> <addr1> ... <addrn>
+      if First_Call then
 
-      Gmem_Initialize;
-      Call_Chain (Tracebk'Address, Max_Call_Stack, Num_Calls);
-      Num_Calls := Num_Calls - Skip_Frame;
-      fputc (Character'Pos ('D'), Gmemfile);
-      fwrite (Addr'Address, Address_Size, 1, Gmemfile);
-      fwrite (Num_Calls'Address, Integer'Max_Size_In_Storage_Elements, 1,
-              Gmemfile);
-      fwrite (Tracebk (Skip_Frame)'Address, Address_Size, size_t (Num_Calls),
-              Gmemfile);
+         --  Logs deallocation call
+         --  format is:
+         --   'D' <mem addr> <len backtrace> <addr1> ... <addrn>
 
-      c_free (Ptr);
+         First_Call := False;
+
+         if Needs_Init then
+            Gmem_Initialize;
+         end if;
+
+         Call_Chain (Tracebk'Address, Max_Call_Stack, Num_Calls,
+                     Skip_Frames => 2);
+         Timestamp := System.OS_Primitives.Clock;
+         fputc (Character'Pos ('D'), Gmemfile);
+         fwrite (Addr'Address, Address_Size, 1, Gmemfile);
+         fwrite (Timestamp'Address, Duration'Max_Size_In_Storage_Elements, 1,
+                 Gmemfile);
+         fwrite (Num_Calls'Address, Integer'Max_Size_In_Storage_Elements, 1,
+                 Gmemfile);
+
+         for J in Tracebk'First .. Tracebk'First + Num_Calls - 1 loop
+            declare
+               Ptr : System.Address := PC_For (Tracebk (J));
+            begin
+               fwrite (Ptr'Address, Address_Size, 1, Gmemfile);
+            end;
+         end loop;
+
+         c_free (Ptr);
+
+         First_Call := True;
+      end if;
 
       Unlock_Task.all;
    end Free;
@@ -242,11 +297,23 @@ package body System.Memory is
    ---------------------
 
    procedure Gmem_Initialize is
+      Timestamp : aliased Duration;
+
    begin
       if Needs_Init then
          Needs_Init := False;
+         System.OS_Primitives.Initialize;
+         Timestamp := System.OS_Primitives.Clock;
          Gmemfile := fopen (Gmemfname, "wb" & ASCII.NUL);
+
+         if Gmemfile = System.Null_Address then
+            Put_Line ("Couldn't open gnatmem log file for writing");
+            OS_Exit (255);
+         end if;
+
          fwrite ("GMEM DUMP" & ASCII.LF, 10, 1, Gmemfile);
+         fwrite (Timestamp'Address, Duration'Max_Size_In_Storage_Elements, 1,
+                 Gmemfile);
       end if;
    end Gmem_Initialize;
 
@@ -255,16 +322,78 @@ package body System.Memory is
    -------------
 
    function Realloc
-     (Ptr : System.Address; Size : size_t) return System.Address
+     (Ptr  : System.Address;
+      Size : size_t) return System.Address
    is
-      Result : System.Address;
+      Addr      : aliased constant System.Address := Ptr;
+      Result    : aliased System.Address;
+      Timestamp : aliased Duration;
+
    begin
+      --  For the purposes of allocations logging, we treat realloc as a free
+      --  followed by malloc. This is not exactly accurate, but is a good way
+      --  to fit it into malloc/free-centered reports.
+
       if Size = size_t'Last then
          Raise_Exception (Storage_Error'Identity, "object too large");
       end if;
 
       Abort_Defer.all;
-      Result := c_realloc (Ptr, Size);
+      Lock_Task.all;
+
+      if First_Call then
+         First_Call := False;
+
+         --  We first log deallocation call
+
+         if Needs_Init then
+            Gmem_Initialize;
+         end if;
+         Call_Chain (Tracebk'Address, Max_Call_Stack, Num_Calls,
+                     Skip_Frames => 2);
+         Timestamp := System.OS_Primitives.Clock;
+         fputc (Character'Pos ('D'), Gmemfile);
+         fwrite (Addr'Address, Address_Size, 1, Gmemfile);
+         fwrite (Timestamp'Address, Duration'Max_Size_In_Storage_Elements, 1,
+                 Gmemfile);
+         fwrite (Num_Calls'Address, Integer'Max_Size_In_Storage_Elements, 1,
+                 Gmemfile);
+
+         for J in Tracebk'First .. Tracebk'First + Num_Calls - 1 loop
+            declare
+               Ptr : System.Address := PC_For (Tracebk (J));
+            begin
+               fwrite (Ptr'Address, Address_Size, 1, Gmemfile);
+            end;
+         end loop;
+
+         --  Now perform actual realloc
+
+         Result := c_realloc (Ptr, Size);
+
+         --   Log allocation call using the same backtrace
+
+         fputc (Character'Pos ('A'), Gmemfile);
+         fwrite (Result'Address, Address_Size, 1, Gmemfile);
+         fwrite (Size'Address, size_t'Max_Size_In_Storage_Elements, 1,
+                 Gmemfile);
+         fwrite (Timestamp'Address, Duration'Max_Size_In_Storage_Elements, 1,
+                 Gmemfile);
+         fwrite (Num_Calls'Address, Integer'Max_Size_In_Storage_Elements, 1,
+                 Gmemfile);
+
+         for J in Tracebk'First .. Tracebk'First + Num_Calls - 1 loop
+            declare
+               Ptr : System.Address := PC_For (Tracebk (J));
+            begin
+               fwrite (Ptr'Address, Address_Size, 1, Gmemfile);
+            end;
+         end loop;
+
+         First_Call := True;
+      end if;
+
+      Unlock_Task.all;
       Abort_Undefer.all;
 
       if Result = System.Null_Address then

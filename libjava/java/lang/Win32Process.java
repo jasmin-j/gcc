@@ -1,6 +1,6 @@
 // Win32Process.java - Subclass of Process for Win32 systems.
 
-/* Copyright (C) 2002  Free Software Foundation
+/* Copyright (C) 2002, 2003, 2006, 2007  Free Software Foundation
 
    This file is part of libgcj.
 
@@ -22,51 +22,76 @@ import java.io.IOException;
 
 // This is entirely internal to our implementation.
 
-// NOTE: when this is implemented, we'll need to add
-// HANDLE_FLAG_INHERIT in FileDescriptor and other places, to make
-// sure that file descriptors aren't inherited by the child process.
-// See _Jv_platform_close_on_exec.
-
-// This file is copied to `ConcreteProcess.java' before compilation.
-// Hence the class name apparently does not match the file name.
-final class ConcreteProcess extends Process
+final class Win32Process extends Process
 {
-  public void destroy ()
-  {
-    throw new Error("not implemented");
-  }
-  
+  public native void destroy ();
+
   public int exitValue ()
   {
-    throw new Error("not implemented");
+    if (! hasExited ())
+      throw new IllegalThreadStateException ("Process has not exited");
+
+    return exitCode;
   }
 
   public InputStream getErrorStream ()
   {
-    throw new Error("not implemented");
+    return errorStream;
   }
 
   public InputStream getInputStream ()
   {
-    throw new Error("not implemented");
+    return inputStream;
   }
 
   public OutputStream getOutputStream ()
   {
-    throw new Error("not implemented");
+    return outputStream;
   }
 
-  public int waitFor () throws InterruptedException
-  {
-    throw new Error("not implemented");
-  }
+  public native int waitFor () throws InterruptedException;
 
-  public ConcreteProcess (String[] progarray,
-                          String[] envp,
-                          File dir)
+  public Win32Process (String[] progarray, String[] envp, File dir,
+		       boolean redirect)
     throws IOException
   {
-    throw new IOException("not implemented");
+    for (int i = 0; i < progarray.length; i++)
+      {
+        String s = progarray[i];
+
+        if ( (s.indexOf (' ') >= 0) || (s.indexOf ('\t') >= 0))
+          progarray[i] = "\"" + s + "\"";
+      }
+
+    startProcess (progarray, envp, dir, redirect);
   }
 
+  // The standard streams (stdin, stdout and stderr, respectively)
+  // of the child as seen by the parent process.
+  private OutputStream outputStream;
+  private InputStream inputStream;
+  private InputStream errorStream;
+
+  // Handle to the child process - cast to HANDLE before use.
+  private int procHandle;
+
+  // Exit code of the child if it has exited.
+  private int exitCode;
+
+  private native boolean hasExited ();
+  private native void startProcess (String[] progarray,
+				    String[] envp,
+				    File dir,
+				    boolean redirect)
+    throws IOException;
+  private native void cleanup ();
+
+  private static class EOFInputStream extends InputStream
+  {
+    static EOFInputStream instance = new EOFInputStream();
+    public int read()
+    {
+      return -1;
+    }
+  }
 }

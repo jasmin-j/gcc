@@ -1,3 +1,4 @@
+// { dg-do run  }
 // PRMS Id: 6000
 // Bug: g++ gets confused trying to build up a reference to a cast.
 
@@ -47,5 +48,5 @@ Class1 :: Class1 (const String & constStringRef)
 
 int main(void)
 {
-  Class1 *class1 = new Class1("Hi!");
+  Class1 *class1 = new Class1((char*) "Hi!");
 }

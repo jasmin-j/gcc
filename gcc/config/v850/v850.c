@@ -1,24 +1,23 @@
 /* Subroutines for insn-output.c for NEC V850 series
-   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002
-   Free Software Foundation, Inc.
+   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+   2006, 2007 Free Software Foundation, Inc.
    Contributed by Jeff Law (law@cygnus.com).
 
-   This file is part of GNU CC.
+   This file is part of GCC.
 
-   GNU CC is free software; you can redistribute it and/or modify it
+   GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2, or (at your option)
+   the Free Software Foundation; either version 3, or (at your option)
    any later version.
 
-   GNU CC is distributed in the hope that it will be useful, but WITHOUT
+   GCC is distributed in the hope that it will be useful, but WITHOUT
    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
    FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
    for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GNU CC; see the file COPYING.  If not, write to the Free
-   Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-   02111-1307, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -43,33 +42,45 @@
 #include "tm_p.h"
 #include "target.h"
 #include "target-def.h"
+#include "df.h"
 
 #ifndef streq
 #define streq(a,b) (strcmp (a, b) == 0)
 #endif
 
 /* Function prototypes for stupid compilers:  */
-static void const_double_split       PARAMS ((rtx, HOST_WIDE_INT *, HOST_WIDE_INT *));
-static int  const_costs_int          PARAMS ((HOST_WIDE_INT, int));
-static void substitute_ep_register   PARAMS ((rtx, rtx, int, int, rtx *, rtx *));
-static int  ep_memory_offset         PARAMS ((enum machine_mode, int));
-static void v850_set_data_area       PARAMS ((tree, v850_data_area));
+static bool v850_handle_option       (size_t, const char *, int);
+static void const_double_split       (rtx, HOST_WIDE_INT *, HOST_WIDE_INT *);
+static int  const_costs_int          (HOST_WIDE_INT, int);
+static int  const_costs		     (rtx, enum rtx_code);
+static bool v850_rtx_costs	     (rtx, int, int, int *);
+static void substitute_ep_register   (rtx, rtx, int, int, rtx *, rtx *);
+static void v850_reorg		     (void);
+static int  ep_memory_offset         (enum machine_mode, int);
+static void v850_set_data_area       (tree, v850_data_area);
 const struct attribute_spec v850_attribute_table[];
-static tree v850_handle_interrupt_attribute PARAMS ((tree *, tree, tree, int, bool *));
-static tree v850_handle_data_area_attribute PARAMS ((tree *, tree, tree, int, bool *));
-static void v850_insert_attributes   PARAMS ((tree, tree *));
-static void v850_select_section PARAMS ((tree, int, unsigned HOST_WIDE_INT));
-static void v850_encode_data_area    PARAMS ((tree));
-static void v850_encode_section_info PARAMS ((tree, int));
-static const char *v850_strip_name_encoding PARAMS ((const char *));
+static tree v850_handle_interrupt_attribute (tree *, tree, tree, int, bool *);
+static tree v850_handle_data_area_attribute (tree *, tree, tree, int, bool *);
+static void v850_insert_attributes   (tree, tree *);
+static void v850_asm_init_sections   (void);
+static section *v850_select_section (tree, int, unsigned HOST_WIDE_INT);
+static void v850_encode_data_area    (tree, rtx);
+static void v850_encode_section_info (tree, rtx, int);
+static bool v850_return_in_memory    (const_tree, const_tree);
+static void v850_setup_incoming_varargs (CUMULATIVE_ARGS *, enum machine_mode,
+					 tree, int *, int);
+static bool v850_pass_by_reference (CUMULATIVE_ARGS *, enum machine_mode,
+				    const_tree, bool);
+static int v850_arg_partial_bytes (CUMULATIVE_ARGS *, enum machine_mode,
+				   tree, bool);
 
 /* Information about the various small memory areas.  */
 struct small_memory_info small_memory[ (int)SMALL_MEMORY_max ] =
 {
-  /* name	value		max		physical max */
-  { "tda",	(char *)0,	0,		256 },
-  { "sda",	(char *)0,	0,		65536 },
-  { "zda",	(char *)0,	0,		32768 },
+  /* name	max	physical max */
+  { "tda",	0,		256 },
+  { "sda",	0,		65536 },
+  { "zda",	0,		32768 },
 };
 
 /* Names of the various data areas used on the v850.  */
@@ -86,6 +97,12 @@ static int v850_interrupt_cache_p = FALSE;
 
 /* Whether current function is an interrupt handler.  */
 static int v850_interrupt_p = FALSE;
+
+static GTY(()) section *rosdata_section;
+static GTY(()) section *rozdata_section;
+static GTY(()) section *tdata_section;
+static GTY(()) section *zdata_section;
+static GTY(()) section *zbss_section;
 
 /* Initialize the GCC target structure.  */
 #undef TARGET_ASM_ALIGNED_HI_OP
@@ -100,76 +117,133 @@ static int v850_interrupt_p = FALSE;
 #undef  TARGET_ASM_SELECT_SECTION
 #define TARGET_ASM_SELECT_SECTION  v850_select_section
 
+/* The assembler supports switchable .bss sections, but
+   v850_select_section doesn't yet make use of them.  */
+#undef  TARGET_HAVE_SWITCHABLE_BSS_SECTIONS
+#define TARGET_HAVE_SWITCHABLE_BSS_SECTIONS false
+
 #undef TARGET_ENCODE_SECTION_INFO
 #define TARGET_ENCODE_SECTION_INFO v850_encode_section_info
-#undef TARGET_STRIP_NAME_ENCODING
-#define TARGET_STRIP_NAME_ENCODING v850_strip_name_encoding
+
+#undef TARGET_ASM_FILE_START_FILE_DIRECTIVE
+#define TARGET_ASM_FILE_START_FILE_DIRECTIVE true
+
+#undef TARGET_DEFAULT_TARGET_FLAGS
+#define TARGET_DEFAULT_TARGET_FLAGS (MASK_DEFAULT | MASK_APP_REGS)
+#undef TARGET_HANDLE_OPTION
+#define TARGET_HANDLE_OPTION v850_handle_option
+
+#undef TARGET_RTX_COSTS
+#define TARGET_RTX_COSTS v850_rtx_costs
+
+#undef TARGET_ADDRESS_COST
+#define TARGET_ADDRESS_COST hook_int_rtx_0
+
+#undef TARGET_MACHINE_DEPENDENT_REORG
+#define TARGET_MACHINE_DEPENDENT_REORG v850_reorg
+
+#undef TARGET_PROMOTE_PROTOTYPES
+#define TARGET_PROMOTE_PROTOTYPES hook_bool_const_tree_true
+
+#undef TARGET_RETURN_IN_MEMORY
+#define TARGET_RETURN_IN_MEMORY v850_return_in_memory
+
+#undef TARGET_PASS_BY_REFERENCE
+#define TARGET_PASS_BY_REFERENCE v850_pass_by_reference
+
+#undef TARGET_CALLEE_COPIES
+#define TARGET_CALLEE_COPIES hook_bool_CUMULATIVE_ARGS_mode_tree_bool_true
+
+#undef TARGET_SETUP_INCOMING_VARARGS
+#define TARGET_SETUP_INCOMING_VARARGS v850_setup_incoming_varargs
+
+#undef TARGET_ARG_PARTIAL_BYTES
+#define TARGET_ARG_PARTIAL_BYTES v850_arg_partial_bytes
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 
-/* Sometimes certain combinations of command options do not make
-   sense on a particular target machine.  You can define a macro
-   `OVERRIDE_OPTIONS' to take account of this.  This macro, if
-   defined, is executed once just after all the command options have
-   been parsed.
+/* Set the maximum size of small memory area TYPE to the value given
+   by VALUE.  Return true if VALUE was syntactically correct.  VALUE
+   starts with the argument separator: either "-" or "=".  */
 
-   Don't use this macro to turn on various extra optimizations for
-   `-O'.  That is what `OPTIMIZATION_OPTIONS' is for.  */
-
-void
-override_options ()
+static bool
+v850_handle_memory_option (enum small_memory_type type, const char *value)
 {
-  int i;
-  extern int atoi PARAMS ((const char *));
+  int i, size;
 
-  /* Parse -m{s,t,z}da=nnn switches */
-  for (i = 0; i < (int)SMALL_MEMORY_max; i++)
-    {
-      if (small_memory[i].value)
-	{
-	  if (!ISDIGIT (*small_memory[i].value))
-	    error ("%s=%s is not numeric",
-		   small_memory[i].name,
-		   small_memory[i].value);
-	  else
-	    {
-	      small_memory[i].max = atoi (small_memory[i].value);
-	      if (small_memory[i].max > small_memory[i].physical_max)
-		error ("%s=%s is too large",
-		   small_memory[i].name,
-		   small_memory[i].value);
-	    }
-	}
-    }
+  if (*value != '-' && *value != '=')
+    return false;
 
-  /* Make sure that the US_BIT_SET mask has been correctly initialized.  */
-  if ((target_flags & MASK_US_MASK_SET) == 0)
-    {
-      target_flags |= MASK_US_MASK_SET;
-      target_flags &= ~MASK_US_BIT_SET;
-    }
+  value++;
+  for (i = 0; value[i]; i++)
+    if (!ISDIGIT (value[i]))
+      return false;
+
+  size = atoi (value);
+  if (size > small_memory[type].physical_max)
+    error ("value passed to %<-m%s%> is too large", small_memory[type].name);
+  else
+    small_memory[type].max = size;
+  return true;
 }
 
-
-/* Output assembly code for the start of the file.  */
+/* Implement TARGET_HANDLE_OPTION.  */
 
-void
-asm_file_start (file)
-     FILE *file;
+static bool
+v850_handle_option (size_t code, const char *arg, int value ATTRIBUTE_UNUSED)
 {
-  output_file_directive (file, main_input_filename);
+  switch (code)
+    {
+    case OPT_mspace:
+      target_flags |= MASK_EP | MASK_PROLOG_FUNCTION;
+      return true;
+
+    case OPT_mv850:
+      target_flags &= ~(MASK_CPU ^ MASK_V850);
+      return true;
+
+    case OPT_mv850e:
+    case OPT_mv850e1:
+      target_flags &= ~(MASK_CPU ^ MASK_V850E);
+      return true;
+
+    case OPT_mtda:
+      return v850_handle_memory_option (SMALL_MEMORY_TDA, arg);
+
+    case OPT_msda:
+      return v850_handle_memory_option (SMALL_MEMORY_SDA, arg);
+
+    case OPT_mzda:
+      return v850_handle_memory_option (SMALL_MEMORY_ZDA, arg);
+
+    default:
+      return true;
+    }
 }
 
+static bool
+v850_pass_by_reference (CUMULATIVE_ARGS *cum ATTRIBUTE_UNUSED,
+			enum machine_mode mode, const_tree type,
+			bool named ATTRIBUTE_UNUSED)
+{
+  unsigned HOST_WIDE_INT size;
+
+  if (type)
+    size = int_size_in_bytes (type);
+  else
+    size = GET_MODE_SIZE (mode);
+
+  return size > 8;
+}
 
 /* Return an RTX to represent where a value with mode MODE will be returned
    from a function.  If the result is 0, the argument is pushed.  */
 
 rtx
-function_arg (cum, mode, type, named)
-     CUMULATIVE_ARGS *cum;
-     enum machine_mode mode;
-     tree type;
-     int named;
+function_arg (CUMULATIVE_ARGS * cum,
+              enum machine_mode mode,
+              tree type,
+              int named)
 {
   rtx result = 0;
   int size, align;
@@ -221,15 +295,12 @@ function_arg (cum, mode, type, named)
 }
 
 
-/* Return the number of words which must be put into registers
+/* Return the number of bytes which must be put into registers
    for values which are part in registers and part in memory.  */
 
-int
-function_arg_partial_nregs (cum, mode, type, named)
-     CUMULATIVE_ARGS *cum;
-     enum machine_mode mode;
-     tree type;
-     int named;
+static int
+v850_arg_partial_bytes (CUMULATIVE_ARGS * cum, enum machine_mode mode,
+                        tree type, bool named)
 {
   int size, align;
 
@@ -258,17 +329,14 @@ function_arg_partial_nregs (cum, mode, type, named)
       && cum->nbytes + size > 4 * UNITS_PER_WORD)
     return 0;
 
-  return (4 * UNITS_PER_WORD - cum->nbytes) / UNITS_PER_WORD;
+  return 4 * UNITS_PER_WORD - cum->nbytes;
 }
 
 
 /* Return the high and low words of a CONST_DOUBLE */
 
 static void
-const_double_split (x, p_high, p_low)
-     rtx x;
-     HOST_WIDE_INT *p_high;
-     HOST_WIDE_INT *p_low;
+const_double_split (rtx x, HOST_WIDE_INT * p_high, HOST_WIDE_INT * p_low)
 {
   if (GET_CODE (x) == CONST_DOUBLE)
     {
@@ -308,9 +376,7 @@ const_double_split (x, p_high, p_low)
 /* Return the cost of the rtx R with code CODE.  */
 
 static int
-const_costs_int (value, zero_cost)
-     HOST_WIDE_INT value;
-     int zero_cost;
+const_costs_int (HOST_WIDE_INT value, int zero_cost)
 {
   if (CONST_OK_FOR_I (value))
       return zero_cost;
@@ -322,10 +388,8 @@ const_costs_int (value, zero_cost)
     return 4;
 }
 
-int
-const_costs (r, c)
-     rtx r;
-     enum rtx_code c;
+static int
+const_costs (rtx r, enum rtx_code c)
 {
   HOST_WIDE_INT high, low;
 
@@ -354,15 +418,62 @@ const_costs (r, c)
     }
 }
 
+static bool
+v850_rtx_costs (rtx x,
+                int code,
+                int outer_code ATTRIBUTE_UNUSED,
+                int * total)
+{
+  switch (code)
+    {
+    case CONST_INT:
+    case CONST_DOUBLE:
+    case CONST:
+    case SYMBOL_REF:
+    case LABEL_REF:
+      *total = COSTS_N_INSNS (const_costs (x, code));
+      return true;
+
+    case MOD:
+    case DIV:
+    case UMOD:
+    case UDIV:
+      if (TARGET_V850E && optimize_size)
+        *total = 6;
+      else
+	*total = 60;
+      return true;
+
+    case MULT:
+      if (TARGET_V850E
+	  && (   GET_MODE (x) == SImode
+	      || GET_MODE (x) == HImode
+	      || GET_MODE (x) == QImode))
+        {
+	  if (GET_CODE (XEXP (x, 1)) == REG)
+	    *total = 4;
+	  else if (GET_CODE (XEXP (x, 1)) == CONST_INT)
+	    {
+	      if (CONST_OK_FOR_O (INTVAL (XEXP (x, 1))))
+	        *total = 6;
+	      else if (CONST_OK_FOR_K (INTVAL (XEXP (x, 1))))
+	        *total = 10;
+	    }
+        }
+      else
+	*total = 20;
+      return true;
+
+    default:
+      return false;
+    }
+}
 
 /* Print operand X using operand code CODE to assembly language output file
    FILE.  */
 
 void
-print_operand (file, x, code)
-     FILE *file;
-     rtx x;
-     int code;
+print_operand (FILE * file, rtx x, int code)
 {
   HOST_WIDE_INT high, low;
 
@@ -419,90 +530,84 @@ print_operand (file, x, code)
 	    fprintf (file, "l");
 	    break;
 	  default:
-	    abort ();
+	    gcc_unreachable ();
 	}
       break;
     case 'F':			/* high word of CONST_DOUBLE */
-      if (GET_CODE (x) == CONST_INT)
-	fprintf (file, "%d", (INTVAL (x) >= 0) ? 0 : -1);
-      else if (GET_CODE (x) == CONST_DOUBLE)
+      switch (GET_CODE (x))
 	{
+	case CONST_INT:
+	  fprintf (file, "%d", (INTVAL (x) >= 0) ? 0 : -1);
+	  break;
+	  
+	case CONST_DOUBLE:
 	  const_double_split (x, &high, &low);
 	  fprintf (file, "%ld", (long) high);
+	  break;
+
+	default:
+	  gcc_unreachable ();
 	}
-      else
-	abort ();
       break;
     case 'G':			/* low word of CONST_DOUBLE */
-      if (GET_CODE (x) == CONST_INT)
-	fprintf (file, "%ld", (long) INTVAL (x));
-      else if (GET_CODE (x) == CONST_DOUBLE)
+      switch (GET_CODE (x))
 	{
+	case CONST_INT:
+	  fprintf (file, "%ld", (long) INTVAL (x));
+	  break;
+	  
+	case CONST_DOUBLE:
 	  const_double_split (x, &high, &low);
 	  fprintf (file, "%ld", (long) low);
+	  break;
+
+	default:
+	  gcc_unreachable ();
 	}
-      else
-	abort ();
       break;
     case 'L':
-      fprintf (file, "%d\n", INTVAL (x) & 0xffff);
+      fprintf (file, "%d\n", (int)(INTVAL (x) & 0xffff));
       break;
     case 'M':
       fprintf (file, "%d", exact_log2 (INTVAL (x)));
       break;
     case 'O':
-      if (special_symbolref_operand (x, VOIDmode))
-        {
-          const char *name;
-
-	  if (GET_CODE (x) == SYMBOL_REF)
-	    name = XSTR (x, 0);
-	  else if (GET_CODE (x) == CONST)
-	    name = XSTR (XEXP (XEXP (x, 0), 0), 0);
-	  else
-	    abort ();
-
-          if (ZDA_NAME_P (name))
-            fprintf (file, "zdaoff");
-          else if (SDA_NAME_P (name))
-            fprintf (file, "sdaoff");
-          else if (TDA_NAME_P (name))
-            fprintf (file, "tdaoff");
-          else
-            abort ();
-        }
+      gcc_assert (special_symbolref_operand (x, VOIDmode));
+      
+      if (GET_CODE (x) == CONST)
+	x = XEXP (XEXP (x, 0), 0);
       else
-        abort ();
+	gcc_assert (GET_CODE (x) == SYMBOL_REF);
+      
+      if (SYMBOL_REF_ZDA_P (x))
+	fprintf (file, "zdaoff");
+      else if (SYMBOL_REF_SDA_P (x))
+	fprintf (file, "sdaoff");
+      else if (SYMBOL_REF_TDA_P (x))
+	fprintf (file, "tdaoff");
+      else
+	gcc_unreachable ();
       break;
     case 'P':
-      if (special_symbolref_operand (x, VOIDmode))
-        output_addr_const (file, x);
-      else
-        abort ();
+      gcc_assert (special_symbolref_operand (x, VOIDmode));
+      output_addr_const (file, x);
       break;
     case 'Q':
-      if (special_symbolref_operand (x, VOIDmode))
-        {
-          const char *name;
-
-	  if (GET_CODE (x) == SYMBOL_REF)
-	    name = XSTR (x, 0);
-	  else if (GET_CODE (x) == CONST)
-	    name = XSTR (XEXP (XEXP (x, 0), 0), 0);
-	  else
-	    abort ();
-
-          if (ZDA_NAME_P (name))
-            fprintf (file, "r0");
-          else if (SDA_NAME_P (name))
-            fprintf (file, "gp");
-          else if (TDA_NAME_P (name))
-            fprintf (file, "ep");
-          else
-            abort ();
-        }
+      gcc_assert (special_symbolref_operand (x, VOIDmode));
+      
+      if (GET_CODE (x) == CONST)
+	x = XEXP (XEXP (x, 0), 0);
       else
-        abort ();
+	gcc_assert (GET_CODE (x) == SYMBOL_REF);
+      
+      if (SYMBOL_REF_ZDA_P (x))
+	fprintf (file, "r0");
+      else if (SYMBOL_REF_SDA_P (x))
+	fprintf (file, "gp");
+      else if (SYMBOL_REF_TDA_P (x))
+	fprintf (file, "ep");
+      else
+	gcc_unreachable ();
       break;
     case 'R':		/* 2nd word of a double.  */
       switch (GET_CODE (x))
@@ -523,7 +628,7 @@ print_operand (file, x, code)
       break;
     case 'S':
       {
-        /* if it's a reference to a TDA variable, use sst/sld vs. st/ld */
+        /* If it's a reference to a TDA variable, use sst/sld vs. st/ld.  */
         if (GET_CODE (x) == MEM && ep_memory_operand (x, GET_MODE (x), FALSE))
           fputs ("s", file);
 
@@ -541,7 +646,7 @@ print_operand (file, x, code)
       switch (GET_MODE (x))
 	{
 	default:
-	  abort ();
+	  gcc_unreachable ();
 
 	case QImode: fputs (".b", file); break;
 	case HImode: fputs (".h", file); break;
@@ -553,19 +658,20 @@ print_operand (file, x, code)
       fputs (reg_names[0], file);
       break;
     case 'z':			/* reg or zero */
-      if (x == const0_rtx)
-	fputs (reg_names[0], file);
-      else if (GET_CODE (x) == REG)
+      if (GET_CODE (x) == REG)
 	fputs (reg_names[REGNO (x)], file);
       else
-	abort ();
+	{
+	  gcc_assert (x == const0_rtx);
+	  fputs (reg_names[0], file);
+	}
       break;
     default:
       switch (GET_CODE (x))
 	{
 	case MEM:
 	  if (GET_CODE (XEXP (x, 0)) == CONST_INT)
-	    output_address (gen_rtx_PLUS (SImode, gen_rtx (REG, SImode, 0),
+	    output_address (gen_rtx_PLUS (SImode, gen_rtx_REG (SImode, 0),
 					  XEXP (x, 0)));
 	  else
 	    output_address (XEXP (x, 0));
@@ -585,7 +691,7 @@ print_operand (file, x, code)
 	  print_operand_address (file, x);
 	  break;
 	default:
-	  abort ();
+	  gcc_unreachable ();
 	}
       break;
 
@@ -596,9 +702,7 @@ print_operand (file, x, code)
 /* Output assembly language output for the address ADDR to FILE.  */
 
 void
-print_operand_address (file, addr)
-     FILE *file;
-     rtx addr;
+print_operand_address (FILE * file, rtx addr)
 {
   switch (GET_CODE (addr))
     {
@@ -636,61 +740,57 @@ print_operand_address (file, addr)
 	}
       break;
     case SYMBOL_REF:
-      if (ENCODED_NAME_P (XSTR (addr, 0)))
-        {
-          const char *name = XSTR (addr, 0);
-          const char *off_name;
-          const char *reg_name;
+      {
+        const char *off_name = NULL;
+        const char *reg_name = NULL;
 
-          if (ZDA_NAME_P (name))
-            {
-              off_name = "zdaoff";
-              reg_name = "r0";
-            }
-          else if (SDA_NAME_P (name))
-            {
-              off_name = "sdaoff";
-              reg_name = "gp";
-            }
-          else if (TDA_NAME_P (name))
-            {
-              off_name = "tdaoff";
-              reg_name = "ep";
-            }
-          else
-            abort ();
+	if (SYMBOL_REF_ZDA_P (addr))
+          {
+            off_name = "zdaoff";
+            reg_name = "r0";
+          }
+        else if (SYMBOL_REF_SDA_P (addr))
+          {
+            off_name = "sdaoff";
+            reg_name = "gp";
+          }
+        else if (SYMBOL_REF_TDA_P (addr))
+          {
+            off_name = "tdaoff";
+            reg_name = "ep";
+          }
 
+	if (off_name)
           fprintf (file, "%s(", off_name);
-          output_addr_const (file, addr);
-          fprintf (file, ")[%s]", reg_name);
-        }
-      else
         output_addr_const (file, addr);
+	if (reg_name)
+          fprintf (file, ")[%s]", reg_name);
+      }
       break;
     case CONST:
       if (special_symbolref_operand (addr, VOIDmode))
         {
-          const char *name = XSTR (XEXP (XEXP (addr, 0), 0), 0);
+	  rtx x = XEXP (XEXP (addr, 0), 0);
           const char *off_name;
           const char *reg_name;
 
-          if (ZDA_NAME_P (name))
+          if (SYMBOL_REF_ZDA_P (x))
             {
               off_name = "zdaoff";
               reg_name = "r0";
             }
-          else if (SDA_NAME_P (name))
+          else if (SYMBOL_REF_SDA_P (x))
             {
               off_name = "sdaoff";
               reg_name = "gp";
             }
-          else if (TDA_NAME_P (name))
+          else if (SYMBOL_REF_TDA_P (x))
             {
               off_name = "tdaoff";
               reg_name = "ep";
             }
           else
-            abort ();
+            gcc_unreachable ();
 
           fprintf (file, "%s(", off_name);
           output_addr_const (file, addr);
@@ -714,9 +814,7 @@ print_operand_address (file, addr)
    Returns 1 if rtx was handled, 0 otherwise.  */
 
 int
-v850_output_addr_const_extra (file, x)
-     FILE * file;
-     rtx x;
+v850_output_addr_const_extra (FILE * file, rtx x)
 {
   if (GET_CODE (x) != TRUNCATE)
     return 0;
@@ -742,8 +840,7 @@ v850_output_addr_const_extra (file, x)
    point value.  */
 
 const char *
-output_move_single (operands)
-     rtx *operands;
+output_move_single (rtx * operands)
 {
   rtx dst = operands[0];
   rtx src = operands[1];
@@ -757,10 +854,10 @@ output_move_single (operands)
 	{
 	  HOST_WIDE_INT value = INTVAL (src);
 
-	  if (CONST_OK_FOR_J (value))		/* Signed 5 bit immediate.  */
+	  if (CONST_OK_FOR_J (value))		/* Signed 5-bit immediate.  */
 	    return "mov %1,%0";
 
-	  else if (CONST_OK_FOR_K (value))	/* Signed 16 bit immediate.  */
+	  else if (CONST_OK_FOR_K (value))	/* Signed 16-bit immediate.  */
 	    return "movea lo(%1),%.,%0";
 
 	  else if (CONST_OK_FOR_L (value))	/* Upper 16 bits were set.  */
@@ -779,10 +876,10 @@ output_move_single (operands)
 
 	  const_double_split (src, &high, &low);
 
-	  if (CONST_OK_FOR_J (high))		/* Signed 5 bit immediate.  */
+	  if (CONST_OK_FOR_J (high))		/* Signed 5-bit immediate.  */
 	    return "mov %F1,%0";
 
-	  else if (CONST_OK_FOR_K (high))	/* Signed 16 bit immediate.  */
+	  else if (CONST_OK_FOR_K (high))	/* Signed 16-bit immediate.  */
 	    return "movea lo(%F1),%.,%0";
 
 	  else if (CONST_OK_FOR_L (high))	/* Upper 16 bits were set.  */
@@ -841,92 +938,11 @@ output_move_single (operands)
 }
 
 
-/* Return appropriate code to load up an 8 byte integer or
-   floating point value */
-
-const char *
-output_move_double (operands)
-    rtx *operands;
-{
-  enum machine_mode mode = GET_MODE (operands[0]);
-  rtx dst = operands[0];
-  rtx src = operands[1];
-
-  if (register_operand (dst, mode)
-      && register_operand (src, mode))
-    {
-      if (REGNO (src) + 1 == REGNO (dst))
-	return "mov %R1,%R0\n\tmov %1,%0";
-      else
-	return "mov %1,%0\n\tmov %R1,%R0";
-    }
-
-  /* Storing 0 */
-  if (GET_CODE (dst) == MEM
-      && ((GET_CODE (src) == CONST_INT && INTVAL (src) == 0)
-	  || (GET_CODE (src) == CONST_DOUBLE && CONST_DOUBLE_OK_FOR_G (src))))
-    return "st.w %.,%0\n\tst.w %.,%R0";
-
-  if (GET_CODE (src) == CONST_INT || GET_CODE (src) == CONST_DOUBLE)
-    {
-      HOST_WIDE_INT high_low[2];
-      int i;
-      rtx xop[10];
-
-      if (GET_CODE (src) == CONST_DOUBLE)
-	const_double_split (src, &high_low[1], &high_low[0]);
-      else
-	{
-	  high_low[0] = INTVAL (src);
-	  high_low[1] = (INTVAL (src) >= 0) ? 0 : -1;
-	}
-
-      for (i = 0; i < 2; i++)
-	{
-	  xop[0] = gen_rtx_REG (SImode, REGNO (dst)+i);
-	  xop[1] = GEN_INT (high_low[i]);
-	  output_asm_insn (output_move_single (xop), xop);
-	}
-
-      return "";
-    }
-
-  if (GET_CODE (src) == MEM)
-    {
-      int ptrreg = -1;
-      int dreg = REGNO (dst);
-      rtx inside = XEXP (src, 0);
-
-      if (GET_CODE (inside) == REG)
- 	ptrreg = REGNO (inside);
-      else if (GET_CODE (inside) == SUBREG)
-	ptrreg = subreg_regno (inside);
-      else if (GET_CODE (inside) == PLUS)
-	ptrreg = REGNO (XEXP (inside, 0));
-      else if (GET_CODE (inside) == LO_SUM)
-	ptrreg = REGNO (XEXP (inside, 0));
-
-      if (dreg == ptrreg)
-	return "ld.w %R1,%R0\n\tld.w %1,%0";
-    }
-
-  if (GET_CODE (src) == MEM)
-    return "ld.w %1,%0\n\tld.w %R1,%R0";
-  
-  if (GET_CODE (dst) == MEM)
-    return "st.w %1,%0\n\tst.w %R1,%R0";
-
-  return "mov %1,%0\n\tmov %R1,%R0";
-}
-
-
 /* Return maximum offset supported for a short EP memory reference of mode
    MODE and signedness UNSIGNEDP.  */
 
 static int
-ep_memory_offset (mode, unsignedp)
-     enum machine_mode mode;
-     int ATTRIBUTE_UNUSED unsignedp;
+ep_memory_offset (enum machine_mode mode, int unsignedp ATTRIBUTE_UNUSED)
 {
   int max_offset = 0;
 
@@ -969,14 +985,18 @@ ep_memory_offset (mode, unsignedp)
 /* Return true if OP is a valid short EP memory reference */
 
 int
-ep_memory_operand (op, mode, unsigned_load)
-     rtx op;
-     enum machine_mode mode;
-     int unsigned_load;
+ep_memory_operand (rtx op, enum machine_mode mode, int unsigned_load)
 {
   rtx addr, op0, op1;
   int max_offset;
   int mask;
+
+  /* If we are not using the EP register on a per-function basis
+     then do not allow this optimization at all.  This is to
+     prevent the use of the SLD/SST instructions which cannot be
+     guaranteed to work properly due to a hardware bug.  */
+  if (!TARGET_EP)
+    return FALSE;
 
   if (GET_CODE (op) != MEM)
     return FALSE;
@@ -995,7 +1015,7 @@ ep_memory_operand (op, mode, unsigned_load)
       break;
 
     case SYMBOL_REF:
-      return TDA_NAME_P (XSTR (addr, 0));
+      return SYMBOL_REF_TDA_P (addr);
 
     case REG:
       return REGNO (addr) == EP_REGNUM;
@@ -1011,7 +1031,7 @@ ep_memory_operand (op, mode, unsigned_load)
 	  if (GET_CODE (op0) == REG && REGNO (op0) == EP_REGNUM)
 	    return TRUE;
 
-	  if (GET_CODE (op0) == SYMBOL_REF && TDA_NAME_P (XSTR (op0, 0)))
+	  if (GET_CODE (op0) == SYMBOL_REF && SYMBOL_REF_TDA_P (op0))
 	    return TRUE;
 	}
       break;
@@ -1019,170 +1039,24 @@ ep_memory_operand (op, mode, unsigned_load)
 
   return FALSE;
 }
-
-/* Return true if OP is either a register or 0 */
-
-int
-reg_or_0_operand (op, mode)
-     rtx op;
-     enum machine_mode mode;
-{
-  if (GET_CODE (op) == CONST_INT)
-    return INTVAL (op) == 0;
-
-  else if (GET_CODE (op) == CONST_DOUBLE)
-    return CONST_DOUBLE_OK_FOR_G (op);
-
-  else
-    return register_operand (op, mode);
-}
-
-/* Return true if OP is either a register or a signed five bit integer */
-
-int
-reg_or_int5_operand (op, mode)
-     rtx op;
-     enum machine_mode mode;
-{
-  if (GET_CODE (op) == CONST_INT)
-    return CONST_OK_FOR_J (INTVAL (op));
-
-  else
-    return register_operand (op, mode);
-}
-
-/* Return true if OP is either a register or a signed nine bit integer.  */
-
-int
-reg_or_int9_operand (op, mode)
-     rtx op;
-     enum machine_mode mode;
-{
-  if (GET_CODE (op) == CONST_INT)
-    return CONST_OK_FOR_O (INTVAL (op));
-
-  return register_operand (op, mode);
-}
-
-/* Return true if OP is either a register or a const integer.  */
-
-int
-reg_or_const_operand (op, mode)
-     rtx op;
-     enum machine_mode mode;
-{
-  if (GET_CODE (op) == CONST_INT)
-    return TRUE;
-
-  return register_operand (op, mode);
-}
-
-/* Return true if OP is a valid call operand.  */
-
-int
-call_address_operand (op, mode)
-     rtx op;
-     enum machine_mode ATTRIBUTE_UNUSED mode;
-{
-  /* Only registers are valid call operands if TARGET_LONG_CALLS.  */
-  if (TARGET_LONG_CALLS)
-    return GET_CODE (op) == REG;
-  return (GET_CODE (op) == SYMBOL_REF || GET_CODE (op) == REG);
-}
-
-int
-special_symbolref_operand (op, mode)
-     rtx op;
-     enum machine_mode ATTRIBUTE_UNUSED mode;
-{
-  if (GET_CODE (op) == SYMBOL_REF)
-    return ENCODED_NAME_P (XSTR (op, 0));
-
-  else if (GET_CODE (op) == CONST)
-    return (GET_CODE (XEXP (op, 0)) == PLUS
-	    && GET_CODE (XEXP (XEXP (op, 0), 0)) == SYMBOL_REF
-	    && ENCODED_NAME_P (XSTR (XEXP (XEXP (op, 0), 0), 0))
-	    && GET_CODE (XEXP (XEXP (op, 0), 1)) == CONST_INT
-	    && CONST_OK_FOR_K (INTVAL (XEXP (XEXP (op, 0), 1))));
-
-  return FALSE;
-}
-
-int
-movsi_source_operand (op, mode)
-     rtx op;
-     enum machine_mode mode;
-{
-  /* Some constants, as well as symbolic operands
-     must be done with HIGH & LO_SUM patterns.  */
-  if (CONSTANT_P (op)
-      && GET_CODE (op) != HIGH
-      && GET_CODE (op) != CONSTANT_P_RTX
-      && !(GET_CODE (op) == CONST_INT
-           && (CONST_OK_FOR_J (INTVAL (op))
-               || CONST_OK_FOR_K (INTVAL (op))
-               || CONST_OK_FOR_L (INTVAL (op)))))
-    return special_symbolref_operand (op, mode);
-  else
-    return general_operand (op, mode);
-}
-
-int
-power_of_two_operand (op, mode)
-     rtx op;
-     enum machine_mode ATTRIBUTE_UNUSED mode;
-{
-  if (GET_CODE (op) != CONST_INT)
-    return 0;
-
-  if (exact_log2 (INTVAL (op)) == -1)
-    return 0;
-  return 1;
-}
-
-int
-not_power_of_two_operand (op, mode)
-     rtx op;
-     enum machine_mode mode;
-{
-  unsigned int mask;
-
-  if (mode == QImode)
-    mask = 0xff;
-  else if (mode == HImode)
-    mask = 0xffff;
-  else if (mode == SImode)
-    mask = 0xffffffff;
-  else
-    return 0;
-
-  if (GET_CODE (op) != CONST_INT)
-    return 0;
-
-  if (exact_log2 (~INTVAL (op) & mask) == -1)
-    return 0;
-  return 1;
-}
-
 
 /* Substitute memory references involving a pointer, to use the ep pointer,
    taking care to save and preserve the ep.  */
 
 static void
-substitute_ep_register (first_insn, last_insn, uses, regno, p_r1, p_ep)
-     rtx first_insn;
-     rtx last_insn;
-     int uses;
-     int regno;
-     rtx *p_r1;
-     rtx *p_ep;
+substitute_ep_register (rtx first_insn,
+                        rtx last_insn,
+                        int uses,
+                        int regno,
+                        rtx * p_r1,
+                        rtx * p_ep)
 {
   rtx reg = gen_rtx_REG (Pmode, regno);
   rtx insn;
 
   if (!*p_r1)
     {
-      regs_ever_live[1] = 1;
+      df_set_regs_ever_live (1, true);
       *p_r1 = gen_rtx_REG (Pmode, 1);
       *p_ep = gen_rtx_REG (Pmode, 30);
     }
@@ -1273,16 +1147,12 @@ Saved %d bytes (%d uses of register %s) in function %s, starting as insn %d, end
 }
 
 
-/* In rare cases, correct code generation requires extra machine
-   dependent processing between the second jump optimization pass and
-   delayed branch scheduling.  On those machines, define this macro
-   as a C statement to act on the code starting at INSN.
+/* TARGET_MACHINE_DEPENDENT_REORG.  On the 850, we use it to implement
+   the -mep mode to copy heavily used pointers to ep to use the implicit
+   addressing.  */
 
-   On the 850, we use it to implement the -mep mode to copy heavily used
-   pointers to ep to use the implicit addressing.  */
-
-void v850_reorg (start_insn)
-     rtx start_insn;
+static void
+v850_reorg (void)
 {
   struct
   {
@@ -1310,7 +1180,7 @@ void v850_reorg (start_insn)
       regs[i].last_insn = NULL_RTX;
     }
 
-  for (insn = start_insn; insn != NULL_RTX; insn = NEXT_INSN (insn))
+  for (insn = get_insns (); insn != NULL_RTX; insn = NEXT_INSN (insn))
     {
       switch (GET_CODE (insn))
 	{
@@ -1507,18 +1377,20 @@ void v850_reorg (start_insn)
 #define INTERRUPT_ALL_SAVE_SIZE (4 * INTERRUPT_ALL_SAVE_NUM)
 
 int
-compute_register_save_size (p_reg_saved)
-     long *p_reg_saved;
+compute_register_save_size (long * p_reg_saved)
 {
   int size = 0;
   int i;
   int interrupt_handler = v850_interrupt_function_p (current_function_decl);
-  int call_p = regs_ever_live [LINK_POINTER_REGNUM];
+  int call_p = df_regs_ever_live_p (LINK_POINTER_REGNUM);
   long reg_saved = 0;
 
   /* Count the return pointer if we need to save it.  */
   if (current_function_profile && !call_p)
-    regs_ever_live [LINK_POINTER_REGNUM] = call_p = 1;
+    {
+      df_set_regs_ever_live (LINK_POINTER_REGNUM, true);
+      call_p = 1;
+    }
  
   /* Count space for the register saves.  */
   if (interrupt_handler)
@@ -1527,7 +1399,7 @@ compute_register_save_size (p_reg_saved)
 	switch (i)
 	  {
 	  default:
-	    if (regs_ever_live[i] || call_p)
+	    if (df_regs_ever_live_p (i) || call_p)
 	      {
 		size += 4;
 		reg_saved |= 1L << i;
@@ -1555,7 +1427,7 @@ compute_register_save_size (p_reg_saved)
     {
       /* Find the first register that needs to be saved.  */
       for (i = 0; i <= 31; i++)
-	if (regs_ever_live[i] && ((! call_used_regs[i])
+	if (df_regs_ever_live_p (i) && ((! call_used_regs[i])
 				  || i == LINK_POINTER_REGNUM))
 	  break;
 
@@ -1587,7 +1459,7 @@ compute_register_save_size (p_reg_saved)
 	      reg_saved |= 1L << i;
 	    }
 
-	  if (regs_ever_live [LINK_POINTER_REGNUM])
+	  if (df_regs_ever_live_p (LINK_POINTER_REGNUM))
 	    {
 	      size += 4;
 	      reg_saved |= 1L << LINK_POINTER_REGNUM;
@@ -1596,7 +1468,7 @@ compute_register_save_size (p_reg_saved)
       else
 	{
 	  for (; i <= 31; i++)
-	    if (regs_ever_live[i] && ((! call_used_regs[i])
+	    if (df_regs_ever_live_p (i) && ((! call_used_regs[i])
 				      || i == LINK_POINTER_REGNUM))
 	      {
 		size += 4;
@@ -1612,9 +1484,7 @@ compute_register_save_size (p_reg_saved)
 }
 
 int
-compute_frame_size (size, p_reg_saved)
-     int size;
-     long *p_reg_saved;
+compute_frame_size (int size, long * p_reg_saved)
 {
   return (size
 	  + compute_register_save_size (p_reg_saved)
@@ -1623,7 +1493,7 @@ compute_frame_size (size, p_reg_saved)
 
 
 void
-expand_prologue ()
+expand_prologue (void)
 {
   unsigned int i;
   int offset;
@@ -1657,13 +1527,10 @@ expand_prologue ()
   /* Save arg registers to the stack if necessary.  */
   else if (current_function_args_info.anonymous_args)
     {
-      if (TARGET_PROLOG_FUNCTION)
-	{
-	  if (TARGET_V850E && ! TARGET_DISABLE_CALLT)
-	    emit_insn (gen_save_r6_r9_v850e ());
-	  else
-	    emit_insn (gen_save_r6_r9 ());
-	}
+      if (TARGET_PROLOG_FUNCTION && TARGET_V850E && !TARGET_DISABLE_CALLT)
+	emit_insn (gen_save_r6_r9_v850e ());
+      else if (TARGET_PROLOG_FUNCTION && ! TARGET_LONG_CALLS)
+	emit_insn (gen_save_r6_r9 ());
       else
 	{
 	  offset = 0;
@@ -1723,18 +1590,13 @@ expand_prologue ()
 	{
 	  save_all = gen_rtx_PARALLEL
 	    (VOIDmode,
-	     rtvec_alloc (num_save + (TARGET_V850 ? 2 : 1)));
+	     rtvec_alloc (num_save + 1
+			  + (TARGET_V850 ? (TARGET_LONG_CALLS ? 2 : 1) : 0)));
 
 	  XVECEXP (save_all, 0, 0)
 	    = gen_rtx_SET (VOIDmode,
 			   stack_pointer_rtx,
 			   plus_constant (stack_pointer_rtx, -alloc_stack));
-
-	  if (TARGET_V850)
-	    {
-	      XVECEXP (save_all, 0, num_save+1)
-		= gen_rtx_CLOBBER (VOIDmode, gen_rtx_REG (Pmode, 10));
-	    }
 
 	  offset = - default_stack;
 	  for (i = 0; i < num_save; i++)
@@ -1746,6 +1608,16 @@ expand_prologue ()
 							   offset)),
 			       save_regs[i]);
 	      offset -= 4;
+	    }
+
+	  if (TARGET_V850)
+	    {
+	      XVECEXP (save_all, 0, num_save + 1)
+		= gen_rtx_CLOBBER (VOIDmode, gen_rtx_REG (Pmode, 10));
+
+	      if (TARGET_LONG_CALLS)
+		XVECEXP (save_all, 0, num_save + 2)
+		  = gen_rtx_CLOBBER (VOIDmode, gen_rtx_REG (Pmode, 11));
 	    }
 
 	  code = recog (save_all, NULL_RTX, NULL);
@@ -1768,7 +1640,7 @@ Saved %d bytes via prologue function (%d vs. %d) for function %s\n",
     }
 
   /* If no prolog save function is available, store the registers the old
-     fashioned way (one by one). */
+     fashioned way (one by one).  */
   if (!save_all)
     {
       /* Special case interrupt functions that save all registers for a call.  */
@@ -1789,13 +1661,13 @@ Saved %d bytes via prologue function (%d vs. %d) for function %s\n",
 	  else
 	    init_stack_alloc = actual_fsize;
 	      
-	  /* Save registers at the beginning of the stack frame */
+	  /* Save registers at the beginning of the stack frame.  */
 	  offset = init_stack_alloc - 4;
 	  
 	  if (init_stack_alloc)
 	    emit_insn (gen_addsi3 (stack_pointer_rtx,
 				   stack_pointer_rtx,
-				   GEN_INT (-init_stack_alloc)));
+				   GEN_INT (- (signed) init_stack_alloc)));
 	  
 	  /* Save the return pointer first.  */
 	  if (num_save > 0 && REGNO (save_regs[num_save-1]) == LINK_POINTER_REGNUM)
@@ -1843,13 +1715,13 @@ Saved %d bytes via prologue function (%d vs. %d) for function %s\n",
 
 
 void
-expand_epilogue ()
+expand_epilogue (void)
 {
   unsigned int i;
   int offset;
   unsigned int size = get_frame_size ();
   long reg_saved = 0;
-  unsigned int actual_fsize = compute_frame_size (size, &reg_saved);
+  int actual_fsize = compute_frame_size (size, &reg_saved);
   unsigned int init_stack_free = 0;
   rtx restore_regs[32];
   rtx restore_all;
@@ -1893,7 +1765,7 @@ expand_epilogue ()
   
   if (TARGET_PROLOG_FUNCTION
       && num_restore > 0
-      && actual_fsize >= default_stack
+      && actual_fsize >= (signed) default_stack
       && !interrupt_handler)
     {
       int alloc_stack = (4 * num_restore) + default_stack;
@@ -1974,7 +1846,7 @@ Saved %d bytes via epilogue function (%d vs. %d) in function %s\n",
 	}
     }
 
-  /* If no epilog save function is available, restore the registers the
+  /* If no epilogue save function is available, restore the registers the
      old fashioned way (one by one).  */
   if (!restore_all)
     {
@@ -1982,7 +1854,7 @@ Saved %d bytes via epilogue function (%d vs. %d) in function %s\n",
       if (actual_fsize && !CONST_OK_FOR_K (-actual_fsize))
 	init_stack_free = 4 * num_restore;
       else
-	init_stack_free = actual_fsize;
+	init_stack_free = (signed) actual_fsize;
 
       /* Deallocate the rest of the stack if it is > 32K.  */
       if (actual_fsize > init_stack_free)
@@ -2070,9 +1942,7 @@ Saved %d bytes via epilogue function (%d vs. %d) in function %s\n",
 /* Update the condition code from the insn.  */
 
 void
-notice_update_cc (body, insn)
-     rtx body;
-     rtx insn;
+notice_update_cc (rtx body, rtx insn)
 {
   switch (get_attr_cc (insn))
     {
@@ -2119,8 +1989,7 @@ notice_update_cc (body, insn)
 /* Retrieve the data area that has been chosen for the given decl.  */
 
 v850_data_area
-v850_get_data_area (decl)
-     tree decl;
+v850_get_data_area (tree decl)
 {
   if (lookup_attribute ("sda", DECL_ATTRIBUTES (decl)) != NULL_TREE)
     return DATA_AREA_SDA;
@@ -2137,9 +2006,7 @@ v850_get_data_area (decl)
 /* Store the indicated data area in the decl's attributes.  */
 
 static void
-v850_set_data_area (decl, data_area)
-     tree decl;
-     v850_data_area data_area;
+v850_set_data_area (tree decl, v850_data_area data_area)
 {
   tree name;
   
@@ -2170,16 +2037,15 @@ const struct attribute_spec v850_attribute_table[] =
 /* Handle an "interrupt" attribute; arguments as in
    struct attribute_spec.handler.  */
 static tree
-v850_handle_interrupt_attribute (node, name, args, flags, no_add_attrs)
-     tree *node;
-     tree name;
-     tree args ATTRIBUTE_UNUSED;
-     int flags ATTRIBUTE_UNUSED;
-     bool *no_add_attrs;
+v850_handle_interrupt_attribute (tree * node,
+                                 tree name,
+                                 tree args ATTRIBUTE_UNUSED,
+                                 int flags ATTRIBUTE_UNUSED,
+                                 bool * no_add_attrs)
 {
   if (TREE_CODE (*node) != FUNCTION_DECL)
     {
-      warning ("`%s' attribute only applies to functions",
+      warning (OPT_Wattributes, "%qs attribute only applies to functions",
 	       IDENTIFIER_POINTER (name));
       *no_add_attrs = true;
     }
@@ -2190,12 +2056,11 @@ v850_handle_interrupt_attribute (node, name, args, flags, no_add_attrs)
 /* Handle a "sda", "tda" or "zda" attribute; arguments as in
    struct attribute_spec.handler.  */
 static tree
-v850_handle_data_area_attribute (node, name, args, flags, no_add_attrs)
-     tree *node;
-     tree name;
-     tree args ATTRIBUTE_UNUSED;
-     int flags ATTRIBUTE_UNUSED;
-     bool *no_add_attrs;
+v850_handle_data_area_attribute (tree* node,
+                                 tree name,
+                                 tree args ATTRIBUTE_UNUSED,
+                                 int flags ATTRIBUTE_UNUSED,
+                                 bool * no_add_attrs)
 {
   v850_data_area data_area;
   v850_data_area area;
@@ -2209,15 +2074,15 @@ v850_handle_data_area_attribute (node, name, args, flags, no_add_attrs)
   else if (is_attribute_p ("zda", name))
     data_area = DATA_AREA_ZDA;
   else
-    abort ();
+    gcc_unreachable ();
   
   switch (TREE_CODE (decl))
     {
     case VAR_DECL:
       if (current_function_decl != NULL_TREE)
 	{
-	  error_with_decl (decl, "\
-a data area attribute cannot be specified for local variables");
+          error ("%Jdata area attributes cannot be specified for "
+                 "local variables", decl);
 	  *no_add_attrs = true;
 	}
 
@@ -2227,8 +2092,8 @@ a data area attribute cannot be specified for local variables");
       area = v850_get_data_area (decl);
       if (area != DATA_AREA_NORMAL && data_area != area)
 	{
-	  error_with_decl (decl, "\
-data area of '%s' conflicts with previous declaration");
+	  error ("data area of %q+D conflicts with previous declaration",
+                 decl);
 	  *no_add_attrs = true;
 	}
       break;
@@ -2245,8 +2110,7 @@ data area of '%s' conflicts with previous declaration");
    by the "interrupt" attribute.  */
 
 int
-v850_interrupt_function_p (func)
-     tree func;
+v850_interrupt_function_p (tree func)
 {
   tree a;
   int ret = 0;
@@ -2277,14 +2141,11 @@ v850_interrupt_function_p (func)
 
 
 static void
-v850_encode_data_area (decl)
-     tree decl;
+v850_encode_data_area (tree decl, rtx symbol)
 {
-  const char *str = XSTR (XEXP (DECL_RTL (decl), 0), 0);
-  int    len = strlen (str);
-  char * newstr;
+  int flags;
 
-  /* Map explict sections into the appropriate attribute */
+  /* Map explicit sections into the appropriate attribute */
   if (v850_get_data_area (decl) == DATA_AREA_NORMAL)
     {
       if (DECL_SECTION_NAME (decl))
@@ -2322,109 +2183,25 @@ v850_encode_data_area (decl)
 	return;
     }
 
-  newstr = alloca (len + 2);
-
-  strcpy (newstr + 1, str);
-
+  flags = SYMBOL_REF_FLAGS (symbol);
   switch (v850_get_data_area (decl))
     {
-    case DATA_AREA_ZDA: *newstr = ZDA_NAME_FLAG_CHAR; break;
-    case DATA_AREA_TDA: *newstr = TDA_NAME_FLAG_CHAR; break;
-    case DATA_AREA_SDA: *newstr = SDA_NAME_FLAG_CHAR; break;
-    default: abort ();
+    case DATA_AREA_ZDA: flags |= SYMBOL_FLAG_ZDA; break;
+    case DATA_AREA_TDA: flags |= SYMBOL_FLAG_TDA; break;
+    case DATA_AREA_SDA: flags |= SYMBOL_FLAG_SDA; break;
+    default: gcc_unreachable ();
     }
-
-  XSTR (XEXP (DECL_RTL (decl), 0), 0) = ggc_alloc_string (newstr, len + 2);
+  SYMBOL_REF_FLAGS (symbol) = flags;
 }
 
 static void
-v850_encode_section_info (decl, first)
-     tree decl;
-     int first;
+v850_encode_section_info (tree decl, rtx rtl, int first)
 {
-  if (first && TREE_CODE (decl) == VAR_DECL
+  default_encode_section_info (decl, rtl, first);
+
+  if (TREE_CODE (decl) == VAR_DECL
       && (TREE_STATIC (decl) || DECL_EXTERNAL (decl)))
-    v850_encode_data_area (decl);
-}
-
-static const char *
-v850_strip_name_encoding (str)
-     const char *str;
-{
-  return str + (ENCODED_NAME_P (str) || *str == '*');
-}
-
-/* Return true if the given RTX is a register which can be restored
-   by a function epilogue.  */
-int
-register_is_ok_for_epilogue (op, mode)
-     rtx op;
-     enum machine_mode ATTRIBUTE_UNUSED mode;
-{
-  /* The save/restore routines can only cope with registers 20 - 31.  */
-  return ((GET_CODE (op) == REG)
-          && (((REGNO (op) >= 20) && REGNO (op) <= 31)));
-}
-
-/* Return nonzero if the given RTX is suitable for collapsing into
-   jump to a function epilogue.  */
-int
-pattern_is_ok_for_epilogue (op, mode)
-     rtx op;
-     enum machine_mode ATTRIBUTE_UNUSED mode;
-{
-  int count = XVECLEN (op, 0);
-  int i;
-  
-  /* If there are no registers to restore then the function epilogue
-     is not suitable.  */
-  if (count <= 2)
-    return 0;
-
-  /* The pattern matching has already established that we are performing a
-     function epilogue and that we are popping at least one register.  We must
-     now check the remaining entries in the vector to make sure that they are
-     also register pops.  There is no good reason why there should ever be
-     anything else in this vector, but being paranoid always helps...
-
-     The test below performs the C equivalent of this machine description
-     pattern match:
-
-        (set (match_operand:SI n "register_is_ok_for_epilogue" "r")
-	  (mem:SI (plus:SI (reg:SI 3) (match_operand:SI n "immediate_operand" "i"))))
-     */
-
-  for (i = 3; i < count; i++)
-    {
-      rtx vector_element = XVECEXP (op, 0, i);
-      rtx dest;
-      rtx src;
-      rtx plus;
-      
-      if (GET_CODE (vector_element) != SET)
-	return 0;
-      
-      dest = SET_DEST (vector_element);
-      src = SET_SRC (vector_element);
-
-      if (GET_CODE (dest) != REG
-	  || GET_MODE (dest) != SImode
-	  || ! register_is_ok_for_epilogue (dest, SImode)
-	  || GET_CODE (src) != MEM
-	  || GET_MODE (src) != SImode)
-	return 0;
-
-      plus = XEXP (src, 0);
-
-      if (GET_CODE (plus) != PLUS
-	  || GET_CODE (XEXP (plus, 0)) != REG
-	  || GET_MODE (XEXP (plus, 0)) != SImode
-	  || REGNO (XEXP (plus, 0)) != STACK_POINTER_REGNUM
-	  || GET_CODE (XEXP (plus, 1)) != CONST_INT)
-	return 0;
-    }
-
-  return 1;
+    v850_encode_data_area (decl, XEXP (rtl, 0));
 }
 
 /* Construct a JR instruction to a routine that will perform the equivalent of
@@ -2433,8 +2210,7 @@ pattern_is_ok_for_epilogue (op, mode)
    as well.  The code has already verified that the RTL matches these
    requirements.  */
 char *
-construct_restore_jr (op)
-     rtx op;
+construct_restore_jr (rtx op)
 {
   int count = XVECLEN (op, 0);
   int stack_bytes;
@@ -2446,22 +2222,19 @@ construct_restore_jr (op)
   
   if (count <= 2)
     {
-      error ("bogus JR construction: %d\n", count);
+      error ("bogus JR construction: %d", count);
       return NULL;
     }
 
   /* Work out how many bytes to pop off the stack before retrieving
      registers.  */
-  if (GET_CODE (XVECEXP (op, 0, 1)) != SET)
-    abort ();
-  if (GET_CODE (SET_SRC (XVECEXP (op, 0, 1))) != PLUS)
-    abort ();
-  if (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 1)), 1)) != CONST_INT)
-    abort ();
+  gcc_assert (GET_CODE (XVECEXP (op, 0, 1)) == SET);
+  gcc_assert (GET_CODE (SET_SRC (XVECEXP (op, 0, 1))) == PLUS);
+  gcc_assert (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 1)), 1)) == CONST_INT);
     
   stack_bytes = INTVAL (XEXP (SET_SRC (XVECEXP (op, 0, 1)), 1));
 
-  /* Each pop will remove 4 bytes from the stack... */
+  /* Each pop will remove 4 bytes from the stack....  */
   stack_bytes -= (count - 2) * 4;
 
   /* Make sure that the amount we are popping either 0 or 16 bytes.  */
@@ -2477,12 +2250,10 @@ construct_restore_jr (op)
     {
       rtx vector_element = XVECEXP (op, 0, i);
       
-      if (GET_CODE (vector_element) != SET)
-	abort ();
-      if (GET_CODE (SET_DEST (vector_element)) != REG)
-	abort ();
-      if (! register_is_ok_for_epilogue (SET_DEST (vector_element), SImode))
-	abort ();
+      gcc_assert (GET_CODE (vector_element) == SET);
+      gcc_assert (GET_CODE (SET_DEST (vector_element)) == REG);
+      gcc_assert (register_is_ok_for_epilogue (SET_DEST (vector_element),
+					       SImode));
       
       mask |= 1 << REGNO (SET_DEST (vector_element));
     }
@@ -2494,24 +2265,19 @@ construct_restore_jr (op)
 	break;
     }
 
-  if (first >= 32)
-    abort ();
+  gcc_assert (first < 32);
 
   /* Discover the last register to pop.  */
   if (mask & (1 << LINK_POINTER_REGNUM))
     {
-      if (stack_bytes != 16)
-	abort ();
+      gcc_assert (stack_bytes == 16);
       
       last = LINK_POINTER_REGNUM;
     }
   else
     {
-      if (stack_bytes != 0)
-	abort ();
-      
-      if ((mask & (1 << 29)) == 0)
-	abort ();
+      gcc_assert (!stack_bytes);
+      gcc_assert (mask & (1 << 29));
       
       last = 29;
     }
@@ -2545,95 +2311,13 @@ construct_restore_jr (op)
 }
 
 
-/* Return nonzero if the given RTX is suitable for collapsing into
-   a jump to a function prologue.  */
-int
-pattern_is_ok_for_prologue (op, mode)
-     rtx op;
-     enum machine_mode ATTRIBUTE_UNUSED mode;
-{
-  int count = XVECLEN (op, 0);
-  int i; 
-  rtx vector_element;
- 
-  /* If there are no registers to save then the function prologue
-     is not suitable.  */
-  if (count <= 2)
-    return 0;
-
-  /* The pattern matching has already established that we are adjusting the
-     stack and pushing at least one register.  We must now check that the
-     remaining entries in the vector to make sure that they are also register
-     pushes, except for the last entry which should be a CLOBBER of r10.
-
-     The test below performs the C equivalent of this machine description
-     pattern match:
-
-     (set (mem:SI (plus:SI (reg:SI 3)
-      (match_operand:SI 2 "immediate_operand" "i")))
-      (match_operand:SI 3 "register_is_ok_for_epilogue" "r"))
-
-     */
-
-  for (i = 2; i < count - 1; i++)
-    {
-      rtx dest;
-      rtx src;
-      rtx plus;
-      
-      vector_element = XVECEXP (op, 0, i);
-      
-      if (GET_CODE (vector_element) != SET)
-	return 0;
-      
-      dest = SET_DEST (vector_element);
-      src = SET_SRC (vector_element);
-
-      if (GET_CODE (dest) != MEM
-	  || GET_MODE (dest) != SImode
-	  || GET_CODE (src) != REG
-	  || GET_MODE (src) != SImode
-	  || ! register_is_ok_for_epilogue (src, SImode))
-	return 0;
-
-      plus = XEXP (dest, 0);
-
-      if ( GET_CODE (plus) != PLUS
-	  || GET_CODE (XEXP (plus, 0)) != REG
-	  || GET_MODE (XEXP (plus, 0)) != SImode
-	  || REGNO (XEXP (plus, 0)) != STACK_POINTER_REGNUM
-	  || GET_CODE (XEXP (plus, 1)) != CONST_INT)
-	return 0;
-
-      /* If the register is being pushed somewhere other than the stack
-	 space just acquired by the first operand then abandon this quest.
-	 Note: the test is <= because both values are negative.	 */
-      if (INTVAL (XEXP (plus, 1))
-	  <= INTVAL (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1)))
-	{
-	  return 0;
-	}
-    }
-
-  /* Make sure that the last entry in the vector is a clobber.  */
-  vector_element = XVECEXP (op, 0, i);
-  
-  if (GET_CODE (vector_element) != CLOBBER
-      || GET_CODE (XEXP (vector_element, 0)) != REG
-      || REGNO (XEXP (vector_element, 0)) != 10)
-    return 0;
-  
-  return 1;
-}
-
 /* Construct a JARL instruction to a routine that will perform the equivalent
    of the RTL passed as a parameter.  This RTL is a function prologue that
    saves some of the registers r20 - r31 onto the stack, and possibly acquires
    some stack space as well.  The code has already verified that the RTL
    matches these requirements.  */
 char *
-construct_save_jarl (op)
-     rtx op;
+construct_save_jarl (rtx op)
 {
   int count = XVECLEN (op, 0);
   int stack_bytes;
@@ -2650,21 +2334,17 @@ construct_save_jarl (op)
     }
 
   /* Paranoia.  */
-  if (GET_CODE (XVECEXP (op, 0, 0)) != SET)
-    abort ();
-  if (GET_CODE (SET_SRC (XVECEXP (op, 0, 0))) != PLUS)
-    abort ();
-  if (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 0)) != REG)
-    abort ();
-  if (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1)) != CONST_INT)
-    abort ();
+  gcc_assert (GET_CODE (XVECEXP (op, 0, 0)) == SET);
+  gcc_assert (GET_CODE (SET_SRC (XVECEXP (op, 0, 0))) == PLUS);
+  gcc_assert (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 0)) == REG);
+  gcc_assert (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1)) == CONST_INT);
     
   /* Work out how many bytes to push onto the stack after storing the
      registers.  */
   stack_bytes = INTVAL (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1));
 
-  /* Each push will put 4 bytes from the stack... */
-  stack_bytes += (count - 2) * 4;
+  /* Each push will put 4 bytes from the stack....  */
+  stack_bytes += (count - (TARGET_LONG_CALLS ? 3 : 2)) * 4;
 
   /* Make sure that the amount we are popping either 0 or 16 bytes.  */
   if (stack_bytes != 0 && stack_bytes != -16)
@@ -2675,16 +2355,14 @@ construct_save_jarl (op)
 
   /* Now compute the bit mask of registers to push.  */
   mask = 0;
-  for (i = 1; i < count - 1; i++)
+  for (i = 1; i < count - (TARGET_LONG_CALLS ? 2 : 1); i++)
     {
       rtx vector_element = XVECEXP (op, 0, i);
       
-      if (GET_CODE (vector_element) != SET)
-	abort ();
-      if (GET_CODE (SET_SRC (vector_element)) != REG)
-	abort ();
-      if (! register_is_ok_for_epilogue (SET_SRC (vector_element), SImode))
-	abort ();
+      gcc_assert (GET_CODE (vector_element) == SET);
+      gcc_assert (GET_CODE (SET_SRC (vector_element)) == REG);
+      gcc_assert (register_is_ok_for_epilogue (SET_SRC (vector_element),
+					       SImode));
       
       mask |= 1 << REGNO (SET_SRC (vector_element));
     }
@@ -2696,23 +2374,19 @@ construct_save_jarl (op)
 	break;
     }
 
-  if (first >= 32)
-    abort ();
+  gcc_assert (first < 32);
 
   /* Discover the last register to push.  */
   if (mask & (1 << LINK_POINTER_REGNUM))
     {
-      if (stack_bytes != -16)
-	abort ();
+      gcc_assert (stack_bytes == -16);
       
       last = LINK_POINTER_REGNUM;
     }
   else
     {
-      if (stack_bytes != 0)
-	abort ();
-      if ((mask & (1 << 29)) == 0)
-	abort ();
+      gcc_assert (!stack_bytes);
+      gcc_assert (mask & (1 << 29));
       
       last = 29;
     }
@@ -2750,32 +2424,29 @@ extern tree last_assemble_variable_decl;
 extern int size_directive_output;
 
 /* A version of asm_output_aligned_bss() that copes with the special
-   data areas of the v850. */
+   data areas of the v850.  */
 void
-v850_output_aligned_bss (file, decl, name, size, align)
-     FILE * file;
-     tree decl;
-     const char * name;
-     int size;
-     int align;
+v850_output_aligned_bss (FILE * file,
+                         tree decl,
+                         const char * name,
+                         unsigned HOST_WIDE_INT size,
+                         int align)
 {
-  (*targetm.asm_out.globalize_label) (file, name);
-
   switch (v850_get_data_area (decl))
     {
     case DATA_AREA_ZDA:
-      zbss_section ();
+      switch_to_section (zbss_section);
       break;
 
     case DATA_AREA_SDA:
-      sbss_section ();
+      switch_to_section (sbss_section);
       break;
 
     case DATA_AREA_TDA:
-      tdata_section ();
+      switch_to_section (tdata_section);
       
     default:
-      bss_section ();
+      switch_to_section (bss_section);
       break;
     }
   
@@ -2792,12 +2463,11 @@ v850_output_aligned_bss (file, decl, name, size, align)
 
 /* Called via the macro ASM_OUTPUT_DECL_COMMON */
 void
-v850_output_common (file, decl, name, size, align)
-     FILE * file;
-     tree decl;
-     const char * name;
-     int size;
-     int align;
+v850_output_common (FILE * file,
+                    tree decl,
+                    const char * name,
+                    int size,
+                    int align)
 {
   if (decl == NULL_TREE)
     {
@@ -2831,12 +2501,11 @@ v850_output_common (file, decl, name, size, align)
 
 /* Called via the macro ASM_OUTPUT_DECL_LOCAL */
 void
-v850_output_local (file, decl, name, size, align)
-     FILE * file;
-     tree decl;
-     const char * name;
-     int size;
-     int align;
+v850_output_local (FILE * file,
+                   tree decl,
+                   const char * name,
+                   int size,
+                   int align)
 {
   fprintf (file, "%s", LOCAL_ASM_OP);
   assemble_name (file, name);
@@ -2848,9 +2517,7 @@ v850_output_local (file, decl, name, size, align)
 /* Add data area to the given declaration if a ghs data area pragma is
    currently in effect (#pragma ghs startXXX/endXXX).  */
 static void
-v850_insert_attributes (decl, attr_ptr)
-     tree decl;
-     tree *attr_ptr ATTRIBUTE_UNUSED;
+v850_insert_attributes (tree decl, tree * attr_ptr ATTRIBUTE_UNUSED )
 {
   if (data_area_stack
       && data_area_stack->data_area
@@ -2894,11 +2561,11 @@ v850_insert_attributes (decl, attr_ptr)
 	kind = GHS_SECTION_KIND_TEXT;
       else
 	{
-	  /* First choose a section kind based on the data area of the decl. */
+	  /* First choose a section kind based on the data area of the decl.  */
 	  switch (v850_get_data_area (decl))
 	    {
 	    default:
-	      abort ();
+	      gcc_unreachable ();
 	      
 	    case DATA_AREA_SDA:
 	      kind = ((TREE_READONLY (decl))
@@ -2927,11 +2594,11 @@ v850_insert_attributes (decl, attr_ptr)
 	}
 
       /* Now, if the section kind has been explicitly renamed,
-         then attach a section attribute. */
+         then attach a section attribute.  */
       chosen_section = GHS_current_section_names [(int) kind];
 
       /* Otherwise, if this kind of section needs an explicit section
-         attribute, then also attach one. */
+         attribute, then also attach one.  */
       if (chosen_section == NULL)
         chosen_section = GHS_default_section_names [(int) kind];
 
@@ -2945,76 +2612,12 @@ v850_insert_attributes (decl, attr_ptr)
     }
 }
 
-/* Return nonzero if the given RTX is suitable
-   for collapsing into a DISPOSE instruction.  */
-
-int
-pattern_is_ok_for_dispose (op, mode)
-  rtx 			op;
-  enum machine_mode	mode ATTRIBUTE_UNUSED;
-{
-  int count = XVECLEN (op, 0);
-  int i;
-  
-  /* If there are no registers to restore then
-     the dispose instruction is not suitable.  */
-  if (count <= 2)
-    return 0;
-
-  /* The pattern matching has already established that we are performing a
-     function epilogue and that we are popping at least one register.  We must
-     now check the remaining entries in the vector to make sure that they are
-     also register pops.  There is no good reason why there should ever be
-     anything else in this vector, but being paranoid always helps...
-
-     The test below performs the C equivalent of this machine description
-     pattern match:
-
-        (set (match_operand:SI n "register_is_ok_for_epilogue" "r")
-	  (mem:SI (plus:SI (reg:SI 3)
-	    (match_operand:SI n "immediate_operand" "i"))))
-     */
-
-  for (i = 3; i < count; i++)
-    {
-      rtx vector_element = XVECEXP (op, 0, i);
-      rtx dest;
-      rtx src;
-      rtx plus;
-      
-      if (GET_CODE (vector_element) != SET)
-	return 0;
-      
-      dest = SET_DEST (vector_element);
-      src  = SET_SRC (vector_element);
-
-      if (   GET_CODE (dest) != REG
-	  || GET_MODE (dest) != SImode
-	  || ! register_is_ok_for_epilogue (dest, SImode)
-	  || GET_CODE (src) != MEM
-	  || GET_MODE (src) != SImode)
-	return 0;
-
-      plus = XEXP (src, 0);
-
-      if (   GET_CODE (plus) != PLUS
-	  || GET_CODE (XEXP (plus, 0)) != REG
-	  || GET_MODE (XEXP (plus, 0)) != SImode
-	  || REGNO    (XEXP (plus, 0)) != STACK_POINTER_REGNUM
-	  || GET_CODE (XEXP (plus, 1)) != CONST_INT)
-	return 0;
-    }
-
-  return 1;
-}
-
 /* Construct a DISPOSE instruction that is the equivalent of
    the given RTX.  We have already verified that this should
    be possible.  */
 
 char *
-construct_dispose_instruction (op)
-     rtx op;
+construct_dispose_instruction (rtx op)
 {
   int                count = XVECLEN (op, 0);
   int                stack_bytes;
@@ -3025,29 +2628,26 @@ construct_dispose_instruction (op)
   
   if (count <= 2)
     {
-      error ("Bogus DISPOSE construction: %d\n", count);
+      error ("bogus DISPOSE construction: %d", count);
       return NULL;
     }
 
   /* Work out how many bytes to pop off the
      stack before retrieving registers.  */
-  if (GET_CODE (XVECEXP (op, 0, 1)) != SET)
-    abort ();
-  if (GET_CODE (SET_SRC (XVECEXP (op, 0, 1))) != PLUS)
-    abort ();
-  if (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 1)), 1)) != CONST_INT)
-    abort ();
+  gcc_assert (GET_CODE (XVECEXP (op, 0, 1)) == SET);
+  gcc_assert (GET_CODE (SET_SRC (XVECEXP (op, 0, 1))) == PLUS);
+  gcc_assert (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 1)), 1)) == CONST_INT);
     
   stack_bytes = INTVAL (XEXP (SET_SRC (XVECEXP (op, 0, 1)), 1));
 
-  /* Each pop will remove 4 bytes from the stack... */
+  /* Each pop will remove 4 bytes from the stack....  */
   stack_bytes -= (count - 2) * 4;
 
   /* Make sure that the amount we are popping
      will fit into the DISPOSE instruction.  */
   if (stack_bytes > 128)
     {
-      error ("Too much stack space to dispose of: %d", stack_bytes);
+      error ("too much stack space to dispose of: %d", stack_bytes);
       return NULL;
     }
 
@@ -3058,12 +2658,10 @@ construct_dispose_instruction (op)
     {
       rtx vector_element = XVECEXP (op, 0, i);
       
-      if (GET_CODE (vector_element) != SET)
-	abort ();
-      if (GET_CODE (SET_DEST (vector_element)) != REG)
-	abort ();
-      if (! register_is_ok_for_epilogue (SET_DEST (vector_element), SImode))
-	abort ();
+      gcc_assert (GET_CODE (vector_element) == SET);
+      gcc_assert (GET_CODE (SET_DEST (vector_element)) == REG);
+      gcc_assert (register_is_ok_for_epilogue (SET_DEST (vector_element),
+					       SImode));
 
       if (REGNO (SET_DEST (vector_element)) == 2)
 	use_callt = 1;
@@ -3135,84 +2733,12 @@ construct_dispose_instruction (op)
   return buff;
 }
 
-/* Return nonzero if the given RTX is suitable
-   for collapsing into a PREPARE instruction.  */
-
-int
-pattern_is_ok_for_prepare (op, mode)
-     rtx		op;
-     enum machine_mode	mode ATTRIBUTE_UNUSED;
-{
-  int count = XVECLEN (op, 0);
-  int i;
-  
-  /* If there are no registers to restore then the prepare instruction
-     is not suitable.  */
-  if (count <= 1)
-    return 0;
-
-  /* The pattern matching has already established that we are adjusting the
-     stack and pushing at least one register.  We must now check that the
-     remaining entries in the vector to make sure that they are also register
-     pushes.
-
-     The test below performs the C equivalent of this machine description
-     pattern match:
-
-     (set (mem:SI (plus:SI (reg:SI 3)
-       (match_operand:SI 2 "immediate_operand" "i")))
-         (match_operand:SI 3 "register_is_ok_for_epilogue" "r"))
-
-     */
-
-  for (i = 2; i < count; i++)
-    {
-      rtx vector_element = XVECEXP (op, 0, i);
-      rtx dest;
-      rtx src;
-      rtx plus;
-      
-      if (GET_CODE (vector_element) != SET)
-	return 0;
-      
-      dest = SET_DEST (vector_element);
-      src  = SET_SRC (vector_element);
-
-      if (   GET_CODE (dest) != MEM
-	  || GET_MODE (dest) != SImode
-	  || GET_CODE (src) != REG
-	  || GET_MODE (src) != SImode
-	  || ! register_is_ok_for_epilogue (src, SImode)
-	     )
-	return 0;
-
-      plus = XEXP (dest, 0);
-
-      if (   GET_CODE (plus) != PLUS
-	  || GET_CODE (XEXP (plus, 0)) != REG
-	  || GET_MODE (XEXP (plus, 0)) != SImode
-	  || REGNO    (XEXP (plus, 0)) != STACK_POINTER_REGNUM
-	  || GET_CODE (XEXP (plus, 1)) != CONST_INT)
-	return 0;
-
-      /* If the register is being pushed somewhere other than the stack
-	 space just aquired by the first operand then abandon this quest.
-	 Note: the test is <= becuase both values are negative.	 */
-      if (INTVAL (XEXP (plus, 1))
-	  <= INTVAL (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1)))
-	return 0;
-    }
-
-  return 1;
-}
-
 /* Construct a PREPARE instruction that is the equivalent of
    the given RTL.  We have already verified that this should
    be possible.  */
 
 char *
-construct_prepare_instruction (op)
-     rtx op;
+construct_prepare_instruction (rtx op)
 {
   int                count = XVECLEN (op, 0);
   int                stack_bytes;
@@ -3223,18 +2749,15 @@ construct_prepare_instruction (op)
   
   if (count <= 1)
     {
-      error ("Bogus PREPEARE construction: %d\n", count);
+      error ("bogus PREPEARE construction: %d", count);
       return NULL;
     }
 
   /* Work out how many bytes to push onto
      the stack after storing the registers.  */
-  if (GET_CODE (XVECEXP (op, 0, 0)) != SET)
-    abort ();
-  if (GET_CODE (SET_SRC (XVECEXP (op, 0, 0))) != PLUS)
-    abort ();
-  if (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1)) != CONST_INT)
-    abort ();
+  gcc_assert (GET_CODE (XVECEXP (op, 0, 0)) == SET);
+  gcc_assert (GET_CODE (SET_SRC (XVECEXP (op, 0, 0))) == PLUS);
+  gcc_assert (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1)) == CONST_INT);
     
   stack_bytes = INTVAL (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1));
 
@@ -3245,7 +2768,7 @@ construct_prepare_instruction (op)
      will fit into the DISPOSE instruction.  */
   if (stack_bytes < -128)
     {
-      error ("Too much stack space to prepare: %d", stack_bytes);
+      error ("too much stack space to prepare: %d", stack_bytes);
       return NULL;
     }
 
@@ -3255,12 +2778,10 @@ construct_prepare_instruction (op)
     {
       rtx vector_element = XVECEXP (op, 0, i);
       
-      if (GET_CODE (vector_element) != SET)
-	abort ();
-      if (GET_CODE (SET_SRC (vector_element)) != REG)
-	abort ();
-      if (! register_is_ok_for_epilogue (SET_SRC (vector_element), SImode))
-	abort ();
+      gcc_assert (GET_CODE (vector_element) == SET);
+      gcc_assert (GET_CODE (SET_SRC (vector_element)) == REG);
+      gcc_assert (register_is_ok_for_epilogue (SET_SRC (vector_element),
+					       SImode));
 
       if (REGNO (SET_SRC (vector_element)) == 2)
 	use_callt = 1;
@@ -3331,54 +2852,11 @@ construct_prepare_instruction (op)
   return buff;
 }
 
-/* Implement `va_arg'.  */
-
-rtx
-v850_va_arg (valist, type)
-     tree valist, type;
-{
-  HOST_WIDE_INT size, rsize;
-  tree addr, incr;
-  rtx addr_rtx;
-  int indirect;
-
-  /* Round up sizeof(type) to a word.  */
-  size = int_size_in_bytes (type);
-  rsize = (size + UNITS_PER_WORD - 1) & -UNITS_PER_WORD;
-  indirect = 0;
-
-  if (size > 8)
-    {
-      size = rsize = UNITS_PER_WORD;
-      indirect = 1;
-    }
-
-  addr = save_expr (valist);
-  incr = fold (build (PLUS_EXPR, ptr_type_node, addr,
-		      build_int_2 (rsize, 0)));
-
-  incr = build (MODIFY_EXPR, ptr_type_node, valist, incr);
-  TREE_SIDE_EFFECTS (incr) = 1;
-  expand_expr (incr, const0_rtx, VOIDmode, EXPAND_NORMAL);
-
-  addr_rtx = expand_expr (addr, NULL, Pmode, EXPAND_NORMAL);
-
-  if (indirect)
-    {
-      addr_rtx = force_reg (Pmode, addr_rtx);
-      addr_rtx = gen_rtx_MEM (Pmode, addr_rtx);
-      set_mem_alias_set (addr_rtx, get_varargs_alias_set ());
-    }
-
-  return addr_rtx;
-}
-
 /* Return an RTX indicating where the return address to the
    calling function can be found.  */
 
 rtx
-v850_return_addr (count)
-     int count;
+v850_return_addr (int count)
 {
   if (count != 0)
     return const0_rtx;
@@ -3386,11 +2864,37 @@ v850_return_addr (count)
   return get_hard_reg_initial_val (Pmode, LINK_POINTER_REGNUM);
 }
 
+/* Implement TARGET_ASM_INIT_SECTIONS.  */
+
 static void
-v850_select_section (exp, reloc, align)
-     tree exp;
-     int reloc ATTRIBUTE_UNUSED;
-     unsigned HOST_WIDE_INT align ATTRIBUTE_UNUSED;
+v850_asm_init_sections (void)
+{
+  rosdata_section
+    = get_unnamed_section (0, output_section_asm_op,
+			   "\t.section .rosdata,\"a\"");
+
+  rozdata_section
+    = get_unnamed_section (0, output_section_asm_op,
+			   "\t.section .rozdata,\"a\"");
+
+  tdata_section
+    = get_unnamed_section (SECTION_WRITE, output_section_asm_op,
+			   "\t.section .tdata,\"aw\"");
+
+  zdata_section
+    = get_unnamed_section (SECTION_WRITE, output_section_asm_op,
+			   "\t.section .zdata,\"aw\"");
+
+  zbss_section
+    = get_unnamed_section (SECTION_WRITE | SECTION_BSS,
+			   output_section_asm_op,
+			   "\t.section .zbss,\"aw\"");
+}
+
+static section *
+v850_select_section (tree exp,
+                     int reloc ATTRIBUTE_UNUSED,
+                     unsigned HOST_WIDE_INT align ATTRIBUTE_UNUSED)
 {
   if (TREE_CODE (exp) == VAR_DECL)
     {
@@ -3407,38 +2911,40 @@ v850_select_section (exp, reloc, align)
       switch (v850_get_data_area (exp))
         {
         case DATA_AREA_ZDA:
-	  if (is_const)
-	    rozdata_section ();
-	  else
-	    zdata_section ();
-	  break;
+	  return is_const ? rozdata_section : zdata_section;
 
         case DATA_AREA_TDA:
-	  tdata_section ();
-	  break;
+	  return tdata_section;
 
         case DATA_AREA_SDA:
-	  if (is_const)
-	    rosdata_section ();
-	  else
-	    sdata_section ();
-	  break;
+	  return is_const ? rosdata_section : sdata_section;
 
         default:
-          if (is_const)
-	    readonly_data_section ();
-	  else
-	    data_section ();
-	  break;
+	  return is_const ? readonly_data_section : data_section;
         }
     }
-  else if (TREE_CODE (exp) == STRING_CST)
-    {
-      if (! flag_writable_strings)
-	readonly_data_section ();
-      else
-	data_section ();
-    }
-  else
-    readonly_data_section ();
+  return readonly_data_section;
 }
+
+/* Worker function for TARGET_RETURN_IN_MEMORY.  */
+
+static bool
+v850_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
+{
+  /* Return values > 8 bytes in length in memory.  */
+  return int_size_in_bytes (type) > 8 || TYPE_MODE (type) == BLKmode;
+}
+
+/* Worker function for TARGET_SETUP_INCOMING_VARARGS.  */
+
+static void
+v850_setup_incoming_varargs (CUMULATIVE_ARGS *ca,
+			     enum machine_mode mode ATTRIBUTE_UNUSED,
+			     tree type ATTRIBUTE_UNUSED,
+			     int *pretend_arg_size ATTRIBUTE_UNUSED,
+			     int second_time ATTRIBUTE_UNUSED)
+{
+  ca->anonymous_args = (!TARGET_GHS ? 1 : 0);
+}
+
+#include "gt-v850.h"

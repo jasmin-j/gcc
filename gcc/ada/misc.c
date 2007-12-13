@@ -6,8 +6,7 @@
  *                                                                          *
  *                           C Implementation File                          *
  *                                                                          *
- *                                                                          *
- *          Copyright (C) 1992-2002 Free Software Foundation, Inc.          *
+ *          Copyright (C) 1992-2007, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -17,8 +16,8 @@
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
  * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
+ * Boston, MA 02110-1301, USA.                                              *
  *                                                                          *
  * As a  special  exception,  if you  link  this file  with other  files to *
  * produce an executable,  this file does not by itself cause the resulting *
@@ -40,14 +39,16 @@
 #include "coretypes.h"
 #include "tm.h"
 #include "tree.h"
+#include "real.h"
 #include "rtl.h"
-#include "errors.h"
 #include "diagnostic.h"
 #include "expr.h"
 #include "libfuncs.h"
 #include "ggc.h"
 #include "flags.h"
 #include "debug.h"
+#include "cgraph.h"
+#include "tree-inline.h"
 #include "insn-codes.h"
 #include "insn-flags.h"
 #include "insn-config.h"
@@ -59,6 +60,7 @@
 #include "tm_p.h"
 #include "langhooks.h"
 #include "langhooks-def.h"
+#include "target.h"
 
 #include "ada.h"
 #include "types.h"
@@ -74,25 +76,34 @@
 #include "ada-tree.h"
 #include "gigi.h"
 #include "adadecode.h"
+#include "opts.h"
+#include "options.h"
 
 extern FILE *asm_out_file;
-extern int save_argc;
-extern char **save_argv;
 
-static const char *gnat_init		PARAMS ((const char *));
-static void gnat_init_options		PARAMS ((void));
-static int gnat_decode_option		PARAMS ((int, char **));
-static HOST_WIDE_INT gnat_get_alias_set	PARAMS ((tree));
-static void gnat_print_decl		PARAMS ((FILE *, tree, int));
-static void gnat_print_type		PARAMS ((FILE *, tree, int));
-static const char *gnat_printable_name	PARAMS  ((tree, int));
-static tree gnat_eh_runtime_type	PARAMS ((tree));
-static int gnat_eh_type_covers		PARAMS ((tree, tree));
-static void gnat_parse_file		PARAMS ((int));
-static rtx gnat_expand_expr		PARAMS ((tree, rtx, enum machine_mode,
-						 int));
+/* The largest alignment, in bits, that is needed for using the widest
+   move instruction.  */
+unsigned int largest_move_alignment;
 
-/* Structure giving our language-specific hooks.  */
+static bool gnat_init			(void);
+static void gnat_finish_incomplete_decl	(tree);
+static unsigned int gnat_init_options	(unsigned int, const char **);
+static int gnat_handle_option		(size_t, const char *, int);
+static bool gnat_post_options		(const char **);
+static alias_set_type gnat_get_alias_set (tree);
+static void gnat_print_decl		(FILE *, tree, int);
+static void gnat_print_type		(FILE *, tree, int);
+static const char *gnat_printable_name	(tree, int);
+static const char *gnat_dwarf_name	(tree, int);
+static tree gnat_return_tree		(tree);
+static int gnat_eh_type_covers		(tree, tree);
+static void gnat_parse_file		(int);
+static rtx gnat_expand_expr		(tree, rtx, enum machine_mode, int,
+					 rtx *);
+static void internal_error_function	(const char *, va_list *);
+static tree gnat_type_max_size		(const_tree);
+
+/* Definitions for our language-specific hooks.  */
 
 #undef  LANG_HOOKS_NAME
 #define LANG_HOOKS_NAME			"GNU Ada"
@@ -102,42 +113,54 @@ static rtx gnat_expand_expr		PARAMS ((tree, rtx, enum machine_mode,
 #define LANG_HOOKS_INIT			gnat_init
 #undef  LANG_HOOKS_INIT_OPTIONS
 #define LANG_HOOKS_INIT_OPTIONS		gnat_init_options
-#undef  LANG_HOOKS_DECODE_OPTION
-#define LANG_HOOKS_DECODE_OPTION	gnat_decode_option
-#undef LANG_HOOKS_PARSE_FILE
+#undef  LANG_HOOKS_HANDLE_OPTION
+#define LANG_HOOKS_HANDLE_OPTION	gnat_handle_option
+#undef  LANG_HOOKS_POST_OPTIONS
+#define LANG_HOOKS_POST_OPTIONS		gnat_post_options
+#undef  LANG_HOOKS_PARSE_FILE
 #define LANG_HOOKS_PARSE_FILE		gnat_parse_file
-#undef LANG_HOOKS_HONOR_READONLY
-#define LANG_HOOKS_HONOR_READONLY	1
-#undef LANG_HOOKS_FINISH_INCOMPLETE_DECL
+#undef  LANG_HOOKS_HASH_TYPES
+#define LANG_HOOKS_HASH_TYPES		false
+#undef  LANG_HOOKS_GETDECLS
+#define LANG_HOOKS_GETDECLS		lhd_return_null_tree_v
+#undef  LANG_HOOKS_PUSHDECL
+#define LANG_HOOKS_PUSHDECL		gnat_return_tree
+#undef  LANG_HOOKS_WRITE_GLOBALS
+#define LANG_HOOKS_WRITE_GLOBALS      gnat_write_global_declarations
+#undef  LANG_HOOKS_FINISH_INCOMPLETE_DECL
 #define LANG_HOOKS_FINISH_INCOMPLETE_DECL gnat_finish_incomplete_decl
-#undef LANG_HOOKS_GET_ALIAS_SET
+#undef	LANG_HOOKS_REDUCE_BIT_FIELD_OPERATIONS
+#define LANG_HOOKS_REDUCE_BIT_FIELD_OPERATIONS true
+#undef  LANG_HOOKS_GET_ALIAS_SET
 #define LANG_HOOKS_GET_ALIAS_SET	gnat_get_alias_set
-#undef LANG_HOOKS_EXPAND_EXPR
+#undef  LANG_HOOKS_EXPAND_EXPR
 #define LANG_HOOKS_EXPAND_EXPR		gnat_expand_expr
-#undef LANG_HOOKS_MARK_ADDRESSABLE
+#undef  LANG_HOOKS_MARK_ADDRESSABLE
 #define LANG_HOOKS_MARK_ADDRESSABLE	gnat_mark_addressable
-#undef LANG_HOOKS_TRUTHVALUE_CONVERSION
-#define LANG_HOOKS_TRUTHVALUE_CONVERSION gnat_truthvalue_conversion
-#undef LANG_HOOKS_PRINT_DECL
+#undef  LANG_HOOKS_PRINT_DECL
 #define LANG_HOOKS_PRINT_DECL		gnat_print_decl
-#undef LANG_HOOKS_PRINT_TYPE
+#undef  LANG_HOOKS_PRINT_TYPE
 #define LANG_HOOKS_PRINT_TYPE		gnat_print_type
-#undef LANG_HOOKS_DECL_PRINTABLE_NAME
+#undef  LANG_HOOKS_TYPE_MAX_SIZE
+#define LANG_HOOKS_TYPE_MAX_SIZE	gnat_type_max_size
+#undef  LANG_HOOKS_DECL_PRINTABLE_NAME
 #define LANG_HOOKS_DECL_PRINTABLE_NAME	gnat_printable_name
-#undef LANG_HOOKS_TYPE_FOR_MODE
+#undef  LANG_HOOKS_DWARF_NAME
+#define LANG_HOOKS_DWARF_NAME		gnat_dwarf_name
+#undef  LANG_HOOKS_GIMPLIFY_EXPR
+#define LANG_HOOKS_GIMPLIFY_EXPR	gnat_gimplify_expr
+#undef  LANG_HOOKS_TYPE_FOR_MODE
 #define LANG_HOOKS_TYPE_FOR_MODE	gnat_type_for_mode
-#undef LANG_HOOKS_TYPE_FOR_SIZE
+#undef  LANG_HOOKS_TYPE_FOR_SIZE
 #define LANG_HOOKS_TYPE_FOR_SIZE	gnat_type_for_size
-#undef LANG_HOOKS_SIGNED_TYPE
-#define LANG_HOOKS_SIGNED_TYPE		gnat_signed_type
-#undef LANG_HOOKS_UNSIGNED_TYPE
-#define LANG_HOOKS_UNSIGNED_TYPE	gnat_unsigned_type
-#undef LANG_HOOKS_SIGNED_OR_UNSIGNED_TYPE
-#define LANG_HOOKS_SIGNED_OR_UNSIGNED_TYPE gnat_signed_or_unsigned_type
+#undef  LANG_HOOKS_ATTRIBUTE_TABLE
+#define LANG_HOOKS_ATTRIBUTE_TABLE	gnat_internal_attribute_table
+#undef  LANG_HOOKS_BUILTIN_FUNCTION
+#define LANG_HOOKS_BUILTIN_FUNCTION        gnat_builtin_function
 
 const struct lang_hooks lang_hooks = LANG_HOOKS_INITIALIZER;
 
-/* Tables describing GCC tree codes used only by GNAT.  
+/* Tables describing GCC tree codes used only by GNAT.
 
    Table indexed by tree code giving a string containing a character
    classifying the tree code.  Possibilities are
@@ -145,9 +168,9 @@ const struct lang_hooks lang_hooks = LANG_HOOKS_INITIALIZER;
 
 #define DEFTREECODE(SYM, NAME, TYPE, LENGTH) TYPE,
 
-const char tree_code_type[] = {
+const enum tree_code_class tree_code_type[] = {
 #include "tree.def"
-  'x',
+  tcc_exceptional,
 #include "ada-tree.def"
 };
 #undef DEFTREECODE
@@ -176,35 +199,48 @@ const char *const tree_code_name[] = {
 };
 #undef DEFTREECODE
 
+/* Command-line argc and argv.
+   These variables are global, since they are imported and used in
+   back_end.adb  */
+
+unsigned int save_argc;
+const char **save_argv;
+
 /* gnat standard argc argv */
 
 extern int gnat_argc;
 extern char **gnat_argv;
 
-static void internal_error_function	PARAMS ((const char *, va_list *));
-static void gnat_adjust_rli		PARAMS ((record_layout_info));
 
 /* Declare functions we use as part of startup.  */
-extern void __gnat_initialize	PARAMS((void));
-extern void adainit		PARAMS((void));
-extern void _ada_gnat1drv	PARAMS((void));
+extern void __gnat_initialize           (void *);
+extern void __gnat_install_SEH_handler  (void *);
+extern void adainit		        (void);
+extern void _ada_gnat1drv	        (void);
 
 /* The parser for the language.  For us, we process the GNAT tree.  */
 
 static void
-gnat_parse_file (set_yydebug)
-     int set_yydebug ATTRIBUTE_UNUSED;
+gnat_parse_file (int set_yydebug ATTRIBUTE_UNUSED)
 {
-  /* call the target specific initializations */
-  __gnat_initialize();
+  int seh[2];
 
-  /* Call the front-end elaboration procedures */
+  /* Call the target specific initializations.  */
+  __gnat_initialize (NULL);
+
+  /* ??? Call the SEH initialization routine.  This is to workaround
+  a bootstrap path problem.  The call below should be removed at some
+  point and the SEH pointer passed to __gnat_initialize() above.  */
+  __gnat_install_SEH_handler((void *)seh);
+
+  /* Call the front-end elaboration procedures.  */
   adainit ();
 
-  immediate_size_expand = 1;
-
-  /* Call the front end */
+  /* Call the front end.  */
   _ada_gnat1drv ();
+
+  /* We always have a single compilation unit in Ada.  */
+  cgraph_finalize_compilation_unit ();
 }
 
 /* Decode all the language specific options that cannot be decoded by GCC.
@@ -213,144 +249,195 @@ gnat_parse_file (set_yydebug)
    from ARGV that it successfully decoded; 0 indicates failure.  */
 
 static int
-gnat_decode_option (argc, argv)
-     int argc ATTRIBUTE_UNUSED;
-     char **argv;
+gnat_handle_option (size_t scode, const char *arg, int value ATTRIBUTE_UNUSED)
 {
-  char *p = argv[0];
-  int i;
+  const struct cl_option *option = &cl_options[scode];
+  enum opt_code code = (enum opt_code) scode;
+  char *q;
 
-  if (!strncmp (p, "-I", 2))
+  if (arg == NULL && (option->flags & (CL_JOINED | CL_SEPARATE)))
     {
-      /* We might get -I foo or -Ifoo.  Canonicalize to the latter.  */
-      if (p[2] == '\0')
-	{
-	  char *q;
-
-	  if (argv[1] == 0)
-	    return 0;
-
-	  q = xmalloc (sizeof("-I") + strlen (argv[1]));
-	  strcpy (q, "-I");
-	  strcat (q, argv[1]);
-
-	  gnat_argv[gnat_argc] = q;
-	  gnat_argc ++;
-	  return 2;  /* consumed argument */
-	}
-      else
-	{
-	  gnat_argv[gnat_argc] = p;
-	  gnat_argc ++;
-	  return 1;
-	}
-    }
-
-  else if (!strncmp (p, "-gant", 5))
-    {
-      char *q = xstrdup (p);
-
-      warning ("`-gnat' misspelled as `-gant'");
-      q[2] = 'n', q[3] = 'a';
-      p = q;
+      error ("missing argument to \"-%s\"", option->opt_text);
       return 1;
     }
 
-  else if (!strncmp (p, "-gnat", 5))
+  switch (code)
     {
-      /* Recopy the switches without the 'gnat' prefix */
+    case OPT_I:
+      q = xmalloc (sizeof("-I") + strlen (arg));
+      strcpy (q, "-I");
+      strcat (q, arg);
+      gnat_argv[gnat_argc] = q;
+      gnat_argc++;
+      break;
 
-      gnat_argv[gnat_argc] =  (char *) xmalloc (strlen (p) - 3);
+      /* All front ends are expected to accept this.  */
+    case OPT_Wall:
+      /* These are used in the GCC Makefile.  */
+    case OPT_Wmissing_prototypes:
+    case OPT_Wstrict_prototypes:
+    case OPT_Wwrite_strings:
+    case OPT_Wlong_long:
+    case OPT_Wvariadic_macros:
+    case OPT_Wold_style_definition:
+    case OPT_Wmissing_format_attribute:
+    case OPT_Woverlength_strings:
+      break;
+
+      /* This is handled by the front-end.  */
+    case OPT_nostdinc:
+      break;
+
+    case OPT_nostdlib:
+      gnat_argv[gnat_argc] = xstrdup ("-nostdlib");
+      gnat_argc++;
+      break;
+
+    case OPT_feliminate_unused_debug_types:
+      /* We arrange for post_option to be able to only set the corresponding
+         flag to 1 when explicitely requested by the user.  We expect the
+         default flag value to be either 0 or positive, and expose a positive
+         -f as a negative value to post_option.  */
+      flag_eliminate_unused_debug_types = -value;
+      break;
+
+    case OPT_fRTS_:
+      gnat_argv[gnat_argc] = xstrdup ("-fRTS");
+      gnat_argc++;
+      break;
+
+    case OPT_gant:
+      warning (0, "%<-gnat%> misspelled as %<-gant%>");
+
+      /* ... fall through ... */
+
+    case OPT_gnat:
+      /* Recopy the switches without the 'gnat' prefix.  */
+      gnat_argv[gnat_argc] = xmalloc (strlen (arg) + 2);
       gnat_argv[gnat_argc][0] = '-';
-      strcpy (gnat_argv[gnat_argc] + 1, p + 5);
-      gnat_argc ++;
-      if (p[5] == 'O')
-	for (i = 1; i < save_argc - 1; i++) 
-	  if (!strncmp (save_argv[i], "-gnatO", 6))
-	    if (save_argv[++i][0] != '-')
-	      {
-		/* Preserve output filename as GCC doesn't save it for GNAT. */
-		gnat_argv[gnat_argc] = save_argv[i];
-		gnat_argc++;
-		break;
-	      }
+      strcpy (gnat_argv[gnat_argc] + 1, arg);
+      gnat_argc++;
+      break;
 
-      return 1;
+    case OPT_gnatO:
+      gnat_argv[gnat_argc] = xstrdup ("-O");
+      gnat_argc++;
+      gnat_argv[gnat_argc] = xstrdup (arg);
+      gnat_argc++;
+      break;
+
+    default:
+      gcc_unreachable ();
     }
 
-  /* Handle the --RTS switch.  The real option we get is -fRTS. This
-     modification is done by the driver program.  */
-  if (!strncmp (p, "-fRTS", 5))
-    {
-      gnat_argv[gnat_argc] = p;
-      gnat_argc ++;
-      return 1;
-    }
-
-  /* Ignore -W flags since people may want to use the same flags for all
-     languages.  */
-  else if (p[0] == '-' && p[1] == 'W' && p[2] != 0)
-    return 1;
-
-  return 0;
+  return 1;
 }
 
 /* Initialize for option processing.  */
 
-static void
-gnat_init_options ()
+static unsigned int
+gnat_init_options (unsigned int argc, const char **argv)
 {
-  /* Initialize gnat_argv with save_argv size */
-  gnat_argv = (char **) xmalloc ((save_argc + 1) * sizeof (gnat_argv[0])); 
-  gnat_argv[0] = save_argv[0];     /* name of the command */ 
+  /* Initialize gnat_argv with save_argv size.  */
+  gnat_argv = (char **) xmalloc ((argc + 1) * sizeof (argv[0]));
+  gnat_argv[0] = xstrdup (argv[0]);     /* name of the command */
   gnat_argc = 1;
+
+  save_argc = argc;
+  save_argv = argv;
+
+  /* Uninitialized really means uninitialized in Ada.  */
+  flag_zero_initialized_in_bss = 0;
+
+  return CL_Ada;
+}
+
+/* Post-switch processing.  */
+
+bool
+gnat_post_options (const char **pfilename ATTRIBUTE_UNUSED)
+{
+  flag_inline_trees = 1;
+
+  if (!flag_no_inline)
+    flag_no_inline = 1;
+  if (flag_inline_functions)
+    flag_inline_trees = 2;
+
+  /* Force eliminate_unused_debug_types to 0 unless an explicit positive
+     -f has been passed.  This forces the default to 0 for Ada, which might
+     differ from the common default.  */
+  if (flag_eliminate_unused_debug_types < 0)
+    flag_eliminate_unused_debug_types = 1;
+  else
+    flag_eliminate_unused_debug_types = 0;
+
+  return false;
 }
 
 /* Here is the function to handle the compiler error processing in GCC.  */
 
 static void
-internal_error_function (msgid, ap)
-     const char *msgid;
-     va_list *ap;
+internal_error_function (const char *msgid, va_list *ap)
 {
-  char buffer[1000];		/* Assume this is big enough.  */
-  char *p;
-  String_Template temp;
-  Fat_Pointer fp;
+  text_info tinfo;
+  char *buffer, *p, *loc;
+  String_Template temp, temp_loc;
+  Fat_Pointer fp, fp_loc;
+  expanded_location s;
 
-  vsprintf (buffer, msgid, *ap);
+  /* Reset the pretty-printer.  */
+  pp_clear_output_area (global_dc->printer);
+
+  /* Format the message into the pretty-printer.  */
+  tinfo.format_spec = msgid;
+  tinfo.args_ptr = ap;
+  tinfo.err_no = errno;
+  pp_format_verbatim (global_dc->printer, &tinfo);
+
+  /* Extract a (writable) pointer to the formatted text.  */
+  buffer = (char*) pp_formatted_text (global_dc->printer);
 
   /* Go up to the first newline.  */
-  for (p = buffer; *p != 0; p++)
+  for (p = buffer; *p; p++)
     if (*p == '\n')
       {
 	*p = '\0';
 	break;
       }
 
-  temp.Low_Bound = 1, temp.High_Bound = strlen (buffer);
-  fp.Array = buffer, fp.Bounds = &temp;
+  temp.Low_Bound = 1;
+  temp.High_Bound = p - buffer;
+  fp.Bounds = &temp;
+  fp.Array = buffer;
+
+  s = expand_location (input_location);
+#ifdef USE_MAPPED_LOCATION
+  if (flag_show_column && s.column != 0)
+    asprintf (&loc, "%s:%d:%d", s.file, s.line, s.column);
+  else
+#endif
+    asprintf (&loc, "%s:%d", s.file, s.line);
+  temp_loc.Low_Bound = 1;
+  temp_loc.High_Bound = strlen (loc);
+  fp_loc.Bounds = &temp_loc;
+  fp_loc.Array = loc;
 
   Current_Error_Node = error_gnat_node;
-  Compiler_Abort (fp, -1);
+  Compiler_Abort (fp, -1, fp_loc);
 }
 
 /* Perform all the initialization steps that are language-specific.  */
 
-static const char *
-gnat_init (filename)
-     const char *filename;
+static bool
+gnat_init (void)
 {
   /* Performs whatever initialization steps needed by the language-dependent
-     lexical analyzer.
-
-     Define the additional tree codes here.  This isn't the best place to put
-     it, but it's where g++ does it.  */
-
+     lexical analyzer.  */
   gnat_init_decl_processing ();
 
   /* Add the input filename as the last argument.  */
-  gnat_argv[gnat_argc] = (char *) filename;
+  gnat_argv[gnat_argc] = (char *) main_input_filename;
   gnat_argc++;
   gnat_argv[gnat_argc] = 0;
 
@@ -359,21 +446,49 @@ gnat_init (filename)
   /* Show that REFERENCE_TYPEs are internal and should be Pmode.  */
   internal_reference_types ();
 
-  set_lang_adjust_rli (gnat_adjust_rli);
-
-  if (filename == 0)
-    filename = "";
-
-  return filename;
+  return true;
 }
 
-/* If we are using the GCC mechanism for to process exception handling, we
+/* This function is called indirectly from toplev.c to handle incomplete
+   declarations, i.e. VAR_DECL nodes whose DECL_SIZE is zero.  To be precise,
+   compile_file in toplev.c makes an indirect call through the function pointer
+   incomplete_decl_finalize_hook which is initialized to this routine in
+   init_decl_processing.  */
+
+static void
+gnat_finish_incomplete_decl (tree dont_care ATTRIBUTE_UNUSED)
+{
+  gcc_unreachable ();
+}
+
+/* Compute the alignment of the largest mode that can be used for copying
+   objects.  */
+
+void
+gnat_compute_largest_alignment (void)
+{
+  enum machine_mode mode;
+
+  for (mode = GET_CLASS_NARROWEST_MODE (MODE_INT); mode != VOIDmode;
+       mode = GET_MODE_WIDER_MODE (mode))
+    if (optab_handler (mov_optab, mode)->insn_code != CODE_FOR_nothing)
+      largest_move_alignment = MIN (BIGGEST_ALIGNMENT,
+				    MAX (largest_move_alignment,
+					 GET_MODE_ALIGNMENT (mode)));
+}
+
+/* If we are using the GCC mechanism to process exception handling, we
    have to register the personality routine for Ada and to initialize
    various language dependent hooks.  */
 
 void
-gnat_init_gcc_eh ()
+gnat_init_gcc_eh (void)
 {
+#ifdef DWARF2_UNWIND_INFO
+  /* lang_dependent_init already called dwarf2out_frame_init if true.  */
+  int dwarf2out_frame_initialized = dwarf2out_do_frame ();
+#endif
+
   /* We shouldn't do anything if the No_Exceptions_Handler pragma is set,
      though. This could for instance lead to the emission of tables with
      references to symbols (such as the Ada eh personality routine) within
@@ -381,25 +496,43 @@ gnat_init_gcc_eh ()
   if (No_Exception_Handlers_Set ())
     return;
 
-  eh_personality_libfunc = init_one_libfunc ("__gnat_eh_personality");
+  /* Tell GCC we are handling cleanup actions through exception propagation.
+     This opens possibilities that we don't take advantage of yet, but is
+     nonetheless necessary to ensure that fixup code gets assigned to the
+     right exception regions.  */
+  using_eh_for_cleanups ();
+
+  eh_personality_libfunc = init_one_libfunc (USING_SJLJ_EXCEPTIONS
+					     ? "__gnat_eh_personality_sj"
+					     : "__gnat_eh_personality");
   lang_eh_type_covers = gnat_eh_type_covers;
-  lang_eh_runtime_type = gnat_eh_runtime_type;
+  lang_eh_runtime_type = gnat_return_tree;
+  default_init_unwind_resume_libfunc ();
+
+  /* Turn on -fexceptions and -fnon-call-exceptions. The first one triggers
+     the generation of the necessary exception runtime tables. The second one
+     is useful for two reasons: 1/ we map some asynchronous signals like SEGV
+     to exceptions, so we need to ensure that the insns which can lead to such
+     signals are correctly attached to the exception region they pertain to,
+     2/ Some calls to pure subprograms are handled as libcall blocks and then
+     marked as "cannot trap" if the flag is not set (see emit_libcall_block).
+     We should not let this be since it is possible for such calls to actually
+     raise in Ada.  */
+
   flag_exceptions = 1;
+  flag_non_call_exceptions = 1;
 
   init_eh ();
 #ifdef DWARF2_UNWIND_INFO
-  if (dwarf2out_do_frame ())
+  if (!dwarf2out_frame_initialized && dwarf2out_do_frame ())
     dwarf2out_frame_init ();
 #endif
 }
 
-/* Hooks for print-tree.c:  */
+/* Language hooks, first one to print language-specific items in a DECL.  */
 
 static void
-gnat_print_decl (file, node, indent)
-     FILE *file;
-     tree node;
-     int indent;
+gnat_print_decl (FILE *file, tree node, int indent)
 {
   switch (TREE_CODE (node))
     {
@@ -409,7 +542,12 @@ gnat_print_decl (file, node, indent)
       break;
 
     case FIELD_DECL:
-      print_node (file, "original field", DECL_ORIGINAL_FIELD (node),
+      print_node (file, "original_field", DECL_ORIGINAL_FIELD (node),
+		  indent + 4);
+      break;
+
+    case VAR_DECL:
+      print_node (file, "renamed_object", DECL_RENAMED_OBJECT (node),
 		  indent + 4);
       break;
 
@@ -419,10 +557,7 @@ gnat_print_decl (file, node, indent)
 }
 
 static void
-gnat_print_type (file, node, indent)
-     FILE *file;
-     tree node;
-     int indent;
+gnat_print_type (FILE *file, tree node, int indent)
 {
   switch (TREE_CODE (node))
     {
@@ -431,7 +566,7 @@ gnat_print_type (file, node, indent)
       break;
 
     case ENUMERAL_TYPE:
-      print_node (file, "RM size", TYPE_RM_SIZE_ENUM (node), indent + 4);
+      print_node (file, "RM size", TYPE_RM_SIZE_NUM (node), indent + 4);
       break;
 
     case INTEGER_TYPE:
@@ -445,7 +580,7 @@ gnat_print_type (file, node, indent)
       else
 	print_node (file, "index type", TYPE_INDEX_TYPE (node), indent + 4);
 
-      print_node (file, "RM size", TYPE_RM_SIZE_INT (node), indent + 4);
+      print_node (file, "RM size", TYPE_RM_SIZE_NUM (node), indent + 4);
       break;
 
     case ARRAY_TYPE:
@@ -471,78 +606,51 @@ gnat_print_type (file, node, indent)
 }
 
 static const char *
-gnat_printable_name (decl, verbosity)
-     tree decl;
-     int verbosity ATTRIBUTE_UNUSED;
+gnat_printable_name (tree decl, int verbosity)
 {
   const char *coded_name = IDENTIFIER_POINTER (DECL_NAME (decl));
   char *ada_name = (char *) ggc_alloc (strlen (coded_name) * 2 + 60);
 
   __gnat_decode (coded_name, ada_name, 0);
 
+  if (verbosity == 2)
+    {
+      Set_Identifier_Casing (ada_name, (char *) DECL_SOURCE_FILE (decl));
+      ada_name = Name_Buffer;
+    }
+
   return (const char *) ada_name;
 }
 
+static const char *
+gnat_dwarf_name (tree t, int verbosity ATTRIBUTE_UNUSED)
+{
+  gcc_assert (DECL_P (t));
+
+  return (const char *) IDENTIFIER_POINTER (DECL_NAME (t));
+}
+
 /* Expands GNAT-specific GCC tree nodes.  The only ones we support
-   here are TRANSFORM_EXPR, ALLOCATE_EXPR, USE_EXPR and NULL_EXPR.  */
+   here are  and NULL_EXPR.  */
 
 static rtx
-gnat_expand_expr (exp, target, tmode, modifier)
-     tree exp;
-     rtx target;
-     enum machine_mode tmode;
-     int modifier;  /* Actually an enum expand_modifier.  */
+gnat_expand_expr (tree exp, rtx target, enum machine_mode tmode,
+		  int modifier, rtx *alt_rtl)
 {
   tree type = TREE_TYPE (exp);
   tree new;
-  rtx result;
 
   /* Update EXP to be the new expression to expand.  */
-
   switch (TREE_CODE (exp))
     {
-    case TRANSFORM_EXPR:
-      gnat_to_code (TREE_COMPLEXITY (exp));
-      return const0_rtx;
-      break;
-
-    case NULL_EXPR:
-      expand_expr (TREE_OPERAND (exp, 0), const0_rtx, VOIDmode, 0);
-
-      /* We aren't going to be doing anything with this memory, but allocate
-	 it anyway.  If it's variable size, make a bogus address.  */
-      if (! host_integerp (TYPE_SIZE_UNIT (type), 1))
-	result = gen_rtx_MEM (BLKmode, virtual_stack_vars_rtx);
-      else
-	result = assign_temp (type, 0, TREE_ADDRESSABLE (exp), 1);
-
-      return result;
-
+#if 0
     case ALLOCATE_EXPR:
       return
 	allocate_dynamic_stack_space
 	  (expand_expr (TREE_OPERAND (exp, 0), NULL_RTX, TYPE_MODE (sizetype),
 			EXPAND_NORMAL),
 	   NULL_RTX, tree_low_cst (TREE_OPERAND (exp, 1), 1));
-
-    case USE_EXPR:
-      if (target != const0_rtx)
-	gigi_abort (203);
-
-      /* First write a volatile ASM_INPUT to prevent anything from being
-	 moved.  */
-      result = gen_rtx_ASM_INPUT (VOIDmode, "");
-      MEM_VOLATILE_P (result) = 1;
-      emit_insn (result);
-
-      result = expand_expr (TREE_OPERAND (exp, 0), NULL_RTX, VOIDmode,
-			    modifier);
-      emit_insn (gen_rtx_USE (VOIDmode, result));
-      return target;
-
-    case GNAT_NOP_EXPR:
-      return expand_expr (build1 (NOP_EXPR, type, TREE_OPERAND (exp, 0)),
-			  target, tmode, modifier);
+#endif
 
     case UNCONSTRAINED_ARRAY_REF:
       /* If we are evaluating just for side-effects, just evaluate our
@@ -555,224 +663,38 @@ gnat_expand_expr (exp, target, tmode, modifier)
       /* ... fall through ... */
 
     default:
-      gigi_abort (201);
+      gcc_unreachable ();
     }
 
-  return expand_expr (new, target, tmode, modifier);
+  return expand_expr_real (new, target, tmode, modifier, alt_rtl);
 }
 
-/* Adjusts the RLI used to layout a record after all the fields have been
-   added.  We only handle the packed case and cause it to use the alignment
-   that will pad the record at the end.  */
-
-static void
-gnat_adjust_rli (rli)
-     record_layout_info rli;
-{
-  unsigned int record_align = rli->unpadded_align;
-  tree field;
-
-  /* If any fields have variable size, we need to force the record to be at
-     least as aligned as the alignment of that type.  */
-  for (field = TYPE_FIELDS (rli->t); field; field = TREE_CHAIN (field))
-    if (TREE_CODE (DECL_SIZE_UNIT (field)) != INTEGER_CST)
-      record_align = MAX (record_align, DECL_ALIGN (field));
-
-  if (TYPE_PACKED (rli->t))
-    rli->record_align = record_align;
-}
-
-/* Make a TRANSFORM_EXPR to later expand GNAT_NODE into code.  */
-
-tree
-make_transform_expr (gnat_node)
-     Node_Id gnat_node;
-{
-  tree gnu_result = build (TRANSFORM_EXPR, void_type_node);
-
-  TREE_SIDE_EFFECTS (gnu_result) = 1;
-  TREE_COMPLEXITY (gnu_result) = gnat_node;
-  return gnu_result;
-}
-
-/* Update the setjmp buffer BUF with the current stack pointer.  We assume
-   here that a __builtin_setjmp was done to BUF.  */
-
-void
-update_setjmp_buf (buf)
-     tree buf;
-{
-  enum machine_mode sa_mode = Pmode;
-  rtx stack_save;
-
-#ifdef HAVE_save_stack_nonlocal
-  if (HAVE_save_stack_nonlocal)
-    sa_mode = insn_data[(int) CODE_FOR_save_stack_nonlocal].operand[0].mode;
-#endif
-#ifdef STACK_SAVEAREA_MODE
-  sa_mode = STACK_SAVEAREA_MODE (SAVE_NONLOCAL);
-#endif
-
-  stack_save
-    = gen_rtx_MEM (sa_mode,
-		   memory_address
-		   (sa_mode,
-		    plus_constant (expand_expr
-				   (build_unary_op (ADDR_EXPR, NULL_TREE, buf),
-				    NULL_RTX, VOIDmode, 0),
-				   2 * GET_MODE_SIZE (Pmode))));
-
-#ifdef HAVE_setjmp
-  if (HAVE_setjmp)
-    emit_insn (gen_setjmp ());
-#endif
-
-  emit_stack_save (SAVE_NONLOCAL, &stack_save, NULL_RTX);
-}
-
-/* These routines are used in conjunction with GCC exception handling.  */
-
-/* Map compile-time to run-time tree for GCC exception handling scheme.  */
+/* Do nothing (return the tree node passed).  */
 
 static tree
-gnat_eh_runtime_type (type)
-     tree type;
+gnat_return_tree (tree t)
 {
-  return type;
+  return t;
 }
 
 /* Return true if type A catches type B. Callback for flow analysis from
    the exception handling part of the back-end.  */
 
 static int
-gnat_eh_type_covers (a, b)
-     tree a, b;
+gnat_eh_type_covers (tree a, tree b)
 {
   /* a catches b if they represent the same exception id or if a
-     is an "others". 
+     is an "others".
 
      ??? integer_zero_node for "others" is hardwired in too many places
      currently.  */
   return (a == b || a == integer_zero_node);
 }
 
-/* See if DECL has an RTL that is indirect via a pseudo-register or a
-   memory location and replace it with an indirect reference if so.
-   This improves the debugger's ability to display the value.  */
-
-void
-adjust_decl_rtl (decl)
-     tree decl;
-{
-  tree new_type;
-
-  /* If this decl is already indirect, don't do anything.  This should
-     mean that the decl cannot be indirect, but there's no point in
-     adding an abort to check that.  */
-  if (TREE_CODE (decl) != CONST_DECL
-      && ! DECL_BY_REF_P (decl)
-      && (GET_CODE (DECL_RTL (decl)) == MEM
-	  && (GET_CODE (XEXP (DECL_RTL (decl), 0)) == MEM
-	      || (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG
-		  && (REGNO (XEXP (DECL_RTL (decl), 0))
-		      > LAST_VIRTUAL_REGISTER))))
-      /* We can't do this if the reference type's mode is not the same
-	 as the current mode, which means this may not work on mixed 32/64
-	 bit systems.  */
-      && (new_type = build_reference_type (TREE_TYPE (decl))) != 0
-      && TYPE_MODE (new_type) == GET_MODE (XEXP (DECL_RTL (decl), 0))
-      /* If this is a PARM_DECL, we can only do it if DECL_INCOMING_RTL
-	 is also an indirect and of the same mode and if the object is
-	 readonly, the latter condition because we don't want to upset the
-	 handling of CICO_LIST.  */
-      && (TREE_CODE (decl) != PARM_DECL
-	  || (GET_CODE (DECL_INCOMING_RTL (decl)) == MEM
-	      && (TYPE_MODE (new_type)
-		  == GET_MODE (XEXP (DECL_INCOMING_RTL (decl), 0)))
-	      && TREE_READONLY (decl))))
-    {
-      new_type
-	= build_qualified_type (new_type,
-				(TYPE_QUALS (new_type) | TYPE_QUAL_CONST));
-
-      DECL_POINTS_TO_READONLY_P (decl) = TREE_READONLY (decl);
-      DECL_BY_REF_P (decl) = 1;
-      SET_DECL_RTL (decl, XEXP (DECL_RTL (decl), 0));
-      TREE_TYPE (decl) = new_type;
-      DECL_MODE (decl) = TYPE_MODE (new_type);
-      DECL_ALIGN (decl) = TYPE_ALIGN (new_type);
-      DECL_SIZE (decl) = TYPE_SIZE (new_type);
-
-      if (TREE_CODE (decl) == PARM_DECL)
-	DECL_INCOMING_RTL (decl) = XEXP (DECL_INCOMING_RTL (decl), 0);
-
-      /* If DECL_INITIAL was set, it should be updated to show that
-	 the decl is initialized to the address of that thing.
-	 Otherwise, just set it to the address of this decl.
-	 It needs to be set so that GCC does not think the decl is
-	 unused.  */
-      DECL_INITIAL (decl)
-	= build1 (ADDR_EXPR, new_type,
-		  DECL_INITIAL (decl) != 0 ? DECL_INITIAL (decl) : decl);
-    }
-}
-
-/* Record the current code position in GNAT_NODE.  */
-
-void
-record_code_position (gnat_node)
-     Node_Id gnat_node;
-{
-  if (global_bindings_p ())
-    {
-      /* Make a dummy entry so multiple things at the same location don't
-	 end up in the same place.  */
-      add_pending_elaborations (NULL_TREE, NULL_TREE);
-      save_gnu_tree (gnat_node, get_elaboration_location (), 1);
-    }
-  else
-    /* Always emit another insn in case marking the last insn
-       addressable needs some fixups and also for above reason.  */
-    save_gnu_tree (gnat_node,
-		   build (RTL_EXPR, void_type_node, NULL_TREE,
-			  (tree) emit_note (0, NOTE_INSN_DELETED)),
-		   1);
-}
-
-/* Insert the code for GNAT_NODE at the position saved for that node.  */
-
-void
-insert_code_for (gnat_node)
-     Node_Id gnat_node;
-{
-  if (global_bindings_p ())
-    {
-      push_pending_elaborations ();
-      gnat_to_code (gnat_node);
-      Check_Elaboration_Code_Allowed (gnat_node);
-      insert_elaboration_list (get_gnu_tree (gnat_node));
-      pop_pending_elaborations ();
-    }
-  else
-    {
-      rtx insns;
-
-      do_pending_stack_adjust ();
-      start_sequence ();
-      mark_all_temps_used ();
-      gnat_to_code (gnat_node);
-      do_pending_stack_adjust ();
-      insns = get_insns ();
-      end_sequence ();
-      emit_insn_after (insns, RTL_EXPR_RTL (get_gnu_tree (gnat_node)));
-    }
-}
-
 /* Get the alias set corresponding to a type or expression.  */
 
-static HOST_WIDE_INT
-gnat_get_alias_set (type)
-     tree type;
+static alias_set_type
+gnat_get_alias_set (tree type)
 {
   /* If this is a padding type, use the type of the first field.  */
   if (TREE_CODE (type) == RECORD_TYPE
@@ -785,45 +707,80 @@ gnat_get_alias_set (type)
     return
       get_alias_set (TREE_TYPE (TREE_TYPE (TYPE_FIELDS (TREE_TYPE (type)))));
 
+  /* If the type can alias any other types, return the alias set 0.  */
+  else if (TYPE_P (type)
+	   && TYPE_UNIVERSAL_ALIASING_P (TYPE_MAIN_VARIANT (type)))
+    return 0;
 
   return -1;
+}
+
+/* GNU_TYPE is a type.  Return its maximum size in bytes, if known,
+   as a constant when possible.  */
+
+static tree
+gnat_type_max_size (const_tree gnu_type)
+{
+  /* First see what we can get from TYPE_SIZE_UNIT, which might not
+     be constant even for simple expressions if it has already been
+     elaborated and possibly replaced by a VAR_DECL.  */
+  tree max_unitsize = max_size (TYPE_SIZE_UNIT (gnu_type), true);
+
+  /* If we don't have a constant, see what we can get from TYPE_ADA_SIZE,
+     which should stay untouched.  */
+  if (!host_integerp (max_unitsize, 1)
+      && (TREE_CODE (gnu_type) == RECORD_TYPE
+	  || TREE_CODE (gnu_type) == UNION_TYPE
+	  || TREE_CODE (gnu_type) == QUAL_UNION_TYPE)
+      && TYPE_ADA_SIZE (gnu_type))
+    {
+      tree max_adasize = max_size (TYPE_ADA_SIZE (gnu_type), true);
+
+      /* If we have succeeded in finding a constant, round it up to the
+	 type's alignment and return the result in units.  */
+      if (host_integerp (max_adasize, 1))
+	max_unitsize
+	  = size_binop (CEIL_DIV_EXPR,
+			round_up (max_adasize, TYPE_ALIGN (gnu_type)),
+			bitsize_unit_node);
+    }
+
+  return max_unitsize;
 }
 
 /* GNU_TYPE is a type. Determine if it should be passed by reference by
    default.  */
 
-int
-default_pass_by_ref (gnu_type)
-     tree gnu_type;
+bool
+default_pass_by_ref (tree gnu_type)
 {
-  CUMULATIVE_ARGS cum;
-
-  INIT_CUMULATIVE_ARGS (cum, NULL_TREE, NULL_RTX, 0);
-
   /* We pass aggregates by reference if they are sufficiently large.  The
      choice of constant here is somewhat arbitrary.  We also pass by
      reference if the target machine would either pass or return by
      reference.  Strictly speaking, we need only check the return if this
      is an In Out parameter, but it's probably best to err on the side of
      passing more things by reference.  */
-  return (0
-#ifdef FUNCTION_ARG_PASS_BY_REFERENCE
-	  || FUNCTION_ARG_PASS_BY_REFERENCE (cum, TYPE_MODE (gnu_type),
-					     gnu_type, 1)
-#endif
-	  || RETURN_IN_MEMORY (gnu_type)
-	  || (AGGREGATE_TYPE_P (gnu_type)
-	      && (! host_integerp (TYPE_SIZE (gnu_type), 1)
-		  || 0 < compare_tree_int (TYPE_SIZE (gnu_type),
-					   8 * TYPE_ALIGN (gnu_type)))));
+
+  if (pass_by_reference (NULL, TYPE_MODE (gnu_type), gnu_type, 1))
+    return true;
+
+  if (targetm.calls.return_in_memory (gnu_type, NULL_TREE))
+    return true;
+
+  if (AGGREGATE_TYPE_P (gnu_type)
+      && (!host_integerp (TYPE_SIZE (gnu_type), 1)
+	  || 0 < compare_tree_int (TYPE_SIZE (gnu_type),
+				   8 * TYPE_ALIGN (gnu_type))))
+    return true;
+
+  return false;
 }
 
 /* GNU_TYPE is the type of a subprogram parameter.  Determine from the type if
    it should be passed by reference. */
 
-int
-must_pass_by_ref (gnu_type)
-     tree gnu_type;
+bool
+must_pass_by_ref (tree gnu_type)
 {
   /* We pass only unconstrained objects, those required by the language
      to be passed by reference, and objects of variable size.  The latter
@@ -832,14 +789,110 @@ must_pass_by_ref (gnu_type)
      not have such objects.  */
   return (TREE_CODE (gnu_type) == UNCONSTRAINED_ARRAY_TYPE
 	  || (AGGREGATE_TYPE_P (gnu_type) && TYPE_BY_REFERENCE_P (gnu_type))
-	  || (TYPE_SIZE (gnu_type) != 0
+	  || (TYPE_SIZE (gnu_type)
 	      && TREE_CODE (TYPE_SIZE (gnu_type)) != INTEGER_CST));
 }
 
-/* This function returns the version of GCC being used.  Here it's GCC 3.  */
+/* This function is called by the front end to enumerate all the supported
+   modes for the machine.  We pass a function which is called back with
+   the following integer parameters:
+
+   FLOAT_P	nonzero if this represents a floating-point mode
+   COMPLEX_P	nonzero is this represents a complex mode
+   COUNT	count of number of items, nonzero for vector mode
+   PRECISION	number of bits in data representation
+   MANTISSA	number of bits in mantissa, if FP and known, else zero.
+   SIZE		number of bits used to store data
+   ALIGN	number of bits to which mode is aligned.  */
+
+void
+enumerate_modes (void (*f) (int, int, int, int, int, int, unsigned int))
+{
+  enum machine_mode i;
+
+  for (i = 0; i < NUM_MACHINE_MODES; i++)
+    {
+      enum machine_mode j;
+      bool float_p = 0;
+      bool complex_p = 0;
+      bool vector_p = 0;
+      bool skip_p = 0;
+      int mantissa = 0;
+      enum machine_mode inner_mode = i;
+
+      switch (GET_MODE_CLASS (i))
+	{
+	case MODE_INT:
+	  break;
+	case MODE_FLOAT:
+	  float_p = 1;
+	  break;
+	case MODE_COMPLEX_INT:
+	  complex_p = 1;
+	  inner_mode = GET_MODE_INNER (i);
+	  break;
+	case MODE_COMPLEX_FLOAT:
+	  float_p = 1;
+	  complex_p = 1;
+	  inner_mode = GET_MODE_INNER (i);
+	  break;
+	case MODE_VECTOR_INT:
+	  vector_p = 1;
+	  inner_mode = GET_MODE_INNER (i);
+	  break;
+	case MODE_VECTOR_FLOAT:
+	  float_p = 1;
+	  vector_p = 1;
+	  inner_mode = GET_MODE_INNER (i);
+	  break;
+	default:
+	  skip_p = 1;
+	}
+
+      /* Skip this mode if it's one the front end doesn't need to know about
+	 (e.g., the CC modes) or if there is no add insn for that mode (or
+	 any wider mode), meaning it is not supported by the hardware.  If
+	 this a complex or vector mode, we care about the inner mode.  */
+      for (j = inner_mode; j != VOIDmode; j = GET_MODE_WIDER_MODE (j))
+	if (optab_handler (add_optab, j)->insn_code != CODE_FOR_nothing)
+	  break;
+
+      if (float_p)
+	{
+	  const struct real_format *fmt = REAL_MODE_FORMAT (inner_mode);
+
+	  mantissa = fmt->p;
+	}
+
+      if (!skip_p && j != VOIDmode)
+	(*f) (float_p, complex_p, vector_p ? GET_MODE_NUNITS (i) : 0,
+	      GET_MODE_BITSIZE (i), mantissa,
+	      GET_MODE_SIZE (i) * BITS_PER_UNIT, GET_MODE_ALIGNMENT (i));
+    }
+}
 
 int
-gcc_version ()
+fp_prec_to_size (int prec)
 {
-  return 3;
+  enum machine_mode mode;
+
+  for (mode = GET_CLASS_NARROWEST_MODE (MODE_FLOAT); mode != VOIDmode;
+       mode = GET_MODE_WIDER_MODE (mode))
+    if (GET_MODE_PRECISION (mode) == prec)
+      return GET_MODE_BITSIZE (mode);
+
+  gcc_unreachable ();
+}
+
+int
+fp_size_to_prec (int size)
+{
+  enum machine_mode mode;
+
+  for (mode = GET_CLASS_NARROWEST_MODE (MODE_FLOAT); mode != VOIDmode;
+       mode = GET_MODE_WIDER_MODE (mode))
+    if (GET_MODE_BITSIZE (mode) == size)
+      return GET_MODE_PRECISION (mode);
+
+  gcc_unreachable ();
 }

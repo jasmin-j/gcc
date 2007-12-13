@@ -1,13 +1,14 @@
 /* Separate lexical analyzer for GNU C++.
    Copyright (C) 1987, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003 Free Software Foundation, Inc.
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
+   Free Software Foundation, Inc.
    Hacked by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +17,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 /* This file is the lexical analyzer for GNU C++.  */
@@ -31,33 +31,25 @@ Boston, MA 02111-1307, USA.  */
 #include "tree.h"
 #include "cp-tree.h"
 #include "cpplib.h"
-#include "lex.h"
 #include "flags.h"
 #include "c-pragma.h"
 #include "toplev.h"
 #include "output.h"
 #include "tm_p.h"
 #include "timevar.h"
-#include "diagnostic.h"
 
-#ifdef MULTIBYTE_CHARS
-#include "mbchar.h"
-#include <locale.h>
-#endif
+static int interface_strcmp (const char *);
+static void init_cp_pragma (void);
 
-static int interface_strcmp PARAMS ((const char *));
-static void init_cp_pragma PARAMS ((void));
+static tree parse_strconst_pragma (const char *, int);
+static void handle_pragma_vtable (cpp_reader *);
+static void handle_pragma_unit (cpp_reader *);
+static void handle_pragma_interface (cpp_reader *);
+static void handle_pragma_implementation (cpp_reader *);
+static void handle_pragma_java_exceptions (cpp_reader *);
 
-static tree parse_strconst_pragma PARAMS ((const char *, int));
-static void handle_pragma_vtable PARAMS ((cpp_reader *));
-static void handle_pragma_unit PARAMS ((cpp_reader *));
-static void handle_pragma_interface PARAMS ((cpp_reader *));
-static void handle_pragma_implementation PARAMS ((cpp_reader *));
-static void handle_pragma_java_exceptions PARAMS ((cpp_reader *));
-
-static int is_global PARAMS ((tree));
-static void init_operators PARAMS ((void));
-static void copy_lang_type PARAMS ((tree));
+static void init_operators (void);
+static void copy_lang_type (tree);
 
 /* A constraint that can be tested at compile time.  */
 #define CONSTRAINT(name, expr) extern int constraint_##name [(expr) ? 1 : -1]
@@ -90,88 +82,8 @@ struct impl_files
 static struct impl_files *impl_file_chain;
 
 
-/* Return something to represent absolute declarators containing a *.
-   TARGET is the absolute declarator that the * contains.
-   CV_QUALIFIERS is a list of modifiers such as const or volatile
-   to apply to the pointer type, represented as identifiers.
-
-   We return an INDIRECT_REF whose "contents" are TARGET
-   and whose type is the modifier list.  */
-
-tree
-make_pointer_declarator (cv_qualifiers, target)
-     tree cv_qualifiers, target;
-{
-  if (target && TREE_CODE (target) == IDENTIFIER_NODE
-      && ANON_AGGRNAME_P (target))
-    error ("type name expected before `*'");
-  target = build_nt (INDIRECT_REF, target);
-  TREE_TYPE (target) = cv_qualifiers;
-  return target;
-}
-
-/* Return something to represent absolute declarators containing a &.
-   TARGET is the absolute declarator that the & contains.
-   CV_QUALIFIERS is a list of modifiers such as const or volatile
-   to apply to the reference type, represented as identifiers.
-
-   We return an ADDR_EXPR whose "contents" are TARGET
-   and whose type is the modifier list.  */
-
-tree
-make_reference_declarator (cv_qualifiers, target)
-     tree cv_qualifiers, target;
-{
-  target = build_nt (ADDR_EXPR, target);
-  TREE_TYPE (target) = cv_qualifiers;
-  return target;
-}
-
-tree
-make_call_declarator (target, parms, cv_qualifiers, exception_specification)
-     tree target, parms, cv_qualifiers, exception_specification;
-{
-  target = build_nt (CALL_EXPR, target,
-		     tree_cons (parms, cv_qualifiers, NULL_TREE),
-		     /* The third operand is really RTL.  We
-			shouldn't put anything there.  */
-		     NULL_TREE);
-  CALL_DECLARATOR_EXCEPTION_SPEC (target) = exception_specification;
-  return target;
-}
-
 void
-set_quals_and_spec (call_declarator, cv_qualifiers, exception_specification)
-     tree call_declarator, cv_qualifiers, exception_specification;
-{
-  CALL_DECLARATOR_QUALS (call_declarator) = cv_qualifiers;
-  CALL_DECLARATOR_EXCEPTION_SPEC (call_declarator) = exception_specification;
-}
-
-int interface_only;		/* whether or not current file is only for
-				   interface definitions.  */
-int interface_unknown;		/* whether or not we know this class
-				   to behave according to #pragma interface.  */
-
-
-/* Initialization before switch parsing.  */
-void
-cxx_init_options ()
-{
-  c_common_init_options (clk_cplusplus);
-
-  /* Default exceptions on.  */
-  flag_exceptions = 1;
-  /* By default wrap lines at 80 characters.  Is getenv ("COLUMNS")
-     preferable?  */
-  diagnostic_line_cutoff (global_dc) = 80;
-  /* By default, emit location information once for every
-     diagnostic message.  */
-  diagnostic_prefixing_rule (global_dc) = DIAGNOSTICS_SHOW_PREFIX_ONCE;
-}
-
-void
-cxx_finish ()
+cxx_finish (void)
 {
   c_common_finish ();
 }
@@ -189,7 +101,7 @@ operator_name_info_t assignment_operator_name_info[(int) LAST_CPLUS_TREE_CODE];
 #undef DEF_OPERATOR
 
 static void
-init_operators ()
+init_operators (void)
 {
   tree identifier;
   char buffer[256];
@@ -205,7 +117,7 @@ init_operators ()
 	 : &operator_name_info[(int) CODE]);				    \
   oni->identifier = identifier;						    \
   oni->name = NAME;							    \
-  oni->mangled_name = MANGLING;                                             \
+  oni->mangled_name = MANGLING;						    \
   oni->arity = ARITY;
 
 #include "operators.def"
@@ -230,13 +142,10 @@ init_operators ()
   operator_name_info [(int) FLOOR_MOD_EXPR].name = "(floor %)";
   operator_name_info [(int) ROUND_MOD_EXPR].name = "(round %)";
   operator_name_info [(int) ABS_EXPR].name = "abs";
-  operator_name_info [(int) FFS_EXPR].name = "ffs";
-  operator_name_info [(int) BIT_ANDTC_EXPR].name = "&~";
   operator_name_info [(int) TRUTH_AND_EXPR].name = "strict &&";
   operator_name_info [(int) TRUTH_OR_EXPR].name = "strict ||";
-  operator_name_info [(int) IN_EXPR].name = "in";
   operator_name_info [(int) RANGE_EXPR].name = "...";
-  operator_name_info [(int) CONVERT_EXPR].name = "+";
+  operator_name_info [(int) UNARY_PLUS_EXPR].name = "+";
 
   assignment_operator_name_info [(int) EXACT_DIV_EXPR].name
     = "(exact /=)";
@@ -258,7 +167,7 @@ init_operators ()
 struct resword
 {
   const char *const word;
-  const ENUM_BITFIELD(rid) rid : 16;
+  ENUM_BITFIELD(rid) const rid : 16;
   const unsigned int disable   : 16;
 };
 
@@ -266,6 +175,8 @@ struct resword
    _true_.  */
 #define D_EXT		0x01	/* GCC extension */
 #define D_ASM		0x02	/* in C99, but has a switch to turn it off */
+#define D_OBJC		0x04	/* Objective C++ only */
+#define D_CXX0X         0x08    /* C++0x only */
 
 CONSTRAINT(ridbits_fit, RID_LAST_MODIFIER < sizeof(unsigned long) * CHAR_BIT);
 
@@ -274,19 +185,38 @@ static const struct resword reswords[] =
   { "_Complex",		RID_COMPLEX,	0 },
   { "__FUNCTION__",	RID_FUNCTION_NAME, 0 },
   { "__PRETTY_FUNCTION__", RID_PRETTY_FUNCTION_NAME, 0 },
-  { "__alignof", 	RID_ALIGNOF,	0 },
+  { "__alignof",	RID_ALIGNOF,	0 },
   { "__alignof__",	RID_ALIGNOF,	0 },
   { "__asm",		RID_ASM,	0 },
   { "__asm__",		RID_ASM,	0 },
   { "__attribute",	RID_ATTRIBUTE,	0 },
   { "__attribute__",	RID_ATTRIBUTE,	0 },
+  { "__builtin_offsetof", RID_OFFSETOF, 0 },
   { "__builtin_va_arg",	RID_VA_ARG,	0 },
   { "__complex",	RID_COMPLEX,	0 },
   { "__complex__",	RID_COMPLEX,	0 },
   { "__const",		RID_CONST,	0 },
   { "__const__",	RID_CONST,	0 },
+  { "__decltype",       RID_DECLTYPE,   0 },
   { "__extension__",	RID_EXTENSION,	0 },
   { "__func__",		RID_C99_FUNCTION_NAME,	0 },
+  { "__has_nothrow_assign", RID_HAS_NOTHROW_ASSIGN, 0 },
+  { "__has_nothrow_constructor", RID_HAS_NOTHROW_CONSTRUCTOR, 0 },
+  { "__has_nothrow_copy", RID_HAS_NOTHROW_COPY, 0 },
+  { "__has_trivial_assign", RID_HAS_TRIVIAL_ASSIGN, 0 },
+  { "__has_trivial_constructor", RID_HAS_TRIVIAL_CONSTRUCTOR, 0 },
+  { "__has_trivial_copy", RID_HAS_TRIVIAL_COPY, 0 },
+  { "__has_trivial_destructor", RID_HAS_TRIVIAL_DESTRUCTOR, 0 },
+  { "__has_virtual_destructor", RID_HAS_VIRTUAL_DESTRUCTOR, 0 },
+  { "__is_abstract",	RID_IS_ABSTRACT, 0 },
+  { "__is_base_of",	RID_IS_BASE_OF, 0 },
+  { "__is_class",	RID_IS_CLASS,	0 },
+  { "__is_convertible_to", RID_IS_CONVERTIBLE_TO, 0 },
+  { "__is_empty",	RID_IS_EMPTY,	0 },
+  { "__is_enum",	RID_IS_ENUM,	0 },
+  { "__is_pod",		RID_IS_POD,	0 },
+  { "__is_polymorphic",	RID_IS_POLYMORPHIC, 0 },
+  { "__is_union",	RID_IS_UNION,	0 },
   { "__imag",		RID_IMAGPART,	0 },
   { "__imag__",		RID_IMAGPART,	0 },
   { "__inline",		RID_INLINE,	0 },
@@ -315,6 +245,7 @@ static const struct resword reswords[] =
   { "const",		RID_CONST,	0 },
   { "const_cast",	RID_CONSTCAST,	0 },
   { "continue",		RID_CONTINUE,	0 },
+  { "decltype",         RID_DECLTYPE,   D_CXX0X },
   { "default",		RID_DEFAULT,	0 },
   { "delete",		RID_DELETE,	0 },
   { "do",		RID_DO,		0 },
@@ -348,6 +279,7 @@ static const struct resword reswords[] =
   { "signed",		RID_SIGNED,	0 },
   { "sizeof",		RID_SIZEOF,	0 },
   { "static",		RID_STATIC,	0 },
+  { "static_assert",    RID_STATIC_ASSERT, D_CXX0X },
   { "static_cast",	RID_STATCAST,	0 },
   { "struct",		RID_STRUCT,	0 },
   { "switch",		RID_SWITCH,	0 },
@@ -366,20 +298,47 @@ static const struct resword reswords[] =
   { "virtual",		RID_VIRTUAL,	0 },
   { "void",		RID_VOID,	0 },
   { "volatile",		RID_VOLATILE,	0 },
-  { "wchar_t",          RID_WCHAR,	0 },
+  { "wchar_t",		RID_WCHAR,	0 },
   { "while",		RID_WHILE,	0 },
 
+  /* The remaining keywords are specific to Objective-C++.  NB:
+     All of them will remain _disabled_, since they are context-
+     sensitive.  */
+
+  /* These ObjC keywords are recognized only immediately after
+     an '@'.  NB: The following C++ keywords double as
+     ObjC keywords in this context: RID_CLASS, RID_PRIVATE,
+     RID_PROTECTED, RID_PUBLIC, RID_THROW, RID_TRY and RID_CATCH.  */
+  { "compatibility_alias", RID_AT_ALIAS,	D_OBJC },
+  { "defs",		RID_AT_DEFS,		D_OBJC },
+  { "encode",		RID_AT_ENCODE,		D_OBJC },
+  { "end",		RID_AT_END,		D_OBJC },
+  { "implementation",	RID_AT_IMPLEMENTATION,	D_OBJC },
+  { "interface",	RID_AT_INTERFACE,	D_OBJC },
+  { "protocol",		RID_AT_PROTOCOL,	D_OBJC },
+  { "selector",		RID_AT_SELECTOR,	D_OBJC },
+  { "finally",		RID_AT_FINALLY,		D_OBJC },
+  { "synchronized",	RID_AT_SYNCHRONIZED,	D_OBJC },
+  /* These are recognized only in protocol-qualifier context.  */
+  { "bycopy",		RID_BYCOPY,		D_OBJC },
+  { "byref",		RID_BYREF,		D_OBJC },
+  { "in",		RID_IN,			D_OBJC },
+  { "inout",		RID_INOUT,		D_OBJC },
+  { "oneway",		RID_ONEWAY,		D_OBJC },
+  { "out",		RID_OUT,		D_OBJC },
 };
 
 void
-init_reswords ()
+init_reswords (void)
 {
   unsigned int i;
   tree id;
   int mask = ((flag_no_asm ? D_ASM : 0)
-	      | (flag_no_gnu_keywords ? D_EXT : 0));
+	      | D_OBJC
+	      | (flag_no_gnu_keywords ? D_EXT : 0)
+              | ((cxx_dialect == cxx0x) ? 0 : D_CXX0X));
 
-  ridpointers = (tree *) ggc_calloc ((int) RID_MAX, sizeof (tree));
+  ridpointers = GGC_CNEWVEC (tree, (int) RID_MAX);
   for (i = 0; i < ARRAY_SIZE (reswords); i++)
     {
       id = get_identifier (reswords[i].word);
@@ -391,7 +350,7 @@ init_reswords ()
 }
 
 static void
-init_cp_pragma ()
+init_cp_pragma (void)
 {
   c_register_pragma (0, "vtable", handle_pragma_vtable);
   c_register_pragma (0, "unit", handle_pragma_unit);
@@ -401,16 +360,39 @@ init_cp_pragma ()
   c_register_pragma ("GCC", "implementation", handle_pragma_implementation);
   c_register_pragma ("GCC", "java_exceptions", handle_pragma_java_exceptions);
 }
+
+/* TRUE if a code represents a statement.  */
+
+bool statement_code_p[MAX_TREE_CODES];
 
 /* Initialize the C++ front end.  This function is very sensitive to
    the exact order that things are done here.  It would be nice if the
    initialization done by this routine were moved to its subroutines,
    and the ordering dependencies clarified and reduced.  */
-const char *
-cxx_init (filename)
-     const char *filename;
+bool
+cxx_init (void)
 {
-  input_filename = "<internal>";
+  unsigned int i;
+  static const enum tree_code stmt_codes[] = {
+   CTOR_INITIALIZER,	TRY_BLOCK,	HANDLER,
+   EH_SPEC_BLOCK,	USING_STMT,	TAG_DEFN,
+   IF_STMT,		CLEANUP_STMT,	FOR_STMT,
+   WHILE_STMT,		DO_STMT,	BREAK_STMT,
+   CONTINUE_STMT,	SWITCH_STMT,	EXPR_STMT
+  };
+
+  memset (&statement_code_p, 0, sizeof (statement_code_p));
+  for (i = 0; i < ARRAY_SIZE (stmt_codes); i++)
+    statement_code_p[stmt_codes[i]] = true;
+
+  /* We cannot just assign to input_filename because it has already
+     been initialized and will be used later as an N_BINCL for stabs+
+     debugging.  */
+#ifdef USE_MAPPED_LOCATION
+  push_srcloc (BUILTINS_LOCATION);
+#else
+  push_srcloc ("<built-in>", 0);
+#endif
 
   init_reswords ();
   init_tree ();
@@ -421,70 +403,40 @@ cxx_init (filename)
 
   current_function_decl = NULL;
 
-  class_type_node = build_int_2 (class_type, 0);
-  TREE_TYPE (class_type_node) = class_type_node;
-  ridpointers[(int) RID_CLASS] = class_type_node;
-
-  record_type_node = build_int_2 (record_type, 0);
-  TREE_TYPE (record_type_node) = record_type_node;
-  ridpointers[(int) RID_STRUCT] = record_type_node;
-
-  union_type_node = build_int_2 (union_type, 0);
-  TREE_TYPE (union_type_node) = union_type_node;
-  ridpointers[(int) RID_UNION] = union_type_node;
-
-  enum_type_node = build_int_2 (enum_type, 0);
-  TREE_TYPE (enum_type_node) = enum_type_node;
-  ridpointers[(int) RID_ENUM] = enum_type_node;
+  class_type_node = ridpointers[(int) RID_CLASS];
 
   cxx_init_decl_processing ();
 
-  /* Create the built-in __null node.  */
-  null_node = build_int_2 (0, 0);
-  TREE_TYPE (null_node) = c_common_type_for_size (POINTER_SIZE, 0);
-  ridpointers[RID_NULL] = null_node;
+  /* The fact that G++ uses COMDAT for many entities (inline
+     functions, template instantiations, virtual tables, etc.) mean
+     that it is fundamentally unreliable to try to make decisions
+     about whether or not to output a particular entity until the end
+     of the compilation.  However, the inliner requires that functions
+     be provided to the back end if they are to be inlined.
+     Therefore, we always use unit-at-a-time mode; in that mode, we
+     can provide entities to the back end and it will decide what to
+     emit based on what is actually needed.  */
+  flag_unit_at_a_time = 1;
 
-  interface_unknown = 1;
-
-  filename = c_common_init (filename);
-  if (filename == NULL)
-    return NULL;
+  if (c_common_init () == false)
+    {
+      pop_srcloc();
+      return false;
+    }
 
   init_cp_pragma ();
 
-  init_repo (filename);
+  init_repo ();
 
-  return filename;
+  pop_srcloc();
+  return true;
 }
 
-/* Helper function to load global variables with interface
-   information.  */
-
-void
-extract_interface_info ()
-{
-  struct c_fileinfo *finfo = 0;
-
-  if (flag_alt_external_templates)
-    {
-      tree til = tinst_for_decl ();
-
-      if (til)
-	finfo = get_fileinfo (TINST_FILE (til));
-    }
-  if (!finfo)
-    finfo = get_fileinfo (input_filename);
-
-  interface_only = finfo->interface_only;
-  interface_unknown = finfo->interface_unknown;
-}
-
 /* Return nonzero if S is not considered part of an
    INTERFACE/IMPLEMENTATION pair.  Otherwise, return 0.  */
 
 static int
-interface_strcmp (s)
-     const char *s;
+interface_strcmp (const char* s)
 {
   /* Set the interface/implementation bits for this scope.  */
   struct impl_files *ifiles;
@@ -520,88 +472,58 @@ interface_strcmp (s)
   return 1;
 }
 
-void
-note_got_semicolon (type)
-     tree type;
-{
-  if (!TYPE_P (type))
-    abort ();
-  if (CLASS_TYPE_P (type))
-    CLASSTYPE_GOT_SEMICOLON (type) = 1;
-}
-
-void
-note_list_got_semicolon (declspecs)
-     tree declspecs;
-{
-  tree link;
-
-  for (link = declspecs; link; link = TREE_CHAIN (link))
-    {
-      tree type = TREE_VALUE (link);
-      if (type && TYPE_P (type))
-	note_got_semicolon (type);
-    }
-  clear_anon_tags ();
-}
 
 
 /* Parse a #pragma whose sole argument is a string constant.
    If OPT is true, the argument is optional.  */
 static tree
-parse_strconst_pragma (name, opt)
-     const char *name;
-     int opt;
+parse_strconst_pragma (const char* name, int opt)
 {
   tree result, x;
   enum cpp_ttype t;
 
-  t = c_lex (&x);
+  t = pragma_lex (&result);
   if (t == CPP_STRING)
     {
-      result = x;
-      if (c_lex (&x) != CPP_EOF)
-	warning ("junk at end of #pragma %s", name);
+      if (pragma_lex (&x) != CPP_EOF)
+	warning (0, "junk at end of #pragma %s", name);
       return result;
     }
 
   if (t == CPP_EOF && opt)
-    return 0;
+    return NULL_TREE;
 
   error ("invalid #pragma %s", name);
-  return (tree)-1;
+  return error_mark_node;
 }
 
 static void
-handle_pragma_vtable (dfile)
-     cpp_reader *dfile ATTRIBUTE_UNUSED;
+handle_pragma_vtable (cpp_reader* dfile ATTRIBUTE_UNUSED )
 {
   parse_strconst_pragma ("vtable", 0);
   sorry ("#pragma vtable no longer supported");
 }
 
 static void
-handle_pragma_unit (dfile)
-     cpp_reader *dfile ATTRIBUTE_UNUSED;
+handle_pragma_unit (cpp_reader* dfile ATTRIBUTE_UNUSED )
 {
   /* Validate syntax, but don't do anything.  */
   parse_strconst_pragma ("unit", 0);
 }
 
 static void
-handle_pragma_interface (dfile)
-     cpp_reader *dfile ATTRIBUTE_UNUSED;
+handle_pragma_interface (cpp_reader* dfile ATTRIBUTE_UNUSED )
 {
   tree fname = parse_strconst_pragma ("interface", 1);
   struct c_fileinfo *finfo;
-  const char *main_filename;
+  const char *filename;
 
-  if (fname == (tree)-1)
+  if (fname == error_mark_node)
     return;
   else if (fname == 0)
-    main_filename = lbasename (input_filename);
+    filename = lbasename (input_filename);
   else
-    main_filename = TREE_STRING_POINTER (fname);
+    filename = ggc_strdup (TREE_STRING_POINTER (fname));
 
   finfo = get_fileinfo (input_filename);
 
@@ -613,14 +535,11 @@ handle_pragma_interface (dfile)
 	main_input_filename = input_filename;
     }
 
-  interface_only = interface_strcmp (main_filename);
-#ifdef MULTIPLE_SYMBOL_SPACES
-  if (! interface_only)
-#endif
-    interface_unknown = 0;
-
-  finfo->interface_only = interface_only;
-  finfo->interface_unknown = interface_unknown;
+  finfo->interface_only = interface_strcmp (filename);
+  /* If MULTIPLE_SYMBOL_SPACES is set, we cannot assume that we can see
+     a definition in another file.  */
+  if (!MULTIPLE_SYMBOL_SPACES || !finfo->interface_only)
+    finfo->interface_unknown = 0;
 }
 
 /* Note that we have seen a #pragma implementation for the key MAIN_FILENAME.
@@ -628,45 +547,53 @@ handle_pragma_interface (dfile)
    in older compilers and it seems reasonable to allow it in the headers
    themselves, too.  It only needs to precede the matching #p interface.
 
-   We don't touch interface_only or interface_unknown; the user must specify
-   a matching #p interface for this to have any effect.  */
+   We don't touch finfo->interface_only or finfo->interface_unknown;
+   the user must specify a matching #p interface for this to have
+   any effect.  */
 
 static void
-handle_pragma_implementation (dfile)
-     cpp_reader *dfile ATTRIBUTE_UNUSED;
+handle_pragma_implementation (cpp_reader* dfile ATTRIBUTE_UNUSED )
 {
   tree fname = parse_strconst_pragma ("implementation", 1);
-  const char *main_filename;
+  const char *filename;
   struct impl_files *ifiles = impl_file_chain;
 
-  if (fname == (tree)-1)
+  if (fname == error_mark_node)
     return;
 
   if (fname == 0)
     {
       if (main_input_filename)
-	main_filename = main_input_filename;
+	filename = main_input_filename;
       else
-	main_filename = input_filename;
-      main_filename = lbasename (main_filename);
+	filename = input_filename;
+      filename = lbasename (filename);
     }
   else
     {
-      main_filename = TREE_STRING_POINTER (fname);
-      if (cpp_included (parse_in, main_filename))
-	warning ("#pragma implementation for %s appears after file is included",
-		 main_filename);
+      filename = ggc_strdup (TREE_STRING_POINTER (fname));
+#ifdef USE_MAPPED_LOCATION
+      /* We currently cannot give this diagnostic, as we reach this point
+	 only after cpplib has scanned the entire translation unit, so
+	 cpp_included always returns true.  A plausible fix is to compare
+	 the current source-location cookie with the first source-location
+	 cookie (if any) of the filename, but this requires completing the
+	 --enable-mapped-location project first.  See PR 17577.  */
+      if (cpp_included_before (parse_in, filename, input_location))
+	warning (0, "#pragma implementation for %qs appears after "
+		 "file is included", filename);
+#endif
     }
 
   for (; ifiles; ifiles = ifiles->next)
     {
-      if (! strcmp (ifiles->filename, main_filename))
+      if (! strcmp (ifiles->filename, filename))
 	break;
     }
   if (ifiles == 0)
     {
-      ifiles = (struct impl_files*) xmalloc (sizeof (struct impl_files));
-      ifiles->filename = main_filename;
+      ifiles = XNEW (struct impl_files);
+      ifiles->filename = filename;
       ifiles->next = impl_file_chain;
       impl_file_chain = ifiles;
     }
@@ -674,280 +601,107 @@ handle_pragma_implementation (dfile)
 
 /* Indicate that this file uses Java-personality exception handling.  */
 static void
-handle_pragma_java_exceptions (dfile)
-     cpp_reader *dfile ATTRIBUTE_UNUSED;
+handle_pragma_java_exceptions (cpp_reader* dfile ATTRIBUTE_UNUSED)
 {
   tree x;
-  if (c_lex (&x) != CPP_EOF)
-    warning ("junk at end of #pragma GCC java_exceptions");
+  if (pragma_lex (&x) != CPP_EOF)
+    warning (0, "junk at end of #pragma GCC java_exceptions");
 
   choose_personality_routine (lang_java);
 }
 
-/* Return true if d is in a global scope.  */
-
-static int
-is_global (d)
-  tree d;
-{
-  while (1)
-    switch (TREE_CODE (d))
-      {
-      case ERROR_MARK:
-	return 1;
-
-      case OVERLOAD: d = OVL_FUNCTION (d); continue;
-      case TREE_LIST: d = TREE_VALUE (d); continue;
-      default:
-        my_friendly_assert (DECL_P (d), 980629);
-
-	return DECL_NAMESPACE_SCOPE_P (d);
-      }
-}
-
 /* Issue an error message indicating that the lookup of NAME (an
-   IDENTIFIER_NODE) failed.  */
+   IDENTIFIER_NODE) failed.  Returns the ERROR_MARK_NODE.  */
 
-void
+tree
 unqualified_name_lookup_error (tree name)
 {
   if (IDENTIFIER_OPNAME_P (name))
     {
       if (name != ansi_opname (ERROR_MARK))
-	error ("`%D' not defined", name);
+	error ("%qD not defined", name);
     }
-  else if (current_function_decl == 0)
-    error ("`%D' was not declared in this scope", name);
   else
     {
-      if (IDENTIFIER_NAMESPACE_VALUE (name) != error_mark_node
-	  || IDENTIFIER_ERROR_LOCUS (name) != current_function_decl)
+      error ("%qD was not declared in this scope", name);
+      /* Prevent repeated error messages by creating a VAR_DECL with
+	 this NAME in the innermost block scope.  */
+      if (current_function_decl)
 	{
-	  static int undeclared_variable_notice;
-
-	  error ("`%D' undeclared (first use this function)", name);
-
-	  if (! undeclared_variable_notice)
-	    {
-	      error ("(Each undeclared identifier is reported only once for each function it appears in.)");
-	      undeclared_variable_notice = 1;
-	    }
+	  tree decl;
+	  decl = build_decl (VAR_DECL, name, error_mark_node);
+	  DECL_CONTEXT (decl) = current_function_decl;
+	  push_local_binding (name, decl, 0);
+	  /* Mark the variable as used so that we do not get warnings
+	     about it being unused later.  */
+	  TREE_USED (decl) = 1;
 	}
-      /* Prevent repeated error messages.  */
-      SET_IDENTIFIER_NAMESPACE_VALUE (name, error_mark_node);
-      SET_IDENTIFIER_ERROR_LOCUS (name, current_function_decl);
     }
+
+  return error_mark_node;
 }
 
-tree
-do_identifier (token, args)
-     register tree token;
-     tree args;
-{
-  register tree id;
-
-  id = lookup_name (token, 0);
-
-  /* Do Koenig lookup if appropriate (inside templates we build lookup
-     expressions instead).
-
-     [basic.lookup.koenig]: If the ordinary unqualified lookup of the name
-     finds the declaration of a class member function, the associated
-     namespaces and classes are not considered.  */
-
-  if (args && !current_template_parms && (!id || is_global (id)))
-    id = lookup_arg_dependent (token, id, args);
-
-  if (id == error_mark_node)
-    {
-      /* lookup_name quietly returns error_mark_node if we're parsing,
-	 as we don't want to complain about an identifier that ends up
-	 being used as a declarator.  So we call it again to get the error
-	 message.  */
-      id = lookup_name (token, 0);
-      return error_mark_node;
-    }
-
-  if (!id || (TREE_CODE (id) == FUNCTION_DECL
-	      && DECL_ANTICIPATED (id)))
-    {
-      if (current_template_parms)
-	return build_min_nt (LOOKUP_EXPR, token);
-      else if (IDENTIFIER_TYPENAME_P (token))
-	/* A templated conversion operator might exist.  */
-	return token;
-      else
-	{
-	  unqualified_name_lookup_error (token);
-	  return error_mark_node;
-	}
-    }
-
-  id = check_for_out_of_scope_variable (id);
-
-  /* TREE_USED is set in `hack_identifier'.  */
-  if (TREE_CODE (id) == CONST_DECL)
-    {
-      /* Check access.  */
-      if (IDENTIFIER_CLASS_VALUE (token) == id)
-	enforce_access (CP_DECL_CONTEXT(id), id);
-      if (!processing_template_decl || DECL_TEMPLATE_PARM_P (id))
-	id = DECL_INITIAL (id);
-    }
-  else
-    id = hack_identifier (id, token);
-
-  /* We must look up dependent names when the template is
-     instantiated, not while parsing it.  For now, we don't
-     distinguish between dependent and independent names.  So, for
-     example, we look up all overloaded functions at
-     instantiation-time, even though in some cases we should just use
-     the DECL we have here.  We also use LOOKUP_EXPRs to find things
-     like local variables, rather than creating TEMPLATE_DECLs for the
-     local variables and then finding matching instantiations.  */
-  if (current_template_parms
-      && (is_overloaded_fn (id)
-	  || (TREE_CODE (id) == VAR_DECL
-	      && CP_DECL_CONTEXT (id)
-	      && TREE_CODE (CP_DECL_CONTEXT (id)) == FUNCTION_DECL)
-	  || TREE_CODE (id) == PARM_DECL
-	  || TREE_CODE (id) == RESULT_DECL
-	  || TREE_CODE (id) == USING_DECL))
-    id = build_min_nt (LOOKUP_EXPR, token);
-
-  return id;
-}
+/* Like unqualified_name_lookup_error, but NAME is an unqualified-id
+   used as a function.  Returns an appropriate expression for
+   NAME.  */
 
 tree
-do_scoped_id (token, id)
-     tree token;
-     tree id;
+unqualified_fn_lookup_error (tree name)
 {
-  if (!id || (TREE_CODE (id) == FUNCTION_DECL
-	      && DECL_ANTICIPATED (id)))
-    {
-      if (processing_template_decl)
-	{
-	  id = build_min_nt (LOOKUP_EXPR, token);
-	  LOOKUP_EXPR_GLOBAL (id) = 1;
-	  return id;
-	}
-      if (IDENTIFIER_NAMESPACE_VALUE (token) != error_mark_node)
-        error ("`::%D' undeclared (first use here)", token);
-      id = error_mark_node;
-      /* Prevent repeated error messages.  */
-      SET_IDENTIFIER_NAMESPACE_VALUE (token, error_mark_node);
-    }
-  else
-    {
-      if (TREE_CODE (id) == ADDR_EXPR)
-	mark_used (TREE_OPERAND (id, 0));
-      else if (TREE_CODE (id) != OVERLOAD)
-	mark_used (id);
-    }
-  if (TREE_CODE (id) == CONST_DECL && ! processing_template_decl)
-    {
-      /* XXX CHS - should we set TREE_USED of the constant? */
-      id = DECL_INITIAL (id);
-      /* This is to prevent an enum whose value is 0
-	 from being considered a null pointer constant.  */
-      id = build1 (NOP_EXPR, TREE_TYPE (id), id);
-      TREE_CONSTANT (id) = 1;
-    }
-
   if (processing_template_decl)
     {
-      if (is_overloaded_fn (id))
+      /* In a template, it is invalid to write "f()" or "f(3)" if no
+	 declaration of "f" is available.  Historically, G++ and most
+	 other compilers accepted that usage since they deferred all name
+	 lookup until instantiation time rather than doing unqualified
+	 name lookup at template definition time; explain to the user what
+	 is going wrong.
+
+	 Note that we have the exact wording of the following message in
+	 the manual (trouble.texi, node "Name lookup"), so they need to
+	 be kept in synch.  */
+      pedwarn ("there are no arguments to %qD that depend on a template "
+	       "parameter, so a declaration of %qD must be available",
+	       name, name);
+
+      if (!flag_permissive)
 	{
-	  id = build_min_nt (LOOKUP_EXPR, token);
-	  LOOKUP_EXPR_GLOBAL (id) = 1;
-	  return id;
+	  static bool hint;
+	  if (!hint)
+	    {
+	      error ("(if you use %<-fpermissive%>, G++ will accept your "
+		     "code, but allowing the use of an undeclared name is "
+		     "deprecated)");
+	      hint = true;
+	    }
 	}
-      /* else just use the decl */
+      return name;
     }
-  return convert_from_reference (id);
+
+  return unqualified_name_lookup_error (name);
 }
 
 tree
-identifier_typedecl_value (node)
-     tree node;
-{
-  tree t, type;
-  type = IDENTIFIER_TYPE_VALUE (node);
-  if (type == NULL_TREE)
-    return NULL_TREE;
-
-  if (IDENTIFIER_BINDING (node))
-    {
-      t = IDENTIFIER_VALUE (node);
-      if (t && TREE_CODE (t) == TYPE_DECL && TREE_TYPE (t) == type)
-	return t;
-    }
-  if (IDENTIFIER_NAMESPACE_VALUE (node))
-    {
-      t = IDENTIFIER_NAMESPACE_VALUE (node);
-      if (t && TREE_CODE (t) == TYPE_DECL && TREE_TYPE (t) == type)
-	return t;
-    }
-
-  /* Will this one ever happen?  */
-  if (TYPE_MAIN_DECL (type))
-    return TYPE_MAIN_DECL (type);
-
-  /* We used to do an internal error of 62 here, but instead we will
-     handle the return of a null appropriately in the callers.  */
-  return NULL_TREE;
-}
-
-#ifdef GATHER_STATISTICS
-/* The original for tree_node_kind is in the toplevel tree.c; changes there
-   need to be brought into here, unless this were actually put into a header
-   instead.  */
-/* Statistics-gathering stuff.  */
-typedef enum
-{
-  d_kind,
-  t_kind,
-  b_kind,
-  s_kind,
-  r_kind,
-  e_kind,
-  c_kind,
-  id_kind,
-  op_id_kind,
-  perm_list_kind,
-  temp_list_kind,
-  vec_kind,
-  x_kind,
-  lang_decl,
-  lang_type,
-  all_kinds
-} tree_node_kind;
-
-extern int tree_node_counts[];
-extern int tree_node_sizes[];
-#endif
-
-tree
-build_lang_decl (code, name, type)
-     enum tree_code code;
-     tree name;
-     tree type;
+build_lang_decl (enum tree_code code, tree name, tree type)
 {
   tree t;
 
   t = build_decl (code, name, type);
   retrofit_lang_decl (t);
 
+  /* All nesting of C++ functions is lexical; there is never a "static
+     chain" in the sense of GNU C nested functions.  */
+  if (code == FUNCTION_DECL)
+    DECL_NO_STATIC_CHAIN (t) = 1;
+
   return t;
 }
 
 /* Add DECL_LANG_SPECIFIC info to T.  Called from build_lang_decl
-   and pushdecl (for functions generated by the backend).  */
+   and pushdecl (for functions generated by the back end).  */
 
 void
-retrofit_lang_decl (t)
-     tree t;
+retrofit_lang_decl (tree t)
 {
   struct lang_decl *ld;
   size_t size;
@@ -957,7 +711,7 @@ retrofit_lang_decl (t)
   else
     size = sizeof (struct lang_decl_flags);
 
-  ld = (struct lang_decl *) ggc_alloc_cleared (size);
+  ld = GGC_CNEWVAR (struct lang_decl, size);
 
   ld->decl_flags.can_be_full = CAN_HAVE_FULL_LANG_DECL_P (t) ? 1 : 0;
   ld->decl_flags.u1sel = TREE_CODE (t) == NAMESPACE_DECL ? 1 : 0;
@@ -966,13 +720,15 @@ retrofit_lang_decl (t)
     ld->u.f.u3sel = TREE_CODE (t) == FUNCTION_DECL ? 1 : 0;
 
   DECL_LANG_SPECIFIC (t) = ld;
-  if (current_lang_name == lang_name_cplusplus)
+  if (current_lang_name == lang_name_cplusplus
+      || decl_linkage (t) == lk_none)
     SET_DECL_LANGUAGE (t, lang_cplusplus);
   else if (current_lang_name == lang_name_c)
     SET_DECL_LANGUAGE (t, lang_c);
   else if (current_lang_name == lang_name_java)
     SET_DECL_LANGUAGE (t, lang_java);
-  else abort ();
+  else
+    gcc_unreachable ();
 
 #ifdef GATHER_STATISTICS
   tree_node_counts[(int)lang_decl] += 1;
@@ -981,8 +737,7 @@ retrofit_lang_decl (t)
 }
 
 void
-cxx_dup_lang_specific_decl (node)
-     tree node;
+cxx_dup_lang_specific_decl (tree node)
 {
   int size;
   struct lang_decl *ld;
@@ -994,7 +749,7 @@ cxx_dup_lang_specific_decl (node)
     size = sizeof (struct lang_decl_flags);
   else
     size = sizeof (struct lang_decl);
-  ld = (struct lang_decl *) ggc_alloc (size);
+  ld = GGC_NEWVAR (struct lang_decl, size);
   memcpy (ld, DECL_LANG_SPECIFIC (node), size);
   DECL_LANG_SPECIFIC (node) = ld;
 
@@ -1007,8 +762,7 @@ cxx_dup_lang_specific_decl (node)
 /* Copy DECL, including any language-specific parts.  */
 
 tree
-copy_decl (decl)
-     tree decl;
+copy_decl (tree decl)
 {
   tree copy;
 
@@ -1020,8 +774,7 @@ copy_decl (decl)
 /* Replace the shared language-specific parts of NODE with a new copy.  */
 
 static void
-copy_lang_type (node)
-     tree node;
+copy_lang_type (tree node)
 {
   int size;
   struct lang_type *lt;
@@ -1033,7 +786,7 @@ copy_lang_type (node)
     size = sizeof (struct lang_type);
   else
     size = sizeof (struct lang_type_ptrmem);
-  lt = (struct lang_type *) ggc_alloc (size);
+  lt = GGC_NEWVAR (struct lang_type, size);
   memcpy (lt, TYPE_LANG_SPECIFIC (node), size);
   TYPE_LANG_SPECIFIC (node) = lt;
 
@@ -1046,8 +799,7 @@ copy_lang_type (node)
 /* Copy TYPE, including any language-specific parts.  */
 
 tree
-copy_type (type)
-     tree type;
+copy_type (tree type)
 {
   tree copy;
 
@@ -1057,19 +809,15 @@ copy_type (type)
 }
 
 tree
-cxx_make_type (code)
-     enum tree_code code;
+cxx_make_type (enum tree_code code)
 {
-  register tree t = make_node (code);
+  tree t = make_node (code);
 
   /* Create lang_type structure.  */
   if (IS_AGGR_TYPE_CODE (code)
       || code == BOUND_TEMPLATE_TEMPLATE_PARM)
     {
-      struct lang_type *pi;
-
-      pi = ((struct lang_type *)
-	    ggc_alloc_cleared (sizeof (struct lang_type)));
+      struct lang_type *pi = GGC_CNEW (struct lang_type);
 
       TYPE_LANG_SPECIFIC (t) = pi;
       pi->u.c.h.is_lang_type_class = 1;
@@ -1083,35 +831,16 @@ cxx_make_type (code)
   /* Set up some flags that give proper default behavior.  */
   if (IS_AGGR_TYPE_CODE (code))
     {
-      SET_CLASSTYPE_INTERFACE_UNKNOWN_X (t, interface_unknown);
-      CLASSTYPE_INTERFACE_ONLY (t) = interface_only;
-
-      /* Make sure this is laid out, for ease of use later.  In the
-	 presence of parse errors, the normal was of assuring this
-	 might not ever get executed, so we lay it out *immediately*.  */
-      build_pointer_type (t);
+      struct c_fileinfo *finfo = get_fileinfo (input_filename);
+      SET_CLASSTYPE_INTERFACE_UNKNOWN_X (t, finfo->interface_unknown);
+      CLASSTYPE_INTERFACE_ONLY (t) = finfo->interface_only;
     }
-  else
-    /* We use TYPE_ALIAS_SET for the CLASSTYPE_MARKED bits.  But,
-       TYPE_ALIAS_SET is initialized to -1 by default, so we must
-       clear it here.  */
-    TYPE_ALIAS_SET (t) = 0;
-
-  /* We need to allocate a TYPE_BINFO even for TEMPLATE_TYPE_PARMs
-     since they can be virtual base types, and we then need a
-     canonical binfo for them.  Ideally, this would be done lazily for
-     all types.  */
-  if (IS_AGGR_TYPE_CODE (code) || code == TEMPLATE_TYPE_PARM
-      || code == BOUND_TEMPLATE_TEMPLATE_PARM
-      || code == TYPENAME_TYPE)
-    TYPE_BINFO (t) = make_binfo (size_zero_node, t, NULL_TREE, NULL_TREE);
 
   return t;
 }
 
 tree
-make_aggr_type (code)
-     enum tree_code code;
+make_aggr_type (enum tree_code code)
 {
   tree t = cxx_make_type (code);
 
@@ -1121,20 +850,17 @@ make_aggr_type (code)
   return t;
 }
 
-/* Return the type-qualifier corresponding to the identifier given by
-   RID.  */
+/* Returns true if we are currently in the main source file, or in a
+   template instantiation started from the main source file.  */
 
-int
-cp_type_qual_from_rid (rid)
-     tree rid;
+bool
+in_main_input_context (void)
 {
-  if (rid == ridpointers[(int) RID_CONST])
-    return TYPE_QUAL_CONST;
-  else if (rid == ridpointers[(int) RID_VOLATILE])
-    return TYPE_QUAL_VOLATILE;
-  else if (rid == ridpointers[(int) RID_RESTRICT])
-    return TYPE_QUAL_RESTRICT;
+  struct tinst_level *tl = outermost_tinst_level();
 
-  abort ();
-  return TYPE_UNQUALIFIED;
+  if (tl)
+    return strcmp (main_input_filename,
+                  LOCATION_FILE (tl->locus)) == 0;
+  else
+    return strcmp (main_input_filename, input_filename) == 0;
 }

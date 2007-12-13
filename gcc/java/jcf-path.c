@@ -1,12 +1,12 @@
 /* Handle CLASSPATH, -classpath, and path searching.
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003
-   Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2006,
+   2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  
 
 Java and all Java-based marks are trademarks or registered trademarks
 of Sun Microsystems, Inc. in the United States and other countries.
@@ -33,15 +32,6 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include <dirent.h>
 
 #include "jcf.h"
-
-/* By default, colon separates directories in a path.  */
-#ifndef PATH_SEPARATOR
-#define PATH_SEPARATOR ':'
-#endif
-
-#ifndef DIR_SEPARATOR
-#define DIR_SEPARATOR '/'
-#endif
 
 #ifndef DIR_UP
 #define DIR_UP ".."
@@ -141,27 +131,28 @@ add_entry (struct entry **entp, const char *filename, int is_system)
   int len;
   struct entry *n;
 
-  n = ALLOC (sizeof (struct entry));
+  n = XNEW (struct entry);
   n->flags = is_system ? FLAG_SYSTEM : 0;
   n->next = NULL;
 
   len = strlen (filename);
-  if (len > 4 && (strcmp (filename + len - 4, ".zip") == 0
-		  || strcmp (filename + len - 4, ".jar") == 0))
+
+  if (len > 4 && (FILENAME_CMP (filename + len - 4, ".zip") == 0
+		  || FILENAME_CMP (filename + len - 4, ".jar") == 0))
     {
       n->flags |= FLAG_ZIP;
       /* If the user uses -classpath then he'll have to include
 	 libgcj.jar in the value.  We check for this in a simplistic
 	 way.  Symlinks will fool this test.  This is only used for
 	 -MM and -MMD, so it probably isn't terribly important.  */
-      if (! strcmp (filename, LIBGCJ_ZIP_FILE))
+      if (! FILENAME_CMP (filename, LIBGCJ_ZIP_FILE))
 	n->flags |= FLAG_SYSTEM;
     }
 
   /* Note that we add a trailing separator to `.zip' names as well.
      This is a little hack that lets the searching code in jcf-io.c
      work more easily.  Eww.  */
-  if (filename[len - 1] != '/' && filename[len - 1] != DIR_SEPARATOR)
+  if (! IS_DIR_SEPARATOR (filename[len - 1]))
     {
       char *f2 = alloca (len + 2);
       strcpy (f2, filename);
@@ -370,7 +361,7 @@ jcf_path_extdirs_arg (const char *cp)
 			char *name = alloca (dirname_length
 					     + strlen (direntp->d_name) + 2);
 			strcpy (name, buf);
-			if (name[dirname_length-1] != DIR_SEPARATOR)
+			if (! IS_DIR_SEPARATOR (name[dirname_length-1]))
 			  {
 			    name[dirname_length] = DIR_SEPARATOR;
 			    name[dirname_length+1] = 0;
@@ -379,6 +370,8 @@ jcf_path_extdirs_arg (const char *cp)
 			add_entry (&extensions, name, 0);
 		      }
 		  }
+		if (dirp)
+		  closedir (dirp);
 	      }
 
 	      if (! *endp)
@@ -461,6 +454,38 @@ jcf_path_next (void *x)
 {
   struct entry *ent = (struct entry *) x;
   return (void *) ent->next;
+}
+
+static const char
+PATH_SEPARATOR_STR[] = {PATH_SEPARATOR, '\0'};
+
+char *
+jcf_path_compute (const char *prefix)
+{
+  struct entry *iter;
+  char *result;
+  int length = strlen (prefix) + 1;
+  int first;
+
+  for (iter = sealed; iter != NULL; iter = iter->next)
+    length += strlen (iter->name) + 1;
+
+  result = (char *) xmalloc (length);
+  strcpy (result, prefix);
+  first = 1;
+  for (iter = sealed; iter != NULL; iter = iter->next)
+    {
+      if (! first)
+	strcat (result, PATH_SEPARATOR_STR);
+      first = 0;
+      strcat (result, iter->name);
+      /* Ugly: we want to strip the '/' from zip entries when
+	 computing a string classpath.  */
+      if ((iter->flags & FLAG_ZIP) != 0)
+	result[strlen (result) - 1] = '\0';
+    }
+
+  return result;
 }
 
 /* We guarantee that the return path will either be a zip file, or it

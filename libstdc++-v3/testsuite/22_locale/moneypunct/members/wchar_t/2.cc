@@ -1,6 +1,8 @@
+// { dg-require-namedlocale "" }
+
 // 2001-08-23 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2005 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.6.3.1 moneypunct members
@@ -30,11 +32,11 @@ void test02()
   typedef money_base::part part;
   typedef money_base::pattern pattern;
 
-  bool test = true;
+  bool test __attribute__((unused)) = true;
 
   // basic construction
   locale loc_c = locale::classic();
-  locale loc_de("de_DE");
+  locale loc_de = locale("de_DE");
 
   // cache the moneypunct facets
   typedef moneypunct<wchar_t, true> __money_true;
@@ -42,7 +44,6 @@ void test02()
   const __money_true& monp_c_t = use_facet<__money_true>(loc_c); 
   const __money_false& monp_c_f = use_facet<__money_false>(loc_c); 
   const __money_true& monp_de_t = use_facet<__money_true>(loc_de); 
-  const __money_false& monp_de_f = use_facet<__money_false>(loc_de); 
 
   // quick sanity check for data.
   wchar_t q1 = monp_c_t.decimal_point();

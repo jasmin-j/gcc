@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---        Copyright (C) 1992,1993,1994 Free Software Foundation, Inc.       --
+--           Copyright (C) 1992-2005 Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -37,9 +36,8 @@ with System.Storage_Pools;
 with System.Storage_Elements;
 
 package System.Pool_Global is
-
-pragma Elaborate_Body;
---  Needed to ensure that library routines can execute allocators
+   pragma Elaborate_Body;
+   --  Needed to ensure that library routines can execute allocators
 
    --  Allocation strategy:
 
@@ -48,7 +46,8 @@ pragma Elaborate_Body;
    --    no automatic reclaim
    --    minimal overhead
 
-   --  Default pool in the compiler for access types globally declared
+   --  Pool simulating the allocation/deallocation strategy used by the
+   --  compiler for access types globally declared.
 
    type Unbounded_No_Reclaim_Pool is new
      System.Storage_Pools.Root_Storage_Pool with null record;
@@ -69,7 +68,10 @@ pragma Elaborate_Body;
       Storage_Size : System.Storage_Elements.Storage_Count;
       Alignment    : System.Storage_Elements.Storage_Count);
 
-   --  Pool object for the compiler
+   --  Pool object used by the compiler when implicit Storage Pool objects are
+   --  explicitly referred to. For instance when writing something like:
+   --     for T'Storage_Pool use Q'Storage_Pool;
+   --  and Q'Storage_Pool hasn't been defined explicitly.
 
    Global_Pool_Object : Unbounded_No_Reclaim_Pool;
 

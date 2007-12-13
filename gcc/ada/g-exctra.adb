@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---            Copyright (C) 2000-2001 Ada Core Technologies, Inc.           --
+--                     Copyright (C) 2000-2005, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -27,7 +26,8 @@
 -- however invalidate  any other reasons why  the executable file  might be --
 -- covered by the  GNU Public License.                                      --
 --                                                                          --
--- GNAT is maintained by Ada Core Technologies Inc (http://www.gnat.com).   --
+-- GNAT was originally developed  by the GNAT team at  New York University. --
+-- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
@@ -48,8 +48,7 @@ package body GNAT.Exception_Traces is
 
    function Decorator_Wrapper
      (Traceback : System.Address;
-      Len       : Natural)
-      return      String;
+      Len       : Natural) return String;
    --  The wrapper to be called when a decorator is in place for exception
    --  backtraces.
    --
@@ -68,8 +67,7 @@ package body GNAT.Exception_Traces is
 
    function Decorator_Wrapper
      (Traceback : System.Address;
-      Len       : Natural)
-      return      String
+      Len       : Natural) return String
    is
       Decorator_Traceback : Tracebacks_Array (1 .. Len);
       for Decorator_Traceback'Address use Traceback;
@@ -114,7 +112,7 @@ package body GNAT.Exception_Traces is
    -- Trace_On --
    --------------
 
-   procedure Trace_On (Kind : in Trace_Kind) is
+   procedure Trace_On (Kind : Trace_Kind) is
    begin
       case Kind is
          when Every_Raise =>

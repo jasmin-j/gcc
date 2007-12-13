@@ -1,6 +1,7 @@
 // 2000-08-17 Benjamin Kosnik <bkoz@cygnus.com>
 
-// Copyright (C) 2000, 2002, 2003 Free Software Foundation
+// Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,12 +16,13 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.1.5 - Template class codecvt [lib.locale.codecvt]
 
 #include <locale>
+#include <cstring>
 #include <testsuite_hooks.h>
 
 // Need to explicitly set the state(mbstate_t) to zero.
@@ -38,6 +40,8 @@ zero_state(std::mbstate_t& state)
 
 // Required instantiation
 // codecvt<wchar_t, char, mbstate_t>
+//
+// Baseline test for "C" locale
 void test01()
 {
   using namespace std;
@@ -46,17 +50,16 @@ void test01()
   typedef wchar_t				int_type;
   typedef char					ext_type;
   typedef char_traits<wchar_t>			int_traits;
-  typedef char_traits<char>			ext_traits;
 
-  bool 			test = true;
+  bool test __attribute__((unused)) = true;
   const ext_type* 	e_lit = "black pearl jasmine tea";
   const ext_type*       efrom_next;
   const int_type* 	i_lit = L"black pearl jasmine tea";
-  const int_type*       ifrom_next;
-  int 			size = strlen(e_lit);
-  ext_type* 		e_arr = new ext_type[size + 1];
-  ext_type*		eto_next;
+  size_t 		size = strlen(e_lit);
   int_type* 		i_arr = new int_type[size + 1];
+  int_type* 		i_ref = new int_type[size + 1];
+  wmemset(i_arr, static_cast<wchar_t>(0xdeadbeef), size + 1);
+  wmemset(i_ref, static_cast<wchar_t>(0xdeadbeef), size + 1);
   int_type*		ito_next;
 
   locale 		loc;
@@ -68,12 +71,13 @@ void test01()
   result r1 = cvt->in(state01, e_lit, e_lit + size, efrom_next, 
 		      i_arr, i_arr + size, ito_next);
   VERIFY( r1 == codecvt_base::ok );
-  VERIFY( !int_traits::compare(i_arr, i_lit, size) ); 
   VERIFY( efrom_next == e_lit + size );
   VERIFY( ito_next == i_arr + size );
+  VERIFY( !int_traits::compare(i_arr, i_lit, size) ); 
+  VERIFY( !int_traits::compare(ito_next, i_ref, 1) );
 
-  delete [] e_arr;
   delete [] i_arr;
+  delete [] i_ref;
 }
 
 int main ()

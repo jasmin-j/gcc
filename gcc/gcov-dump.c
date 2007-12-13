@@ -1,10 +1,10 @@
 /* Dump a gcov file, for debugging use.
-   Copyright (C) 2002 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
    Contributed by Nathan Sidwell <nathan@codesourcery.com>
 
 Gcov is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 Gcov is distributed in the hope that it will be useful,
@@ -13,9 +13,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with Gcov; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with Gcov; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -23,60 +22,64 @@ Boston, MA 02111-1307, USA.  */
 #include "tm.h"
 #include "version.h"
 #include <getopt.h>
-typedef HOST_WIDEST_INT gcov_type;
+#define IN_GCOV (-1)
 #include "gcov-io.h"
+#include "gcov-io.c"
 
-static void dump_file PARAMS ((const char *));
-static void print_prefix PARAMS ((const char *, unsigned));
-static void print_usage PARAMS ((void));
-static void print_version PARAMS ((void));
-static int tag_function PARAMS ((const char *, FILE *, unsigned, unsigned));
-static int tag_blocks PARAMS ((const char *, FILE *, unsigned, unsigned));
-static int tag_arcs PARAMS ((const char *, FILE *, unsigned, unsigned));
-static int tag_lines PARAMS ((const char *, FILE *, unsigned, unsigned));
-static int tag_arc_counts PARAMS ((const char *, FILE *, unsigned, unsigned));
-static int tag_summary PARAMS ((const char *, FILE *, unsigned, unsigned));
-extern int main PARAMS ((int, char **));
+static void dump_file (const char *);
+static void print_prefix (const char *, unsigned, gcov_position_t);
+static void print_usage (void);
+static void print_version (void);
+static void tag_function (const char *, unsigned, unsigned);
+static void tag_blocks (const char *, unsigned, unsigned);
+static void tag_arcs (const char *, unsigned, unsigned);
+static void tag_lines (const char *, unsigned, unsigned);
+static void tag_counters (const char *, unsigned, unsigned);
+static void tag_summary (const char *, unsigned, unsigned);
+extern int main (int, char **);
 
 typedef struct tag_format
 {
   unsigned tag;
   char const *name;
-  int (*proc) (const char *, FILE *, unsigned, unsigned);
+  void (*proc) (const char *, unsigned, unsigned);
 } tag_format_t;
 
 static int flag_dump_contents = 0;
+static int flag_dump_positions = 0;
 
 static const struct option options[] =
 {
   { "help",                 no_argument,       NULL, 'h' },
   { "version",              no_argument,       NULL, 'v' },
   { "long",                 no_argument,       NULL, 'l' },
+  { "positions",	    no_argument,       NULL, 'o' },
+  { 0, 0, 0, 0 }
 };
 
 static const tag_format_t tag_table[] =
 {
   {0, "NOP", NULL},
   {0, "UNKNOWN", NULL},
+  {0, "COUNTERS", tag_counters},
   {GCOV_TAG_FUNCTION, "FUNCTION", tag_function},
   {GCOV_TAG_BLOCKS, "BLOCKS", tag_blocks},
   {GCOV_TAG_ARCS, "ARCS", tag_arcs},
   {GCOV_TAG_LINES, "LINES", tag_lines},
-  {GCOV_TAG_ARC_COUNTS, "ARC_COUNTS", tag_arc_counts},
   {GCOV_TAG_OBJECT_SUMMARY, "OBJECT_SUMMARY", tag_summary},
   {GCOV_TAG_PROGRAM_SUMMARY, "PROGRAM_SUMMARY", tag_summary},
-  {GCOV_TAG_PLACEHOLDER_SUMMARY, "PROGRAM_PLACEHOLDER", tag_summary},
-  {GCOV_TAG_INCORRECT_SUMMARY, "PROGRAM_INCORRECT", tag_summary},
   {0, NULL, NULL}
 };
 
-int main (argc, argv)
-     int argc ATTRIBUTE_UNUSED;
-     char **argv;
+int
+main (int argc ATTRIBUTE_UNUSED, char **argv)
 {
   int opt;
 
-  while ((opt = getopt_long (argc, argv, "hlv", options, NULL)) != -1)
+  /* Unlock the stdio streams.  */
+  unlock_std_streams ();
+
+  while ((opt = getopt_long (argc, argv, "hlpv", options, NULL)) != -1)
     {
       switch (opt)
 	{
@@ -89,135 +92,131 @@ int main (argc, argv)
 	case 'l':
 	  flag_dump_contents = 1;
 	  break;
+	case 'p':
+	  flag_dump_positions = 1;
+	  break;
 	default:
 	  fprintf (stderr, "unknown flag `%c'\n", opt);
 	}
     }
-  
+
   while (argv[optind])
     dump_file (argv[optind++]);
   return 0;
 }
 
 static void
-print_usage ()
+print_usage (void)
 {
   printf ("Usage: gcov-dump [OPTION] ... gcovfiles\n");
   printf ("Print coverage file contents\n");
   printf ("  -h, --help           Print this help\n");
   printf ("  -v, --version        Print version number\n");
   printf ("  -l, --long           Dump record contents too\n");
+  printf ("  -p, --positions      Dump record positions\n");
 }
 
 static void
-print_version ()
+print_version (void)
 {
-  char v[4];
-  unsigned version = GCOV_VERSION;
-  unsigned ix;
-
-  for (ix = 4; ix--; version >>= 8)
-    v[ix] = version;
-  printf ("gcov %.4s (GCC %s)\n", v, version_string);
-  printf ("Copyright (C) 2002 Free Software Foundation, Inc.\n");
-  printf ("This is free software; see the source for copying conditions.  There is NO\n\
-warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n");
+  printf ("gcov-dump %s%s\n", pkgversion_string, version_string);
+  printf ("Copyright (C) 2007 Free Software Foundation, Inc.\n");
+  printf ("This is free software; see the source for copying conditions.\n"
+  	  "There is NO warranty; not even for MERCHANTABILITY or \n"
+	  "FITNESS FOR A PARTICULAR PURPOSE.\n\n");
 }
 
 static void
-print_prefix (filename, depth)
-     const char *filename;
-     unsigned depth;
+print_prefix (const char *filename, unsigned depth, gcov_position_t position)
 {
   static const char prefix[] = "    ";
-  
-  printf ("%s:%.*s", filename, depth, prefix);
+
+  printf ("%s:", filename);
+  if (flag_dump_positions)
+    printf ("%lu:", (unsigned long) position);
+  printf ("%.*s", (int) depth, prefix);
 }
 
 static void
-dump_file (filename)
-     const char *filename;
+dump_file (const char *filename)
 {
-  FILE *file = fopen (filename, "rb");
   unsigned tags[4];
   unsigned depth = 0;
-  unsigned magic, version;
-  unsigned tag, length;
-  
-  if (!file)
+
+  if (!gcov_open (filename, 1))
     {
       fprintf (stderr, "%s:cannot open\n", filename);
-      return;
-    }
-  
-  if (gcov_read_unsigned (file, &magic)
-      || gcov_read_unsigned (file, &version))
-    {
-    read_error:;
-      printf ("%s:read error at %ld\n", filename, ftell (file));
-      fclose (file);
       return;
     }
 
   /* magic */
   {
+    unsigned magic = gcov_read_unsigned ();
+    unsigned version;
     const char *type = NULL;
-    char e[4], v[4], m[4];
-    unsigned expected = GCOV_VERSION;
-    unsigned ix;
-    int different = version != GCOV_VERSION;
+    int endianness = 0;
+    char m[4], v[4];
     
-    if (magic == GCOV_DATA_MAGIC)
+    if ((endianness = gcov_magic (magic, GCOV_DATA_MAGIC)))
       type = "data";
-    else if (magic == GCOV_GRAPH_MAGIC)
-      type = "graph";
+    else if ((endianness = gcov_magic (magic, GCOV_NOTE_MAGIC)))
+      type = "note";
     else
       {
 	printf ("%s:not a gcov file\n", filename);
-	fclose (file);
+	gcov_close ();
 	return;
       }
-    for (ix = 4; ix--; expected >>= 8, version >>= 8, magic >>= 8)
-      {
-	e[ix] = expected;
-	v[ix] = version;
-	m[ix] = magic;
-      }
+    version = gcov_read_unsigned ();
+    GCOV_UNSIGNED2STRING (v, version);
+    GCOV_UNSIGNED2STRING (m, magic);
     
-    printf ("%s:%s:magic `%.4s':version `%.4s'\n", filename, type, m, v);
-    if (different)
-      printf ("%s:warning:current version is `%.4s'\n", filename, e);
+    printf ("%s:%s:magic `%.4s':version `%.4s'%s\n", filename, type,
+ 	    m, v, endianness < 0 ? " (swapped endianness)" : "");
+    if (version != GCOV_VERSION)
+      {
+	char e[4];
+	
+	GCOV_UNSIGNED2STRING (e, GCOV_VERSION);
+	printf ("%s:warning:current version is `%.4s'\n", filename, e);
+      }
   }
 
-  while (!gcov_read_unsigned (file, &tag)
-	 && !gcov_read_unsigned (file, &length))
+  /* stamp */
+  {
+    unsigned stamp = gcov_read_unsigned ();
+
+    printf ("%s:stamp %lu\n", filename, (unsigned long)stamp);
+  }
+  
+  while (1)
     {
+      gcov_position_t base, position = gcov_position ();
+      unsigned tag, length;
       tag_format_t const *format;
       unsigned tag_depth;
-      long base, end;
-      
-      base = gcov_save_position (file);
-      
+      int error;
+      unsigned mask;
+
+      tag = gcov_read_unsigned ();
       if (!tag)
-	tag_depth = depth;
-      else
+	break;
+      length = gcov_read_unsigned ();
+      base = gcov_position ();
+      mask = GCOV_TAG_MASK (tag) >> 1;
+      for (tag_depth = 4; mask; mask >>= 8)
 	{
-	  unsigned mask = GCOV_TAG_MASK (tag) >> 1;
-	  
-	  for (tag_depth = 4; mask; mask >>= 8)
+	  if ((mask & 0xff) != 0xff)
 	    {
-	      if ((mask & 0xff) != 0xff)
-		{
-		  printf ("%s:tag `%08x' is invalid\n", filename, tag);
-		  break;
-		}
-	      tag_depth--;
+	      printf ("%s:tag `%08x' is invalid\n", filename, tag);
+	      break;
 	    }
+	  tag_depth--;
 	}
       for (format = tag_table; format->name; format++)
 	if (format->tag == tag)
 	  goto found;
-      format = &tag_table[1];
+      format = &tag_table[GCOV_TAG_IS_COUNTER (tag) ? 2 : 1];
     found:;
       if (tag)
 	{
@@ -230,59 +229,63 @@ dump_file (filename)
 	  depth = tag_depth;
 	  tags[depth - 1] = tag;
 	}
-      
-      print_prefix (filename, tag_depth);
+
+      print_prefix (filename, tag_depth, position);
       printf ("%08x:%4u:%s", tag, length, format->name);
       if (format->proc)
-	if ((*format->proc) (filename, file, tag, length))
-	  goto read_error;
+	(*format->proc) (filename, tag, length);
+
       printf ("\n");
-      end = gcov_save_position (file);
-      gcov_resync (file, base, length);
-      if (format->proc && end != base + (long)length)
+      if (flag_dump_contents && format->proc)
 	{
-	  if (end > base + (long)length)
+	  unsigned long actual_length = gcov_position () - base;
+
+	  if (actual_length > length)
 	    printf ("%s:record size mismatch %lu bytes overread\n",
-		    filename, (end - base) - length);
-	  else
+		    filename, actual_length - length);
+	  else if (length > actual_length)
 	    printf ("%s:record size mismatch %lu bytes unread\n",
-		    filename, length - (end - base));
+		    filename, length - actual_length);
+	}
+      gcov_sync (base, length);
+      if ((error = gcov_is_error ()))
+	{
+	  printf (error < 0 ? "%s:counter overflow at %lu\n" :
+		  "%s:read error at %lu\n", filename,
+		  (long unsigned) gcov_position ());
+	  break;
 	}
     }
-  if (!feof (file))
-    goto read_error;
-  fclose (file);
+  gcov_close ();
 }
 
-static int
-tag_function (filename, file, tag, length)
-     const char *filename ATTRIBUTE_UNUSED;
-     FILE *file ATTRIBUTE_UNUSED;
-     unsigned tag ATTRIBUTE_UNUSED;
-     unsigned length ATTRIBUTE_UNUSED;
+static void
+tag_function (const char *filename ATTRIBUTE_UNUSED,
+	      unsigned tag ATTRIBUTE_UNUSED, unsigned length ATTRIBUTE_UNUSED)
 {
-  char *name = NULL;
-  unsigned checksum;
+  unsigned long pos = gcov_position ();
 
-  if (gcov_read_string (file, &name, NULL)
-      || gcov_read_unsigned (file, &checksum))
-    return 1;
+  printf (" ident=%u", gcov_read_unsigned ());
+  printf (", checksum=0x%08x", gcov_read_unsigned ());
 
-  printf (" `%s' checksum=0x%08x", name, checksum);
-  free (name);
-  
-  return 0;
+  if (gcov_position () - pos < length)
+    {
+      const char *name;
+
+      name = gcov_read_string ();
+      printf (", `%s'", name ? name : "NULL");
+      name = gcov_read_string ();
+      printf (" %s", name ? name : "NULL");
+      printf (":%u", gcov_read_unsigned ());
+    }
 }
 
-static int
-tag_blocks (filename, file, tag, length)
-     const char *filename ATTRIBUTE_UNUSED;
-     FILE *file ATTRIBUTE_UNUSED;
-     unsigned tag ATTRIBUTE_UNUSED;
-     unsigned length ATTRIBUTE_UNUSED;
+static void
+tag_blocks (const char *filename ATTRIBUTE_UNUSED,
+	    unsigned tag ATTRIBUTE_UNUSED, unsigned length ATTRIBUTE_UNUSED)
 {
-  unsigned n_blocks = length / 4;
-  
+  unsigned n_blocks = GCOV_TAG_BLOCKS_NUM (length);
+
   printf (" %u blocks", n_blocks);
 
   if (flag_dump_contents)
@@ -291,94 +294,74 @@ tag_blocks (filename, file, tag, length)
 
       for (ix = 0; ix != n_blocks; ix++)
 	{
-	  unsigned flags;
-	  if (gcov_read_unsigned (file, &flags))
-	    return 1;
 	  if (!(ix & 7))
-	    printf ("\n%s:\t\t%u", filename, ix);
-	  printf (" %04x", flags);
+	    {
+	      printf ("\n");
+	      print_prefix (filename, 0, gcov_position ());
+	      printf ("\t\t%u", ix);
+	    }
+	  printf (" %04x", gcov_read_unsigned ());
 	}
-      
     }
-  else
-    gcov_skip (file, n_blocks * 4);
-  
-  return 0;
 }
 
-static int
-tag_arcs (filename, file, tag, length)
-     const char *filename ATTRIBUTE_UNUSED;
-     FILE *file ATTRIBUTE_UNUSED;
-     unsigned tag ATTRIBUTE_UNUSED;
-     unsigned length ATTRIBUTE_UNUSED;
+static void
+tag_arcs (const char *filename ATTRIBUTE_UNUSED,
+	  unsigned tag ATTRIBUTE_UNUSED, unsigned length ATTRIBUTE_UNUSED)
 {
-  unsigned n_arcs = (length - 4) / 8;
+  unsigned n_arcs = GCOV_TAG_ARCS_NUM (length);
 
   printf (" %u arcs", n_arcs);
   if (flag_dump_contents)
     {
       unsigned ix;
-      unsigned blockno;
-
-      if (gcov_read_unsigned (file, &blockno))
-	return 1;
+      unsigned blockno = gcov_read_unsigned ();
 
       for (ix = 0; ix != n_arcs; ix++)
 	{
 	  unsigned dst, flags;
-	  
-	  if (gcov_read_unsigned (file, &dst)
-	      || gcov_read_unsigned (file, &flags))
-	    return 1;
+
 	  if (!(ix & 3))
-	    printf ("\n%s:\t\t%u:", filename, blockno);
+	    {
+	      printf ("\n");
+	      print_prefix (filename, 0, gcov_position ());
+	      printf ("\tblock %u:", blockno);
+	    }
+	  dst = gcov_read_unsigned ();
+	  flags = gcov_read_unsigned ();
 	  printf (" %u:%04x", dst, flags);
 	}
     }
-  else
-    gcov_skip (file, 4 + n_arcs * 8);
-  
-  return 0;
 }
 
-static int
-tag_lines (filename, file, tag, length)
-     const char *filename ATTRIBUTE_UNUSED;
-     FILE *file ATTRIBUTE_UNUSED;
-     unsigned tag ATTRIBUTE_UNUSED;
-     unsigned length ATTRIBUTE_UNUSED;
+static void
+tag_lines (const char *filename ATTRIBUTE_UNUSED,
+	   unsigned tag ATTRIBUTE_UNUSED, unsigned length ATTRIBUTE_UNUSED)
 {
   if (flag_dump_contents)
     {
-      char *source = NULL;
-      unsigned blockno;
+      unsigned blockno = gcov_read_unsigned ();
       char const *sep = NULL;
 
-      if (gcov_read_unsigned (file, &blockno))
-	return 1;
-      
       while (1)
 	{
-	  unsigned lineno;
-	  
-	  if (gcov_read_unsigned (file, &lineno))
-	    {
-	      free (source);
-	      return 1;
-	    }
+	  gcov_position_t position = gcov_position ();
+	  const char *source = NULL;
+	  unsigned lineno = gcov_read_unsigned ();
+
 	  if (!lineno)
 	    {
-	      if (gcov_read_string (file, &source, NULL))
-		return 1;
+	      source = gcov_read_string ();
 	      if (!source)
 		break;
 	      sep = NULL;
 	    }
-	  
+
 	  if (!sep)
 	    {
-	      printf ("\n%s:\t\t%u:", filename, blockno);
+	      printf ("\n");
+	      print_prefix (filename, 0, position);
+	      printf ("\tblock %u:", blockno);
 	      sep = "";
 	    }
 	  if (lineno)
@@ -393,22 +376,17 @@ tag_lines (filename, file, tag, length)
 	    }
 	}
     }
-  else
-    gcov_skip (file, length);
-  
-  return 0;
 }
 
-static int
-tag_arc_counts (filename, file, tag, length)
-     const char *filename ATTRIBUTE_UNUSED;
-     FILE *file ATTRIBUTE_UNUSED;
-     unsigned tag ATTRIBUTE_UNUSED;
-     unsigned length ATTRIBUTE_UNUSED;
+static void
+tag_counters (const char *filename ATTRIBUTE_UNUSED,
+	      unsigned tag ATTRIBUTE_UNUSED, unsigned length ATTRIBUTE_UNUSED)
 {
-  unsigned n_counts = length / 8;
-  
-  printf (" %u counts", n_counts);
+  static const char *const counter_names[] = GCOV_COUNTER_NAMES;
+  unsigned n_counts = GCOV_TAG_COUNTER_NUM (length);
+
+  printf (" %s %u counts",
+	  counter_names[GCOV_COUNTER_FOR_TAG (tag)], n_counts);
   if (flag_dump_contents)
     {
       unsigned ix;
@@ -416,47 +394,43 @@ tag_arc_counts (filename, file, tag, length)
       for (ix = 0; ix != n_counts; ix++)
 	{
 	  gcov_type count;
-	  
-	  if (gcov_read_counter (file, &count))
-	    return 1;
+
 	  if (!(ix & 7))
-	    printf ("\n%s:\t\t%u", filename, ix);
+	    {
+	      printf ("\n");
+	      print_prefix (filename, 0, gcov_position ());
+	      printf ("\t\t%u", ix);
+	    }
+
+	  count = gcov_read_counter ();
 	  printf (" ");
 	  printf (HOST_WIDEST_INT_PRINT_DEC, count);
 	}
     }
-  else
-    gcov_skip (file, n_counts * 8);
-  
-  return 0;
 }
 
-static int
-tag_summary (filename, file, tag, length)
-     const char *filename ATTRIBUTE_UNUSED;
-     FILE *file ATTRIBUTE_UNUSED;
-     unsigned tag ATTRIBUTE_UNUSED;
-     unsigned length ATTRIBUTE_UNUSED;
+static void
+tag_summary (const char *filename ATTRIBUTE_UNUSED,
+	     unsigned tag ATTRIBUTE_UNUSED, unsigned length ATTRIBUTE_UNUSED)
 {
   struct gcov_summary summary;
+  unsigned ix;
 
-  if (gcov_read_summary (file, &summary))
-    return 1;
+  gcov_read_summary (&summary);
   printf (" checksum=0x%08x", summary.checksum);
-  
-  printf ("\n%s:\t\truns=%u, arcs=%u", filename,
-	  summary.runs, summary.arcs);
-  printf ("\n%s:\t\tarc_sum=", filename);
-  printf (HOST_WIDEST_INT_PRINT_DEC, 
-	  (HOST_WIDEST_INT)summary.arc_sum);
-  printf (", arc_max_one=");
-  printf (HOST_WIDEST_INT_PRINT_DEC, 
-	  (HOST_WIDEST_INT)summary.arc_max_one);
-  printf ("\n%s:\t\tmax_sum=", filename);
-  printf (HOST_WIDEST_INT_PRINT_DEC, 
-	  (HOST_WIDEST_INT)summary.arc_max_sum);
-  printf (", sum_max=");
-  printf (HOST_WIDEST_INT_PRINT_DEC, 
-	  (HOST_WIDEST_INT)summary.arc_sum_max);
-  return 0;
+
+  for (ix = 0; ix != GCOV_COUNTERS; ix++)
+    {
+      printf ("\n");
+      print_prefix (filename, 0, 0);
+      printf ("\t\tcounts=%u, runs=%u",
+	      summary.ctrs[ix].num, summary.ctrs[ix].runs);
+
+      printf (", sum_all=" HOST_WIDEST_INT_PRINT_DEC,
+	      (HOST_WIDEST_INT)summary.ctrs[ix].sum_all);
+      printf (", run_max=" HOST_WIDEST_INT_PRINT_DEC,
+	      (HOST_WIDEST_INT)summary.ctrs[ix].run_max);
+      printf (", sum_max=" HOST_WIDEST_INT_PRINT_DEC,
+	      (HOST_WIDEST_INT)summary.ctrs[ix].sum_max);
+    }
 }

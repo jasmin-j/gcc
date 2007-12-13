@@ -1,4 +1,4 @@
-// Build don't link: 
+// { dg-do assemble  }
 // GROUPS passed friends
 // friends file
 // From: osinski@cs.nyu.edu (Ed Osinski)
@@ -15,5 +15,5 @@ class T {
 class T2 {
       friend void f (int& i)  { // BOGUS - 
       i = 1;
-   };
+   }
 };

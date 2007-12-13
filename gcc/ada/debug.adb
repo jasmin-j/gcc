@@ -6,8 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-2002 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -38,7 +37,7 @@ package body Debug is
    -- Summary of Debug Flag Usage --
    ---------------------------------
 
-   --  Debug flags for compiler (GNAT1 and GNATF)
+   --  Debug flags for compiler (GNAT1)
 
    --  da   Generate messages tracking semantic analyzer progress
    --  db   Show encoding of type names for debug output
@@ -69,18 +68,18 @@ package body Debug is
 
    --  dA   All entities included in representation information output
    --  dB   Output debug encoding of type names and variants
-   --  dC
+   --  dC   Output debugging information on check suppression
    --  dD   Delete elaboration checks in inner level routines
    --  dE   Apply elaboration checks to predefined units
-   --  dF   Front end data layout enabled.
-   --  dG
+   --  dF   Front end data layout enabled
+   --  dG   Generate all warnings including those normally suppressed
    --  dH   Hold (kill) call to gigi
    --  dI   Inhibit internal name numbering in gnatG listing
    --  dJ   Output debugging trace info for JGNAT (Java VM version of GNAT)
    --  dK   Kill all error messages
    --  dL   Output trace information on elaboration checking
-   --  dM
-   --  dN   Do not generate file/line exception messages
+   --  dM   Asssume all variables are modified (no current values)
+   --  dN   No file name information in exception messages
    --  dO   Output immediate error messages
    --  dP   Do not check for controlled objects in preelaborable packages
    --  dQ
@@ -89,10 +88,64 @@ package body Debug is
    --  dT   Convert to machine numbers only for constant declarations
    --  dU   Enable garbage collection of unreachable entities
    --  dV   Enable viewing of all symbols in debugger
-   --  dW
-   --  dX   Enable Frontend ZCX even when it is not supported
-   --  dY
-   --  dZ
+   --  dW   Disable warnings on calls for IN OUT parameters
+   --  dX
+   --  dY   Enable configurable run-time mode
+   --  dZ   Generate listing showing the contents of the dispatch tables
+
+   --  d.a  Disable OpenVMS alignment optimization on types
+   --  d.b
+   --  d.c
+   --  d.d
+   --  d.e
+   --  d.f  Inhibit folding of static expressions
+   --  d.g  Enable conversion of raise into goto
+   --  d.h
+   --  d.i
+   --  d.j
+   --  d.k
+   --  d.l  Use Ada 95 semantics for limited function returns
+   --  d.m  For -gnatl, print full source only for main unit
+   --  d.n
+   --  d.o
+   --  d.p
+   --  d.q
+   --  d.r
+   --  d.s  Disable expansion of slice move, use memmove
+   --  d.t  Disable static allocation of library level dispatch tables
+   --  d.u
+   --  d.v
+   --  d.w  Do not check for infinite while loops
+   --  d.x  No exception handlers
+   --  d.y
+   --  d.z
+
+   --  d.A
+   --  d.B
+   --  d.C
+   --  d.D
+   --  d.E
+   --  d.F
+   --  d.G
+   --  d.H
+   --  d.I  Inspector mode
+   --  d.J
+   --  d.K
+   --  d.L
+   --  d.M
+   --  d.N
+   --  d.O
+   --  d.P
+   --  d.Q
+   --  d.R
+   --  d.S
+   --  d.T
+   --  d.U
+   --  d.V
+   --  d.W
+   --  d.X
+   --  d.Y
+   --  d.Z
 
    --  d1   Error msgs have node numbers where possible
    --  d2   Eliminate error flags in verbose form error messages
@@ -106,21 +159,21 @@ package body Debug is
 
    --  Debug flags for binder (GNATBIND)
 
-   --  da
-   --  db
+   --  da  All links (including internal units) listed if there is a cycle
+   --  db  Output information from Better_Choice
    --  dc  List units as they are chosen
    --  dd
    --  de  Elaboration dependencies including system units
    --  df
    --  dg
    --  dh
-   --  di
+   --  di  Ignore_Errors mode for reading ali files
    --  dj
    --  dk
    --  dl
    --  dm
    --  dn  List details of manipulation of Num_Pred values
-   --  do
+   --  do  Use old preference for elaboration order
    --  dp
    --  dq
    --  dr
@@ -129,19 +182,9 @@ package body Debug is
    --  du  List units as they are acquired
    --  dv
    --  dw
-   --  dx
+   --  dx  Force binder to read xref information from ali files
    --  dy
    --  dz
-
-   --  d1
-   --  d2
-   --  d3
-   --  d4
-   --  d5
-   --  d6
-   --  d7
-   --  d8
-   --  d9
 
    --  Debug flags used in package Make and its clients (e.g. GNATMAKE)
 
@@ -158,29 +201,19 @@ package body Debug is
    --  dk
    --  dl
    --  dm
-   --  dn
+   --  dn  Do not delete temp files created by gnatmake
    --  do
    --  dp  Prints the contents of the Q used by Make.Compile_Sources
    --  dq  Prints source files as they are enqueued and dequeued
    --  dr
    --  ds
-   --  dt
+   --  dt  Display time stamps when there is a mismatch
    --  du  List units as their ali files are acquired
    --  dv
    --  dw  Prints the list of units withed by the unit currently explored
    --  dx
    --  dy
    --  dz
-
-   --  d1
-   --  d2
-   --  d3
-   --  d4
-   --  d5
-   --  d6
-   --  d7
-   --  d8
-   --  d9
 
    --------------------------------------------
    -- Documentation for Compiler Debug Flags --
@@ -190,10 +223,6 @@ package body Debug is
    --       is output showing each node as it gets analyzed, expanded,
    --       resolved, or evaluated. This option is useful for finding out
    --       exactly where a bomb during semantic analysis is occurring.
-
-   --  dA   Normally the output from -gnatR excludes private types and all
-   --       internal entities. This debug flag causes representation info
-   --       for these entities to be output as well.
 
    --  db   In Exp_Dbug, certain type names are encoded to include debugging
    --       information. This debug switch causes lines to be output showing
@@ -206,21 +235,6 @@ package body Debug is
    --  dd   Dynamic allocation of tables messages generated. Each time a
    --       table is reallocated, a line is output indicating the expansion.
 
-   --  dD   Delete new elaboration checks. This flag causes GNAT to return
-   --       to the 3.13a elaboration semantics, and to suppress the fixing
-   --       of two bugs. The first is in the context of inner routines in
-   --       dynamic elaboration mode, when the subprogram we are in was
-   --       called at elaboration time by a unit that was also compiled with
-   --       dynamic elaboration checks. In this case, if A calls B calls C,
-   --       and all are in different units, we need an elaboration check at
-   --       each call. These nested checks were only put in recently (see
-   --       version 1.80 of Sem_Elab) and we provide this debug flag to
-   --       revert to the previous behavior in case of regressions. The
-   --       other behavior reverted by this flag is the treatment of the
-   --       Elaborate_Body pragma in static elaboration mode. This used to
-   --       be treated as not needing elaboration checking, but in fact in
-   --       general Elaborate_All is still required because of nested calls.
-
    --  de   List the entity table
 
    --  df   Full tree/source print (includes withed units). Normally the tree
@@ -229,10 +243,6 @@ package body Debug is
    --       includes all compiled units (see also dg,do,ds,dt). Note that to
    --       be effective, this swich must be used in combination with one or
    --       more of dt, dg, do or ds.
-
-   --  dF   Front end data layout enabled. Normally front end data layout
-   --       is only enabled if the target parameter Backend_Layout is False.
-   --       This debugging switch enables it unconditionally.
 
    --  dg   Print the source recreated from the generated tree. In the case
    --       where the tree has been rewritten this output includes only the
@@ -246,10 +256,6 @@ package body Debug is
    --       in ensuring that the hashing algorithm (in Namet.Hash) is working
    --       effectively with typical sets of program identifiers.
 
-   --  dH   Inhibit call to gigi. This is useful for testing front end data
-   --       layout, and may be useful in other debugging situations where
-   --       you do not want gigi to intefere with the testing.
-
    --  di   Generate messages for visibility linking/delinking
 
    --  dj   Suppress "junk null check" for access parameters. This flag permits
@@ -258,19 +264,10 @@ package body Debug is
    --       Neither of these is valid Ada, but both were allowed in versions of
    --       GNAT before 3.10, so this switch can ease the transition process.
 
-   --  dJ   Generate debugging trace output for the JGNAT back end. This
-   --       consists of symbolic Java Byte Code sequences for all generated
-   --       classes plus additional information to indicate local variables
-   --       and methods.
-
    --  dk   Immediate kill on abort. Normally on an abort (i.e. a call to
    --       Comperr.Compiler_Abort), the GNATBUG message is not given if
    --       there is a previous error. This debug switch bypasses this test
    --       and gives the message unconditionally (useful for debugging).
-
-   --  dK   Kill all error messages. This debug flag suppresses the output
-   --       of all error messages. It is used in regression tests where the
-   --       error messages are target dependent and irrelevant.
 
    --  dl   Generate unit load trace messages. A line of traceback output is
    --       generated each time a request is made to the library manager to
@@ -289,10 +286,6 @@ package body Debug is
    --       other basic tree operations also cause a line of output to be
    --       generated. This option is useful in seeing where the parser is
    --       blowing up.;
-
-   --  dN   Do not generate file/line exception messages. Normally we do the
-   --       explicit generation of these messages, but since these can only
-   --       be disabled using pragma Discard_Names, this switch may be useful.
 
    --  do   Print the source recreated from the generated tree. In the case
    --       where the tree has been rewritten, this output includes only the
@@ -328,8 +321,12 @@ package body Debug is
    --       for adding temporary debugging code to units that have pragmas
    --       that are inconsistent with the debugging code added.
 
+   --  dv   Output trace of overload resolution. Outputs messages for
+   --       overload attempts that involve cascaded errors, or where
+   --       an interepretation is incompatible with the context.
+
    --  dw   Write semantic scope stack messages. Each time a scope is created
-   --       or removed, a message is output (see the Sem_Ch8.New_Scope and
+   --       or removed, a message is output (see the Sem_Ch8.Push_Scope and
    --       Sem_Ch8.Pop_Scope subprograms).
 
    --  dx   Force expansion on, even if no code being generated. Normally the
@@ -346,29 +343,81 @@ package body Debug is
    --  dz   Print source of package Standard. Normally the source print out
    --       does not include package Standard, even if the -df switch is set.
    --       This switch forces output of the source recreated from the internal
-   --       tree built for Standard.
+   --       tree built for Standard. Note that this differs from -gnatS in
+   --       that it prints from the actual tree using the normal Sprint
+   --       circuitry for printing trees.
 
    --  dA   Forces output of representation information, including full
    --       information for all internal type and object entities, as well
-   --       as all user defined type and object entities.
+   --       as all user defined type and object entities including private
+   --       and incomplete types. This debug switch also automatically sets
+   --       the equivalent of -gnatR3m.
 
    --  dB   Output debug encodings for types and variants. See Exp_Dbug for
    --       exact form of the generated output.
+
+   --  dC   Output trace information showing the decisions made during
+   --       check suppression activity in unit Checks.
+
+   --  dD   Delete new elaboration checks. This flag causes GNAT to return
+   --       to the 3.13a elaboration semantics, and to suppress the fixing
+   --       of two bugs. The first is in the context of inner routines in
+   --       dynamic elaboration mode, when the subprogram we are in was
+   --       called at elaboration time by a unit that was also compiled with
+   --       dynamic elaboration checks. In this case, if A calls B calls C,
+   --       and all are in different units, we need an elaboration check at
+   --       each call. These nested checks were only put in recently (see
+   --       version 1.80 of Sem_Elab) and we provide this debug flag to
+   --       revert to the previous behavior in case of regressions. The
+   --       other behavior reverted by this flag is the treatment of the
+   --       Elaborate_Body pragma in static elaboration mode. This used to
+   --       be treated as not needing elaboration checking, but in fact in
+   --       general Elaborate_All is still required because of nested calls.
 
    --  dE   Apply compile time elaboration checking for with relations between
    --       predefined units. Normally no checks are made (it seems that at
    --       least on the SGI, such checks run into trouble).
 
-   --  dI   Inhibit internal name numbering in gnatDG listing. For internal
-   --       names of the form <uppercase-letters><digits><suffix>, the output
-   --       will be modified to <uppercase-letters>...<suffix>. This is used
-   --       in the fixed bugs run to minimize system and version dependency
-   --       in filed -gnatDG output.
+   --  dF   Front end data layout enabled. Normally front end data layout
+   --       is only enabled if the target parameter Backend_Layout is False.
+   --       This debugging switch enables it unconditionally.
+
+   --  dG   Generate all warnings. Normally Errout suppresses warnings on
+   --       units that are not part of the main extended source, and also
+   --       suppresses warnings on instantiations in the main extended
+   --       source that duplicate warnings already posted on the template.
+   --       This switch stops both kinds of deletion and causes Errout to
+   --       post all warnings sent to it.
+
+   --  dH   Inhibit call to gigi. This is useful for testing front end data
+   --       layout, and may be useful in other debugging situations where
+   --       you do not want gigi to intefere with the testing.
+
+   --  dI   Inhibit internal name numbering in gnatDG listing. Any sequence of
+   --       the form <uppercase-letter><digits><lowercase-letter> appearing in
+   --       a name is replaced by <uppercase-letter>...<lowercase-letter>. This
+   --       is used in the fixed bugs run to minimize system and version
+   --       dependency in filed -gnatD or -gnatG output.
+
+   --  dJ   Generate debugging trace output for the JGNAT back end. This
+   --       consists of symbolic Java Byte Code sequences for all generated
+   --       classes plus additional information to indicate local variables
+   --       and methods.
+
+   --  dK   Kill all error messages. This debug flag suppresses the output
+   --       of all error messages. It is used in regression tests where the
+   --       error messages are target dependent and irrelevant.
 
    --  dL   Output trace information on elaboration checking. This debug
    --       switch causes output to be generated showing each call or
    --       instantiation as it is checked, and the progress of the recursive
    --       trace through calls at elaboration time.
+
+   --  dM   Assume all variables have been modified, and ignore current value
+   --       indications. This debug flag disconnects the tracking of constant
+   --       values (see Exp_Ch2.Expand_Current_Value).
+
+   --  dN   Do not generate file name information in exception messages
 
    --  dO   Output immediate error messages. This causes error messages to
    --       be output as soon as they are generated (disconnecting several
@@ -380,6 +429,8 @@ package body Debug is
    --       RM 10.2.1(9) forbids the use of library level controlled objects
    --       in preelaborable packages, but this restriction is a huge pain,
    --       especially in the predefined library units.
+
+   --  dQ   needs full documentation ???
 
    --  dR   Bypass the check for a proper version of s-rpc being present
    --       to use the -gnatz? switch. This allows debugging of the use
@@ -404,16 +455,95 @@ package body Debug is
    --       be enabled without generating modified source files. Note that the
    --       use of -gnatdV ensures in the dwarf/elf case that all symbols that
    --       are present in the elf tables are also in the dwarf tables (which
-   --       seems to be required by some tools).
+   --       seems to be required by some tools). Another effect of dV is to
+   --       generate full qualified names, including internal names generated
+   --       for blocks and loops.
 
-   --  dX   Enable frontend ZCX even when it is not supported. Equivalent to
-   --       -gnatZ but without verifying that System.Front_End_ZCX_Support
-   --       is set. This causes the front end to generate suitable tables
-   --       for ZCX handling even when the runtime cannot handle ZCX. This
-   --       is used for testing the front end for correct ZCX operation, and
-   --       in particular is useful for multi-target testing.
+   --  dW   Disable warnings when a possibly uninitialized scalar value is
+   --       passed to an IN OUT parameter of a procedure. This usage is a
+   --       quite improper bounded error [erroneous in Ada 83] situation,
+   --       and would normally generate a warning. However, to ease the
+   --       task of transitioning incorrect legacy code, we provide this
+   --       undocumented feature for suppressing these warnings.
 
-   --  d1   Error msgs have node numbers where possible. Normally error
+   --  dY   Enable configurable run-time mode, just as though the System file
+   --       had Configurable_Run_Time_Mode set to True. This is useful in
+   --       testing high integrity mode.
+
+   --  dZ   Generate listing showing the contents of the dispatch tables. Each
+   --       line has an internally generated number used for references between
+   --       tagged types and primitives. For each primitive the output has the
+   --       following fields:
+   --         - Letter 'P' or letter 's': The former indicates that this
+   --           primitive will be located in a primary dispatch table. The
+   --           latter indicates that it will be located in a secondary
+   --           dispatch table.
+   --         - Name of the primitive. In case of predefined Ada primitives
+   --           the text "(predefined)" is added before the name, and these
+   --           acronyms are used: SR (Stream_Read), SW (Stream_Write), SI
+   --           (Stream_Input), SO (Stream_Output), DA (Deep_Adjust), DF
+   --           (Deep_Finalize). In addition Oeq identifies the equality
+   --           operator, and "_assign" the assignment.
+   --         - If the primitive covers interface types, two extra fields
+   --           referencing other primitives are generated: "Alias" references
+   --           the primitive of the tagged type that covers an interface
+   --           primitive, and "AI_Alias" references the covered interface
+   --           primitive.
+   --         - The expression "at #xx" indicates the slot of the dispatch
+   --           table occupied by such primitive in its corresponding primary
+   --           or secondary dispatch table.
+   --         - In case of abstract subprograms the text "is abstract" is
+   --           added at the end of the line.
+
+   --  d.a  Disable OpenVMS alignment optimization on types.  On OpenVMS,
+   --       record types whose size is odd "in between" (e.g. 17 bits) are
+   --       over-aligned to the next power of 2 (until 8 bytes).  This over
+   --       alignment improve generated code and is more consistent with
+   --       what Dec Ada does.
+
+   --  d.f  Suppress folding of static expressions. This of course results
+   --       in seriously non-conforming behavior, but is useful sometimes
+   --       when tracking down handling of complex expressions.
+
+   --  d.g  Enables conversion of a raise statement into a goto when the
+   --       relevant handler is statically determinable. For now we only try
+   --       this if this debug flag is set. Later we will enable this more
+   --       generally by default.
+
+   --  d.l  Use Ada 95 semantics for limited function returns. This may be
+   --       used to work around the incompatibility introduced by AI-318-2.
+   --       It is useful only in -gnat05 mode.
+
+   --  d.m  When -gnatl is used, the normal output includes full listings of
+   --       all files in the extended main source (body/spec/subunits). If this
+   --       debug switch is used, then the full listing is given only for the
+   --       main source (this corresponds to a previous behavior of -gnatl and
+   --       is used for running the ACATS tests).
+
+   --  d.s  Normally the compiler expands slice moves into loops if overlap
+   --       might be possible. This debug flag inhibits that expansion, and
+   --       the back end is expected to use an appropriate routine to handle
+   --       overlap, based on Forward_OK and Backwards_OK flags.
+
+   --  d.t  The compiler has been modified (a fairly extensive modification)
+   --       to generate static dispatch tables for library level tagged types.
+   --       This debug switch disables this modification and reverts to the
+   --       previous dynamic construction of tables. It is there as a possible
+   --       work around if we run into trouble with the new implementation.
+
+   --  d.w  This flag turns off the scanning of while loops to detect possible
+   --       infinite loops.
+
+   --  d.x  No exception handlers in generated code. This causes exception
+   --       handlers to be eliminated from the generated code. They are still
+   --       fully compiled and analyzed, they just get eliminated from the
+   --       code generation step.
+
+   --  d.I  Inspector mode. Relevant for VM_Target /= None. Try to generate
+   --       byte code, even in case of unsupported construct, for the sake
+   --       of static analysis tools.
+
+   --  d1   Error messages have node numbers where possible. Normally error
    --       messages have only source locations. This option is useful when
    --       debugging errors caused by expanded code, where the source location
    --       does not give enough information.
@@ -422,7 +552,10 @@ package body Debug is
    --       messages. The messages are still interspersed in the listing, but
    --       without any error flags or extra blank lines. Also causes an extra
    --       <<< to be output at the right margin. This is intended to be the
-   --       easiest format for checking conformance of ACVC B tests.
+   --       easiest format for checking conformance of ACATS B tests. This
+   --       flag also suppresses the additional messages explaining why a
+   --       non-static expression is non-static (see Sem_Eval.Why_Not_Static).
+   --       This avoids having to worry about these messages in ACATS testing.
 
    --  d3   Causes Comperr to dump the contents of the node for which an abort
    --       was detected (normally only the Node_Id of the node is output).
@@ -432,6 +565,9 @@ package body Debug is
    --       are automatically krunched to 8 characters, with special treatment
    --       of the prefixes Ada, System, and Interfaces. Setting this debug
    --       switch disables this special treatment.
+
+   --  d5   Causes the tree read/write circuit to output detailed information
+   --       tracking the data that is read and written element by element.
 
    --  d6   Normally access-to-unconstrained-array types are represented
    --       using fat (double) pointers. Using this debug flag causes them
@@ -452,6 +588,12 @@ package body Debug is
    -- Documentation for Binder Debug Flags --
    ------------------------------------------
 
+   --  da  Normally if there is an elaboration circularity, then in describing
+   --      the cycle, links involving internal units are omitted, since they
+   --      are irrelevant and confusing. This debug flag causes all links to
+   --      be listed, and is useful when diagnosing circularities introduced
+   --      by incorrect changes to the run-time library itself.
+
    --  dc  List units as they are chosen. As units are selected for addition to
    --      the elaboration order, a line of output is generated showing which
    --      unit has been selected.
@@ -460,11 +602,26 @@ package body Debug is
    --      dependencies) except that internal units are included in the
    --      listing.
 
+   --  di  Normally gnatbind calls Read_Ali with Ignore_Errors set to
+   --      False, since the binder really needs correct version ALI
+   --      files to do its job. This debug flag causes Ignore_Errors
+   --      mode to be set for the binder (and is particularly useful
+   --      for testing ignore errors mode).
+
    --  dn  List details of manipulation of Num_Pred values during execution of
    --      the algorithm used to determine a correct order of elaboration. This
    --      is useful in diagnosing any problems in its behavior.
 
+   --  do  Use old elaboration order preference. The new preference rules
+   --      prefer specs with no bodies to specs with bodies, and between two
+   --      specs with bodies, prefers the one whose body is closer to being
+   --      able to be elaborated. This is a clear improvement, but we provide
+   --      this debug flag in case of regressions.
+
    --  du  List unit name and file name for each unit as it is read in
+
+   --  dx  Force the binder to read (and then ignore) the xref information
+   --      in ali files (used to check that read circuit is working OK).
 
    ------------------------------------------------------------
    -- Documentation for the Debug Flags used in package Make --
@@ -473,6 +630,10 @@ package body Debug is
    --  Please note that such flags apply to all of Make clients,
    --  such as gnatmake.
 
+   --  dn  Do not delete temporary files creates by Make at the end
+   --      of execution, such as temporary config pragma files, mapping
+   --      files or project path files.
+
    --  dp  Prints the Q used by routine Make.Compile_Sources every time
    --      we go around the main compile loop of Make.Compile_Sources
 
@@ -480,17 +641,14 @@ package body Debug is
    --      used by routine Make.Compile_Sources. Useful to figure out the
    --      order in which sources are recompiled.
 
+   --  dt  When a time stamp mismatch has been found for an ALI file,
+   --      display the source file name, the time stamp expected and
+   --      the time stamp found.
+
+   --  du  List unit name and file name for each unit as it is read in
+
    --  dw  Prints the list of units withed by the unit currently explored
    --      during the main loop of Make.Compile_Sources.
-
-   ----------------------
-   -- Get_Debug_Flag_K --
-   ----------------------
-
-   function Get_Debug_Flag_K return Boolean is
-   begin
-      return Debug_Flag_K;
-   end Get_Debug_Flag_K;
 
    --------------------
    -- Set_Debug_Flag --
@@ -576,5 +734,90 @@ package body Debug is
          end case;
       end if;
    end Set_Debug_Flag;
+
+   ---------------------------
+   -- Set_Dotted_Debug_Flag --
+   ---------------------------
+
+   procedure Set_Dotted_Debug_Flag (C : Character; Val : Boolean := True) is
+      subtype Dig  is Character range '1' .. '9';
+      subtype LLet is Character range 'a' .. 'z';
+      subtype ULet is Character range 'A' .. 'Z';
+
+   begin
+      if C in Dig then
+         case Dig (C) is
+            when '1' => Debug_Flag_Dot_1 := Val;
+            when '2' => Debug_Flag_Dot_2 := Val;
+            when '3' => Debug_Flag_Dot_3 := Val;
+            when '4' => Debug_Flag_Dot_4 := Val;
+            when '5' => Debug_Flag_Dot_5 := Val;
+            when '6' => Debug_Flag_Dot_6 := Val;
+            when '7' => Debug_Flag_Dot_7 := Val;
+            when '8' => Debug_Flag_Dot_8 := Val;
+            when '9' => Debug_Flag_Dot_9 := Val;
+         end case;
+
+      elsif C in ULet then
+         case ULet (C) is
+            when 'A' => Debug_Flag_Dot_AA := Val;
+            when 'B' => Debug_Flag_Dot_BB := Val;
+            when 'C' => Debug_Flag_Dot_CC := Val;
+            when 'D' => Debug_Flag_Dot_DD := Val;
+            when 'E' => Debug_Flag_Dot_EE := Val;
+            when 'F' => Debug_Flag_Dot_FF := Val;
+            when 'G' => Debug_Flag_Dot_GG := Val;
+            when 'H' => Debug_Flag_Dot_HH := Val;
+            when 'I' => Debug_Flag_Dot_II := Val;
+            when 'J' => Debug_Flag_Dot_JJ := Val;
+            when 'K' => Debug_Flag_Dot_KK := Val;
+            when 'L' => Debug_Flag_Dot_LL := Val;
+            when 'M' => Debug_Flag_Dot_MM := Val;
+            when 'N' => Debug_Flag_Dot_NN := Val;
+            when 'O' => Debug_Flag_Dot_OO := Val;
+            when 'P' => Debug_Flag_Dot_PP := Val;
+            when 'Q' => Debug_Flag_Dot_QQ := Val;
+            when 'R' => Debug_Flag_Dot_RR := Val;
+            when 'S' => Debug_Flag_Dot_SS := Val;
+            when 'T' => Debug_Flag_Dot_TT := Val;
+            when 'U' => Debug_Flag_Dot_UU := Val;
+            when 'V' => Debug_Flag_Dot_VV := Val;
+            when 'W' => Debug_Flag_Dot_WW := Val;
+            when 'X' => Debug_Flag_Dot_XX := Val;
+            when 'Y' => Debug_Flag_Dot_YY := Val;
+            when 'Z' => Debug_Flag_Dot_ZZ := Val;
+         end case;
+
+      else
+         case LLet (C) is
+            when 'a' => Debug_Flag_Dot_A := Val;
+            when 'b' => Debug_Flag_Dot_B := Val;
+            when 'c' => Debug_Flag_Dot_C := Val;
+            when 'd' => Debug_Flag_Dot_D := Val;
+            when 'e' => Debug_Flag_Dot_E := Val;
+            when 'f' => Debug_Flag_Dot_F := Val;
+            when 'g' => Debug_Flag_Dot_G := Val;
+            when 'h' => Debug_Flag_Dot_H := Val;
+            when 'i' => Debug_Flag_Dot_I := Val;
+            when 'j' => Debug_Flag_Dot_J := Val;
+            when 'k' => Debug_Flag_Dot_K := Val;
+            when 'l' => Debug_Flag_Dot_L := Val;
+            when 'm' => Debug_Flag_Dot_M := Val;
+            when 'n' => Debug_Flag_Dot_N := Val;
+            when 'o' => Debug_Flag_Dot_O := Val;
+            when 'p' => Debug_Flag_Dot_P := Val;
+            when 'q' => Debug_Flag_Dot_Q := Val;
+            when 'r' => Debug_Flag_Dot_R := Val;
+            when 's' => Debug_Flag_Dot_S := Val;
+            when 't' => Debug_Flag_Dot_T := Val;
+            when 'u' => Debug_Flag_Dot_U := Val;
+            when 'v' => Debug_Flag_Dot_V := Val;
+            when 'w' => Debug_Flag_Dot_W := Val;
+            when 'x' => Debug_Flag_Dot_X := Val;
+            when 'y' => Debug_Flag_Dot_Y := Val;
+            when 'z' => Debug_Flag_Dot_Z := Val;
+         end case;
+      end if;
+   end Set_Dotted_Debug_Flag;
 
 end Debug;

@@ -6,19 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                                                                          --
---          Copyright (C) 1992-1999 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -29,8 +27,7 @@
 --  package Sem_Aggr contains the actual resolution routines for aggregates,
 --  which are separated off since aggregate processing is complex.
 
-with Snames; use Snames;
-with Types;  use Types;
+with Types; use Types;
 
 package Sem_Res is
 
@@ -47,7 +44,7 @@ package Sem_Res is
 
    --  Since in practice a lot of semantic analysis has to be postponed until
    --  types are known (e.g. static folding, setting of suppress flags), the
-   --  Resolve routines also complete the semantic analyze, and also call the
+   --  Resolve routines also complete the semantic analysis, and call the
    --  expander for possibly expansion of the completely type resolved node.
 
    procedure Resolve (N : Node_Id; Typ : Entity_Id);
@@ -59,6 +56,12 @@ package Sem_Res is
    --  resolve routines do various other processing, e.g. static evaluation.
    --  If a Suppress argument is present, then the resolution is done with the
    --  specified check suppressed (can be All_Checks to suppress all checks).
+
+   procedure Resolve (N : Node_Id);
+   --  A version of Resolve where the type to be used for resolution is
+   --  taken from the Etype (N). This is commonly used in cases where the
+   --  context does not add anything and the first pass of analysis found
+   --  the correct expected type.
 
    procedure Resolve_Discrete_Subtype_Indication
      (N   : Node_Id;
@@ -89,12 +92,18 @@ package Sem_Res is
    --  is not present, then the Etype of the expression after the Analyze
    --  call is used for the Resolve.
 
+   procedure Ambiguous_Character (C : Node_Id);
+   --  Give list of candidate interpretations when a character literal cannot
+   --  be resolved, for example in a (useless) comparison such as 'A' = 'B'.
+   --  In Ada95 the literals in question can be of type Character or Wide_
+   --  Character. In Ada2005 Wide_Wide_Character is also a candidate. The
+   --  node may also be overloaded with user-defined character types.
+
    procedure Check_Parameterless_Call (N : Node_Id);
    --  Several forms of names can denote calls to entities without para-
    --  meters. The context determines whether the name denotes the entity
    --  or a call to it. When it is a call, the node must be rebuilt
-   --  accordingly (deprocedured, in A68 terms) and renalyzed to obtain
-   --  possible interpretations.
+   --  accordingly and renalyzed to obtain possible interpretations.
    --
    --  The name may be that of an overloadable construct, or it can be an
    --  explicit dereference of a prefix that denotes an access to subprogram.
@@ -111,7 +120,12 @@ package Sem_Res is
    --  read the spec of Sem.
 
    procedure Pre_Analyze_And_Resolve (N : Node_Id);
-   --  Same, but use type of node because context does not impose a single
-   --  type.
+   --  Same, but use type of node because context does not impose a single type
+
+private
+   procedure Resolve_Implicit_Type (N : Node_Id) renames Resolve;
+   pragma Inline (Resolve_Implicit_Type);
+   --  We use this renaming to make the application of Inline very explicit
+   --  to this version, since other versions of Resolve are not inlined.
 
 end Sem_Res;

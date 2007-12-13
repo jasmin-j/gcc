@@ -1,3 +1,4 @@
+// { dg-do run  }
 int i;
 
 struct S {
@@ -5,7 +6,7 @@ struct S {
     ++i;
     if (i == 3)
       throw 3;
-  };
+  }
 
   S () {}
 

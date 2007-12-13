@@ -1,9 +1,16 @@
-// Build don't link:
+// { dg-do compile  }
 
 template <class T = int>
-struct A { const T x; A() : x(0) { } A(T x) : x(x) { } }; 
+struct A { // { dg-error "assignment" }
+  const T x;
+  A() : x(0) { } A(T x) : x(x) { }
+}; 
 
 template <class B>
-void func () { B y; y = B(); } // ERROR - can't use default assignment
+void func ()
+{
+  B y; 
+  y = B();  // { dg-error "synthesized" }
+}
 
 int main (void) { func< A<> >(); }
