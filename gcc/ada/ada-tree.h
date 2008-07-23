@@ -6,37 +6,27 @@
  *                                                                          *
  *                              C Header File                               *
  *                                                                          *
- *          Copyright (C) 1992-2005 Free Software Foundation, Inc.          *
+ *          Copyright (C) 1992-2008, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
- * ware  Foundation;  either version 2,  or (at your option) any later ver- *
+ * ware  Foundation;  either version 3,  or (at your option) any later ver- *
  * sion.  GNAT is distributed in the hope that it will be useful, but WITH- *
  * OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY *
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
- * for  more details.  You should have  received  a copy of the GNU General *
- * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * for  more details.  You should have received a copy of the GNU General   *
+ * Public License along with GCC; see the file COPYING3.  If not see        *
+ * <http://www.gnu.org/licenses/>.                                          *
  *                                                                          *
  * GNAT was originally developed  by the GNAT team at  New York University. *
  * Extensive contributions were provided by Ada Core Technologies Inc.      *
  *                                                                          *
  ****************************************************************************/
 
-/* Ada language-specific GC tree codes.  */
-#define DEFTREECODE(SYM, NAME, TYPE, LENGTH) SYM,
-enum gnat_tree_code {
-  __DUMMY = LAST_AND_UNUSED_TREE_CODE,
-#include "ada-tree.def"
-  LAST_GNAT_TREE_CODE
-};
-#undef DEFTREECODE
-
 /* Ada uses the lang_decl and lang_type fields to hold a tree.  */
 union lang_tree_node
   GTY((desc ("0"),
-       chain_next ("(union lang_tree_node *)TREE_CHAIN (&%h.t)")))
+       chain_next ("(union lang_tree_node *)GENERIC_NEXT (&%h.t)")))
 {
   union tree_node GTY((tag ("0"))) t;
 };
@@ -49,7 +39,7 @@ struct lang_type GTY(()) {tree t; };
 #define SET_TYPE_LANG_SPECIFIC(NODE, X)	\
  (TYPE_LANG_SPECIFIC (NODE)			\
   = (TYPE_LANG_SPECIFIC (NODE)			\
-     ? TYPE_LANG_SPECIFIC (NODE) : ggc_alloc (sizeof (struct lang_type))))   \
+     ? TYPE_LANG_SPECIFIC (NODE) : GGC_NEW (struct lang_type)))   \
  ->t = X;
 
 #define GET_DECL_LANG_SPECIFIC(NODE) \
@@ -57,7 +47,7 @@ struct lang_type GTY(()) {tree t; };
 #define SET_DECL_LANG_SPECIFIC(NODE, VALUE)	\
  (DECL_LANG_SPECIFIC (NODE)			\
   = (DECL_LANG_SPECIFIC (NODE)			\
-     ? DECL_LANG_SPECIFIC (NODE) : ggc_alloc (sizeof (struct lang_decl))))   \
+     ? DECL_LANG_SPECIFIC (NODE) : GGC_NEW (struct lang_decl)))   \
  ->t = VALUE;
 
 /* Flags added to GCC type nodes.  */
@@ -70,8 +60,9 @@ struct lang_type GTY(()) {tree t; };
 #define TYPE_FAT_POINTER_P(NODE)  \
   (TREE_CODE (NODE) == RECORD_TYPE && TYPE_IS_FAT_POINTER_P (NODE))
 
-/* For integral types and array types, nonzero if this is a packed array type.
-   Such types should not be extended to a larger size.  */
+/* For integral types and array types, nonzero if this is a packed array type
+   used for bit-packed types.  Such types should not be extended to a larger
+   size or validated against a specified size.  */
 #define TYPE_PACKED_ARRAY_TYPE_P(NODE) TYPE_LANG_FLAG_0 (NODE)
 
 #define TYPE_IS_PACKED_ARRAY_TYPE_P(NODE) \
@@ -137,11 +128,6 @@ struct lang_type GTY(()) {tree t; };
 #define TYPE_RETURNS_BY_REF_P(NODE) \
   TYPE_LANG_FLAG_4 (FUNCTION_TYPE_CHECK (NODE))
 
-/* For FUNCTION_TYPEs, nonzero if function returns by being passed a pointer
-   to a place to store its result.  */
-#define TYPE_RETURNS_BY_TARGET_PTR_P(NODE) \
-  TYPE_LANG_FLAG_5 (FUNCTION_TYPE_CHECK (NODE))
-
 /* For VOID_TYPE, ENUMERAL_TYPE, UNION_TYPE, and RECORD_TYPE, nonzero if this
    is a dummy type, made to correspond to a private or incomplete type.  */
 #define TYPE_DUMMY_P(NODE) TYPE_LANG_FLAG_4 (NODE)
@@ -152,6 +138,11 @@ struct lang_type GTY(()) {tree t; };
     || TREE_CODE (NODE) == UNION_TYPE || TREE_CODE (NODE) == ENUMERAL_TYPE) \
    && TYPE_DUMMY_P (NODE))
 
+/* For FUNCTION_TYPEs, nonzero if function returns by being passed a pointer
+   to a place to store its result.  */
+#define TYPE_RETURNS_BY_TARGET_PTR_P(NODE) \
+  TYPE_LANG_FLAG_5 (FUNCTION_TYPE_CHECK (NODE))
+
 /* For an INTEGER_TYPE, nonzero if TYPE_ACTUAL_BOUNDS is present.  */
 #define TYPE_HAS_ACTUAL_BOUNDS_P(NODE) \
   TYPE_LANG_FLAG_5 (INTEGER_TYPE_CHECK (NODE))
@@ -160,8 +151,8 @@ struct lang_type GTY(()) {tree t; };
    padding or alignment.  */
 #define TYPE_IS_PADDING_P(NODE) TYPE_LANG_FLAG_5 (RECORD_TYPE_CHECK (NODE))
 
-/* For a UNION_TYPE, nonzero if this is an unchecked union.  */
-#define TYPE_UNCHECKED_UNION_P(NODE) TYPE_LANG_FLAG_6 (UNION_TYPE_CHECK (NODE))
+/* True if TYPE can alias any other types.  */
+#define TYPE_UNIVERSAL_ALIASING_P(NODE) TYPE_LANG_FLAG_6 (NODE)
 
 /* This field is only defined for FUNCTION_TYPE nodes. If the Ada
    subprogram contains no parameters passed by copy in/copy out then this
@@ -235,16 +226,20 @@ struct lang_type GTY(()) {tree t; };
    discriminant.  */
 #define DECL_STUBBED_P(NODE) DECL_LANG_FLAG_0 (FUNCTION_DECL_CHECK (NODE))
 
+/* Nonzero in a VAR_DECL if it is guaranteed to be constant after having
+   been elaborated and TREE_READONLY is not set on it.  */
+#define DECL_READONLY_ONCE_ELAB(NODE) DECL_LANG_FLAG_0 (VAR_DECL_CHECK (NODE))
+
 /* Nonzero if this decl is always used by reference; i.e., an INDIRECT_REF
    is needed to access the object.  */
 #define DECL_BY_REF_P(NODE) DECL_LANG_FLAG_1 (NODE)
 
-/* Nonzero if this decl is a PARM_DECL for an Ada array being passed to a
-   foreign convention subprogram.  */
-#define DECL_BY_COMPONENT_PTR_P(NODE) DECL_LANG_FLAG_2 (PARM_DECL_CHECK (NODE))
-
 /* Nonzero in a FIELD_DECL that is a dummy built for some internal reason.  */
 #define DECL_INTERNAL_P(NODE) DECL_LANG_FLAG_3 (FIELD_DECL_CHECK (NODE))
+
+/* Nonzero if this decl is a PARM_DECL for an Ada array being passed to a
+   foreign convention subprogram.  */
+#define DECL_BY_COMPONENT_PTR_P(NODE) DECL_LANG_FLAG_3 (PARM_DECL_CHECK (NODE))
 
 /* Nonzero in a FUNCTION_DECL that corresponds to an elaboration procedure.  */
 #define DECL_ELABORATION_PROC_P(NODE) \
@@ -285,6 +280,19 @@ struct lang_type GTY(()) {tree t; };
   GET_DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE))
 #define SET_DECL_RENAMED_OBJECT(NODE, X) \
   SET_DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE), X)
+
+/* In a TYPE_DECL, points to the parallel type if any, otherwise 0.  */
+#define DECL_PARALLEL_TYPE(NODE) \
+  GET_DECL_LANG_SPECIFIC (TYPE_DECL_CHECK (NODE))
+#define SET_DECL_PARALLEL_TYPE(NODE, X) \
+  SET_DECL_LANG_SPECIFIC (TYPE_DECL_CHECK (NODE), X)
+
+/* In a FUNCTION_DECL, points to the stub associated with the function
+   if any, otherwise 0.  */
+#define DECL_FUNCTION_STUB(NODE) \
+  GET_DECL_LANG_SPECIFIC (FUNCTION_DECL_CHECK (NODE))
+#define SET_DECL_FUNCTION_STUB(NODE, X) \
+  SET_DECL_LANG_SPECIFIC (FUNCTION_DECL_CHECK (NODE), X)
 
 /* In a FIELD_DECL corresponding to a discriminant, contains the
    discriminant number.  */

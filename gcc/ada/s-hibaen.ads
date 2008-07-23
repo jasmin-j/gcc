@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -73,7 +73,7 @@ package System.HIE_Back_End is
    --  This entity controls whether the front end allows generation of
    --  long shift instructions, i.e. shifts that operate on 64-bit values.
    --  Such shifts are required for the implementation of fixed-point
-   --  types longer than 32 bits. This can safetly be set as High_Integrity
+   --  types longer than 32 bits. This can safely be set as High_Integrity
    --  on 64-bit machines that provide this operation at the hardware level,
    --  but on some 32-bit machines a run time call is required. If there
    --  is a certifiable version available of the relevant run-time routines,

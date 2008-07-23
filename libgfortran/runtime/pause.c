@@ -1,5 +1,5 @@
 /* Implementation of the STOP statement.
-   Copyright 2002 Free Software Foundation, Inc.
+   Copyright 2002, 2005, 2007 Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -25,14 +25,12 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
-
-#include "config.h"
-#include <string.h>
-#include <stdio.h>
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
 #include "libgfortran.h"
+#include <string.h>
+
 
 static void
 do_pause (void)
@@ -55,8 +53,6 @@ export_proto(pause_numeric);
 void
 pause_numeric (GFC_INTEGER_4 code)
 {
-  show_locus ();
-
   if (code == -1)
     st_printf ("PAUSE\n");
   else
@@ -71,8 +67,6 @@ export_proto(pause_string);
 void
 pause_string (char *string, GFC_INTEGER_4 len)
 {
-  show_locus ();
-
   st_printf ("PAUSE ");
   while (len--)
     st_printf ("%c", *(string++));

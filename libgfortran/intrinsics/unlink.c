@@ -1,5 +1,5 @@
 /* Implementation of the UNLINK intrinsic.
-   Copyright (C) 2004 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007 Free Software Foundation, Inc.
    Contributed by Steven G. Kargl <kargls@comcast.net>.
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -25,20 +25,17 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
 #include "libgfortran.h"
+
+#include <string.h>
+#include <errno.h>
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#ifdef HAVE_STRING_H
-#include <string.h>
-#endif
-
-#include <errno.h>
 
 /* SUBROUTINE UNLINK(NAME, STATUS)
    CHARACTER(LEN= ), INTENT(IN) :: NAME
@@ -51,7 +48,7 @@ iexport_proto(unlink_i4_sub);
 void
 unlink_i4_sub (char *name, GFC_INTEGER_4 *status, gfc_charlen_type name_len)
 {
-  char *str, *s;
+  char *str;
   GFC_INTEGER_4 stat;
 
   /* Trim trailing spaces from name.  */
@@ -61,11 +58,11 @@ unlink_i4_sub (char *name, GFC_INTEGER_4 *status, gfc_charlen_type name_len)
   /* Make a null terminated copy of the string.  */
   str = gfc_alloca (name_len + 1);
   memcpy (str, name, name_len);
-  str[name_len] = '\0'; 
+  str[name_len] = '\0';
 
   stat = unlink (str);
 
-  if (status != NULL) 
+  if (status != NULL)
     *status = (stat == 0) ? stat : errno;
 }
 iexport(unlink_i4_sub);

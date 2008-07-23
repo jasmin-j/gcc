@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --     S Y S T E M . S T A C K _ C H E C K I N G . O P E R A T I O N S      --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---          Copyright (C) 1999-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1999-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,14 +32,12 @@
 ------------------------------------------------------------------------------
 
 --  This is the general implementation of this package. There is a VxWorks
---  specific version of this package (5zstchop.adb). This file should
+--  specific version of this package (s-stchop-vxworks.adb). This file should
 --  be kept synchronized with it.
 
 pragma Restrictions (No_Elaboration_Code);
 --  We want to guarantee the absence of elaboration code because the
 --  binder does not handle references to this package.
-
-with Ada.Exceptions;
 
 with System.Storage_Elements; use System.Storage_Elements;
 with System.Parameters; use System.Parameters;
@@ -50,7 +48,8 @@ package body System.Stack_Checking.Operations is
 
    Kilobyte : constant := 1024;
 
-   function Set_Stack_Info (Stack : access Stack_Access) return Stack_Access;
+   function Set_Stack_Info
+     (Stack : not null access Stack_Access) return Stack_Access;
 
    --  The function Set_Stack_Info is the actual function that updates
    --  the cache containing a pointer to the Stack_Info. It may also
@@ -85,12 +84,32 @@ package body System.Stack_Checking.Operations is
       Cache := Null_Stack;
    end Invalidate_Stack_Cache;
 
+   -----------------------------
+   -- Notify_Stack_Attributes --
+   -----------------------------
+
+   procedure Notify_Stack_Attributes
+     (Initial_SP : System.Address;
+      Size       : System.Storage_Elements.Storage_Offset)
+   is
+      My_Stack : constant Stack_Access := Soft_Links.Get_Stack_Info.all;
+
+      --  We piggyback on the 'Limit' field to store what will be used as the
+      --  'Base' and leave the 'Size' alone to not interfere with the logic in
+      --  Set_Stack_Info below.
+
+      pragma Unreferenced (Size);
+
+   begin
+      My_Stack.Limit := Initial_SP;
+   end Notify_Stack_Attributes;
+
    --------------------
    -- Set_Stack_Info --
    --------------------
 
    function Set_Stack_Info
-     (Stack : access Stack_Access) return Stack_Access
+     (Stack : not null access Stack_Access) return Stack_Access
    is
       type Frame_Mark is null record;
       Frame_Location : Frame_Mark;
@@ -101,7 +120,7 @@ package body System.Stack_Checking.Operations is
       Limit       : Integer;
 
    begin
-      --  The order of steps 1 .. 3 is important, see specification.
+      --  The order of steps 1 .. 3 is important, see specification
 
       --  1) Get the Stack_Access value for the current task
 
@@ -130,7 +149,14 @@ package body System.Stack_Checking.Operations is
             end if;
          end if;
 
-         My_Stack.Base := Frame_Address;
+         --  If a stack base address has been registered, honor it.
+         --  Fallback to the address of a local object otherwise.
+
+         if My_Stack.Limit /= System.Null_Address then
+            My_Stack.Base := My_Stack.Limit;
+         else
+            My_Stack.Base := Frame_Address;
+         end if;
 
          if Stack_Grows_Down then
 
@@ -179,6 +205,18 @@ package body System.Stack_Checking.Operations is
       Frame_Address : constant System.Address := Marker'Address;
 
    begin
+      --  The parameter may have wrapped around in System.Address arithmetics.
+      --  In that case, we have no other choices than raising the exception.
+
+      if (Stack_Grows_Down and then
+            Stack_Address > Frame_Address)
+        or else
+         (not Stack_Grows_Down and then
+            Stack_Address < Frame_Address)
+      then
+         raise Storage_Error with "stack overflow detected";
+      end if;
+
       --  This function first does a "cheap" check which is correct
       --  if it succeeds. In case of failure, the full check is done.
       --  Ideally the cheap check should be done in an optimized manner,
@@ -228,9 +266,7 @@ package body System.Stack_Checking.Operations is
             (not Stack_Grows_Down and then
                   Stack_Address > My_Stack.Limit)
          then
-            Ada.Exceptions.Raise_Exception
-              (E       => Storage_Error'Identity,
-               Message => "stack overflow detected");
+            raise Storage_Error with "stack overflow detected";
          end if;
 
          return My_Stack;

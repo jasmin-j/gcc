@@ -1,6 +1,6 @@
 /* CPP Library.
    Copyright (C) 1986, 1987, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
    Contributed by Per Bothner, 1994-95.
    Based on CCCP program by Paul Rubin, June 1986
    Adapted to ANSI C, Richard Stallman, Jan 1987
@@ -17,7 +17,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
-Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.  */
 
 #include "config.h"
 #include "system.h"
@@ -72,21 +72,29 @@ struct lang_flags
   char c99;
   char cplusplus;
   char extended_numbers;
+  char extended_identifiers;
   char std;
   char cplusplus_comments;
   char digraphs;
+  char uliterals;
 };
 
 static const struct lang_flags lang_defaults[] =
-{ /*              c99 c++ xnum std  //   digr  */
-  /* GNUC89 */  { 0,  0,  1,   0,   1,   1     },
-  /* GNUC99 */  { 1,  0,  1,   0,   1,   1     },
-  /* STDC89 */  { 0,  0,  0,   1,   0,   0     },
-  /* STDC94 */  { 0,  0,  0,   1,   0,   1     },
-  /* STDC99 */  { 1,  0,  1,   1,   1,   1     },
-  /* GNUCXX */  { 0,  1,  1,   0,   1,   1     },
-  /* CXX98  */  { 0,  1,  1,   1,   1,   1     },
-  /* ASM    */  { 0,  0,  1,   0,   1,   0     }
+{ /*              c99 c++ xnum xid std  //   digr ulit */
+  /* GNUC89   */  { 0,  0,  1,   0,  0,   1,   1,   0 },
+  /* GNUC99   */  { 1,  0,  1,   0,  0,   1,   1,   1 },
+  /* STDC89   */  { 0,  0,  0,   0,  1,   0,   0,   0 },
+  /* STDC94   */  { 0,  0,  0,   0,  1,   0,   1,   0 },
+  /* STDC99   */  { 1,  0,  1,   0,  1,   1,   1,   0 },
+  /* GNUCXX   */  { 0,  1,  1,   0,  0,   1,   1,   0 },
+  /* CXX98    */  { 0,  1,  1,   0,  1,   1,   1,   0 },
+  /* GNUCXX0X */  { 1,  1,  1,   0,  0,   1,   1,   1 },
+  /* CXX0X    */  { 1,  1,  1,   0,  1,   1,   1,   1 },
+  /* ASM      */  { 0,  0,  1,   0,  0,   1,   0,   0 }
+  /* xid should be 1 for GNUC99, STDC99, GNUCXX, CXX98, GNUCXX0X, and
+     CXX0X when no longer experimental (when all uses of identifiers
+     in the compiler have been audited for correct handling of
+     extended identifiers).  */
 };
 
 /* Sets internal flags correctly for a given language.  */
@@ -97,13 +105,15 @@ cpp_set_lang (cpp_reader *pfile, enum c_lang lang)
 
   CPP_OPTION (pfile, lang) = lang;
 
-  CPP_OPTION (pfile, c99)		 = l->c99;
-  CPP_OPTION (pfile, cplusplus)		 = l->cplusplus;
-  CPP_OPTION (pfile, extended_numbers)	 = l->extended_numbers;
-  CPP_OPTION (pfile, std)		 = l->std;
-  CPP_OPTION (pfile, trigraphs)		 = l->std;
-  CPP_OPTION (pfile, cplusplus_comments) = l->cplusplus_comments;
-  CPP_OPTION (pfile, digraphs)		 = l->digraphs;
+  CPP_OPTION (pfile, c99)			 = l->c99;
+  CPP_OPTION (pfile, cplusplus)			 = l->cplusplus;
+  CPP_OPTION (pfile, extended_numbers)		 = l->extended_numbers;
+  CPP_OPTION (pfile, extended_identifiers)	 = l->extended_identifiers;
+  CPP_OPTION (pfile, std)			 = l->std;
+  CPP_OPTION (pfile, trigraphs)			 = l->std;
+  CPP_OPTION (pfile, cplusplus_comments)	 = l->cplusplus_comments;
+  CPP_OPTION (pfile, digraphs)			 = l->digraphs;
+  CPP_OPTION (pfile, uliterals)			 = l->uliterals;
 }
 
 /* Initialize library global state.  */
@@ -137,7 +147,7 @@ cpp_create_reader (enum c_lang lang, hash_table *table,
   /* Initialize this instance of the library if it hasn't been already.  */
   init_library ();
 
-  pfile = xcalloc (1, sizeof (cpp_reader));
+  pfile = XCNEW (cpp_reader);
 
   cpp_set_lang (pfile, lang);
   CPP_OPTION (pfile, warn_multichar) = 1;
@@ -219,6 +229,14 @@ cpp_create_reader (enum c_lang lang, hash_table *table,
   return pfile;
 }
 
+/* Set the line_table entry in PFILE.  This is called after reading a
+   PCH file, as the old line_table will be incorrect.  */
+void
+cpp_set_line_map (cpp_reader *pfile, struct line_maps *line_table)
+{
+  pfile->line_table = line_table;
+}
+
 /* Free resources used by PFILE.  Accessing PFILE after this function
    returns leads to undefined behavior.  Returns the error count.  */
 void
@@ -295,12 +313,14 @@ struct builtin
 #define B(n, t)    { DSC(n), t }
 static const struct builtin builtin_array[] =
 {
+  B("__TIMESTAMP__",	 BT_TIMESTAMP),
   B("__TIME__",		 BT_TIME),
   B("__DATE__",		 BT_DATE),
   B("__FILE__",		 BT_FILE),
   B("__BASE_FILE__",	 BT_BASE_FILE),
   B("__LINE__",		 BT_SPECLINE),
   B("__INCLUDE_LEVEL__", BT_INCLUDE_LEVEL),
+  B("__COUNTER__",	 BT_COUNTER),
   /* Keep builtins not used for -traditional-cpp at the end, and
      update init_builtins() if any more are added.  */
   B("_Pragma",		 BT_PRAGMA),
@@ -340,25 +360,39 @@ mark_named_operators (cpp_reader *pfile)
     }
 }
 
-/* Read the builtins table above and enter them, and language-specific
-   macros, into the hash table.  HOSTED is true if this is a hosted
-   environment.  */
 void
-cpp_init_builtins (cpp_reader *pfile, int hosted)
+cpp_init_special_builtins (cpp_reader *pfile)
 {
   const struct builtin *b;
   size_t n = ARRAY_SIZE (builtin_array);
 
   if (CPP_OPTION (pfile, traditional))
     n -= 2;
+  else if (! CPP_OPTION (pfile, stdc_0_in_system_headers)
+	   || CPP_OPTION (pfile, std))
+    n--;
 
-  for(b = builtin_array; b < builtin_array + n; b++)
+  for (b = builtin_array; b < builtin_array + n; b++)
     {
       cpp_hashnode *hp = cpp_lookup (pfile, b->name, b->len);
       hp->type = NT_MACRO;
       hp->flags |= NODE_BUILTIN | NODE_WARN;
-      hp->value.builtin = b->value;
+      hp->value.builtin = (enum builtin_type) b->value;
     }
+}
+
+/* Read the builtins table above and enter them, and language-specific
+   macros, into the hash table.  HOSTED is true if this is a hosted
+   environment.  */
+void
+cpp_init_builtins (cpp_reader *pfile, int hosted)
+{
+  cpp_init_special_builtins (pfile);
+
+  if (!CPP_OPTION (pfile, traditional)
+      && (! CPP_OPTION (pfile, stdc_0_in_system_headers)
+	  || CPP_OPTION (pfile, std)))
+    _cpp_define_builtin (pfile, "__STDC__ 1");
 
   if (CPP_OPTION (pfile, cplusplus))
     _cpp_define_builtin (pfile, "__cplusplus 1");
@@ -461,7 +495,7 @@ cpp_read_main_file (cpp_reader *pfile, const char *fname)
     }
 
   pfile->main_file
-    = _cpp_find_file (pfile, fname, &pfile->no_search_path, false);
+    = _cpp_find_file (pfile, fname, &pfile->no_search_path, false, 0);
   if (_cpp_find_failed (pfile->main_file))
     return NULL;
 
@@ -491,8 +525,10 @@ read_original_filename (cpp_reader *pfile)
   token = _cpp_lex_direct (pfile);
   if (token->type == CPP_HASH)
     {
+      pfile->state.in_directive = 1;
       token1 = _cpp_lex_direct (pfile);
       _cpp_backup_tokens (pfile, 1);
+      pfile->state.in_directive = 0;
 
       /* If it's a #line directive, handle it.  */
       if (token1->type == CPP_NUMBER)
@@ -545,7 +581,7 @@ read_original_directory (cpp_reader *pfile)
 
   if (pfile->cb.dir_change)
     {
-      char *debugdir = alloca (token->val.str.len - 3);
+      char *debugdir = (char *) alloca (token->val.str.len - 3);
 
       memcpy (debugdir, (const char *) token->val.str.text + 1,
 	      token->val.str.len - 4);
@@ -604,7 +640,8 @@ post_options (cpp_reader *pfile)
      preprocessed text.  Read preprocesed source in ISO mode.  */
   if (CPP_OPTION (pfile, preprocessed))
     {
-      pfile->state.prevent_expansion = 1;
+      if (!CPP_OPTION (pfile, directives_only))
+	pfile->state.prevent_expansion = 1;
       CPP_OPTION (pfile, traditional) = 0;
     }
 

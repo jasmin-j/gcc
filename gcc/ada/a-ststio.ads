@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -20,8 +20,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -67,64 +67,64 @@ package Ada.Streams.Stream_IO is
 
    procedure Create
      (File : in out File_Type;
-      Mode : in File_Mode := Out_File;
-      Name : in String := "";
-      Form : in String := "");
+      Mode : File_Mode := Out_File;
+      Name : String := "";
+      Form : String := "");
 
    procedure Open
      (File : in out File_Type;
-      Mode : in File_Mode;
-      Name : in String;
-      Form : in String := "");
+      Mode : File_Mode;
+      Name : String;
+      Form : String := "");
 
    procedure Close  (File : in out File_Type);
    procedure Delete (File : in out File_Type);
-   procedure Reset  (File : in out File_Type; Mode : in File_Mode);
+   procedure Reset  (File : in out File_Type; Mode : File_Mode);
    procedure Reset  (File : in out File_Type);
 
-   function Mode (File : in File_Type) return File_Mode;
-   function Name (File : in File_Type) return String;
-   function Form (File : in File_Type) return String;
+   function Mode (File : File_Type) return File_Mode;
+   function Name (File : File_Type) return String;
+   function Form (File : File_Type) return String;
 
-   function Is_Open     (File : in File_Type) return Boolean;
-   function End_Of_File (File : in File_Type) return Boolean;
+   function Is_Open     (File : File_Type) return Boolean;
+   function End_Of_File (File : File_Type) return Boolean;
 
-   function Stream (File : in File_Type) return Stream_Access;
+   function Stream (File : File_Type) return Stream_Access;
 
    -----------------------------
    -- Input-Output Operations --
    -----------------------------
 
    procedure Read
-     (File : in  File_Type;
+     (File : File_Type;
       Item : out Stream_Element_Array;
       Last : out Stream_Element_Offset;
-      From : in  Positive_Count);
+      From : Positive_Count);
 
    procedure Read
-     (File : in  File_Type;
+     (File : File_Type;
       Item : out Stream_Element_Array;
       Last : out Stream_Element_Offset);
 
    procedure Write
-     (File : in File_Type;
-      Item : in Stream_Element_Array;
-      To   : in Positive_Count);
+     (File : File_Type;
+      Item : Stream_Element_Array;
+      To   : Positive_Count);
 
    procedure Write
-     (File : in File_Type;
-      Item : in Stream_Element_Array);
+     (File : File_Type;
+      Item : Stream_Element_Array);
 
    ----------------------------------------
    -- Operations on Position within File --
    ----------------------------------------
 
-   procedure Set_Index (File : in File_Type; To : in Positive_Count);
+   procedure Set_Index (File : File_Type; To : Positive_Count);
 
-   function Index (File : in File_Type) return Positive_Count;
-   function Size  (File : in File_Type) return Count;
+   function Index (File : File_Type) return Positive_Count;
+   function Size  (File : File_Type) return Count;
 
-   procedure Set_Mode (File : in out File_Type; Mode : in File_Mode);
+   procedure Set_Mode (File : in out File_Type; Mode : File_Mode);
 
    --  Note: The parameter file is IN OUT in the RM, but this is clearly
    --  an oversight, and was intended to be IN, see AI95-00057.
@@ -144,6 +144,36 @@ package Ada.Streams.Stream_IO is
    Data_Error   : exception renames IO_Exceptions.Data_Error;
 
 private
+
+   --  The following procedures have a File_Type formal of mode IN OUT because
+   --  they may close the original file. The Close operation may raise an
+   --  exception, but in that case we want any assignment to the formal to
+   --  be effective anyway, so it must be passed by reference (or the caller
+   --  will be left with a dangling pointer).
+
+   pragma Export_Procedure
+     (Internal  => Close,
+      External  => "",
+      Mechanism => Reference);
+   pragma Export_Procedure
+     (Internal  => Delete,
+      External  => "",
+      Mechanism => Reference);
+   pragma Export_Procedure
+     (Internal        => Reset,
+      External        => "",
+      Parameter_Types => (File_Type),
+      Mechanism       => Reference);
+   pragma Export_Procedure
+     (Internal        => Reset,
+      External        => "",
+      Parameter_Types => (File_Type, File_Mode),
+      Mechanism       => (File => Reference));
+   pragma Export_Procedure
+     (Internal  => Set_Mode,
+      External  => "",
+      Mechanism => (File => Reference));
+
    package FCB renames System.File_Control_Block;
 
    -----------------------------
@@ -176,8 +206,8 @@ private
 
    function AFCB_Allocate (Control_Block : Stream_AFCB) return FCB.AFCB_Ptr;
 
-   procedure AFCB_Close (File : access Stream_AFCB);
-   procedure AFCB_Free  (File : access Stream_AFCB);
+   procedure AFCB_Close (File : not null access Stream_AFCB);
+   procedure AFCB_Free  (File : not null access Stream_AFCB);
 
    procedure Read
      (File : in out Stream_AFCB;
@@ -187,7 +217,7 @@ private
 
    procedure Write
      (File : in out Stream_AFCB;
-      Item : in Ada.Streams.Stream_Element_Array);
+      Item : Ada.Streams.Stream_Element_Array);
    --  Write operation used when Stream_IO file is treated directly as Stream
 
 end Ada.Streams.Stream_IO;

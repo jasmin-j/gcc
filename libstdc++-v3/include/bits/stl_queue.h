@@ -1,6 +1,7 @@
 // Queue implementation -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2003, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -58,25 +59,13 @@
  *  You should not attempt to use it directly.
  */
 
-#ifndef _QUEUE_H
-#define _QUEUE_H 1
+#ifndef _STL_QUEUE_H
+#define _STL_QUEUE_H 1
 
 #include <bits/concept_check.h>
 #include <debug/debug.h>
 
-namespace std
-{
-  // Forward declarations of operators < and ==, needed for friend declaration.
-  template<typename _Tp, typename _Sequence = deque<_Tp> >
-    class queue;
-
-  template<typename _Tp, typename _Seq>
-    inline bool
-    operator==(const queue<_Tp,_Seq>&, const queue<_Tp,_Seq>&);
-
-  template<typename _Tp, typename _Seq>
-    inline bool
-    operator<(const queue<_Tp,_Seq>&, const queue<_Tp,_Seq>&);
+_GLIBCXX_BEGIN_NAMESPACE(std)
 
   /**
    *  @brief  A standard container giving FIFO behavior.
@@ -102,7 +91,7 @@ namespace std
    *  which is a typedef for the second Sequence parameter, and @c push and
    *  @c pop, which are standard %queue/FIFO operations.
   */
-  template<typename _Tp, typename _Sequence>
+  template<typename _Tp, typename _Sequence = deque<_Tp> >
     class queue
     {
       // concept requirements
@@ -142,8 +131,29 @@ namespace std
       /**
        *  @brief  Default constructor creates no elements.
        */
+#ifndef __GXX_EXPERIMENTAL_CXX0X__
       explicit
-      queue(const _Sequence& __c = _Sequence()) : c(__c) {}
+      queue(const _Sequence& __c = _Sequence())
+      : c(__c) { }
+#else
+      explicit
+      queue(const _Sequence& __c)
+      : c(__c) { }
+
+      explicit
+      queue(_Sequence&& __c = _Sequence())
+      : c(std::move(__c)) { }
+
+      queue(queue&& __q)
+      : c(std::move(__q.c)) { }
+
+      queue&
+      operator=(queue&& __q)
+      {
+	c = std::move(__q.c);
+	return *this;
+      }
+#endif
 
       /**
        *  Returns true if the %queue is empty.
@@ -214,6 +224,17 @@ namespace std
       push(const value_type& __x)
       { c.push_back(__x); }
 
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      void
+      push(value_type&& __x)
+      { c.push_back(std::move(__x)); }
+
+      template<typename... _Args>
+        void
+        emplace(_Args&&... __args)
+	{ c.emplace_back(std::forward<_Args>(__args)...); }
+#endif
+
       /**
        *  @brief  Removes first element.
        *
@@ -231,8 +252,13 @@ namespace std
 	__glibcxx_requires_nonempty();
 	c.pop_front();
       }
-    };
 
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      void
+      swap(queue&& __q)
+      { c.swap(__q.c); }
+#endif
+    };
 
   /**
    *  @brief  Queue equality comparison.
@@ -245,10 +271,9 @@ namespace std
    *  linear in the size of the sequences, and queues are considered equivalent
    *  if their sequences compare equal.
   */
-  template<typename _Tp, typename _Sequence>
+  template<typename _Tp, typename _Seq>
     inline bool
-    operator==(const queue<_Tp,_Sequence>& __x,
-	       const queue<_Tp,_Sequence>& __y)
+    operator==(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return __x.c == __y.c; }
 
   /**
@@ -264,37 +289,51 @@ namespace std
    *  std::lexicographical_compare() is usually used to make the
    *  determination.
   */
-  template<typename _Tp, typename _Sequence>
+  template<typename _Tp, typename _Seq>
     inline bool
-    operator<(const queue<_Tp,_Sequence>& __x, const queue<_Tp,_Sequence>& __y)
+    operator<(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return __x.c < __y.c; }
 
   /// Based on operator==
-  template<typename _Tp, typename _Sequence>
+  template<typename _Tp, typename _Seq>
     inline bool
-    operator!=(const queue<_Tp,_Sequence>& __x,
-	       const queue<_Tp,_Sequence>& __y)
+    operator!=(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return !(__x == __y); }
 
   /// Based on operator<
-  template<typename _Tp, typename _Sequence>
+  template<typename _Tp, typename _Seq>
     inline bool
-    operator>(const queue<_Tp,_Sequence>& __x, const queue<_Tp,_Sequence>& __y)
+    operator>(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return __y < __x; }
 
   /// Based on operator<
-  template<typename _Tp, typename _Sequence>
+  template<typename _Tp, typename _Seq>
     inline bool
-    operator<=(const queue<_Tp,_Sequence>& __x,
-	       const queue<_Tp,_Sequence>& __y)
+    operator<=(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return !(__y < __x); }
 
   /// Based on operator<
-  template<typename _Tp, typename _Sequence>
+  template<typename _Tp, typename _Seq>
     inline bool
-    operator>=(const queue<_Tp,_Sequence>& __x,
-	       const queue<_Tp,_Sequence>& __y)
+    operator>=(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return !(__x < __y); }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+  template<typename _Tp, typename _Seq>
+    inline void
+    swap(queue<_Tp, _Seq>& __x, queue<_Tp, _Seq>& __y)
+    { __x.swap(__y); }
+
+  template<typename _Tp, typename _Seq>
+    inline void
+    swap(queue<_Tp, _Seq>&& __x, queue<_Tp, _Seq>& __y)
+    { __x.swap(__y); }
+
+  template<typename _Tp, typename _Seq>
+    inline void
+    swap(queue<_Tp, _Seq>& __x, queue<_Tp, _Seq>&& __y)
+    { __x.swap(__y); }
+#endif
 
   /**
    *  @brief  A standard container automatically sorting its contents.
@@ -304,10 +343,9 @@ namespace std
    *
    *  This is not a true container, but an @e adaptor.  It holds
    *  another container, and provides a wrapper interface to that
-   *  container.  The wrapper is what enforces sorting and
-   *  first-in-first-out %queue behavior.  Very few of the standard
-   *  container/sequence interface requirements are met (e.g.,
-   *  iterators).
+   *  container.  The wrapper is what enforces priority-based sorting 
+   *  and %queue behavior.  Very few of the standard container/sequence
+   *  interface requirements are met (e.g., iterators).
    *
    *  The second template parameter defines the type of the underlying
    *  sequence/container.  It defaults to std::vector, but it can be
@@ -321,8 +359,7 @@ namespace std
    *
    *  Members not found in "normal" containers are @c container_type,
    *  which is a typedef for the second Sequence parameter, and @c
-   *  push, @c pop, and @c top, which are standard %queue/FIFO
-   *  operations.
+   *  push, @c pop, and @c top, which are standard %queue operations.
    *
    *  @note No equality/comparison operators are provided for
    *  %priority_queue.
@@ -344,7 +381,8 @@ namespace std
       __glibcxx_class_requires(_Sequence, _SequenceConcept)
       __glibcxx_class_requires(_Sequence, _RandomAccessContainerConcept)
       __glibcxx_class_requires2(_Tp, _Sequence_value_type, _SameTypeConcept)
-      __glibcxx_class_requires4(_Compare, bool, _Tp,_Tp,_BinaryFunctionConcept)
+      __glibcxx_class_requires4(_Compare, bool, _Tp, _Tp,
+				_BinaryFunctionConcept)
 
     public:
       typedef typename _Sequence::value_type                value_type;
@@ -362,11 +400,25 @@ namespace std
       /**
        *  @brief  Default constructor creates no elements.
        */
+#ifndef __GXX_EXPERIMENTAL_CXX0X__
       explicit
       priority_queue(const _Compare& __x = _Compare(),
 		     const _Sequence& __s = _Sequence())
       : c(__s), comp(__x)
       { std::make_heap(c.begin(), c.end(), comp); }
+#else
+      explicit
+      priority_queue(const _Compare& __x,
+		     const _Sequence& __s)
+      : c(__s), comp(__x)
+      { std::make_heap(c.begin(), c.end(), comp); }
+
+      explicit
+      priority_queue(const _Compare& __x = _Compare(),
+		     _Sequence&& __s = _Sequence())
+      : c(std::move(__s)), comp(__x)
+      { std::make_heap(c.begin(), c.end(), comp); }
+#endif
 
       /**
        *  @brief  Builds a %queue from a range.
@@ -383,6 +435,7 @@ namespace std
        *  documentation on @link s20_3_1_base functor base
        *  classes@endlink.
        */
+#ifndef __GXX_EXPERIMENTAL_CXX0X__
       template<typename _InputIterator>
         priority_queue(_InputIterator __first, _InputIterator __last,
 		       const _Compare& __x = _Compare(),
@@ -393,16 +446,52 @@ namespace std
 	  c.insert(c.end(), __first, __last);
 	  std::make_heap(c.begin(), c.end(), comp);
 	}
+#else
+      template<typename _InputIterator>
+        priority_queue(_InputIterator __first, _InputIterator __last,
+		       const _Compare& __x,
+		       const _Sequence& __s)
+	: c(__s), comp(__x)
+        {
+	  __glibcxx_requires_valid_range(__first, __last);
+	  c.insert(c.end(), __first, __last);
+	  std::make_heap(c.begin(), c.end(), comp);
+	}
+
+      template<typename _InputIterator>
+        priority_queue(_InputIterator __first, _InputIterator __last,
+		       const _Compare& __x = _Compare(),
+		       _Sequence&& __s = _Sequence())
+	: c(std::move(__s)), comp(__x)
+        {
+	  __glibcxx_requires_valid_range(__first, __last);
+	  c.insert(c.end(), __first, __last);
+	  std::make_heap(c.begin(), c.end(), comp);
+	}
+
+      priority_queue(priority_queue&& __pq)
+      : c(std::move(__pq.c)), comp(std::move(__pq.comp)) { }
+
+      priority_queue&
+      operator=(priority_queue&& __pq)
+      {
+	c = std::move(__pq.c);
+	comp = std::move(__pq.comp);
+	return *this;
+      }
+#endif
 
       /**
        *  Returns true if the %queue is empty.
        */
       bool
-      empty() const { return c.empty(); }
+      empty() const
+      { return c.empty(); }
 
       /**  Returns the number of elements in the %queue.  */
       size_type
-      size() const { return c.size(); }
+      size() const
+      { return c.size(); }
 
       /**
        *  Returns a read-only (constant) reference to the data at the first
@@ -426,17 +515,26 @@ namespace std
       void
       push(const value_type& __x)
       {
-	try
-        {
-          c.push_back(__x);
-          std::push_heap(c.begin(), c.end(), comp);
-        }
-	catch(...)
-        {
-          c.clear();
-          __throw_exception_again;
-        }
+	c.push_back(__x);
+	std::push_heap(c.begin(), c.end(), comp);
       }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      void
+      push(value_type&& __x)
+      {
+	c.push_back(std::move(__x));
+	std::push_heap(c.begin(), c.end(), comp);
+      }
+
+      template<typename... _Args>
+        void
+        emplace(_Args&&... __args)
+	{
+	  c.emplace_back(std::forward<_Args>(__args)...);
+	  std::push_heap(c.begin(), c.end(), comp);
+	}
+#endif
 
       /**
        *  @brief  Removes first element.
@@ -453,20 +551,43 @@ namespace std
       pop()
       {
 	__glibcxx_requires_nonempty();
-	try
-        {
-          std::pop_heap(c.begin(), c.end(), comp);
-          c.pop_back();
-        }
-	catch(...)
-        {
-          c.clear();
-          __throw_exception_again;
-        }
+	std::pop_heap(c.begin(), c.end(), comp);
+	c.pop_back();
       }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      void
+      swap(priority_queue&& __pq)
+      {
+	using std::swap;
+	c.swap(__pq.c);
+	swap(comp, __pq.comp);
+      }
+#endif
     };
 
   // No equality/comparison operators are provided for priority_queue.
-} // namespace std
 
-#endif /* _QUEUE_H */
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+  template<typename _Tp, typename _Sequence, typename _Compare>
+    inline void
+    swap(priority_queue<_Tp, _Sequence, _Compare>& __x,
+	 priority_queue<_Tp, _Sequence, _Compare>& __y)
+    { __x.swap(__y); }
+
+  template<typename _Tp, typename _Sequence, typename _Compare>
+    inline void
+    swap(priority_queue<_Tp, _Sequence, _Compare>&& __x,
+	 priority_queue<_Tp, _Sequence, _Compare>& __y)
+    { __x.swap(__y); }
+
+  template<typename _Tp, typename _Sequence, typename _Compare>
+    inline void
+    swap(priority_queue<_Tp, _Sequence, _Compare>& __x,
+	 priority_queue<_Tp, _Sequence, _Compare>&& __y)
+    { __x.swap(__y); }
+#endif
+
+_GLIBCXX_END_NAMESPACE
+
+#endif /* _STL_QUEUE_H */

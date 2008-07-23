@@ -1,5 +1,5 @@
 ;; Predicate definitions for S/390 and zSeries.
-;; Copyright (C) 2005 Free Software Foundation, Inc.
+;; Copyright (C) 2005, 2007, 2008 Free Software Foundation, Inc.
 ;; Contributed by Hartmut Penner (hpenner@de.ibm.com) and
 ;;                Ulrich Weigand (uweigand@de.ibm.com).
 ;;
@@ -7,7 +7,7 @@
 ;;
 ;; GCC is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation; either version 2, or (at your option)
+;; the Free Software Foundation; either version 3, or (at your option)
 ;; any later version.
 ;;
 ;; GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@
 ;; GNU General Public License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License
-;; along with GCC; see the file COPYING.  If not, write to
-;; the Free Software Foundation, 59 Temple Place - Suite 330,
-;; Boston, MA 02111-1307, USA.
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.
 
 ;; OP is the current operation.
 ;; MODE is the current operation mode.
@@ -62,7 +61,8 @@
 ;; Allow SYMBOL_REFs and @PLT stubs.
 
 (define_special_predicate "bras_sym_operand"
-  (ior (match_code "symbol_ref")
+  (ior (and (match_code "symbol_ref")
+	    (match_test "!flag_pic || SYMBOL_REF_LOCAL_P (op)"))
        (and (match_code "const")
 	    (and (match_test "GET_CODE (XEXP (op, 0)) == UNSPEC")
 		 (match_test "XINT (XEXP (op, 0), 1) == UNSPEC_PLT")))))
@@ -75,30 +75,22 @@
        (and (match_test "mode == Pmode")
 	    (match_test "!legitimate_la_operand_p (op)"))))
 
-;; Return true if OP is a valid shift count operand.
+;; Return true if OP is a valid operand as shift count or setmem.
 
-(define_predicate "shift_count_operand"
+(define_predicate "shift_count_or_setmem_operand"
   (match_code "reg, subreg, plus, const_int")
 {
-  HOST_WIDE_INT offset = 0;
+  HOST_WIDE_INT offset;
+  rtx base;
 
-  /* We can have an integer constant, an address register,
-     or a sum of the two.  Note that reload already checks
-     that any register present is an address register, so
-     we just check for any register here.  */
-  if (GET_CODE (op) == CONST_INT)
-    {
-      offset = INTVAL (op);
-      op = NULL_RTX;
-    }
-  if (op && GET_CODE (op) == PLUS && GET_CODE (XEXP (op, 1)) == CONST_INT)
-    {
-      offset = INTVAL (XEXP (op, 1));
-      op = XEXP (op, 0);
-    }
-  while (op && GET_CODE (op) == SUBREG)
-    op = SUBREG_REG (op);
-  if (op && GET_CODE (op) != REG)
+  /* Extract base register and offset.  */
+  if (!s390_decompose_shift_count (op, &base, &offset))
+    return false;
+
+  /* Don't allow any non-base hard registers.  Doing so without
+     confusing reload and/or regrename would be tricky, and doesn't
+     buy us much anyway.  */
+  if (base && REGNO (base) < FIRST_PSEUDO_REGISTER && !ADDR_REG_P (base))
     return false;
 
   /* Unfortunately we have to reject constants that are invalid
@@ -118,7 +110,7 @@
   if (GET_CODE (op) == LABEL_REF)
     return true;
   if (GET_CODE (op) == SYMBOL_REF)
-    return ((SYMBOL_REF_FLAGS (op) & SYMBOL_FLAG_ALIGN1) == 0
+    return (!SYMBOL_REF_ALIGN1_P (op)
 	    && SYMBOL_REF_TLS_MODEL (op) == 0
 	    && (!flag_pic || SYMBOL_REF_LOCAL_P (op)));
 
@@ -133,8 +125,8 @@
       if (GET_CODE (XEXP (op, 1)) != CONST_INT
           || (INTVAL (XEXP (op, 1)) & 1) != 0)
         return false;
-      if (INTVAL (XEXP (op, 1)) >= (HOST_WIDE_INT)1 << 32
-	  || INTVAL (XEXP (op, 1)) < -((HOST_WIDE_INT)1 << 32))
+      if (INTVAL (XEXP (op, 1)) >= (HOST_WIDE_INT)1 << 31
+	  || INTVAL (XEXP (op, 1)) < -((HOST_WIDE_INT)1 << 31))
         return false;
       op = XEXP (op, 0);
     }
@@ -178,6 +170,18 @@
     return false;
 
   return (s390_branch_condition_mask (op) >= 0);
+})
+
+(define_predicate "s390_signed_integer_comparison"
+  (match_code "eq, ne, lt, gt, le, ge")
+{
+  return (s390_compare_and_branch_condition_mask (op) >= 0);
+})
+
+(define_predicate "s390_unsigned_integer_comparison"
+  (match_code "eq, ne, ltu, gtu, leu, geu")
+{
+  return (s390_compare_and_branch_condition_mask (op) >= 0);
 })
 
 ;; Return nonzero if OP is a valid comparison operator

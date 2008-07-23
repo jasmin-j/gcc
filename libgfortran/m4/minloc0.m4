@@ -1,5 +1,5 @@
 `/* Implementation of the MINLOC intrinsic
-   Copyright 2002 Free Software Foundation, Inc.
+   Copyright 2002, 2007 Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -25,25 +25,25 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
+#include "libgfortran.h"
 #include <stdlib.h>
 #include <assert.h>
-#include <float.h>
-#include <limits.h>
-#include "libgfortran.h"'
+#include <limits.h>'
 
 include(iparm.m4)dnl
 include(iforeach.m4)dnl
+
+`#if defined (HAVE_'atype_name`) && defined (HAVE_'rtype_name`)'
 
 FOREACH_FUNCTION(
 `  atype_name minval;
 
   minval = atype_max;'
 ,
-`  if (*base < minval)
+`  if (*base < minval || !dest[0])
     {
       minval = *base;
       for (n = 0; n < rank; n++)
@@ -55,9 +55,12 @@ MASKED_FOREACH_FUNCTION(
 
   minval = atype_max;'
 ,
-`  if (*mbase && *base < minval)
+`  if (*mbase && (*base < minval || !dest[0]))
     {
       minval = *base;
       for (n = 0; n < rank; n++)
         dest[n * dstride] = count[n] + 1;
     }')
+
+SCALAR_FOREACH_FUNCTION(`0')
+#endif

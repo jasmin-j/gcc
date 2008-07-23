@@ -1,4 +1,4 @@
-/* Copyright (C) 2000, 2002, 2003  Free Software Foundation
+/* Copyright (C) 2000, 2002, 2003, 2005  Free Software Foundation
 
    This file is part of libgcj.
 
@@ -26,8 +26,9 @@ import gnu.gcj.xlib.Display;
 import gnu.gcj.xlib.Screen;
 import gnu.gcj.xlib.Visual;
 import gnu.java.awt.ClasspathToolkit;
+import gnu.java.awt.EmbeddedWindow;
 import gnu.java.awt.peer.ClasspathFontPeer;
-import gnu.java.awt.peer.ClasspathTextLayoutPeer;
+import gnu.java.awt.peer.EmbeddedWindowPeer;
 
 public class XToolkit extends ClasspathToolkit
 {
@@ -360,7 +361,7 @@ public class XToolkit extends ClasspathToolkit
    */
   public GraphicsEnvironment getLocalGraphicsEnvironment ()
   {
-    throw new java.lang.UnsupportedOperationException ();
+    return new XGraphicsEnvironment (this);
   }
   
   /** Acquires an appropriate {@link ClasspathFontPeer}, for use in
@@ -403,12 +404,6 @@ public class XToolkit extends ClasspathToolkit
     return new XFontPeer (name,style,size);
   }
 
-  public ClasspathTextLayoutPeer 
-  getClasspathTextLayoutPeer (AttributedString str, FontRenderContext frc)
-  {
-    throw new Error("not implemented");
-  }
-  
   /** Creates a font, reading the glyph definitions from a stream.
    *
    * <p>This method provides the platform-specific implementation for
@@ -444,14 +439,22 @@ public class XToolkit extends ClasspathToolkit
     throw new java.lang.UnsupportedOperationException ();
   }
 
+  public EmbeddedWindowPeer createEmbeddedWindow (EmbeddedWindow w)
+  {
+    throw new java.lang.UnsupportedOperationException ();
+  }
+
   public boolean nativeQueueEmpty() 
-  { 
-    return eventLoop.isIdle(); 
+  {
+    // Tell EventQueue the native queue is empty, because XEventLoop
+    // separately ensures that native events are posted to AWT.
+    return true;
   }
 
   public void wakeNativeQueue() 
   {
-    eventLoop.interrupt();
+    // Not implemented, because the native queue is always awake.
+    // (i.e. it's polled in a thread separate from the AWT dispatch thread)
   }
 
   /** Checks the native event queue for events.  If blocking, waits until an
@@ -464,6 +467,36 @@ public class XToolkit extends ClasspathToolkit
    */
   public void iterateNativeQueue(java.awt.EventQueue locked, boolean block) 
   {
-    eventLoop.postNextEvent(block);
+    // There is nothing to do here except block, because XEventLoop 
+    // iterates the queue in a dedicated thread.
+    if (block)
+    {
+      try
+      {
+        queue.wait ();
+      }
+      catch (InterruptedException ie)
+      {
+        // InterruptedException intentionally ignored
+      }
+    }
+  }
+
+  public void setAlwaysOnTop(boolean b)
+  {
+    // TODO: Implement properly.
+  }
+
+  public boolean isModalExclusionTypeSupported
+    (Dialog.ModalExclusionType modalExclusionType)
+  {
+    // TODO: Implement properly.
+    return false;
+  }
+
+  public boolean isModalityTypeSupported(Dialog.ModalityType modalityType)
+  {
+    // TODO: Implement properly.
+    return false;
   }
 }

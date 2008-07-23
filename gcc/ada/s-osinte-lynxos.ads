@@ -1,13 +1,13 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                   S Y S T E M . O S _ I N T E R F A C E                  --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
 --             Copyright (C) 1991-1994, Florida State University            --
---             Copyright (C) 1995-2004, Free Software Foundation, Inc.      --
+--          Copyright (C) 1995-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +17,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,13 +35,14 @@
 --  This is a LynxOS (POSIX Threads) version of this package
 
 --  This package encapsulates all direct interfaces to OS services
---  that are needed by children of System.
+--  that are needed by the tasking run-time (libgnarl).
 
 --  PLEASE DO NOT add any with-clauses to this package or remove the pragma
 --  Preelaborate. This package is designed to be a bottom-level (leaf) package.
 
+with Ada.Unchecked_Conversion;
+
 with Interfaces.C;
-with Unchecked_Conversion;
 
 package System.OS_Interface is
    pragma Preelaborate;
@@ -86,7 +87,7 @@ package System.OS_Interface is
    --
    --
    --  The lowest numbered signal is 1, but 0 is a valid argument to some
-   --  library functions, eg. kill(2). However, 0 is not just another
+   --  library functions, e.g. kill(2). However, 0 is not just another
    --  signal: For instance 'I in Signal' and similar should be used with
    --  caution.
 
@@ -169,7 +170,12 @@ package System.OS_Interface is
    pragma Convention (C, struct_sigaction);
    type struct_sigaction_ptr is access all struct_sigaction;
 
-   SA_SIGINFO  : constant := 16#80#;
+   SA_SIGINFO : constant := 16#80#;
+
+   SA_ONSTACK : constant := 16#00#;
+   --  SA_ONSTACK is not defined on LynxOS, but it is referred to in the POSIX
+   --  implementation of System.Interrupt_Management. Therefore we define a
+   --  dummy value of zero here so that setting this flag is a nop.
 
    SIG_BLOCK   : constant := 0;
    SIG_UNBLOCK : constant := 1;
@@ -220,16 +226,6 @@ package System.OS_Interface is
    pragma Convention (C, struct_timezone);
    type struct_timezone_ptr is access all struct_timezone;
 
-   type struct_timeval is private;
-   --  This is needed on systems that do not have clock_gettime()
-   --  but do have gettimeofday().
-
-   function To_Duration (TV : struct_timeval) return Duration;
-   pragma Inline (To_Duration);
-
-   function To_Timeval (D : Duration) return struct_timeval;
-   pragma Inline (To_Timeval);
-
    -------------------------
    -- Priority Scheduling --
    -------------------------
@@ -263,9 +259,10 @@ package System.OS_Interface is
 
    type Thread_Body is access
      function (arg : System.Address) return System.Address;
+   pragma Convention (C, Thread_Body);
 
    function Thread_Body_Access is new
-     Unchecked_Conversion (System.Address, Thread_Body);
+     Ada.Unchecked_Conversion (System.Address, Thread_Body);
 
    type pthread_t           is private;
    subtype Thread_Id        is pthread_t;
@@ -284,8 +281,11 @@ package System.OS_Interface is
    -- Stack --
    -----------
 
+   Alternate_Stack_Size : constant := 0;
+   --  No alternate signal stack is used on this platform
+
    Stack_Base_Available : constant Boolean := False;
-   --  Indicates whether the stack base is available on this target.
+   --  Indicates whether the stack base is available on this target
 
    function Get_Stack_Base (thread : pthread_t) return Address;
    pragma Inline (Get_Stack_Base);
@@ -332,12 +332,10 @@ package System.OS_Interface is
       sig    : Signal) return int;
    pragma Import (C, pthread_kill, "pthread_kill");
 
-   type sigset_t_ptr is access all sigset_t;
-
    function pthread_sigmask
      (how  : int;
-      set  : sigset_t_ptr;
-      oset : sigset_t_ptr) return int;
+      set  : access sigset_t;
+      oset : access sigset_t) return int;
    pragma Import (C, pthread_sigmask, "pthread_sigmask");
    --  The behavior of pthread_sigmask on LynxOS requires
    --  further investigation.
@@ -496,6 +494,7 @@ package System.OS_Interface is
    pragma Import (C, st_getspecific, "st_getspecific");
 
    type destructor_pointer is access procedure (arg : System.Address);
+   pragma Convention (C, destructor_pointer);
 
    function st_keycreate
      (destructor : destructor_pointer;
@@ -521,12 +520,6 @@ private
 
    type clockid_t is new unsigned_char;
    CLOCK_REALTIME : constant clockid_t := 0;
-
-   type struct_timeval is record
-      tv_sec  : time_t;
-      tv_usec : time_t;
-   end record;
-   pragma Convention (C, struct_timeval);
 
    type st_attr_t is record
       stksize      : int;

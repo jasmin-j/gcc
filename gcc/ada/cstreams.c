@@ -6,7 +6,7 @@
  *                                                                          *
  *              Auxiliary C functions for Interfaces.C.Streams              *
  *                                                                          *
- *          Copyright (C) 1992-2003 Free Software Foundation, Inc.          *
+ *          Copyright (C) 1992-2007, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -16,8 +16,8 @@
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
  * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
+ * Boston, MA 02110-1301, USA.                                              *
  *                                                                          *
  * As a  special  exception,  if you  link  this file  with other  files to *
  * produce an executable,  this file does not by itself cause the resulting *
@@ -200,6 +200,25 @@ __gnat_full_name (char *nam, char *buffer)
       strncpy (buffer, __gnat_to_host_file_spec (buffer), __gnat_max_path_len);
     }
 
+#elif defined (__vxworks)
+
+  /* On VxWorks systems, an absolute path can be represented (depending on
+     the host platform) as either /dir/file, or device:/dir/file, or
+     device:drive_letter:/dir/file. Use the __gnat_is_absolute_path
+     to verify it. */
+
+  int length;
+
+  if (__gnat_is_absolute_path (nam, strlen (nam)))
+    strcpy (buffer, nam);
+
+  else
+    {
+      length = __gnat_max_path_len;
+      __gnat_get_current_dir (buffer, &length);
+      strncat (buffer, nam, __gnat_max_path_len - length - 1);
+    }
+
 #else
   if (nam[0] != '/')
     {
@@ -210,6 +229,7 @@ __gnat_full_name (char *nam, char *buffer)
 	  buffer[0] = '\0';
 	  return 0;
 	}
+
 
       /* If the name returned is an absolute path, it is safe to append '/'
 	 to the path and concatenate the name of the file. */

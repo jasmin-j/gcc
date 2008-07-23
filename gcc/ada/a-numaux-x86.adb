@@ -1,13 +1,13 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                     A D A . N U M E R I C S . A U X                      --
 --                                                                          --
 --                                 B o d y                                  --
 --                        (Machine Version for x86)                         --
 --                                                                          --
---          Copyright (C) 1998-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1998-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +17,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -302,15 +302,14 @@ package body Ada.Numerics.Aux is
    begin
       Asm (Template => ""             --  X                  : Y
        & "fyl2x                " & NL --  Y * Log2 (X)
-       & "fst     %%st(1)      " & NL --  Y * Log2 (X)       : Y * Log2 (X)
+       & "fld     %%st(0)      " & NL --  Y * Log2 (X)       : Y * Log2 (X)
        & "frndint              " & NL --  Int (...)          : Y * Log2 (X)
        & "fsubr   %%st, %%st(1)" & NL --  Int (...)          : Fract (...)
        & "fxch                 " & NL --  Fract (...)        : Int (...)
        & "f2xm1                " & NL --  2**Fract (...) - 1 : Int (...)
        & "fld1                 " & NL --  1 : 2**Fract (...) - 1 : Int (...)
        & "faddp   %%st, %%st(1)" & NL --  2**Fract (...)     : Int (...)
-       & "fscale               " & NL --  2**(Fract (...) + Int (...))
-       & "fstp    %%st(1)      ",
+       & "fscale               ",     --  2**(Fract (...) + Int (...))
          Outputs  => Double'Asm_Output ("=t", Result),
          Inputs   =>
            (Double'Asm_Input  ("0", X),
@@ -566,7 +565,7 @@ package body Ada.Numerics.Aux is
          return Double'Copy_Sign (1.0, X);
       end if;
 
-      return 1.0 / (1.0 + Exp (-2.0 * X)) - 1.0 / (1.0 + Exp (2.0 * X));
+      return 1.0 / (1.0 + Exp (-(2.0 * X))) - 1.0 / (1.0 + Exp (2.0 * X));
    end Tanh;
 
 end Ada.Numerics.Aux;

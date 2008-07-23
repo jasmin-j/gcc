@@ -7,7 +7,7 @@
 --                                 B o d y                                  --
 --                            (Windows Version)                             --
 --                                                                          --
---          Copyright (C) 2004 Free Software Foundation, Inc.               --
+--          Copyright (C) 2004-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +17,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -80,6 +80,16 @@ package body Ada.Directories.Validity is
              Name (Start) in 'a' .. 'z')
          then
             Start := Start + 2;
+
+            --  A drive letter followed by a colon and followed by nothing or
+            --  by a relative path is an ambiguous path name on Windows, so we
+            --  don't accept it.
+
+            if Start > Name'Last
+              or else (Name (Start) /= '/' and then Name (Start) /= '\')
+            then
+               return False;
+            end if;
          end if;
 
          loop
@@ -147,10 +157,28 @@ package body Ada.Directories.Validity is
             end if;
          end loop;
 
-         --  If no invalid chars, and not all spaces, file name is valid.
+         --  If no invalid chars, and not all spaces, file name is valid
 
          return not Only_Spaces;
       end if;
    end Is_Valid_Simple_Name;
+
+   -------------
+   -- OpenVMS --
+   -------------
+
+   function OpenVMS return Boolean is
+   begin
+      return False;
+   end OpenVMS;
+
+   -------------
+   -- Windows --
+   -------------
+
+   function Windows return Boolean is
+   begin
+      return True;
+   end Windows;
 
 end Ada.Directories.Validity;

@@ -1,6 +1,6 @@
 // std::list utilities implementation -*- C++ -*-
 
-// Copyright (C) 2003 Free Software Foundation, Inc.
+// Copyright (C) 2003, 2005 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -55,8 +55,8 @@
 
 #include <list>
 
-namespace _GLIBCXX_STD
-{
+_GLIBCXX_BEGIN_NESTED_NAMESPACE(std, _GLIBCXX_STD_D)
+
   void
   _List_node_base::swap(_List_node_base& __x, _List_node_base& __y)
   {
@@ -115,7 +115,9 @@ namespace _GLIBCXX_STD
     do
     {
       std::swap(__tmp->_M_next, __tmp->_M_prev);
-      __tmp = __tmp->_M_prev;     // Old next node is now prev.
+
+      // Old next node is now prev.
+      __tmp = __tmp->_M_prev;     
     } 
     while (__tmp != this);
   }
@@ -137,5 +139,5 @@ namespace _GLIBCXX_STD
     __prev_node->_M_next = __next_node;
     __next_node->_M_prev = __prev_node;
   }
-} // namespace std
 
+_GLIBCXX_END_NESTED_NAMESPACE

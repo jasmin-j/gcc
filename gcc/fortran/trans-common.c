@@ -1,12 +1,13 @@
 /* Common block and equivalence list handling
-   Copyright (C) 2000, 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2000, 2003, 2004, 2005, 2006, 2007, 2008
+   Free Software Foundation, Inc.
    Contributed by Canqun Yang <canqun@nudt.edu.cn>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,9 +16,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */     
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */     
 
 /* The core algorithm is based on Andy Vaught's g95 tree.  Also the
    way to build UNION_TYPE is borrowed from Richard Henderson.
@@ -83,7 +83,7 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
    a diagonal matrix in the matrix formulation.
  
    Each segment is described by a chain of segment_info structures.  Each
-   segment_info structure describes the extents of a single varible within
+   segment_info structure describes the extents of a single variable within
    the segment.  This list is maintained in the order the elements are
    positioned withing the segment.  If two elements have the same starting
    offset the smaller will come first.  If they also have the same size their
@@ -96,16 +96,19 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
+#include "target.h"
 #include "tree.h"
 #include "toplev.h"
 #include "tm.h"
+#include "rtl.h"
 #include "gfortran.h"
 #include "trans.h"
 #include "trans-types.h"
 #include "trans-const.h"
+#include "target-memory.h"
 
 
-/* Holds a single variable in a equivalence set.  */
+/* Holds a single variable in an equivalence set.  */
 typedef struct segment_info
 {
   gfc_symbol *sym;
@@ -119,7 +122,6 @@ typedef struct segment_info
 static segment_info * current_segment;
 static gfc_namespace *gfc_common_ns = NULL;
 
-#define BLANK_COMMON_NAME "__BLNK__"
 
 /* Make a segment_info based on a symbol.  */
 
@@ -142,6 +144,35 @@ get_segment_info (gfc_symbol * sym, HOST_WIDE_INT offset)
 
   return s;
 }
+
+
+/* Add a copy of a segment list to the namespace.  This is specifically for
+   equivalence segments, so that dependency checking can be done on
+   equivalence group members.  */
+
+static void
+copy_equiv_list_to_ns (segment_info *c)
+{
+  segment_info *f;
+  gfc_equiv_info *s;
+  gfc_equiv_list *l;
+
+  l = (gfc_equiv_list *) gfc_getmem (sizeof (gfc_equiv_list));
+
+  l->next = c->sym->ns->equiv_lists;
+  c->sym->ns->equiv_lists = l;
+
+  for (f = c; f; f = f->next)
+    {
+      s = (gfc_equiv_info *) gfc_getmem (sizeof (gfc_equiv_info));
+      s->next = l->equiv;
+      l->equiv = s;
+      s->sym = f->sym;
+      s->offset = f->offset;
+      s->length = f->length;
+    }
+}
+
 
 /* Add combine segment V and segment LIST.  */
 
@@ -185,13 +216,37 @@ add_segments (segment_info *list, segment_info *v)
   return list;
 }
 
+
 /* Construct mangled common block name from symbol name.  */
 
+/* We need the bind(c) flag to tell us how/if we should mangle the symbol
+   name.  There are few calls to this function, so few places that this
+   would need to be added.  At the moment, there is only one call, in
+   build_common_decl().  We can't attempt to look up the common block
+   because we may be building it for the first time and therefore, it won't
+   be in the common_root.  We also need the binding label, if it's bind(c).
+   Therefore, send in the pointer to the common block, so whatever info we
+   have so far can be used.  All of the necessary info should be available
+   in the gfc_common_head by now, so it should be accurate to test the
+   isBindC flag and use the binding label given if it is bind(c).
+
+   We may NOT know yet if it's bind(c) or not, but we can try at least.
+   Will have to figure out what to do later if it's labeled bind(c)
+   after this is called.  */
+
 static tree
-gfc_sym_mangled_common_id (const char  *name)
+gfc_sym_mangled_common_id (gfc_common_head *com)
 {
   int has_underscore;
   char mangled_name[GFC_MAX_MANGLED_SYMBOL_LEN + 1];
+  char name[GFC_MAX_SYMBOL_LEN + 1];
+
+  /* Get the name out of the common block pointer.  */
+  strcpy (name, com->name);
+
+  /* If we're suppose to do a bind(c).  */
+  if (com->is_bind_c == 1 && com->binding_label[0] != '\0')
+    return get_identifier (com->binding_label);
 
   if (strcmp (name, BLANK_COMMON_NAME) == 0)
     return get_identifier (name);
@@ -243,7 +298,7 @@ build_field (segment_info *h, tree union_type, record_layout_info rli)
                                         DECL_FIELD_OFFSET (field),
                                         DECL_SIZE_UNIT (field)));
   /* If this field is assigned to a label, we create another two variables.
-     One will hold the address of taget label or format label. The other will
+     One will hold the address of target label or format label. The other will
      hold the length of format label string.  */
   if (h->sym->attr.assign)
     {
@@ -263,6 +318,15 @@ build_field (segment_info *h, tree union_type, record_layout_info rli)
       GFC_DECL_ASSIGN_ADDR (field) = pushdecl_top_level (addr);
     }
 
+  /* If this field is volatile, mark it.  */
+  if (h->sym->attr.volatile_)
+    {
+      tree new_type;
+      TREE_THIS_VOLATILE (field) = 1;
+      new_type = build_qualified_type (TREE_TYPE (field), TYPE_QUAL_VOLATILE);
+      TREE_TYPE (field) = new_type;
+    }
+
   h->field = field;
 }
 
@@ -270,7 +334,7 @@ build_field (segment_info *h, tree union_type, record_layout_info rli)
 /* Get storage for local equivalence.  */
 
 static tree
-build_equiv_decl (tree union_type, bool is_init)
+build_equiv_decl (tree union_type, bool is_init, bool is_saved)
 {
   tree decl;
   char name[15];
@@ -280,6 +344,7 @@ build_equiv_decl (tree union_type, bool is_init)
     {
       decl = gfc_create_var (union_type, "equiv");
       TREE_STATIC (decl) = 1;
+      GFC_DECL_COMMON_OR_EQUIV (decl) = 1;
       return decl;
     }
 
@@ -288,11 +353,13 @@ build_equiv_decl (tree union_type, bool is_init)
   DECL_ARTIFICIAL (decl) = 1;
   DECL_IGNORED_P (decl) = 1;
 
-  if (!gfc_can_put_var_on_stack (DECL_SIZE_UNIT (decl)))
+  if (!gfc_can_put_var_on_stack (DECL_SIZE_UNIT (decl))
+      || is_saved)
     TREE_STATIC (decl) = 1;
 
   TREE_ADDRESSABLE (decl) = 1;
   TREE_USED (decl) = 1;
+  GFC_DECL_COMMON_OR_EQUIV (decl) = 1;
 
   /* The source location has been lost, and doesn't really matter.
      We need to set it to something though.  */
@@ -325,14 +392,15 @@ build_common_decl (gfc_common_head *com, tree union_type, bool is_init)
       tree size = TYPE_SIZE_UNIT (union_type);
       if (tree_int_cst_lt (DECL_SIZE_UNIT (decl), size))
         {
-          /* Named common blocks of the same name shall be of the same size
-             in all scoping units of a program in which they appear, but
-             blank common blocks may be of different sizes.  */
-          if (strcmp (com->name, BLANK_COMMON_NAME))
+	  /* Named common blocks of the same name shall be of the same size
+	     in all scoping units of a program in which they appear, but
+	     blank common blocks may be of different sizes.  */
+	  if (strcmp (com->name, BLANK_COMMON_NAME))
 	    gfc_warning ("Named COMMON block '%s' at %L shall be of the "
 			 "same size", com->name, &com->where);
-          DECL_SIZE_UNIT (decl) = size;
-        }
+	  DECL_SIZE_UNIT (decl) = size;
+	  TREE_TYPE (decl) = union_type;
+	}
      }
 
   /* If this common block has been declared in a previous program unit,
@@ -345,13 +413,30 @@ build_common_decl (gfc_common_head *com, tree union_type, bool is_init)
   if (decl == NULL_TREE)
     {
       decl = build_decl (VAR_DECL, get_identifier (com->name), union_type);
-      SET_DECL_ASSEMBLER_NAME (decl, gfc_sym_mangled_common_id (com->name));
+      SET_DECL_ASSEMBLER_NAME (decl, gfc_sym_mangled_common_id (com));
       TREE_PUBLIC (decl) = 1;
       TREE_STATIC (decl) = 1;
-      DECL_ALIGN (decl) = BIGGEST_ALIGNMENT;
+      if (!com->is_bind_c)
+	DECL_ALIGN (decl) = BIGGEST_ALIGNMENT;
+      else
+        {
+	  /* Do not set the alignment for bind(c) common blocks to
+	     BIGGEST_ALIGNMENT because that won't match what C does.  Also,
+	     for common blocks with one element, the alignment must be
+	     that of the field within the common block in order to match
+	     what C will do.  */
+	  tree field = NULL_TREE;
+	  field = TYPE_FIELDS (TREE_TYPE (decl));
+	  if (TREE_CHAIN (field) == NULL_TREE)
+	    DECL_ALIGN (decl) = TYPE_ALIGN (TREE_TYPE (field));
+	}
       DECL_USER_ALIGN (decl) = 0;
+      GFC_DECL_COMMON_OR_EQUIV (decl) = 1;
 
       gfc_set_decl_location (decl, &com->where);
+
+      if (com->threadprivate)
+	DECL_TLS_MODEL (decl) = decl_default_tls_model (decl);
 
       /* Place the back end declaration for this common block in
          GLOBAL_BINDING_LEVEL.  */
@@ -375,18 +460,124 @@ build_common_decl (gfc_common_head *com, tree union_type, bool is_init)
 }
 
 
+/* Return a field that is the size of the union, if an equivalence has
+   overlapping initializers.  Merge the initializers into a single
+   initializer for this new field, then free the old ones.  */ 
+
+static tree
+get_init_field (segment_info *head, tree union_type, tree *field_init,
+		record_layout_info rli)
+{
+  segment_info *s;
+  HOST_WIDE_INT length = 0;
+  HOST_WIDE_INT offset = 0;
+  unsigned HOST_WIDE_INT known_align, desired_align;
+  bool overlap = false;
+  tree tmp, field;
+  tree init;
+  unsigned char *data, *chk;
+  VEC(constructor_elt,gc) *v = NULL;
+
+  tree type = unsigned_char_type_node;
+  int i;
+
+  /* Obtain the size of the union and check if there are any overlapping
+     initializers.  */
+  for (s = head; s; s = s->next)
+    {
+      HOST_WIDE_INT slen = s->offset + s->length;
+      if (s->sym->value)
+	{
+	  if (s->offset < offset)
+            overlap = true;
+	  offset = slen;
+	}
+      length = length < slen ? slen : length;
+    }
+
+  if (!overlap)
+    return NULL_TREE;
+
+  /* Now absorb all the initializer data into a single vector,
+     whilst checking for overlapping, unequal values.  */
+  data = (unsigned char*)gfc_getmem ((size_t)length);
+  chk = (unsigned char*)gfc_getmem ((size_t)length);
+
+  /* TODO - change this when default initialization is implemented.  */
+  memset (data, '\0', (size_t)length);
+  memset (chk, '\0', (size_t)length);
+  for (s = head; s; s = s->next)
+    if (s->sym->value)
+      gfc_merge_initializers (s->sym->ts, s->sym->value,
+			      &data[s->offset],
+			      &chk[s->offset],
+			     (size_t)s->length);
+  
+  for (i = 0; i < length; i++)
+    CONSTRUCTOR_APPEND_ELT (v, NULL, build_int_cst (type, data[i]));
+
+  gfc_free (data);
+  gfc_free (chk);
+
+  /* Build a char[length] array to hold the initializers.  Much of what
+     follows is borrowed from build_field, above.  */
+
+  tmp = build_int_cst (gfc_array_index_type, length - 1);
+  tmp = build_range_type (gfc_array_index_type,
+			  gfc_index_zero_node, tmp);
+  tmp = build_array_type (type, tmp);
+  field = build_decl (FIELD_DECL, NULL_TREE, tmp);
+  gfc_set_decl_location (field, &gfc_current_locus);
+
+  known_align = BIGGEST_ALIGNMENT;
+
+  desired_align = update_alignment_for_field (rli, field, known_align);
+  if (desired_align > known_align)
+    DECL_PACKED (field) = 1;
+
+  DECL_FIELD_CONTEXT (field) = union_type;
+  DECL_FIELD_OFFSET (field) = size_int (0);
+  DECL_FIELD_BIT_OFFSET (field) = bitsize_zero_node;
+  SET_DECL_OFFSET_ALIGN (field, known_align);
+
+  rli->offset = size_binop (MAX_EXPR, rli->offset,
+                            size_binop (PLUS_EXPR,
+                                        DECL_FIELD_OFFSET (field),
+                                        DECL_SIZE_UNIT (field)));
+
+  init = build_constructor (TREE_TYPE (field), v);
+  TREE_CONSTANT (init) = 1;
+
+  *field_init = init;
+
+  for (s = head; s; s = s->next)
+    {
+      if (s->sym->value == NULL)
+	continue;
+
+      gfc_free_expr (s->sym->value);
+      s->sym->value = NULL;
+    }
+
+  return field;
+}
+
+
 /* Declare memory for the common block or local equivalence, and create
    backend declarations for all of the elements.  */
 
 static void
-create_common (gfc_common_head *com, segment_info * head, bool saw_equiv)
+create_common (gfc_common_head *com, segment_info *head, bool saw_equiv)
 {
   segment_info *s, *next_s;
   tree union_type;
   tree *field_link;
+  tree field;
+  tree field_init = NULL_TREE;
   record_layout_info rli;
   tree decl;
   bool is_init = false;
+  bool is_saved = false;
 
   /* Declare the variables inside the common block.
      If the current common block contains any equivalence object, then
@@ -401,6 +592,20 @@ create_common (gfc_common_head *com, segment_info * head, bool saw_equiv)
   rli = start_record_layout (union_type);
   field_link = &TYPE_FIELDS (union_type);
 
+  /* Check for overlapping initializers and replace them with a single,
+     artificial field that contains all the data.  */
+  if (saw_equiv)
+    field = get_init_field (head, union_type, &field_init, rli);
+  else
+    field = NULL_TREE;
+
+  if (field != NULL_TREE)
+    {
+      is_init = true;
+      *field_link = field;
+      field_link = &TREE_CHAIN (field);
+    }
+
   for (s = head; s; s = s->next)
     {
       build_field (s, union_type, rli);
@@ -412,58 +617,98 @@ create_common (gfc_common_head *com, segment_info * head, bool saw_equiv)
       /* Has initial value.  */
       if (s->sym->value)
         is_init = true;
+
+      /* Has SAVE attribute.  */
+      if (s->sym->attr.save)
+        is_saved = true;
     }
+
   finish_record_layout (rli, true);
 
   if (com)
     decl = build_common_decl (com, union_type, is_init);
   else
-    decl = build_equiv_decl (union_type, is_init);
+    decl = build_equiv_decl (union_type, is_init, is_saved);
 
   if (is_init)
     {
-      tree list, ctor, tmp;
+      tree ctor, tmp;
       HOST_WIDE_INT offset = 0;
+      VEC(constructor_elt,gc) *v = NULL;
 
-      list = NULL_TREE;
-      for (s = head; s; s = s->next)
-        {
-          if (s->sym->value)
-            {
-              if (s->offset < offset)
-                {
-		    /* We have overlapping initializers.  It could either be
-		       partially initialized arrays (legal), or the user
-		       specified multiple initial values (illegal).
-		       We don't implement this yet, so bail out.  */
-                  gfc_todo_error ("Initialization of overlapping variables");
-                }
-	      /* Add the initializer for this field.  */
-	      tmp = gfc_conv_initializer (s->sym->value, &s->sym->ts,
-		  TREE_TYPE (s->field), s->sym->attr.dimension,
-		  s->sym->attr.pointer || s->sym->attr.allocatable);
-	      list = tree_cons (s->field, tmp, list);
-              offset = s->offset + s->length;
-            }
-        }
-      gcc_assert (list);
-      ctor = build1 (CONSTRUCTOR, union_type, nreverse(list));
+      if (field != NULL_TREE && field_init != NULL_TREE)
+	CONSTRUCTOR_APPEND_ELT (v, field, field_init);
+      else
+	for (s = head; s; s = s->next)
+	  {
+	    if (s->sym->value)
+	      {
+		/* Add the initializer for this field.  */
+		tmp = gfc_conv_initializer (s->sym->value, &s->sym->ts,
+		    TREE_TYPE (s->field), s->sym->attr.dimension,
+		    s->sym->attr.pointer || s->sym->attr.allocatable);
+
+		CONSTRUCTOR_APPEND_ELT (v, s->field, tmp);
+		offset = s->offset + s->length;
+	      }
+	  }
+
+      gcc_assert (!VEC_empty (constructor_elt, v));
+      ctor = build_constructor (union_type, v);
       TREE_CONSTANT (ctor) = 1;
-      TREE_INVARIANT (ctor) = 1;
       TREE_STATIC (ctor) = 1;
       DECL_INITIAL (decl) = ctor;
 
 #ifdef ENABLE_CHECKING
-      for (tmp = CONSTRUCTOR_ELTS (ctor); tmp; tmp = TREE_CHAIN (tmp))
-	gcc_assert (TREE_CODE (TREE_PURPOSE (tmp)) == FIELD_DECL);
+      {
+	tree field, value;
+	unsigned HOST_WIDE_INT idx;
+	FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), idx, field, value)
+	  gcc_assert (TREE_CODE (field) == FIELD_DECL);
+      }
 #endif
     }
 
   /* Build component reference for each variable.  */
   for (s = head; s; s = next_s)
     {
-      s->sym->backend_decl = build3 (COMPONENT_REF, TREE_TYPE (s->field),
-				decl, s->field, NULL_TREE);
+      tree var_decl;
+
+      var_decl = build_decl (VAR_DECL, DECL_NAME (s->field),
+			     TREE_TYPE (s->field));
+      gfc_set_decl_location (var_decl, &s->sym->declared_at);
+      TREE_PUBLIC (var_decl) = TREE_PUBLIC (decl);
+      TREE_STATIC (var_decl) = TREE_STATIC (decl);
+      TREE_USED (var_decl) = TREE_USED (decl);
+      if (s->sym->attr.target)
+	TREE_ADDRESSABLE (var_decl) = 1;
+      /* This is a fake variable just for debugging purposes.  */
+      TREE_ASM_WRITTEN (var_decl) = 1;
+      
+      /* To preserve identifier names in COMMON, chain to procedure
+         scope unless at top level in a module definition.  */
+      if (com
+          && s->sym->ns->proc_name
+          && s->sym->ns->proc_name->attr.flavor == FL_MODULE)
+	var_decl = pushdecl_top_level (var_decl);
+      else
+	gfc_add_decl_to_function (var_decl);
+
+      SET_DECL_VALUE_EXPR (var_decl,
+			   fold_build3 (COMPONENT_REF, TREE_TYPE (s->field),
+					decl, s->field, NULL_TREE));
+      DECL_HAS_VALUE_EXPR_P (var_decl) = 1;
+      GFC_DECL_COMMON_OR_EQUIV (var_decl) = 1;
+
+      if (s->sym->attr.assign)
+	{
+	  gfc_allocate_lang_decl (var_decl);
+	  GFC_DECL_ASSIGN (var_decl) = 1;
+	  GFC_DECL_STRING_LEN (var_decl) = GFC_DECL_STRING_LEN (s->field);
+	  GFC_DECL_ASSIGN_ADDR (var_decl) = GFC_DECL_ASSIGN_ADDR (s->field);
+	}
+
+      s->sym->backend_decl = var_decl;
 
       next_s = s->next;
       gfc_free (s);
@@ -660,46 +905,45 @@ add_condition (segment_info *f, gfc_equiv *eq1, gfc_equiv *eq2)
 
 
 /* Given a segment element, search through the equivalence lists for unused
-   conditions that involve the symbol.  Add these rules to the segment.  Only
-   checks for rules involving the first symbol in the equivalence set.  */
- 
+   conditions that involve the symbol.  Add these rules to the segment.  */
+
 static bool
 find_equivalence (segment_info *n)
 {
-  gfc_equiv *e1, *e2, *eq, *other;
+  gfc_equiv *e1, *e2, *eq;
   bool found;
- 
+
   found = FALSE;
+
   for (e1 = n->sym->ns->equiv; e1; e1 = e1->next)
     {
-      other = NULL;
-      for (e2 = e1->eq; e2; e2 = e2->eq)
-	{
-	  if (e2->used)
-	    continue;
+      eq = NULL;
 
-	  if (e1->expr->symtree->n.sym == n->sym)
-	    {
-	      eq = e1;
-	      other = e2;
-	    }
-	  else if (e2->expr->symtree->n.sym == n->sym)
+      /* Search the equivalence list, including the root (first) element
+         for the symbol that owns the segment.  */
+      for (e2 = e1; e2; e2 = e2->eq)
+	{
+	  if (!e2->used && e2->expr->symtree->n.sym == n->sym)
 	    {
 	      eq = e2;
-	      other = e1;
+	      break;
 	    }
-	  else
-	    eq = NULL;
-	  
-	  if (eq)
+	}
+
+      /* Go to the next root element.  */
+      if (eq == NULL)
+	continue;
+
+      eq->used = 1;
+
+      /* Now traverse the equivalence list matching the offsets.  */
+      for (e2 = e1; e2; e2 = e2->eq)
+	{
+	  if (!e2->used && e2 != eq)
 	    {
-	      add_condition (n, eq, other);
-	      eq->used = 1;
+	      add_condition (n, eq, e2);
+	      e2->used = 1;
 	      found = TRUE;
-	      /* If this symbol is the first in the chain we may find other
-		 matches. Otherwise we can skip to the next equivalence.  */
-	      if (eq == e2)
-		break;
 	    }
 	}
     }
@@ -708,14 +952,19 @@ find_equivalence (segment_info *n)
 
 
 /* Add all symbols equivalenced within a segment.  We need to scan the
-   segment list multiple times to include indirect equivalences.  */
+   segment list multiple times to include indirect equivalences.  Since
+   a new segment_info can inserted at the beginning of the segment list,
+   depending on its offset, we have to force a final pass through the
+   loop by demanding that completion sees a pass with no matches; i.e.,
+   all symbols with equiv_built set and no new equivalences found.  */
 
 static void
 add_equivalences (bool *saw_equiv)
 {
   segment_info *f;
-  bool more;
+  bool seen_one, more;
 
+  seen_one = false;
   more = TRUE;
   while (more)
     {
@@ -725,12 +974,18 @@ add_equivalences (bool *saw_equiv)
 	  if (!f->sym->equiv_built)
 	    {
 	      f->sym->equiv_built = 1;
-	      more = find_equivalence (f);
-	      if (more)
-		*saw_equiv = true;
+	      seen_one = find_equivalence (f);
+	      if (seen_one)
+		{
+		  *saw_equiv = true;
+		  more = true;
+		}
 	    }
 	}
     }
+
+  /* Add a copy of this segment list to the namespace.  */
+  copy_equiv_list_to_ns (current_segment);
 }
 
 
@@ -738,7 +993,7 @@ add_equivalences (bool *saw_equiv)
    Sets *palign to the required alignment.  */
 
 static HOST_WIDE_INT
-align_segment (unsigned HOST_WIDE_INT * palign)
+align_segment (unsigned HOST_WIDE_INT *palign)
 {
   segment_info *s;
   unsigned HOST_WIDE_INT offset;
@@ -759,7 +1014,7 @@ align_segment (unsigned HOST_WIDE_INT * palign)
 	    {
 	      /* Aligning this field would misalign a previous field.  */
 	      gfc_error ("The equivalence set for variable '%s' "
-			 "declared at %L violates alignment requirents",
+			 "declared at %L violates alignment requirements",
 			 s->sym->name, &s->sym->declared_at);
 	    }
 	  offset += this_offset;
@@ -775,7 +1030,7 @@ align_segment (unsigned HOST_WIDE_INT * palign)
 /* Adjust segment offsets by the given amount.  */
 
 static void
-apply_segment_offset (segment_info * s, HOST_WIDE_INT offset)
+apply_segment_offset (segment_info *s, HOST_WIDE_INT offset)
 {
   for (; s; s = s->next)
     s->offset += offset;
@@ -808,12 +1063,14 @@ translate_common (gfc_common_head *common, gfc_symbol *var_list)
   /* Add symbols to the segment.  */
   for (sym = var_list; sym; sym = sym->common_next)
     {
-      if (sym->equiv_built)
-	{
-	  /* Symbol has already been added via an equivalence.  */
-	  current_segment = common_segment;
-	  s = find_segment_info (sym);
+      current_segment = common_segment;
+      s = find_segment_info (sym);
 
+      /* Symbol has already been added via an equivalence.  Multiple
+	 use associations of the same common block result in equiv_built
+	 being set but no information about the symbol in the segment.  */
+      if (s && sym->equiv_built)
+	{
 	  /* Ensure the current location is properly aligned.  */
 	  align = TYPE_ALIGN_UNIT (s->field);
 	  current_offset = (current_offset + align - 1) &~ (align - 1);
@@ -848,7 +1105,7 @@ translate_common (gfc_common_head *common, gfc_symbol *var_list)
 		 requirements.  Insert padding immediately before this
 		 segment.  */
 	      gfc_warning ("Padding of %d bytes required before '%s' in "
-			   "COMMON '%s' at %L", offset, s->sym->name,
+			   "COMMON '%s' at %L", (int)offset, s->sym->name,
 			   common->name, &common->where);
 	    }
 	  else
@@ -871,10 +1128,17 @@ translate_common (gfc_common_head *common, gfc_symbol *var_list)
       current_offset += s->length;
     }
 
+  if (common_segment == NULL)
+    {
+      gfc_error ("COMMON '%s' at %L does not exist",
+		 common->name, &common->where);
+      return;
+    }
+
   if (common_segment->offset != 0)
     {
       gfc_warning ("COMMON '%s' at %L requires %d bytes of padding at start",
-		   common->name, &common->where, common_segment->offset);
+		   common->name, &common->where, (int)common_segment->offset);
     }
 
   create_common (common, common_segment, saw_equiv);
@@ -888,6 +1152,7 @@ finish_equivalences (gfc_namespace *ns)
 {
   gfc_equiv *z, *y;
   gfc_symbol *sym;
+  gfc_common_head * c;
   HOST_WIDE_INT offset;
   unsigned HOST_WIDE_INT align;
   bool dummy;
@@ -900,7 +1165,8 @@ finish_equivalences (gfc_namespace *ns)
         sym = z->expr->symtree->n.sym;
         current_segment = get_segment_info (sym, 0);
 
-        /* All objects directly or indirectly equivalenced with this symbol.  */
+        /* All objects directly or indirectly equivalenced with this
+	   symbol.  */
         add_equivalences (&dummy);
 
 	/* Align the block.  */
@@ -911,8 +1177,24 @@ finish_equivalences (gfc_namespace *ns)
 
 	apply_segment_offset (current_segment, offset);
 
-	/* Create the decl.  */
-        create_common (NULL, current_segment, true);
+	/* Create the decl.  If this is a module equivalence, it has a
+	   unique name, pointed to by z->module.  This is written to a
+	   gfc_common_header to push create_common into using
+	   build_common_decl, so that the equivalence appears as an
+	   external symbol.  Otherwise, a local declaration is built using
+	   build_equiv_decl.  */
+	if (z->module)
+	  {
+	    c = gfc_get_common_head ();
+	    /* We've lost the real location, so use the location of the
+	       enclosing procedure.  */
+	    c->where = ns->proc_name->declared_at;
+	    strcpy (c->name, z->module);
+	  }
+	else
+	  c = NULL;
+
+        create_common (c, current_segment, true);
         break;
       }
 }
@@ -940,19 +1222,25 @@ gfc_trans_common (gfc_namespace *ns)
   if (ns->blank_common.head != NULL)
     {
       c = gfc_get_common_head ();
+
       /* We've lost the real location, so use the location of the
 	 enclosing procedure.  */
-      c->where = ns->proc_name->declared_at;
+      if (ns->proc_name != NULL)
+	c->where = ns->proc_name->declared_at;
+      else
+	c->where = ns->blank_common.head->common_head->where;
+
       strcpy (c->name, BLANK_COMMON_NAME);
       translate_common (c, ns->blank_common.head);
     }
- 
+
   /* Translate all named common blocks.  */
   gfc_traverse_symtree (ns->common_root, named_common);
 
-  /* Commit the newly created symbols for common blocks.  */
-  gfc_commit_symbols ();
-
   /* Translate local equivalence.  */
   finish_equivalences (ns);
+
+  /* Commit the newly created symbols for common blocks and module
+     equivalences.  */
+  gfc_commit_symbols ();
 }

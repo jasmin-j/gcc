@@ -1,13 +1,13 @@
 /* Compilation switch flag definitions for GCC.
    Copyright (C) 1987, 1988, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2002,
-   2003, 2004, 2005
+   2003, 2004, 2005, 2006, 2007
    Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -16,13 +16,13 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_FLAGS_H
 #define GCC_FLAGS_H
 
+#include "coretypes.h"
 #include "options.h"
 
 enum debug_info_type
@@ -54,19 +54,39 @@ enum debug_info_level
 /* Specify how much debugging info to generate.  */
 extern enum debug_info_level debug_info_level;
 
+/* A major contribution to object and executable size is debug
+   information size.  A major contribution to debug information
+   size is struct descriptions replicated in several object files.
+   The following function determines whether or not debug information
+   should be generated for a given struct.  The indirect parameter
+   indicates that the struct is being handled indirectly, via
+   a pointer.  See opts.c for the implementation. */
+
+enum debug_info_usage
+{
+  DINFO_USAGE_DFN,	/* A struct definition. */
+  DINFO_USAGE_DIR_USE,	/* A direct use, such as the type of a variable. */
+  DINFO_USAGE_IND_USE,	/* An indirect use, such as through a pointer. */
+  DINFO_USAGE_NUM_ENUMS	/* The number of enumerators. */
+};
+
+extern bool should_emit_struct_debug (tree type_decl, enum debug_info_usage);
+extern void set_struct_debug_option (const char *value);
+
 /* Nonzero means use GNU-only extensions in the generated symbolic
    debugging information.  */
 extern bool use_gnu_debug_info_extensions;
 
-/* Enumerate visibility settings.  */
+/* Enumerate visibility settings.  This is deliberately ordered from most
+   to least visibility.  */
 #ifndef SYMBOL_VISIBILITY_DEFINED
 #define SYMBOL_VISIBILITY_DEFINED
 enum symbol_visibility
 {
   VISIBILITY_DEFAULT,
-  VISIBILITY_INTERNAL,
+  VISIBILITY_PROTECTED,
   VISIBILITY_HIDDEN,
-  VISIBILITY_PROTECTED
+  VISIBILITY_INTERNAL
 };
 #endif
 
@@ -101,10 +121,14 @@ extern bool extra_warnings;
 
 extern void set_Wunused (int setting);
 
-/* Nonzero means warn about function definitions that default the return type
-   or that use a null return and have a return-type other than void.  */
+/* Used to set the level of -Wstrict-aliasing, when no level is specified.  
+   The external way to set the default level is to use
+   -Wstrict-aliasing=level.  
+   ONOFF is assumed to take value 1 when -Wstrict-aliasing is specified,
+   and 0 otherwise.  After calling this function, wstrict_aliasing will be
+   set to the default value of -Wstrict_aliasing=level.  */
 
-extern int warn_return_type;
+extern void set_Wstrict_aliasing (int onoff);
 
 /* Nonzero means warn about any objects definitions whose size is larger
    than N bytes.  Also want about function definitions whose returned
@@ -113,15 +137,11 @@ extern int warn_return_type;
 extern bool warn_larger_than;
 extern HOST_WIDE_INT larger_than_size;
 
-/* Nonzero means warn about constructs which might not be strict
-   aliasing safe.  */
+/* Nonzero means warn about any function whose frame size is larger
+   than N bytes. */
 
-extern int warn_strict_aliasing;
-
-/* Temporarily suppress certain warnings.
-   This is set while reading code from a system header file.  */
-
-extern int in_system_header;
+extern bool warn_frame_larger_than;
+extern HOST_WIDE_INT frame_larger_than_size;
 
 /* Nonzero for -dp: annotate the assembly with a comment describing the
    pattern and alternative used.  */
@@ -172,6 +192,10 @@ extern int flag_dump_unnumbered;
 
 extern int flag_pedantic_errors;
 
+/* Nonzero means make permerror produce warnings instead of errors.  */
+
+extern int flag_permissive;
+
 /* Nonzero if we are compiling code for a shared library, zero for
    executable.  */
 
@@ -186,20 +210,13 @@ extern int flag_shlib;
 
 extern int flag_debug_asm;
 
-extern int flag_dump_rtl_in_asm;
+/* Generate code for GNU or NeXT Objective-C runtime environment.  */
 
-/* If one, renumber instruction UIDs to reduce the number of
-   unused UIDs if there are a lot of instructions.  If greater than
-   one, unconditionally renumber instruction UIDs.  */
-extern int flag_renumber_insns;
+extern int flag_next_runtime;
+
+extern int flag_dump_rtl_in_asm;
 
 /* Other basic status info about current function.  */
-
-/* Nonzero means current function must be given a frame pointer.
-   Set in stmt.c if anything is allocated on the stack there.
-   Set in reload1.c if anything is allocated on the stack there.  */
-
-extern int frame_pointer_needed;
 
 /* Nonzero if subexpressions must be evaluated from left-to-right.  */
 extern int flag_evaluation_order;
@@ -220,10 +237,6 @@ extern int align_jumps_max_skip;
 extern int align_labels_log;
 extern int align_labels_max_skip;
 extern int align_functions_log;
-
-/* Like align_functions_log above, but used by front-ends to force the
-   minimum function alignment.  Zero means no alignment is forced.  */
-extern int force_align_functions_log;
 
 /* Nonzero if we dump in VCG format, not plain text.  */
 extern int dump_for_graph;
@@ -251,20 +264,26 @@ extern int flag_var_tracking;
    warning message in case flag was set by -fprofile-{generate,use}.  */
 extern bool flag_speculative_prefetching_set;
 
-/* A string that's used when a random name is required.  NULL means
-   to make it really random.  */
-
-extern const char *flag_random_seed;
-
 /* Returns TRUE if generated code should match ABI version N or
    greater is in use.  */
 
 #define abi_version_at_least(N) \
   (flag_abi_version == 0 || flag_abi_version >= (N))
 
+/* Return whether the function should be excluded from
+   instrumentation.  */
+extern bool flag_instrument_functions_exclude_p (tree fndecl);
+
+/* Emit warning if the function call is disallowed under
+   -Wdisallowed-function-list=...  */
+extern void warn_if_disallowed_function_p (const_tree fncall);
+
+/* True, if the -Wdisallowed-function-list=... option has been specified.  */
+extern bool warn_disallowed_functions;
+
 /* True if the given mode has a NaN representation and the treatment of
    NaN operands is important.  Certain optimizations, such as folding
-   x * 0 into x, are not correct for NaN operands, and are normally
+   x * 0 into 0, are not correct for NaN operands, and are normally
    disabled for modes with NaNs.  The user can ask for them to be
    done anyway using the -funsafe-math-optimizations switch.  */
 #define HONOR_NANS(MODE) \
@@ -281,11 +300,63 @@ extern const char *flag_random_seed;
 /* Like HONOR_NANS, but true if the given mode distinguishes between
    positive and negative zero, and the sign of zero is important.  */
 #define HONOR_SIGNED_ZEROS(MODE) \
-  (MODE_HAS_SIGNED_ZEROS (MODE) && !flag_unsafe_math_optimizations)
+  (MODE_HAS_SIGNED_ZEROS (MODE) && flag_signed_zeros)
 
 /* Like HONOR_NANS, but true if given mode supports sign-dependent rounding,
    and the rounding mode is important.  */
 #define HONOR_SIGN_DEPENDENT_ROUNDING(MODE) \
   (MODE_HAS_SIGN_DEPENDENT_ROUNDING (MODE) && flag_rounding_math)
+
+/* True if overflow wraps around for the given integral type.  That
+   is, TYPE_MAX + 1 == TYPE_MIN.  */
+#define TYPE_OVERFLOW_WRAPS(TYPE) \
+  (TYPE_UNSIGNED (TYPE) || flag_wrapv)
+
+/* True if overflow is undefined for the given integral type.  We may
+   optimize on the assumption that values in the type never overflow.
+
+   IMPORTANT NOTE: Any optimization based on TYPE_OVERFLOW_UNDEFINED
+   must issue a warning based on warn_strict_overflow.  In some cases
+   it will be appropriate to issue the warning immediately, and in
+   other cases it will be appropriate to simply set a flag and let the
+   caller decide whether a warning is appropriate or not.  */
+#define TYPE_OVERFLOW_UNDEFINED(TYPE) \
+  (!TYPE_UNSIGNED (TYPE) && !flag_wrapv && !flag_trapv && flag_strict_overflow)
+
+/* True if overflow for the given integral type should issue a
+   trap.  */
+#define TYPE_OVERFLOW_TRAPS(TYPE) \
+  (!TYPE_UNSIGNED (TYPE) && flag_trapv)
+
+/* True if pointer types have undefined overflow.  */
+#define POINTER_TYPE_OVERFLOW_UNDEFINED (flag_strict_overflow)
+
+/* Names for the different levels of -Wstrict-overflow=N.  The numeric
+   values here correspond to N.  */
+
+enum warn_strict_overflow_code
+{
+  /* Overflow warning that should be issued with -Wall: a questionable
+     construct that is easy to avoid even when using macros.  Example:
+     folding (x + CONSTANT > x) to 1.  */
+  WARN_STRICT_OVERFLOW_ALL = 1,
+  /* Overflow warning about folding a comparison to a constant because
+     of undefined signed overflow, other than cases covered by
+     WARN_STRICT_OVERFLOW_ALL.  Example: folding (abs (x) >= 0) to 1
+     (this is false when x == INT_MIN).  */
+  WARN_STRICT_OVERFLOW_CONDITIONAL = 2,
+  /* Overflow warning about changes to comparisons other than folding
+     them to a constant.  Example: folding (x + 1 > 1) to (x > 0).  */
+  WARN_STRICT_OVERFLOW_COMPARISON = 3,
+  /* Overflow warnings not covered by the above cases.  Example:
+     folding ((x * 10) / 5) to (x * 2).  */
+  WARN_STRICT_OVERFLOW_MISC = 4,
+  /* Overflow warnings about reducing magnitude of constants in
+     comparison.  Example: folding (x + 2 > y) to (x + 1 >= y).  */
+  WARN_STRICT_OVERFLOW_MAGNITUDE = 5
+};
+
+/* Whether to emit an overflow warning whose code is C.  */
+#define issue_strict_overflow_warning(c) (warn_strict_overflow >= (int) (c))
 
 #endif /* ! GCC_FLAGS_H */

@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUNTIME LIBRARY (GNARL) COMPONENTS                --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --     S Y S T E M . V E C T O R S . B O O L E A N _ O P E R A T I O N S    --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---             Copyright (C) 2002 Free Software Foundation, Inc.            --
+--          Copyright (C) 2002-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -33,24 +33,30 @@
 
 package body System.Vectors.Boolean_Operations is
 
+   SU : constant := Storage_Unit;
+   --  Convenient short hand, used throughout
+
+   --  The coding of this unit depends on the fact that the Component_Size
+   --  of a normally declared array of Boolean is equal to Storage_Unit. We
+   --  can't use the Component_Size directly since it is non-static. The
+   --  following declaration checks that this declaration is correct
+
    type Boolean_Array is array (Integer range <>) of Boolean;
-   pragma Assert (Boolean_Array'Component_Size = 8);
-   --  Unfortunately Boolean_Array'Component_Size is not a compile-time-known
-   --  value, so assume it is 8 in order to be able to determine True_Val at
-   --  compile time.
+   pragma Compile_Time_Error
+     (Boolean_Array'Component_Size /= SU, "run time compile failure");
 
    --  NOTE: The boolean literals must be qualified here to avoid visibility
    --  anomalies when this package is compiled through Rtsfind, in a context
    --  that includes a user-defined type derived from boolean.
 
    True_Val : constant Vector := Standard.True'Enum_Rep
-                                   + Standard.True'Enum_Rep * 2**8
-                                   + Standard.True'Enum_Rep * 2**(8 * 2)
-                                   + Standard.True'Enum_Rep * 2**(8 * 3)
-                                   + Standard.True'Enum_Rep * 2**(8 * 4)
-                                   + Standard.True'Enum_Rep * 2**(8 * 5)
-                                   + Standard.True'Enum_Rep * 2**(8 * 6)
-                                   + Standard.True'Enum_Rep * 2**(8 * 7);
+                                   + Standard.True'Enum_Rep * 2**SU
+                                   + Standard.True'Enum_Rep * 2**(SU * 2)
+                                   + Standard.True'Enum_Rep * 2**(SU * 3)
+                                   + Standard.True'Enum_Rep * 2**(SU * 4)
+                                   + Standard.True'Enum_Rep * 2**(SU * 5)
+                                   + Standard.True'Enum_Rep * 2**(SU * 6)
+                                   + Standard.True'Enum_Rep * 2**(SU * 7);
    --  This constant represents the bits to be flipped to perform a logical
    --  "not" on a vector of booleans, independent of the actual
    --  representation of True.

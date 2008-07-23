@@ -6,11 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---             Copyright (C) 2004 Free Software Foundation, Inc.            --
---                                                                          --
--- This specification is derived from the Ada Reference Manual for use with --
--- GNAT. The copyright notice above, and the license provisions that follow --
--- apply solely to the implementation dependent sections of this file.      --
+--          Copyright (C) 2004-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -20,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -46,8 +42,12 @@
 --  inappropriate use by applications programs). In addition, the logical
 --  operations may not be available if type Address is a signed integer.
 
+pragma Warnings (Off);
+pragma Compiler_Unit;
+pragma Warnings (On);
+
 package System.Address_Operations is
-pragma Pure (Address_Operations);
+   pragma Pure;
 
    --  The semantics of the arithmetic operations are those that apply to
    --  a modular type with the same length as Address, i.e. they provide
@@ -58,6 +58,13 @@ pragma Pure (Address_Operations);
    --  avoid problems with ambiguities coming from declarations in package
    --  Standard (which may or may not be visible depending on the exact
    --  form of the declaration of type System.Address).
+
+   --  For addition, subtraction, and multiplication, the effect of overflow
+   --  is 2's complement wrapping (as though the type Address were unsigned).
+
+   --  For division and modulus operations, the caller is responsible for
+   --  ensuring that the Right argument is non-zero, and the effect of the
+   --  call is not specified if a zero argument is passed.
 
    function AddA (Left, Right : Address) return Address;
    function SubA (Left, Right : Address) return Address;

@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                  GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                --
 --                                                                          --
 --                        S Y S T E M . T A S K I N G                       --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---          Copyright (C) 1992-2005, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -37,23 +37,16 @@
 --  Any changes to this interface may require corresponding compiler changes.
 
 with Ada.Exceptions;
---  Used for:  Exception_Id
+with Ada.Unchecked_Conversion;
 
 with System.Parameters;
---  used for Size_Type
-
 with System.Task_Info;
---  used for Task_Info_Type
-
 with System.Soft_Links;
---  used for TSD
-
 with System.Task_Primitives;
---  used for Private_Data
-
-with Unchecked_Conversion;
+with System.Stack_Usage;
 
 package System.Tasking is
+   pragma Preelaborate;
 
    -------------------
    -- Locking Rules --
@@ -67,7 +60,7 @@ package System.Tasking is
    --  Never undefer abort while holding a lock
 
    --  Overlapping critical sections must be properly nested, and locks must
-   --  be released in LIFO order. e.g., the following is not allowed:
+   --  be released in LIFO order. E.g., the following is not allowed:
 
    --         Lock (X);
    --         ...
@@ -113,6 +106,7 @@ package System.Tasking is
    type Ada_Task_Control_Block;
 
    type Task_Id is access all Ada_Task_Control_Block;
+   for Task_Id'Size use System.Task_Primitives.Task_Address_Size;
 
    Null_Task : constant Task_Id;
 
@@ -123,8 +117,12 @@ package System.Tasking is
    --  This is the compiler interface version of this function. Do not call
    --  from the run-time system.
 
-   function To_Task_Id is new Unchecked_Conversion (System.Address, Task_Id);
-   function To_Address is new Unchecked_Conversion (Task_Id, System.Address);
+   function To_Task_Id is
+     new Ada.Unchecked_Conversion
+       (System.Task_Primitives.Task_Address, Task_Id);
+   function To_Address is
+     new Ada.Unchecked_Conversion
+       (Task_Id, System.Task_Primitives.Task_Address);
 
    -----------------------
    -- Enumeration types --
@@ -195,8 +193,8 @@ package System.Tasking is
       --  The task has been held by Asynchronous_Task_Control.Hold_Task
 
       Interrupt_Server_Blocked_On_Event_Flag
-      --  The task has been blocked on a system call waiting for the
-      --  completion event.
+      --  The task has been blocked on a system call waiting for a
+      --  completion event/signal to occur.
      );
 
    type Call_Modes is
@@ -238,6 +236,19 @@ package System.Tasking is
 
    type Task_Entry_Queue_Array is
      array (Task_Entry_Index range <>) of Entry_Queue;
+
+   --  A data structure which contains the string names of entries and entry
+   --  family members.
+
+   type String_Access is access all String;
+
+   type Entry_Names_Array is
+     array (Entry_Index range <>) of String_Access;
+
+   type Entry_Names_Array_Access is access all Entry_Names_Array;
+
+   procedure Free_Entry_Names_Array (Obj : in out Entry_Names_Array);
+   --  Deallocate all string names contained in an entry names array
 
    ----------------------------------
    -- Entry_Call_Record definition --
@@ -328,22 +339,57 @@ package System.Tasking is
    end record;
    pragma Suppress_Initialization (Restricted_Entry_Call_Record);
 
+   -------------------------------------------
+   -- Task termination procedure definition --
+   -------------------------------------------
+
+   --  We need to redefine here these types (already defined in
+   --  Ada.Task_Termination) for avoiding circular dependencies.
+
+   type Cause_Of_Termination is (Normal, Abnormal, Unhandled_Exception);
+   --  Possible causes for task termination:
+   --
+   --    Normal means that the task terminates due to completing the
+   --    last sentence of its body, or as a result of waiting on a
+   --    terminate alternative.
+
+   --    Abnormal means that the task terminates because it is being aborted
+
+   --    handled_Exception means that the task terminates because of exception
+   --    raised by the execution of its task_body.
+
+   type Termination_Handler is access protected procedure
+     (Cause : Cause_Of_Termination;
+      T     : Task_Id;
+      X     : Ada.Exceptions.Exception_Occurrence);
+   --  Used to represent protected procedures to be executed when task
+   --  terminates.
+
    ------------------------------------
    -- Task related other definitions --
    ------------------------------------
 
    type Activation_Chain is limited private;
-   --  Comment required ???
+   --  Linked list of to-be-activated tasks, linked through
+   --  Activation_Link. The order of tasks on the list is irrelevant, because
+   --  the priority rules will ensure that they actually start activating in
+   --  priority order.
 
    type Activation_Chain_Access is access all Activation_Chain;
-   --  Comment required ???
 
    type Task_Procedure_Access is access procedure (Arg : System.Address);
 
    type Access_Boolean is access all Boolean;
 
-   Detect_Blocking : constant Boolean;
-   --  Boolean constant set True iff Detect_Blocking is active
+   function Detect_Blocking return Boolean;
+   pragma Inline (Detect_Blocking);
+   --  Return whether the Detect_Blocking pragma is enabled
+
+   function Storage_Size (T : Task_Id) return System.Parameters.Size_Type;
+   --  Retrieve from the TCB of the task the allocated size of its stack,
+   --  either the system default or the size specified by a pragma. This
+   --  is in general a non-static value that can depend on discriminants
+   --  of the task.
 
    ----------------------------------------------
    -- Ada_Task_Control_Block (ATCB) definition --
@@ -408,19 +454,17 @@ package System.Tasking is
       --  and rendezvous.
       --
       --  Ada 95 notes: In Ada 95, this field will be transferred to the
-      --  Priority field of an Entry_Calls component when an entry call
-      --  is initiated. The Priority of the Entry_Calls component will not
-      --  change for the duration of the call. The accepting task can
-      --  use it to boost its own priority without fear of its changing in
-      --  the meantime.
+      --  Priority field of an Entry_Calls component when an entry call is
+      --  initiated. The Priority of the Entry_Calls component will not change
+      --  for the duration of the call. The accepting task can use it to boost
+      --  its own priority without fear of its changing in the meantime.
       --
-      --  This can safely be used in the priority ordering
-      --  of entry queues. Once a call is queued, its priority does not
-      --  change.
+      --  This can safely be used in the priority ordering of entry queues.
+      --  Once a call is queued, its priority does not change.
       --
-      --  Since an entry call cannot be made while executing
-      --  a protected action, the priority of a task will never reflect a
-      --  priority ceiling change at the point of an entry call.
+      --  Since an entry call cannot be made while executing a protected
+      --  action, the priority of a task will never reflect a priority ceiling
+      --  change at the point of an entry call.
       --
       --  Protection: Only written by Self, and only accessed when Acceptor
       --  accepts an entry or when Created activates, at which points Self is
@@ -433,9 +477,9 @@ package System.Tasking is
       --  are invoked from protected actions. pragma Atomic is used because it
       --  can be read/written from protected interrupt handlers.
 
-      Task_Image : String (1 .. 32);
-      --  Hold a string that provides a readable id for task,
-      --  built from the variable of which it is a value or component.
+      Task_Image : String (1 .. System.Parameters.Max_Task_Image_Length);
+      --  Hold a string that provides a readable id for task, built from the
+      --  variable of which it is a value or component.
 
       Task_Image_Len : Natural;
       --  Actual length of Task_Image
@@ -456,11 +500,16 @@ package System.Tasking is
 
       Task_Arg : System.Address;
       --  The argument to task procedure. Provide a handle for discriminant
-      --  information
+      --  information.
       --
       --  Protection: Part of the synchronization between Self and Activator.
       --  Activator writes it, once, before Self starts executing. Thereafter,
       --  Self only reads it.
+
+      Task_Alternate_Stack : System.Address;
+      --  The address of the alternate signal stack for this task, if any
+      --
+      --  Protection: Only accessed by Self
 
       Task_Entry_Point : Task_Procedure_Access;
       --  Information needed to call the procedure containing the code for
@@ -537,16 +586,39 @@ package System.Tasking is
       Task_Info : System.Task_Info.Task_Info_Type;
       --  System-specific attributes of the task as specified by the
       --  Task_Info pragma.
+
+      Analyzer  : System.Stack_Usage.Stack_Analyzer;
+      --  For storing informations used to measure the stack usage
+
+      Global_Task_Lock_Nesting : Natural;
+      --  This is the current nesting level of calls to
+      --  System.Tasking.Initialization.Lock_Task. This allows a task to call
+      --  Lock_Task multiple times without deadlocking. A task only locks
+      --  Global_Task_Lock when its Global_Task_Lock_Nesting goes from 0 to 1,
+      --  and only unlocked when it goes from 1 to 0.
+      --
+      --  Protection: Only accessed by Self
+
+      Fall_Back_Handler : Termination_Handler;
+      --  This is the fall-back handler that applies to the dependent tasks of
+      --  the task.
+      --
+      --  Protection: Self.L
+
+      Specific_Handler : Termination_Handler;
+      --  This is the specific handler that applies only to this task, and not
+      --  any of its dependent tasks.
+      --
+      --  Protection: Self.L
    end record;
 
    ---------------------------------------
    -- Restricted_Ada_Task_Control_Block --
    ---------------------------------------
 
-   --  This type should only be used by the restricted GNARLI and by
-   --  restricted GNULL implementations to allocate an ATCB (see
-   --  System.Task_Primitives.Operations.New_ATCB) that will take
-   --  significantly less memory.
+   --  This type should only be used by the restricted GNARLI and by restricted
+   --  GNULL implementations to allocate an ATCB (see System.Task_Primitives.
+   --  Operations.New_ATCB) that will take significantly less memory.
 
    --  Note that the restricted GNARLI should only access fields that are
    --  present in the Restricted_Ada_Task_Control_Block structure.
@@ -589,11 +661,14 @@ package System.Tasking is
    --  Normally, a task starts out with internal master nesting level one
    --  larger than external master nesting level. It is incremented to one by
    --  Enter_Master, which is called in the task body only if the compiler
-   --  thinks the task may have dependent tasks. It is set to for the
+   --  thinks the task may have dependent tasks. It is set to 1 for the
    --  environment task, the level 2 is reserved for server tasks of the
    --  run-time system (the so called "independent tasks"), and the level 3 is
-   --  for the library level tasks.
+   --  for the library level tasks. Foreign threads which are detected by
+   --  the run-time have a level of 0, allowing these tasks to be easily
+   --  distinguished if needed.
 
+   Foreign_Task_Level     : constant Master_Level := 0;
    Environment_Task_Level : constant Master_Level := 1;
    Independent_Task_Level : constant Master_Level := 2;
    Library_Task_Level     : constant Master_Level := 3;
@@ -730,9 +805,9 @@ package System.Tasking is
       --  Cancellation of the call has been attempted.
       --  Consider merging this into State???
 
-      Requeue_With_Abort : Boolean := False;
-      --  Temporary to tell caller whether requeue is with abort.
-      --  Find a better way of doing this ???
+      With_Abort : Boolean := False;
+      --  Tell caller whether the call may be aborted
+      --  ??? consider merging this with Was_Abortable state
 
       Needs_Requeue : Boolean := False;
       --  Temporary to tell acceptor of task entry call that
@@ -744,7 +819,8 @@ package System.Tasking is
    ------------------------------------
 
    type Access_Address is access all System.Address;
-   --  Comment on what this is used for ???
+   --  Anonymous pointer used to implement task attributes (see s-tataat.adb
+   --  and a-tasatt.adb)
 
    pragma No_Strict_Aliasing (Access_Address);
    --  This type is used in contexts where aliasing may be an issue (see
@@ -789,19 +865,15 @@ package System.Tasking is
       --  associated with protected objects or task entries, and are protected
       --  by the protected object lock or Acceptor.L, respectively.
 
+      Entry_Names : Entry_Names_Array_Access := null;
+      --  An array of string names which denotes entry [family member] names.
+      --  The structure is indexed by task entry index and contains Entry_Num
+      --  components.
+
       New_Base_Priority : System.Any_Priority;
       --  New value for Base_Priority (for dynamic priorities package)
       --
       --  Protection: Self.L
-
-      Global_Task_Lock_Nesting : Natural := 0;
-      --  This is the current nesting level of calls to
-      --  System.Tasking.Stages.Lock_Task_T. This allows a task to call
-      --  Lock_Task_T multiple times without deadlocking. A task only locks
-      --  All_Task_Lock when its All_Tasks_Nesting goes from 0 to 1, and only
-      --  unlocked when it goes from 1 to 0.
-      --
-      --  Protection: Only accessed by Self
 
       Open_Accepts : Accept_List_Access;
       --  This points to the Open_Accepts array of accept alternatives passed
@@ -933,8 +1005,8 @@ package System.Tasking is
       --  this value.
 
       Deferral_Level : Natural := 1;
-      --  This is the number of times that Defer_Abortion has been called by
-      --  this task without a matching Undefer_Abortion call. Abortion is only
+      --  This is the number of times that Defer_Abort has been called by
+      --  this task without a matching Undefer_Abort call. Abortion is only
       --  allowed when this zero. It is initially 1, to protect the task at
       --  startup.
 
@@ -977,9 +1049,19 @@ package System.Tasking is
       --  has exclusive access to this field.
    end record;
 
-   ---------------------
-   -- Initialize_ATCB --
-   ---------------------
+   --------------------
+   -- Initialization --
+   --------------------
+
+   procedure Initialize;
+   --  This procedure constitutes the first part of the initialization of the
+   --  GNARL. This includes creating data structures to make the initial thread
+   --  into the environment task. The last part of the initialization is done
+   --  in System.Tasking.Initialization or System.Tasking.Restricted.Stages.
+   --  All the initializations used to be in Tasking.Initialization, but this
+   --  is no longer possible with the run time simplification (including
+   --  optimized PO and the restricted run time) since one cannot rely on
+   --  System.Tasking.Initialization being present, as was done before.
 
    procedure Initialize_ATCB
      (Self_ID          : Task_Id;
@@ -997,24 +1079,17 @@ package System.Tasking is
    --  documentation, mention T, and describe Success ???
 
 private
+
    Null_Task : constant Task_Id := null;
 
-   GL_Detect_Blocking : Integer;
-   pragma Import (C, GL_Detect_Blocking, "__gl_detect_blocking");
-   --  Global variable exported by the binder generated file. A value equal to
-   --  1 indicates that pragma Detect_Blocking is active, while 0 is used for
-   --  the pragma not being present.
-
-   Detect_Blocking : constant Boolean := GL_Detect_Blocking = 1;
-
-   type Activation_Chain is record
+   type Activation_Chain is limited record
       T_ID : Task_Id;
    end record;
-   pragma Volatile (Activation_Chain);
 
-   --  Activation_chain is an in-out parameter of initialization procedures
-   --  and it must be passed by reference because the init proc may terminate
+   --  Activation_Chain is an in-out parameter of initialization procedures and
+   --  it must be passed by reference because the init proc may terminate
    --  abnormally after creating task components, and these must be properly
-   --  registered for removal (Expunge_Unactivated_Tasks).
+   --  registered for removal (Expunge_Unactivated_Tasks). The "limited" forces
+   --  Activation_Chain to be a by-reference type; see RM-6.2(4).
 
 end System.Tasking;

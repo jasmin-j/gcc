@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                     S Y S T E M . D I R E C T _ I O                      --
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---   Copyright (C) 1992,1993,1994,1995,1996 Free Software Foundation, Inc.  --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -66,8 +66,8 @@ package System.Direct_IO is
 
    function AFCB_Allocate (Control_Block : Direct_AFCB) return FCB.AFCB_Ptr;
 
-   procedure AFCB_Close (File : access Direct_AFCB);
-   procedure AFCB_Free  (File : access Direct_AFCB);
+   procedure AFCB_Close (File : not null access Direct_AFCB);
+   procedure AFCB_Free  (File : not null access Direct_AFCB);
 
    procedure Read
      (File : in out Direct_AFCB;
@@ -77,7 +77,7 @@ package System.Direct_IO is
 
    procedure Write
      (File : in out Direct_AFCB;
-      Item : in Ada.Streams.Stream_Element_Array);
+      Item : Ada.Streams.Stream_Element_Array);
    --  Required overriding of Write, not actually used for Direct_IO
 
    type File_Type is access all Direct_AFCB;
@@ -85,44 +85,60 @@ package System.Direct_IO is
 
    procedure Create
      (File : in out File_Type;
-      Mode : in FCB.File_Mode := FCB.Inout_File;
-      Name : in String := "";
-      Form : in String := "");
+      Mode : FCB.File_Mode := FCB.Inout_File;
+      Name : String := "";
+      Form : String := "");
 
-   function End_Of_File (File : in File_Type) return Boolean;
+   function End_Of_File (File : File_Type) return Boolean;
 
-   function Index (File : in File_Type) return Positive_Count;
+   function Index (File : File_Type) return Positive_Count;
 
    procedure Open
      (File : in out File_Type;
-      Mode : in FCB.File_Mode;
-      Name : in String;
-      Form : in String := "");
+      Mode : FCB.File_Mode;
+      Name : String;
+      Form : String := "");
 
    procedure Read
-     (File : in File_Type;
+     (File : File_Type;
       Item : System.Address;
-      Size : in Interfaces.C_Streams.size_t;
-      From : in Positive_Count);
+      Size : Interfaces.C_Streams.size_t;
+      From : Positive_Count);
 
    procedure Read
-     (File : in File_Type;
+     (File : File_Type;
       Item : System.Address;
-      Size : in Interfaces.C_Streams.size_t);
+      Size : Interfaces.C_Streams.size_t);
 
-   procedure Reset (File : in out File_Type; Mode : in FCB.File_Mode);
-
+   procedure Reset (File : in out File_Type; Mode : FCB.File_Mode);
    procedure Reset (File : in out File_Type);
 
-   procedure Set_Index (File : in File_Type; To : in Positive_Count);
+   procedure Set_Index (File : File_Type; To : Positive_Count);
 
-   function Size (File : in File_Type) return Count;
+   function Size (File : File_Type) return Count;
 
    procedure Write
-     (File   : in File_Type;
+     (File   : File_Type;
       Item   : System.Address;
-      Size   : in Interfaces.C_Streams.size_t;
+      Size   : Interfaces.C_Streams.size_t;
       Zeroes : System.Storage_Elements.Storage_Array);
    --  Note: Zeroes is the buffer of zeroes used to fill out partial records
+
+   --  The following procedures have a File_Type formal of mode IN OUT because
+   --  they may close the original file. The Close operation may raise an
+   --  exception, but in that case we want any assignment to the formal to
+   --  be effective anyway, so it must be passed by reference (or the caller
+   --  will be left with a dangling pointer).
+
+   pragma Export_Procedure
+     (Internal        => Reset,
+      External        => "",
+      Parameter_Types => (File_Type),
+      Mechanism       => Reference);
+   pragma Export_Procedure
+     (Internal        => Reset,
+      External        => "",
+      Parameter_Types => (File_Type, FCB.File_Mode),
+      Mechanism       => (File => Reference));
 
 end System.Direct_IO;

@@ -1,12 +1,12 @@
 /* "Bag-of-pages" garbage collector for the GNU compiler.
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005
+   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
    Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,9 +15,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -32,18 +31,6 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 #include "timevar.h"
 #include "params.h"
 #include "tree-flow.h"
-#ifdef ENABLE_VALGRIND_CHECKING
-# ifdef HAVE_VALGRIND_MEMCHECK_H
-#  include <valgrind/memcheck.h>
-# elif defined HAVE_MEMCHECK_H
-#  include <memcheck.h>
-# else
-#  include <valgrind.h>
-# endif
-#else
-/* Avoid #ifdef:s when we can help it.  */
-#define VALGRIND_DISCARD(x)
-#endif
 
 /* Prefer MAP_ANON(YMOUS) to /dev/zero, since we don't need to keep a
    file open.  Prefer either to valloc.  */
@@ -75,7 +62,7 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 #define USING_MALLOC_PAGE_GROUPS
 #endif
 
-/* Stategy:
+/* Strategy:
 
    This garbage-collecting allocator allocates objects on one of a set
    of pages.  Each page can allocate objects of a single size only;
@@ -186,8 +173,20 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 
 static const size_t extra_order_size_table[] = {
   sizeof (struct stmt_ann_d),
-  sizeof (struct tree_decl),
+  sizeof (struct var_ann_d),
+  sizeof (struct tree_decl_non_common),
+  sizeof (struct tree_field_decl),
+  sizeof (struct tree_parm_decl),
+  sizeof (struct tree_var_decl),
   sizeof (struct tree_list),
+  sizeof (struct tree_ssa_name),
+  sizeof (struct function),
+  sizeof (struct basic_block_def),
+  sizeof (bitmap_element),
+  sizeof (bitmap_head),
+  /* PHI nodes with one to three arguments are already covered by the
+     above sizes.  */
+  sizeof (struct tree_phi_node) + sizeof (struct phi_arg_d) * 3,
   TREE_EXP_SIZE (2),
   RTL_SIZE (2),			/* MEM, PLUS, etc.  */
   RTL_SIZE (9),			/* INSN */
@@ -387,7 +386,7 @@ static struct globals
   /* Maximum number of elements that can be used before resizing.  */
   unsigned int depth_max;
 
-  /* Each element of this arry is an index in by_depth where the given
+  /* Each element of this array is an index in by_depth where the given
      depth starts.  This structure is indexed by that given depth we
      are interested in.  */
   unsigned int *depth;
@@ -504,7 +503,7 @@ push_depth (unsigned int i)
   if (G.depth_in_use >= G.depth_max)
     {
       G.depth_max *= 2;
-      G.depth = xrealloc (G.depth, G.depth_max * sizeof (unsigned int));
+      G.depth = XRESIZEVEC (unsigned int, G.depth, G.depth_max);
     }
   G.depth[G.depth_in_use++] = i;
 }
@@ -517,10 +516,9 @@ push_by_depth (page_entry *p, unsigned long *s)
   if (G.by_depth_in_use >= G.by_depth_max)
     {
       G.by_depth_max *= 2;
-      G.by_depth = xrealloc (G.by_depth,
-			     G.by_depth_max * sizeof (page_entry *));
-      G.save_in_use = xrealloc (G.save_in_use,
-				G.by_depth_max * sizeof (unsigned long *));
+      G.by_depth = XRESIZEVEC (page_entry *, G.by_depth, G.by_depth_max);
+      G.save_in_use = XRESIZEVEC (unsigned long *, G.save_in_use,
+				  G.by_depth_max);
     }
   G.by_depth[G.by_depth_in_use] = p;
   G.save_in_use[G.by_depth_in_use++] = s;
@@ -612,7 +610,7 @@ set_page_table_entry (void *p, page_entry *entry)
       goto found;
 
   /* Not found -- allocate a new table.  */
-  table = xcalloc (1, sizeof(*table));
+  table = XCNEW (struct page_table_chain);
   table->next = G.lookup;
   table->high_bits = high_bits;
   G.lookup = table;
@@ -625,7 +623,7 @@ found:
   L2 = LOOKUP_L2 (p);
 
   if (base[L1] == NULL)
-    base[L1] = xcalloc (PAGE_L2_SIZE, sizeof (page_entry *));
+    base[L1] = XCNEWVEC (page_entry *, PAGE_L2_SIZE);
 
   base[L1][L2] = entry;
 }
@@ -658,12 +656,12 @@ static inline char *
 alloc_anon (char *pref ATTRIBUTE_UNUSED, size_t size)
 {
 #ifdef HAVE_MMAP_ANON
-  char *page = mmap (pref, size, PROT_READ | PROT_WRITE,
-		     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  char *page = (char *) mmap (pref, size, PROT_READ | PROT_WRITE,
+			      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 #endif
 #ifdef HAVE_MMAP_DEV_ZERO
-  char *page = mmap (pref, size, PROT_READ | PROT_WRITE,
-		     MAP_PRIVATE, G.dev_zero_fd, 0);
+  char *page = (char *) mmap (pref, size, PROT_READ | PROT_WRITE,
+			      MAP_PRIVATE, G.dev_zero_fd, 0);
 #endif
 
   if (page == (char *) MAP_FAILED)
@@ -678,7 +676,7 @@ alloc_anon (char *pref ATTRIBUTE_UNUSED, size_t size)
   /* Pretend we don't have access to the allocated pages.  We'll enable
      access to smaller pieces of the area in ggc_alloc.  Discard the
      handle to avoid handle leak.  */
-  VALGRIND_DISCARD (VALGRIND_MAKE_NOACCESS (page, size));
+  VALGRIND_DISCARD (VALGRIND_MAKE_MEM_NOACCESS (page, size));
 
   return page;
 }
@@ -773,7 +771,7 @@ alloc_page (unsigned order)
 	 memory order.  */
       for (i = GGC_QUIRE_SIZE - 1; i >= 1; i--)
 	{
-	  e = xcalloc (1, page_entry_size);
+	  e = XCNEWVAR (struct page_entry, page_entry_size);
 	  e->order = order;
 	  e->bytes = G.pagesize;
 	  e->page = page + (i << G.lg_pagesize);
@@ -801,7 +799,7 @@ alloc_page (unsigned order)
 	alloc_size = GGC_QUIRE_SIZE * G.pagesize;
       else
 	alloc_size = entry_size + G.pagesize - 1;
-      allocation = xmalloc (alloc_size);
+      allocation = XNEWVEC (char, alloc_size);
 
       page = (char *) (((size_t) allocation + G.pagesize - 1) & -G.pagesize);
       head_slop = page - allocation;
@@ -844,7 +842,7 @@ alloc_page (unsigned order)
 	  struct page_entry *e, *f = G.free_pages;
 	  for (a = enda - G.pagesize; a != page; a -= G.pagesize)
 	    {
-	      e = xcalloc (1, page_entry_size);
+	      e = XCNEWVAR (struct page_entry, page_entry_size);
 	      e->order = order;
 	      e->bytes = G.pagesize;
 	      e->page = a;
@@ -858,7 +856,7 @@ alloc_page (unsigned order)
 #endif
 
   if (entry == NULL)
-    entry = xcalloc (1, page_entry_size);
+    entry = XCNEWVAR (struct page_entry, page_entry_size);
 
   entry->bytes = entry_size;
   entry->page = page;
@@ -922,7 +920,7 @@ free_page (page_entry *entry)
 
   /* Mark the page as inaccessible.  Discard the handle to avoid handle
      leak.  */
-  VALGRIND_DISCARD (VALGRIND_MAKE_NOACCESS (entry->page, entry->bytes));
+  VALGRIND_DISCARD (VALGRIND_MAKE_MEM_NOACCESS (entry->page, entry->bytes));
 
   set_page_table_entry (entry->page, NULL);
 
@@ -1018,8 +1016,8 @@ release_pages (void)
 
 /* This table provides a fast way to determine ceil(log_2(size)) for
    allocation requests.  The minimum allocation size is eight bytes.  */
-
-static unsigned char size_lookup[257] =
+#define NUM_SIZE_LOOKUP 512
+static unsigned char size_lookup[NUM_SIZE_LOOKUP] =
 {
   3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4,
   4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
@@ -1037,7 +1035,22 @@ static unsigned char size_lookup[257] =
   8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
   8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
   8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
-  8
+  8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9
 };
 
 /* Typed allocation function.  Does nothing special in this collector.  */
@@ -1058,14 +1071,14 @@ ggc_alloc_stat (size_t size MEM_STAT_DECL)
   struct page_entry *entry;
   void *result;
 
-  if (size <= 256)
+  if (size < NUM_SIZE_LOOKUP)
     {
       order = size_lookup[size];
       object_size = OBJECT_SIZE (order);
     }
   else
     {
-      order = 9;
+      order = 10;
       while (size > (object_size = OBJECT_SIZE (order)))
 	order++;
     }
@@ -1182,7 +1195,7 @@ ggc_alloc_stat (size_t size MEM_STAT_DECL)
      exact same semantics in presence of memory bugs, regardless of
      ENABLE_VALGRIND_CHECKING.  We override this request below.  Drop the
      handle to avoid handle leak.  */
-  VALGRIND_DISCARD (VALGRIND_MAKE_WRITABLE (result, object_size));
+  VALGRIND_DISCARD (VALGRIND_MAKE_MEM_UNDEFINED (result, object_size));
 
   /* `Poison' the entire allocated object, including any padding at
      the end.  */
@@ -1190,18 +1203,21 @@ ggc_alloc_stat (size_t size MEM_STAT_DECL)
 
   /* Make the bytes after the end of the object unaccessible.  Discard the
      handle to avoid handle leak.  */
-  VALGRIND_DISCARD (VALGRIND_MAKE_NOACCESS ((char *) result + size,
-					    object_size - size));
+  VALGRIND_DISCARD (VALGRIND_MAKE_MEM_NOACCESS ((char *) result + size,
+						object_size - size));
 #endif
 
   /* Tell Valgrind that the memory is there, but its content isn't
      defined.  The bytes at the end of the object are still marked
      unaccessible.  */
-  VALGRIND_DISCARD (VALGRIND_MAKE_WRITABLE (result, size));
+  VALGRIND_DISCARD (VALGRIND_MAKE_MEM_UNDEFINED (result, size));
 
   /* Keep track of how many bytes are being allocated.  This
      information is used in deciding when to collect.  */
   G.allocated += object_size;
+
+  /* For timevar statistics.  */
+  timevar_ggc_mem_total += object_size;
 
 #ifdef GATHER_STATISTICS
   {
@@ -1237,6 +1253,57 @@ ggc_alloc_stat (size_t size MEM_STAT_DECL)
 	     (void *) entry);
 
   return result;
+}
+
+/* Mark function for strings.  */
+
+void
+gt_ggc_m_S (const void *p)
+{
+  page_entry *entry;
+  unsigned bit, word;
+  unsigned long mask;
+  unsigned long offset;
+
+  if (!p || !ggc_allocated_p (p))
+    return;
+
+  /* Look up the page on which the object is alloced.  .  */
+  entry = lookup_page_table_entry (p);
+  gcc_assert (entry);
+
+  /* Calculate the index of the object on the page; this is its bit
+     position in the in_use_p bitmap.  Note that because a char* might
+     point to the middle of an object, we need special code here to
+     make sure P points to the start of an object.  */
+  offset = ((const char *) p - entry->page) % object_size_table[entry->order];
+  if (offset)
+    {
+      /* Here we've seen a char* which does not point to the beginning
+	 of an allocated object.  We assume it points to the middle of
+	 a STRING_CST.  */
+      gcc_assert (offset == offsetof (struct tree_string, str));
+      p = ((const char *) p) - offset;
+      gt_ggc_mx_lang_tree_node (CONST_CAST (void *, p));
+      return;
+    }
+
+  bit = OFFSET_TO_BIT (((const char *) p) - entry->page, entry->order);
+  word = bit / HOST_BITS_PER_LONG;
+  mask = (unsigned long) 1 << (bit % HOST_BITS_PER_LONG);
+
+  /* If the bit was previously set, skip it.  */
+  if (entry->in_use_p[word] & mask)
+    return;
+
+  /* Otherwise set it, and decrement the free object count.  */
+  entry->in_use_p[word] |= mask;
+  entry->num_free_objects -= 1;
+
+  if (GGC_DEBUG_LEVEL >= 4)
+    fprintf (G.debug_file, "Marking %p\n", p);
+
+  return;
 }
 
 /* If P is not marked, marks it and return false.  Otherwise return true.
@@ -1329,18 +1396,18 @@ ggc_free (void *p)
 
 #ifdef ENABLE_GC_CHECKING
   /* Poison the data, to indicate the data is garbage.  */
-  VALGRIND_DISCARD (VALGRIND_MAKE_WRITABLE (p, size));
+  VALGRIND_DISCARD (VALGRIND_MAKE_MEM_UNDEFINED (p, size));
   memset (p, 0xa5, size);
 #endif
   /* Let valgrind know the object is free.  */
-  VALGRIND_DISCARD (VALGRIND_MAKE_NOACCESS (p, size));
+  VALGRIND_DISCARD (VALGRIND_MAKE_MEM_NOACCESS (p, size));
 
 #ifdef ENABLE_GC_ALWAYS_COLLECT
   /* In the completely-anal-checking mode, we do *not* immediately free
      the data, but instead verify that the data is *actually* not 
      reachable the next time we collect.  */
   {
-    struct free_object *fo = xmalloc (sizeof (struct free_object));
+    struct free_object *fo = XNEW (struct free_object);
     fo->object = p;
     fo->next = G.free_object_list;
     G.free_object_list = fo;
@@ -1466,7 +1533,7 @@ init_ggc (void)
       }
 
     /* We have a good page, might as well hold onto it...  */
-    e = xcalloc (1, sizeof (struct page_entry));
+    e = XCNEW (struct page_entry);
     e->bytes = G.pagesize;
     e->page = p;
     e->next = G.free_pages;
@@ -1505,19 +1572,22 @@ init_ggc (void)
       int o;
       int i;
 
-      o = size_lookup[OBJECT_SIZE (order)];
-      for (i = OBJECT_SIZE (order); size_lookup [i] == o; --i)
+      i = OBJECT_SIZE (order);
+      if (i >= NUM_SIZE_LOOKUP)
+	continue;
+
+      for (o = size_lookup[i]; o == size_lookup [i]; --i)
 	size_lookup[i] = order;
     }
 
   G.depth_in_use = 0;
   G.depth_max = 10;
-  G.depth = xmalloc (G.depth_max * sizeof (unsigned int));
+  G.depth = XNEWVEC (unsigned int, G.depth_max);
 
   G.by_depth_in_use = 0;
   G.by_depth_max = INITIAL_PTE_COUNT;
-  G.by_depth = xmalloc (G.by_depth_max * sizeof (page_entry *));
-  G.save_in_use = xmalloc (G.by_depth_max * sizeof (unsigned long *));
+  G.by_depth = XNEWVEC (page_entry *, G.by_depth_max);
+  G.save_in_use = XNEWVEC (unsigned long *, G.by_depth_max);
 }
 
 /* Start a new GGC zone.  */
@@ -1532,18 +1602,6 @@ new_ggc_zone (const char *name ATTRIBUTE_UNUSED)
 void
 destroy_ggc_zone (struct alloc_zone *zone ATTRIBUTE_UNUSED)
 {
-}
-
-/* Increment the `GC context'.  Objects allocated in an outer context
-   are never freed, eliminating the need to register their roots.  */
-
-void
-ggc_push_context (void)
-{
-  ++G.context_depth;
-
-  /* Die on wrap.  */
-  gcc_assert (G.context_depth < HOST_BITS_PER_LONG);
 }
 
 /* Merge the SAVE_IN_USE_P and IN_USE_P arrays in P so that IN_USE_P
@@ -1581,89 +1639,6 @@ ggc_recalculate_in_use_p (page_entry *p)
 
   gcc_assert (p->num_free_objects < num_objects);
 }
-
-/* Decrement the `GC context'.  All objects allocated since the
-   previous ggc_push_context are migrated to the outer context.  */
-
-void
-ggc_pop_context (void)
-{
-  unsigned long omask;
-  unsigned int depth, i, e;
-#ifdef ENABLE_CHECKING
-  unsigned int order;
-#endif
-
-  depth = --G.context_depth;
-  omask = (unsigned long)1 << (depth + 1);
-
-  if (!((G.context_depth_allocations | G.context_depth_collections) & omask))
-    return;
-
-  G.context_depth_allocations |= (G.context_depth_allocations & omask) >> 1;
-  G.context_depth_allocations &= omask - 1;
-  G.context_depth_collections &= omask - 1;
-
-  /* The G.depth array is shortened so that the last index is the
-     context_depth of the top element of by_depth.  */
-  if (depth+1 < G.depth_in_use)
-    e = G.depth[depth+1];
-  else
-    e = G.by_depth_in_use;
-
-  /* We might not have any PTEs of depth depth.  */
-  if (depth < G.depth_in_use)
-    {
-
-      /* First we go through all the pages at depth depth to
-	 recalculate the in use bits.  */
-      for (i = G.depth[depth]; i < e; ++i)
-	{
-	  page_entry *p = G.by_depth[i];
-
-	  /* Check that all of the pages really are at the depth that
-	     we expect.  */
-	  gcc_assert (p->context_depth == depth);
-	  gcc_assert (p->index_by_depth == i);
-
-	  prefetch (&save_in_use_p_i (i+8));
-	  prefetch (&save_in_use_p_i (i+16));
-	  if (save_in_use_p_i (i))
-	    {
-	      p = G.by_depth[i];
-	      ggc_recalculate_in_use_p (p);
-	      free (save_in_use_p_i (i));
-	      save_in_use_p_i (i) = 0;
-	    }
-	}
-    }
-
-  /* Then, we reset all page_entries with a depth greater than depth
-     to be at depth.  */
-  for (i = e; i < G.by_depth_in_use; ++i)
-    {
-      page_entry *p = G.by_depth[i];
-
-      /* Check that all of the pages really are at the depth we
-	 expect.  */
-      gcc_assert (p->context_depth > depth);
-      gcc_assert (p->index_by_depth == i);
-      p->context_depth = depth;
-    }
-
-  adjust_depth ();
-
-#ifdef ENABLE_CHECKING
-  for (order = 2; order < NUM_ORDERS; order++)
-    {
-      page_entry *p;
-
-      for (p = G.pages[order]; p != NULL; p = p->next)
-	gcc_assert (p->context_depth < depth ||
-		    (p->context_depth == depth && !save_in_use_p (p)));
-    }
-#endif
-}
 
 /* Unmark all objects.  */
 
@@ -1690,7 +1665,7 @@ clear_marks (void)
 	  if (p->context_depth < G.context_depth)
 	    {
 	      if (! save_in_use_p (p))
-		save_in_use_p (p) = xmalloc (bitmap_size);
+		save_in_use_p (p) = XNEWVAR (unsigned long, bitmap_size);
 	      memcpy (save_in_use_p (p), p->in_use_p, bitmap_size);
 	    }
 
@@ -1878,11 +1853,12 @@ poison_pages (void)
 		     so the exact same memory semantics is kept, in case
 		     there are memory errors.  We override this request
 		     below.  */
-		  VALGRIND_DISCARD (VALGRIND_MAKE_WRITABLE (object, size));
+		  VALGRIND_DISCARD (VALGRIND_MAKE_MEM_UNDEFINED (object,
+								 size));
 		  memset (object, 0xa5, size);
 
 		  /* Drop the handle to avoid handle leak.  */
-		  VALGRIND_DISCARD (VALGRIND_MAKE_NOACCESS (object, size));
+		  VALGRIND_DISCARD (VALGRIND_MAKE_MEM_NOACCESS (object, size));
 		}
 	    }
 	}
@@ -2080,10 +2056,12 @@ ggc_print_statistics (void)
     for (i = 0; i < NUM_ORDERS; i++)
       if (G.stats.total_allocated_per_order[i])
         {
-          fprintf (stderr, "Total Overhead  page size %7d:     %10lld\n",
-                   OBJECT_SIZE (i), G.stats.total_overhead_per_order[i]);
-          fprintf (stderr, "Total Allocated page size %7d:     %10lld\n",
-                   OBJECT_SIZE (i), G.stats.total_allocated_per_order[i]);
+          fprintf (stderr, "Total Overhead  page size %7lu:     %10lld\n",
+                   (unsigned long) OBJECT_SIZE (i),
+		   G.stats.total_overhead_per_order[i]);
+          fprintf (stderr, "Total Allocated page size %7lu:     %10lld\n",
+                   (unsigned long) OBJECT_SIZE (i),
+		   G.stats.total_allocated_per_order[i]);
         }
   }
 #endif
@@ -2102,7 +2080,7 @@ struct ggc_pch_data
 struct ggc_pch_data *
 init_ggc_pch (void)
 {
-  return xcalloc (sizeof (struct ggc_pch_data), 1);
+  return XCNEW (struct ggc_pch_data);
 }
 
 void
@@ -2112,11 +2090,11 @@ ggc_pch_count_object (struct ggc_pch_data *d, void *x ATTRIBUTE_UNUSED,
 {
   unsigned order;
 
-  if (size <= 256)
+  if (size < NUM_SIZE_LOOKUP)
     order = size_lookup[size];
   else
     {
-      order = 9;
+      order = 10;
       while (size > OBJECT_SIZE (order))
 	order++;
     }
@@ -2157,11 +2135,11 @@ ggc_pch_alloc_object (struct ggc_pch_data *d, void *x ATTRIBUTE_UNUSED,
   unsigned order;
   char *result;
 
-  if (size <= 256)
+  if (size < NUM_SIZE_LOOKUP)
     order = size_lookup[size];
   else
     {
-      order = 9;
+      order = 10;
       while (size > OBJECT_SIZE (order))
 	order++;
     }
@@ -2186,11 +2164,11 @@ ggc_pch_write_object (struct ggc_pch_data *d ATTRIBUTE_UNUSED,
   unsigned order;
   static const char emptyBytes[256];
 
-  if (size <= 256)
+  if (size < NUM_SIZE_LOOKUP)
     order = size_lookup[size];
   else
     {
-      order = 9;
+      order = 10;
       while (size > OBJECT_SIZE (order))
 	order++;
     }
@@ -2250,8 +2228,8 @@ move_ptes_to_front (int count_old_page_tables, int count_new_page_tables)
   page_entry **new_by_depth;
   unsigned long **new_save_in_use;
 
-  new_by_depth = xmalloc (G.by_depth_max * sizeof (page_entry *));
-  new_save_in_use = xmalloc (G.by_depth_max * sizeof (unsigned long *));
+  new_by_depth = XNEWVEC (page_entry *, G.by_depth_max);
+  new_save_in_use = XNEWVEC (unsigned long *, G.by_depth_max);
 
   memcpy (&new_by_depth[0],
 	  &G.by_depth[count_old_page_tables],
@@ -2293,7 +2271,7 @@ ggc_pch_read (FILE *f, void *addr)
 {
   struct ggc_pch_ondisk d;
   unsigned i;
-  char *offs = addr;
+  char *offs = (char *) addr;
   unsigned long count_old_page_tables;
   unsigned long count_new_page_tables;
 
@@ -2305,6 +2283,9 @@ ggc_pch_read (FILE *f, void *addr)
 #ifdef ENABLE_GC_CHECKING
   poison_pages ();
 #endif
+  /* Since we free all the allocated objects, the free list becomes
+     useless.  Validate it now, which will also clear it.  */
+  validate_free_objects();
 
   /* No object read from a PCH file should ever be freed.  So, set the
      context depth to 1, and set the depth of all the currently-allocated
@@ -2336,9 +2317,9 @@ ggc_pch_read (FILE *f, void *addr)
 
       bytes = ROUND_UP (d.totals[i] * OBJECT_SIZE (i), G.pagesize);
       num_objs = bytes / OBJECT_SIZE (i);
-      entry = xcalloc (1, (sizeof (struct page_entry)
-			   - sizeof (long)
-			   + BITMAP_SIZE (num_objs + 1)));
+      entry = XCNEWVAR (struct page_entry, (sizeof (struct page_entry)
+					    - sizeof (long)
+					    + BITMAP_SIZE (num_objs + 1)));
       entry->bytes = bytes;
       entry->page = offs;
       entry->context_depth = 0;

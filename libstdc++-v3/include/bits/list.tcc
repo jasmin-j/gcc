@@ -1,6 +1,7 @@
 // List implementation (out of line) -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2003, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -61,8 +62,8 @@
 #ifndef _LIST_TCC
 #define _LIST_TCC 1
 
-namespace _GLIBCXX_STD
-{
+_GLIBCXX_BEGIN_NESTED_NAMESPACE(std, _GLIBCXX_STD_D)
+
   template<typename _Tp, typename _Alloc>
     void
     _List_base<_Tp, _Alloc>::
@@ -74,10 +75,23 @@ namespace _GLIBCXX_STD
 	{
 	  _Node* __tmp = __cur;
 	  __cur = static_cast<_Node*>(__cur->_M_next);
-	  this->get_allocator().destroy(&__tmp->_M_data);
+	  _M_get_Tp_allocator().destroy(&__tmp->_M_data);
 	  _M_put_node(__tmp);
 	}
     }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+  template<typename _Tp, typename _Alloc>
+    template<typename... _Args>
+      typename list<_Tp, _Alloc>::iterator
+      list<_Tp, _Alloc>::
+      emplace(iterator __position, _Args&&... __args)
+      {
+	_Node* __tmp = _M_create_node(std::forward<_Args>(__args)...);
+	__tmp->hook(__position._M_node);
+	return iterator(__tmp);
+      }
+#endif
 
   template<typename _Tp, typename _Alloc>
     typename list<_Tp, _Alloc>::iterator
@@ -86,7 +100,7 @@ namespace _GLIBCXX_STD
     {
       _Node* __tmp = _M_create_node(__x);
       __tmp->hook(__position._M_node);
-      return __tmp;
+      return iterator(__tmp);
     }
 
   template<typename _Tp, typename _Alloc>
@@ -94,7 +108,7 @@ namespace _GLIBCXX_STD
     list<_Tp, _Alloc>::
     erase(iterator __position)
     {
-      iterator __ret = __position._M_node->_M_next;
+      iterator __ret = iterator(__position._M_node->_M_next);
       _M_erase(__position);
       return __ret;
     }
@@ -102,7 +116,7 @@ namespace _GLIBCXX_STD
   template<typename _Tp, typename _Alloc>
     void
     list<_Tp, _Alloc>::
-    resize(size_type __new_size, const value_type& __x)
+    resize(size_type __new_size, value_type __x)
     {
       iterator __i = begin();
       size_type __len = 0;
@@ -175,14 +189,25 @@ namespace _GLIBCXX_STD
     {
       iterator __first = begin();
       iterator __last = end();
+      iterator __extra = __last;
       while (__first != __last)
 	{
 	  iterator __next = __first;
 	  ++__next;
 	  if (*__first == __value)
-	    _M_erase(__first);
+	    {
+	      // _GLIBCXX_RESOLVE_LIB_DEFECTS
+	      // 526. Is it undefined if a function in the standard changes
+	      // in parameters?
+	      if (&*__first != &__value)
+		_M_erase(__first);
+	      else
+		__extra = __first;
+	    }
 	  __first = __next;
 	}
+      if (__extra != __last)
+	_M_erase(__extra);
     }
 
   template<typename _Tp, typename _Alloc>
@@ -208,12 +233,18 @@ namespace _GLIBCXX_STD
   template<typename _Tp, typename _Alloc>
     void
     list<_Tp, _Alloc>::
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+    merge(list&& __x)
+#else
     merge(list& __x)
+#endif
     {
       // _GLIBCXX_RESOLVE_LIB_DEFECTS
       // 300. list::merge() specification incomplete
       if (this != &__x)
 	{
+	  _M_check_equal_allocators(__x); 
+
 	  iterator __first1 = begin();
 	  iterator __last1 = end();
 	  iterator __first2 = __x.begin();
@@ -231,6 +262,40 @@ namespace _GLIBCXX_STD
 	    _M_transfer(__last1, __first2, __last2);
 	}
     }
+
+  template<typename _Tp, typename _Alloc>
+    template <typename _StrictWeakOrdering>
+      void
+      list<_Tp, _Alloc>::
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      merge(list&& __x, _StrictWeakOrdering __comp)
+#else
+      merge(list& __x, _StrictWeakOrdering __comp)
+#endif
+      {
+	// _GLIBCXX_RESOLVE_LIB_DEFECTS
+	// 300. list::merge() specification incomplete
+	if (this != &__x)
+	  {
+	    _M_check_equal_allocators(__x);
+
+	    iterator __first1 = begin();
+	    iterator __last1 = end();
+	    iterator __first2 = __x.begin();
+	    iterator __last2 = __x.end();
+	    while (__first1 != __last1 && __first2 != __last2)
+	      if (__comp(*__first2, *__first1))
+		{
+		  iterator __next = __first2;
+		  _M_transfer(__first1, __first2, ++__next);
+		  __first2 = __next;
+		}
+	      else
+		++__first1;
+	    if (__first2 != __last2)
+	      _M_transfer(__last1, __first2, __last2);
+	  }
+      }
 
   template<typename _Tp, typename _Alloc>
     void
@@ -312,34 +377,6 @@ namespace _GLIBCXX_STD
     template <typename _StrictWeakOrdering>
       void
       list<_Tp, _Alloc>::
-      merge(list& __x, _StrictWeakOrdering __comp)
-      {
-	// _GLIBCXX_RESOLVE_LIB_DEFECTS
-	// 300. list::merge() specification incomplete
-	if (this != &__x)
-	  {
-	    iterator __first1 = begin();
-	    iterator __last1 = end();
-	    iterator __first2 = __x.begin();
-	    iterator __last2 = __x.end();
-	    while (__first1 != __last1 && __first2 != __last2)
-	      if (__comp(*__first2, *__first1))
-		{
-		  iterator __next = __first2;
-		  _M_transfer(__first1, __first2, ++__next);
-		  __first2 = __next;
-		}
-	      else
-		++__first1;
-	    if (__first2 != __last2)
-	      _M_transfer(__last1, __first2, __last2);
-	  }
-      }
-
-  template<typename _Tp, typename _Alloc>
-    template <typename _StrictWeakOrdering>
-      void
-      list<_Tp, _Alloc>::
       sort(_StrictWeakOrdering __comp)
       {
 	// Do nothing if the list has length 0 or 1.
@@ -373,7 +410,8 @@ namespace _GLIBCXX_STD
 	    swap(*(__fill - 1));
 	  }
       }
-} // namespace std
+
+_GLIBCXX_END_NESTED_NAMESPACE
 
 #endif /* _LIST_TCC */
 

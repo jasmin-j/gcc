@@ -13,7 +13,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 25 algorithms, search_n
@@ -52,12 +52,15 @@ lexstep(int* start, int length)
   return !carry;
 }
 
-using __gnu_test::test_container;
-using __gnu_test::random_access_iterator_wrapper;
-using __gnu_test::bidirectional_iterator_wrapper;
-using __gnu_test::forward_iterator_wrapper;
+int main() 
+{
+  using __gnu_test::test_container;
+  using __gnu_test::random_access_iterator_wrapper;
+  using __gnu_test::bidirectional_iterator_wrapper;
+  using __gnu_test::forward_iterator_wrapper;
+  
+  using std::search_n;
 
-int main() {
   test_container<int,forward_iterator_wrapper> con(array1,array1 + 10);
   VERIFY(search_n(con.end(), con.end(), 0, 1) == con.end());
   VERIFY(search_n(con.end(), con.end(), 1, 1) == con.end());
@@ -76,7 +79,7 @@ int main() {
 	  {
 	    test_container<int, forward_iterator_wrapper>
 	      forwardcon(array2, array2 + i);
-	    test_container<int, bidirectional_iterator_wrapper>
+	    test_container<int, random_access_iterator_wrapper>
 	      randomcon(array2, array2 + i);
 	    test_container<int, bidirectional_iterator_wrapper>
 	      bidircon(array2, array2 + i);

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---              Copyright (C) 2001-2005 Ada Core Technologies, Inc.         --
+--                     Copyright (C) 2001-2008, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -39,10 +39,9 @@
 
 --       Multicast is available only on systems which provide support for this
 --       feature, so it is not available if Multicast is not supported, or not
---       installed. In particular Multicast is not available with the Windows
---       version.
+--       installed.
 
---       The VMS implementation has implemented using the DECC RTL Socket API,
+--       The VMS implementation was implemented using the DECC RTL Socket API,
 --       and is thus subject to limitations in the implementation of this API.
 
 --     VxWorks cross ports fully implement this package
@@ -53,13 +52,16 @@ with Ada.Exceptions;
 with Ada.Streams;
 with Ada.Unchecked_Deallocation;
 
-with System;
-
 package GNAT.Sockets is
 
    --  Sockets are designed to provide a consistent communication facility
-   --  between applications. This package provides an Ada-like interface
-   --  similar to that proposed as part of the BSD socket layer.
+   --  between applications. This package provides an Ada binding to the
+   --  the de-facto standard BSD sockets API. The documentation below covers
+   --  only the specific binding provided by this package. It assumes that
+   --  the reader is already familiar with general network programming and
+   --  sockets usage. A useful reference on this matter is W. Richard Stevens'
+   --  "UNIX Network Programming: The Sockets Networking API"
+   --  (ISBN: 0131411551).
 
    --  GNAT.Sockets has been designed with several ideas in mind
 
@@ -78,7 +80,7 @@ package GNAT.Sockets is
    --  notification of an asynchronous connect failure is delivered in the
    --  write socket set (POSIX) instead of the exception socket set (NT).
 
-   --  Here is a typical example of what you can do:
+   --  The example below demonstrates various features of GNAT.Sockets:
 
    --  with GNAT.Sockets; use GNAT.Sockets;
 
@@ -180,13 +182,6 @@ package GNAT.Sockets is
    --           Socket_Level,
    --           (Reuse_Address, True));
 
-   --        --  Join a multicast group
-
-   --        Set_Socket_Option
-   --          (Socket,
-   --           IP_Protocol_For_IP_Level,
-   --           (Add_Membership, Inet_Addr (Group), Any_Inet_Addr));
-
    --        --  Controls the live time of the datagram to avoid it being
    --        --  looped forever due to routing errors. Routers decrement
    --        --  the TTL of every datagram as it traverses from one network
@@ -212,6 +207,16 @@ package GNAT.Sockets is
    --        Address.Port := 55505;
 
    --        Bind_Socket (Socket, Address);
+
+   --        --  Join a multicast group
+
+   --        --  Portability note: On Windows, this option may be set only
+   --        --  on a bound socket.
+
+   --        Set_Socket_Option
+   --          (Socket,
+   --           IP_Protocol_For_IP_Level,
+   --           (Add_Membership, Inet_Addr (Group), Any_Inet_Addr));
 
    --        --  If this socket is intended to send messages, provide the
    --        --  receiver socket address.
@@ -308,11 +313,6 @@ package GNAT.Sockets is
    --        Set_Socket_Option
    --          (Socket,
    --           IP_Protocol_For_IP_Level,
-   --           (Add_Membership, Inet_Addr (Group), Any_Inet_Addr));
-
-   --        Set_Socket_Option
-   --          (Socket,
-   --           IP_Protocol_For_IP_Level,
    --           (Multicast_TTL, 1));
 
    --        Set_Socket_Option
@@ -324,6 +324,11 @@ package GNAT.Sockets is
    --        Address.Port := 55506;
 
    --        Bind_Socket (Socket, Address);
+
+   --        Set_Socket_Option
+   --          (Socket,
+   --           IP_Protocol_For_IP_Level,
+   --           (Add_Membership, Inet_Addr (Group), Any_Inet_Addr));
 
    --        Address.Addr := Inet_Addr (Group);
    --        Address.Port := 55505;
@@ -354,11 +359,7 @@ package GNAT.Sockets is
    --     end Ping;
 
    --  begin
-   --     --  Indicate whether the thread library provides process
-   --     --  blocking IO. Basically, if you are not using FSU threads
-   --     --  the default is ok.
-
-   --     Initialize (Process_Blocking_IO => False);
+   --     Initialize;
    --     Ping.Start;
    --     Pong.Start;
    --     Ping.Stop;
@@ -366,18 +367,22 @@ package GNAT.Sockets is
    --     Finalize;
    --  end PingPong;
 
-   procedure Initialize (Process_Blocking_IO : Boolean := False);
-   --  Initialize must be called before using any other socket routines. The
-   --  Process_Blocking_IO parameter indicates whether the thread library
-   --  provides process-blocking or thread-blocking input/output operations.
-   --  In the former case (typically with FSU threads) GNAT.Sockets should be
-   --  initialized with a value of True to provide task-blocking IO through an
-   --  emulation mechanism. Only the first call to Initialize is taken into
-   --  account (further calls will be ignored). Note that with the default
-   --  value of Process_Blocking_IO, this operation is a no-op on UNIX
-   --  platforms, but applications should make sure to call it if portability
-   --  is expected: some platforms (such as Windows) require initialization
-   --  before any other socket operations.
+   procedure Initialize;
+   --  Initialize must be called before using any other socket routines.
+   --  Note that this operation is a no-op on UNIX platforms, but applications
+   --  should make sure to call it if portability is expected: some platforms
+   --  (such as Windows) require initialization before any socket operation.
+
+   procedure Initialize (Process_Blocking_IO : Boolean);
+   pragma Obsolescent
+     (Entity => Initialize,
+      "passing a parameter to Initialize is not supported anymore");
+   --  Previous versions of GNAT.Sockets used to require the user to indicate
+   --  whether socket I/O was process- or thread-blocking on the platform.
+   --  This property is now determined automatically when the run-time library
+   --  is built. The old version of Initialize, taking a parameter, is kept
+   --  for compatibility reasons, but this interface is obsolete (and if the
+   --  value given is wrong, an exception will be raised at run time).
 
    procedure Finalize;
    --  After Finalize is called it is not possible to use any routines
@@ -389,6 +394,31 @@ package GNAT.Sockets is
    --  value to denote uninitialized sockets.
 
    No_Socket : constant Socket_Type;
+
+   type Selector_Type is limited private;
+   type Selector_Access is access all Selector_Type;
+   --  Selector objects are used to wait for i/o events to occur on sockets
+
+   --  Timeval_Duration is a subtype of Standard.Duration because the full
+   --  range of Standard.Duration cannot be represented in the equivalent C
+   --  structure. Moreover, negative values are not allowed to avoid system
+   --  incompatibilities.
+
+   Immediate : constant := 0.0;
+   Forever   : constant := Duration (Integer'Last) * 1.0;
+   --  Should be Duration 2 ** (Constants.SIZEOF_tv_sec * 8 - 1) - 1 ???
+
+   subtype Timeval_Duration is Duration range Immediate .. Forever;
+
+   subtype Selector_Duration is Timeval_Duration;
+   --  Timeout value for selector operations
+
+   type Selector_Status is (Completed, Expired, Aborted);
+   --  Completion status of a selector operation, indicated as follows:
+   --    Complete: one of the expected events occurred
+   --    Expired:  no event occurred before the expiration of the timeout
+   --    Aborted:  an external action cancelled the wait operation before
+   --              any event occurred.
 
    Socket_Error : exception;
    --  There is only one exception in this package to deal with an error during
@@ -428,13 +458,14 @@ package GNAT.Sockets is
    No_Port  : constant Port_Type;
 
    type Inet_Addr_Type (Family : Family_Type := Family_Inet) is private;
-   --  An Internet address depends on an address family (IPv4 contains 4
-   --  octets and Ipv6 contains 16 octets). Any_Inet_Addr is a special value
-   --  treated like a wildcard enabling all addresses. No_Inet_Addr provides a
-   --  special value to denote uninitialized inet addresses.
+   --  An Internet address depends on an address family (IPv4 contains 4 octets
+   --  and IPv6 contains 16 octets). Any_Inet_Addr is a special value treated
+   --  like a wildcard enabling all addresses. No_Inet_Addr provides a special
+   --  value to denote uninitialized inet addresses.
 
-   Any_Inet_Addr : constant Inet_Addr_Type;
-   No_Inet_Addr  : constant Inet_Addr_Type;
+   Any_Inet_Addr       : constant Inet_Addr_Type;
+   No_Inet_Addr        : constant Inet_Addr_Type;
+   Broadcast_Inet_Addr : constant Inet_Addr_Type;
 
    type Sock_Addr_Type (Family : Family_Type := Family_Inet) is record
       Addr : Inet_Addr_Type (Family);
@@ -488,7 +519,7 @@ package GNAT.Sockets is
    Host_Error : exception;
    --  Exception raised by the two following procedures. Once raised, its
    --  message contains a string describing the error code. This exception is
-   --  raised when an host entry can not be retrieved.
+   --  raised when an host entry cannot be retrieved.
 
    function Get_Host_By_Address
      (Address : Inet_Addr_Type;
@@ -500,8 +531,8 @@ package GNAT.Sockets is
    function Get_Host_By_Name
      (Name : String) return Host_Entry_Type;
    --  Return host entry structure for the given host name. Here name is
-   --  either a host name, or an IP address. If Name is an IP address, this is
-   --  equivalent to Get_Host_By_Address (Inet_Addr (Name)).
+   --  either a host name, or an IP address. If Name is an IP address, this
+   --  is equivalent to Get_Host_By_Address (Inet_Addr (Name)).
 
    function Host_Name return String;
    --  Return the name of the current host
@@ -541,10 +572,10 @@ package GNAT.Sockets is
    Service_Error : exception;
    --  Comment required ???
 
-   --  Errors are described by an enumeration type. There is only one
-   --  exception Socket_Error in this package to deal with an error during a
-   --  socket routine. Once raised, its message contains the error code
-   --  between brackets and a string describing the error code.
+   --  Errors are described by an enumeration type. There is only one exception
+   --  Socket_Error in this package to deal with an error during a socket
+   --  routine. Once raised, its message contains the error code between
+   --  brackets and a string describing the error code.
 
    --  The name of the enumeration constant documents the error condition
 
@@ -609,27 +640,32 @@ package GNAT.Sockets is
    --  a boolean to enable or disable this option.
 
    type Option_Name is (
-     Keep_Alive,      -- Enable sending of keep-alive messages
-     Reuse_Address,   -- Allow bind to reuse local address
-     Broadcast,       -- Enable datagram sockets to recv/send broadcast packets
-     Send_Buffer,     -- Set/get the maximum socket send buffer in bytes
-     Receive_Buffer,  -- Set/get the maximum socket recv buffer in bytes
-     Linger,          -- Shutdown wait for msg to be sent or timeout occur
-     Error,           -- Get and clear the pending socket error
-     No_Delay,        -- Do not delay send to coalesce packets (TCP_NODELAY)
-     Add_Membership,  -- Join a multicast group
-     Drop_Membership, -- Leave a multicast group
-     Multicast_TTL,   -- Indicate the time-to-live of sent multicast packets
-     Multicast_Loop); -- Sent multicast packets are looped to the local socket
+     Keep_Alive,          -- Enable sending of keep-alive messages
+     Reuse_Address,       -- Allow bind to reuse local address
+     Broadcast,           -- Enable datagram sockets to recv/send broadcasts
+     Send_Buffer,         -- Set/get the maximum socket send buffer in bytes
+     Receive_Buffer,      -- Set/get the maximum socket recv buffer in bytes
+     Linger,              -- Shutdown wait for msg to be sent or timeout occur
+     Error,               -- Get and clear the pending socket error
+     No_Delay,            -- Do not delay send to coalesce data (TCP_NODELAY)
+     Add_Membership,      -- Join a multicast group
+     Drop_Membership,     -- Leave a multicast group
+     Multicast_If,        -- Set default out interface for multicast packets
+     Multicast_TTL,       -- Set the time-to-live of sent multicast packets
+     Multicast_Loop,      -- Sent multicast packets are looped to local socket
+     Receive_Packet_Info, -- Receive low level packet info as ancillary data
+     Send_Timeout,        -- Set timeout value for output
+     Receive_Timeout);    -- Set timeout value for input
 
    type Option_Type (Name : Option_Name := Keep_Alive) is record
       case Name is
-         when Keep_Alive      |
-              Reuse_Address   |
-              Broadcast       |
-              Linger          |
-              No_Delay        |
-              Multicast_Loop  =>
+         when Keep_Alive          |
+              Reuse_Address       |
+              Broadcast           |
+              Linger              |
+              No_Delay            |
+              Receive_Packet_Info |
+              Multicast_Loop      =>
             Enabled : Boolean;
 
             case Name is
@@ -651,8 +687,15 @@ package GNAT.Sockets is
             Multicast_Address : Inet_Addr_Type;
             Local_Interface   : Inet_Addr_Type;
 
+         when Multicast_If    =>
+            Outgoing_If : Inet_Addr_Type;
+
          when Multicast_TTL   =>
             Time_To_Live : Natural;
+
+         when Send_Timeout |
+              Receive_Timeout =>
+            Timeout : Timeval_Duration;
 
       end case;
    end record;
@@ -692,9 +735,9 @@ package GNAT.Sockets is
    --  Socket_Stream).
 
    Peek_At_Incoming_Data : constant Request_Flag_Type;
-   --  This flag causes the receive operation to return data from the
-   --  beginning of the receive queue without removing that data from the
-   --  queue. A subsequent receive call will return the same data.
+   --  This flag causes the receive operation to return data from the beginning
+   --  of the receive queue without removing that data from the queue. A
+   --  subsequent receive call will return the same data.
 
    Wait_For_A_Full_Reception : constant Request_Flag_Type;
    --  This flag requests that the operation block until the full request is
@@ -736,6 +779,20 @@ package GNAT.Sockets is
    --  is filled in with the address of the connection. Raises Socket_Error on
    --  error.
 
+   procedure Accept_Socket
+     (Server   : Socket_Type;
+      Socket   : out Socket_Type;
+      Address  : out Sock_Addr_Type;
+      Timeout  : Selector_Duration;
+      Selector : access Selector_Type := null;
+      Status   : out Selector_Status);
+   --  Accept a new connection on Server using Accept_Socket, waiting no longer
+   --  than the given timeout duration. Status is set to indicate whether the
+   --  operation completed successfully, timed out, or was aborted. If Selector
+   --  is not null, the designated selector is used to wait for the socket to
+   --  become available, else a private selector object is created by this
+   --  procedure and destroyed before it returns.
+
    procedure Bind_Socket
      (Socket  : Socket_Type;
       Address : Sock_Addr_Type);
@@ -747,16 +804,29 @@ package GNAT.Sockets is
 
    procedure Connect_Socket
      (Socket : Socket_Type;
-      Server : in out Sock_Addr_Type);
-   --  Make a connection to another socket which has the address of
-   --  Server. Raises Socket_Error on error.
+      Server : Sock_Addr_Type);
+   --  Make a connection to another socket which has the address of Server.
+   --  Raises Socket_Error on error.
+
+   procedure Connect_Socket
+     (Socket   : Socket_Type;
+      Server   : Sock_Addr_Type;
+      Timeout  : Selector_Duration;
+      Selector : access Selector_Type := null;
+      Status   : out Selector_Status);
+   --  Connect Socket to the given Server address using Connect_Socket, waiting
+   --  no longer than the given timeout duration. Status is set to indicate
+   --  whether the operation completed successfully, timed out, or was aborted.
+   --  If Selector is not null, the designated selector is used to wait for the
+   --  socket to become available, else a private selector object is created
+   --  by this procedure and destroyed before it returns.
 
    procedure Control_Socket
      (Socket  : Socket_Type;
       Request : in out Request_Type);
    --  Obtain or set parameter values that control the socket. This control
-   --  differs from the socket options in that they are not specific to
-   --  sockets but are available for any device.
+   --  differs from the socket options in that they are not specific to sockets
+   --  but are available for any device.
 
    function Get_Peer_Name (Socket : Socket_Type) return Sock_Addr_Type;
    --  Return the peer or remote socket address of a socket. Raise
@@ -764,22 +834,23 @@ package GNAT.Sockets is
 
    function Get_Socket_Name (Socket : Socket_Type) return Sock_Addr_Type;
    --  Return the local or current socket address of a socket. Return
-   --  No_Sock_Addr on error (for instance, socket closed or not locally
-   --  bound).
+   --  No_Sock_Addr on error (e.g. socket closed or not locally bound).
 
    function Get_Socket_Option
      (Socket : Socket_Type;
       Level  : Level_Type := Socket_Level;
       Name   : Option_Name) return Option_Type;
-   --  Get the options associated with a socket. Raises Socket_Error
-   --  on error.
+   --  Get the options associated with a socket. Raises Socket_Error on error
 
    procedure Listen_Socket
      (Socket : Socket_Type;
-      Length : Positive := 15);
+      Length : Natural := 15);
    --  To accept connections, a socket is first created with Create_Socket,
    --  a willingness to accept incoming connections and a queue Length for
    --  incoming connections are specified. Raise Socket_Error on error.
+   --  The queue length of 15 is an example value that should be appropriate
+   --  in usual cases. It can be adjusted according to each application's
+   --  particular requirements.
 
    procedure Receive_Socket
      (Socket : Socket_Type;
@@ -860,8 +931,7 @@ package GNAT.Sockets is
    type Stream_Access is access all Ada.Streams.Root_Stream_Type'Class;
    --  Same interface as Ada.Streams.Stream_IO
 
-   function Stream
-     (Socket : Socket_Type) return Stream_Access;
+   function Stream (Socket : Socket_Type) return Stream_Access;
    --  Create a stream associated with a stream-based socket that is
    --  already connected.
 
@@ -872,7 +942,7 @@ package GNAT.Sockets is
    --  bound. Send_To is the socket address to which messages are being sent.
 
    function Get_Address
-     (Stream : Stream_Access) return Sock_Addr_Type;
+     (Stream : not null Stream_Access) return Sock_Addr_Type;
    --  Return the socket address from which the last message was received
 
    procedure Free is new Ada.Unchecked_Deallocation
@@ -900,8 +970,7 @@ package GNAT.Sockets is
    --  Extract a Socket from socket set Item. Socket is set to
    --  No_Socket when the set is empty.
 
-   function Is_Empty
-     (Item : Socket_Set_Type) return Boolean;
+   function Is_Empty (Item : Socket_Set_Type) return Boolean;
    --  Return True iff Item is empty
 
    function Is_Set
@@ -912,15 +981,16 @@ package GNAT.Sockets is
    procedure Set (Item : in out Socket_Set_Type; Socket : Socket_Type);
    --  Insert Socket into Item
 
-   --  C select() waits for a number of file descriptors to change status.
-   --  Usually, three independent sets of descriptors are watched (read, write
-   --  and exception). A timeout gives an upper bound on the amount of time
-   --  elapsed before select returns. This function blocks until an event
-   --  occurs. On some platforms, C select can block the full process.
+   --  The select(2) system call waits for events to occur on any of a set of
+   --  file descriptors. Usually, three independent sets of descriptors are
+   --  watched (read, write  and exception). A timeout gives an upper bound
+   --  on the amount of time elapsed before select returns. This function
+   --  blocks until an event occurs. On some platforms, the select(2) system
+   --  can block the full process (not just the calling thread).
    --
    --  Check_Selector provides the very same behaviour. The only difference is
    --  that it does not watch for exception events. Note that on some
-   --  platforms it is kept process blocking in purpose. The timeout parameter
+   --  platforms it is kept process blocking on purpose. The timeout parameter
    --  allows the user to have the behaviour he wants. Abort_Selector allows
    --  to abort safely a Check_Selector that is blocked forever. A special
    --  file descriptor is opened by Create_Selector and included in each call
@@ -930,26 +1000,14 @@ package GNAT.Sockets is
    --  operation is typically to add a socket in one of the socket sets when
    --  the timeout is set to forever.
 
-   type Selector_Type is limited private;
-   type Selector_Access is access all Selector_Type;
-
-   --  Selector_Duration is a subtype of Standard.Duration because the full
-   --  range of Standard.Duration cannot be represented in the equivalent C
-   --  structure. Moreover, negative values are not allowed to avoid system
-   --  incompatibilities.
-
-   Immediate : constant := 0.0;
-   Forever   : constant := Duration (Integer'Last) * 1.0;
-
-   subtype Selector_Duration is Duration range Immediate .. Forever;
-
    procedure Create_Selector (Selector : out Selector_Type);
    --  Create a new selector
 
    procedure Close_Selector (Selector : in out Selector_Type);
-   --  Close Selector and all internal descriptors associated
-
-   type Selector_Status is (Completed, Expired, Aborted);
+   --  Close Selector and all internal descriptors associated; deallocate any
+   --  associated resources. This subprogram may be called only when there is
+   --  no other task still using Selector (i.e. still executing Check_Selector
+   --  or Abort_Selector on this Selector).
 
    procedure Check_Selector
      (Selector     : in out Selector_Type;
@@ -958,16 +1016,17 @@ package GNAT.Sockets is
       Status       : out Selector_Status;
       Timeout      : Selector_Duration := Forever);
    --  Return when one Socket in R_Socket_Set has some data to be read or if
-   --  one Socket in W_Socket_Set is ready to receive some data. In these
+   --  one Socket in W_Socket_Set is ready to transmit some data. In these
    --  cases Status is set to Completed and sockets that are ready are set in
    --  R_Socket_Set or W_Socket_Set. Status is set to Expired if no socket was
    --  ready after a Timeout expiration. Status is set to Aborted if an abort
-   --  signal has been received while checking socket status. As this
-   --  procedure returns when Timeout occurs, it is a design choice to keep
-   --  this procedure process blocking. Note that a Timeout of 0.0 returns
-   --  immediately. Also note that two different objects must be passed as
-   --  R_Socket_Set and W_Socket_Set (even if they contain the same set of
-   --  Sockets), or some event will be lost.
+   --  signal has been received while checking socket status.
+   --  Note that two different Socket_Set_Type objects must be passed as
+   --  R_Socket_Set and W_Socket_Set (even if they denote the same set of
+   --  Sockets), or some event may be lost.
+   --  Socket_Error is raised when the select(2) system call returns an
+   --  error condition, or when a read error occurs on the signalling socket
+   --  used for the implementation of Abort_Selector.
 
    procedure Check_Selector
      (Selector     : in out Selector_Type;
@@ -984,26 +1043,37 @@ package GNAT.Sockets is
    procedure Abort_Selector (Selector : Selector_Type);
    --  Send an abort signal to the selector
 
+   type Fd_Set_Access is private;
+   No_Fd_Set_Access : constant Fd_Set_Access;
+   --  ??? This type must not be used directly, it needs to be visible because
+   --  it is used in the visible part of GNAT.Sockets.Thin_Common. This is
+   --  really an inversion of abstraction. The private part of GNAT.Sockets
+   --  needs to have visibility on this type, but since Thin_Common is a child
+   --  of Sockets, the type can't be declared there. The correct fix would
+   --  be to move the thin sockets binding outside of GNAT.Sockets altogether,
+   --  e.g. by renaming it to GNAT.Sockets_Thin.
+
 private
 
    type Socket_Type is new Integer;
    No_Socket : constant Socket_Type := -1;
 
    type Selector_Type is limited record
-      R_Sig_Socket : Socket_Type;
-      W_Sig_Socket : Socket_Type;
+      R_Sig_Socket : Socket_Type := No_Socket;
+      W_Sig_Socket : Socket_Type := No_Socket;
+      --  Signalling sockets used to abort a select operation
    end record;
 
    pragma Volatile (Selector_Type);
 
-   --  The two signalling sockets are used to abort a select operation
-
-   subtype Socket_Set_Access is System.Address;
-   No_Socket_Set : constant Socket_Set_Access := System.Null_Address;
+   type Fd_Set is null record;
+   type Fd_Set_Access is access all Fd_Set;
+   pragma Convention (C, Fd_Set_Access);
+   No_Fd_Set_Access : constant Fd_Set_Access := null;
 
    type Socket_Set_Type is record
       Last : Socket_Type       := No_Socket;
-      Set  : Socket_Set_Access := No_Socket_Set;
+      Set  : Fd_Set_Access;
    end record;
 
    subtype Inet_Addr_Comp_Type is Natural range 0 .. 255;
@@ -1027,10 +1097,14 @@ private
    Any_Port : constant Port_Type := 0;
    No_Port  : constant Port_Type := 0;
 
-   Any_Inet_Addr : constant Inet_Addr_Type := (Family_Inet, (others => 0));
-   No_Inet_Addr  : constant Inet_Addr_Type := (Family_Inet, (others => 0));
+   Any_Inet_Addr       : constant Inet_Addr_Type :=
+                           (Family_Inet, (others => 0));
+   No_Inet_Addr        : constant Inet_Addr_Type :=
+                           (Family_Inet, (others => 0));
+   Broadcast_Inet_Addr : constant Inet_Addr_Type :=
+                           (Family_Inet, (others => 255));
 
-   No_Sock_Addr  : constant Sock_Addr_Type := (Family_Inet, No_Inet_Addr, 0);
+   No_Sock_Addr : constant Sock_Addr_Type := (Family_Inet, No_Inet_Addr, 0);
 
    Max_Name_Length : constant := 64;
    --  The constant MAXHOSTNAMELEN is usually set to 64

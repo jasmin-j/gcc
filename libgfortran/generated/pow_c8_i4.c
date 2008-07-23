@@ -1,5 +1,5 @@
 /* Support routines for the intrinsic power (**) operator.
-   Copyright 2004 Free Software Foundation, Inc.
+   Copyright 2004, 2007 Free Software Foundation, Inc.
    Contributed by Paul Brook
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -25,16 +25,18 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
 #include "libgfortran.h"
+
 
 /* Use Binary Method to calculate the powi. This is not an optimal but
    a simple and reasonable arithmetic. See section 4.6.3, "Evaluation of
    Powers" of Donald E. Knuth, "Seminumerical Algorithms", Vol. 2, "The Art
    of Computer Programming", 3rd Edition, 1998.  */
+
+#if defined (HAVE_GFC_COMPLEX_8) && defined (HAVE_GFC_INTEGER_4)
 
 GFC_COMPLEX_8 pow_c8_i4 (GFC_COMPLEX_8 a, GFC_INTEGER_4 b);
 export_proto(pow_c8_i4);
@@ -43,7 +45,8 @@ GFC_COMPLEX_8
 pow_c8_i4 (GFC_COMPLEX_8 a, GFC_INTEGER_4 b)
 {
   GFC_COMPLEX_8 pow, x;
-  GFC_INTEGER_4 n, u;
+  GFC_INTEGER_4 n;
+  GFC_UINTEGER_4 u;
   
   n = b;
   x = a;
@@ -53,10 +56,13 @@ pow_c8_i4 (GFC_COMPLEX_8 a, GFC_INTEGER_4 b)
       if (n < 0)
 	{
 
-	  n = -n;
+	  u = -n;
 	  x = pow / x;
 	}
-      u = n;
+      else
+	{
+	   u = n;
+	}
       for (;;)
 	{
 	  if (u & 1)
@@ -70,3 +76,5 @@ pow_c8_i4 (GFC_COMPLEX_8 a, GFC_INTEGER_4 b)
     }
   return pow;
 }
+
+#endif

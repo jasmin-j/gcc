@@ -12,7 +12,7 @@ AC_CONFIG_HEADER(config.h)
 ### am handles this now?  ORIGINAL_LD_FOR_MULTILIBS=$LD
 
 # For libtool versioning info, format is CURRENT:REVISION:AGE
-libtool_VERSION=6:4:0
+libtool_VERSION=6:11:0
 AC_SUBST(libtool_VERSION)
 
 # Find the rest of the source tree framework.
@@ -41,7 +41,24 @@ target_alias=${target_alias-$host_alias}
 if test "$build" != "$host"; then
   # We are being configured with some form of cross compiler.
   GLIBCXX_IS_NATIVE=false
-  GCC_NO_EXECUTABLES
+  case "$host","$target" in
+    # Darwin crosses can use the host system's libraries and headers,
+    # because of the fat library support.  Of course, it must be the
+    # same version of Darwin on both sides.  Allow the user to
+    # just say --target=foo-darwin without a version number to mean
+    # "the version on this system".
+      *-*-darwin*,*-*-darwin*)
+	hostos=`echo $host | sed 's/.*-darwin/darwin/'`
+	targetos=`echo $target | sed 's/.*-darwin/darwin/'`
+	if test $hostos = $targetos -o $targetos = darwin ; then
+	  GLIBCXX_IS_NATIVE=true
+	fi
+	;;
+
+      *)
+	GCC_NO_EXECUTABLES
+	;;
+  esac
 else
   GLIBCXX_IS_NATIVE=true
 fi
@@ -65,7 +82,9 @@ AH_TEMPLATE(VERSION, [Version number of package])
 # up critical shell variables.
 GLIBCXX_CONFIGURE
 
-AC_LIBTOOL_DLOPEN
+if test "x${with_newlib}" != "xyes"; then
+  AC_LIBTOOL_DLOPEN
+fi
 AM_PROG_LIBTOOL
 AC_SUBST(enable_shared)
 AC_SUBST(enable_static)
@@ -75,38 +94,36 @@ AC_SUBST(enable_static)
 ## than just ignoring the results.  Faster /and/ more correct, win win.
 GLIBCXX_ENABLE_HOSTED
 
-# Check for compiler support that doesn't require linking.
+# Enable compiler support that doesn't require linking.
 GLIBCXX_ENABLE_SJLJ_EXCEPTIONS
 GLIBCXX_ENABLE_PCH($is_hosted)
+GLIBCXX_ENABLE_ATOMIC_BUILTINS
+GLIBCXX_ENABLE_THREADS
 
-# Enable all the variable C++ runtime options.  
+# Checks for compiler support that don't require linking.
+GLIBCXX_CHECK_COMPILER_FEATURES
+GLIBCXX_CHECK_STANDARD_LAYOUT
+
+# Enable all the variable C++ runtime options that doesn't require linking.
 GLIBCXX_ENABLE_CSTDIO
 GLIBCXX_ENABLE_CLOCALE
 GLIBCXX_ENABLE_ALLOCATOR
 GLIBCXX_ENABLE_CHEADERS($c_model)  dnl c_model from configure.host
-GLIBCXX_ENABLE_C99([yes])
 GLIBCXX_ENABLE_LONG_LONG([yes])
 GLIBCXX_ENABLE_WCHAR_T([yes])
+GLIBCXX_ENABLE_C99([yes])
 GLIBCXX_ENABLE_CONCEPT_CHECKS([no])
 GLIBCXX_ENABLE_DEBUG_FLAGS(["-g3 -O0"])
 GLIBCXX_ENABLE_DEBUG([no])
+GLIBCXX_ENABLE_PARALLEL([yes])
 GLIBCXX_ENABLE_CXX_FLAGS
 GLIBCXX_ENABLE_FULLY_DYNAMIC_STRING([no])
 
-# No surprises, no surprises...
-GLIBCXX_ENABLE_THREADS
-if test $atomicity_dir = cpu/generic ; then
-  AC_MSG_WARN([No native atomic operations are provided for this platform.])
-  if test $target_thread_file = single; then
-    AC_MSG_WARN([They cannot be faked when thread support is disabled.])
-    AC_MSG_WARN([Thread-safety of certain classes is not guaranteed.])
-  else
-    AC_MSG_WARN([They will be faked using a mutex.])
-    AC_MSG_WARN([Performance of certain classes will degrade as a result.])
-  fi
-fi
+# Checks for operating systems support that don't require linking.
+GLIBCXX_CHECK_SYSTEM_ERROR
 
 
+# Only do link tests if native. Else, hardcode.
 if $GLIBCXX_IS_NATIVE; then
 
   # We can do more elaborate tests that assume a working linker.
@@ -114,15 +131,13 @@ if $GLIBCXX_IS_NATIVE; then
 
   # Check for available headers.
   AC_CHECK_HEADERS([nan.h ieeefp.h endian.h sys/isa_defs.h machine/endian.h \
-  machine/param.h sys/machine.h fp.h locale.h float.h inttypes.h gconv.h \
+  machine/param.h sys/machine.h fp.h locale.h float.h inttypes.h \
   sys/types.h sys/ipc.h sys/sem.h])
 
-  GLIBCXX_CHECK_COMPILER_FEATURES
   GLIBCXX_CHECK_LINKER_FEATURES
   GLIBCXX_CHECK_MATH_SUPPORT
   GLIBCXX_CHECK_BUILTIN_MATH_SUPPORT
   GLIBCXX_CHECK_COMPLEX_MATH_SUPPORT
-  GLIBCXX_CHECK_ICONV_SUPPORT
   GLIBCXX_CHECK_STDLIB_SUPPORT
 
   # For showmanyc_helper().
@@ -140,6 +155,24 @@ if $GLIBCXX_IS_NATIVE; then
   # For LFS support.
   GLIBCXX_CHECK_LFS
 
+  # For C99 support to TR1.
+  GLIBCXX_CHECK_C99_TR1
+
+  # For dev/random and dev/urandom for TR1.
+  GLIBCXX_CHECK_RANDOM_TR1
+
+  # For clock_gettime support.
+  GLIBCXX_CHECK_CLOCK_GETTIME
+
+  # For gettimeofday support.
+  GLIBCXX_CHECK_GETTIMEOFDAY
+
+  # For TLS support.
+  GCC_CHECK_TLS
+
+  # For _Unwind_GetIPInfo.
+  GCC_CHECK_UNWIND_GETIPINFO
+
   AC_LC_MESSAGES
 
   AC_TRY_COMPILE(
@@ -151,6 +184,9 @@ if $GLIBCXX_IS_NATIVE; then
     [AC_DEFINE(HAVE_SIGSETJMP, 1, [Define if sigsetjmp is available.])])
 
   AC_FUNC_MMAP
+
+  # For iconv support.
+  AM_ICONV
 
 else
 
@@ -180,7 +216,6 @@ else
   fi
 
   # Construct crosses by hand, eliminating bits that need ld...
-  # GLIBCXX_CHECK_COMPILER_FEATURES
   # GLIBCXX_CHECK_BUILTIN_MATH_SUPPORT
   # GLIBCXX_CHECK_MATH_SUPPORT
 
@@ -222,6 +257,8 @@ else
 
     AC_DEFINE(HAVE_S_ISREG)
     AC_DEFINE(HAVE_S_IFREG)
+
+    AC_DEFINE(HAVE_ICONV)
   else
     GLIBCXX_CROSSCONFIG
   fi
@@ -256,10 +293,37 @@ else
     AC_DEFINE(HAVE_TANHL)
   fi
 
+  # Assume we have _Unwind_GetIPInfo for cross-compiles.
+  AC_DEFINE(HAVE_GETIPINFO)
 fi
+
+GCC_LINUX_FUTEX([AC_DEFINE(HAVE_LINUX_FUTEX, 1, [Define if futex syscall is available.])])
+
+GCC_HEADER_STDINT(include/gstdint.h)
 
 # This depends on GLIBCXX CHECK_LINKER_FEATURES, but without it assumes no.
 GLIBCXX_ENABLE_SYMVERS([yes])
+GLIBCXX_ENABLE_VISIBILITY([yes])
+
+ac_ldbl_compat=no
+case "$target" in
+  powerpc*-*-linux* | \
+  powerpc*-*-gnu* | \
+  sparc*-*-linux* | \
+  s390*-*-linux* | \
+  alpha*-*-linux*)
+  AC_TRY_COMPILE(, [
+#if !defined __LONG_DOUBLE_128__ || (defined(__sparc__) && defined(__arch64__))
+#error no need for long double compatibility
+#endif
+  ], [ac_ldbl_compat=yes], [ac_ldbl_compat=no])
+  if test "$ac_ldbl_compat" = yes; then
+    AC_DEFINE([_GLIBCXX_LONG_DOUBLE_COMPAT],1,
+	      [Define if compatibility should be provided for -mlong-double-64.])
+    port_specific_symbol_files="\$(top_srcdir)/config/os/gnu-linux/ldbl-extra.ver"
+  fi
+esac
+GLIBCXX_CONDITIONAL(GLIBCXX_LDBL_COMPAT, test $ac_ldbl_compat = yes)
 
 # This depends on GLIBCXX_ENABLE_SYMVERS and GLIBCXX_IS_NATIVE.
 GLIBCXX_CONFIGURE_TESTSUITE
@@ -267,12 +331,19 @@ GLIBCXX_CONFIGURE_TESTSUITE
 # Propagate the target-specific source directories through the build chain.
 ATOMICITY_SRCDIR=config/${atomicity_dir}
 ATOMIC_WORD_SRCDIR=config/${atomic_word_dir}
+ATOMIC_FLAGS=${atomic_flags}
+CPU_DEFINES_SRCDIR=config/${cpu_defines_dir}
 OS_INC_SRCDIR=config/${os_include_dir}
+ERROR_CONSTANTS_SRCDIR=config/${error_constants_dir}
 ABI_TWEAKS_SRCDIR=config/${abi_tweaks_dir}
 AC_SUBST(ATOMICITY_SRCDIR)
 AC_SUBST(ATOMIC_WORD_SRCDIR)
+AC_SUBST(ATOMIC_FLAGS)
+AC_SUBST(CPU_DEFINES_SRCDIR)
 AC_SUBST(ABI_TWEAKS_SRCDIR)
 AC_SUBST(OS_INC_SRCDIR)
+AC_SUBST(ERROR_CONSTANTS_SRCDIR)
+
 
 # Determine cross-compile flags and AM_CONDITIONALs.
 #AC_SUBST(GLIBCXX_IS_NATIVE)
@@ -296,10 +367,8 @@ GLIBCXX_EXPORT_INSTALL_INFO
 GLIBCXX_EXPORT_INCLUDES
 GLIBCXX_EXPORT_FLAGS
 
-if ${CONFIG_SHELL-/bin/sh} ./libtool --tag CXX --features |
-   grep "enable shared" > /dev/null;
-then
-  LIBSUPCXX_PICFLAGS=-prefer-pic
+if test "$enable_shared" = yes; then
+  LIBSUPCXX_PICFLAGS="-prefer-pic"
 else
   LIBSUPCXX_PICFLAGS=
 fi

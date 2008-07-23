@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1996-2003 Free Software Foundation, Inc.          --
+--          Copyright (C) 1996-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,10 +35,14 @@
 --  registered exception names, for the implementation of the mapping
 --  of names to exceptions (used for exception streams and attributes)
 
+pragma Warnings (Off);
+pragma Compiler_Unit;
+pragma Warnings (On);
+
 with System.Standard_Library;
 
 package System.Exception_Table is
-pragma Elaborate_Body;
+   pragma Elaborate_Body;
 
    package SSL renames System.Standard_Library;
 
@@ -62,7 +66,7 @@ pragma Elaborate_Body;
    --  does not exist yet, null is returned.
 
    function Registered_Exceptions_Count return Natural;
-   --  Return the number of currently registered exceptions.
+   --  Return the number of currently registered exceptions
 
    type Exception_Data_Array is array (Natural range <>)
      of SSL.Exception_Data_Ptr;
@@ -70,6 +74,6 @@ pragma Elaborate_Body;
    procedure Get_Registered_Exceptions
      (List : out Exception_Data_Array;
       Last : out Integer);
-   --  Return the list of registered exceptions.
+   --  Return the list of registered exceptions
 
 end System.Exception_Table;

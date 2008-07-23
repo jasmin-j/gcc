@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --         S Y S T E M . T A S K I N G . I N I T I A L I Z A T I O N        --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---         Copyright (C) 1992-2005, Free Software Foundation, Inc.          --
+--         Copyright (C) 1992-2008, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,44 +32,22 @@
 ------------------------------------------------------------------------------
 
 pragma Style_Checks (All_Checks);
---  Turn off subprogram alpha ordering check, since we group soft link
---  bodies and dummy soft link bodies together separately in this unit.
+--  Turn off subprogram alpha ordering check, since we group soft link bodies
+--  and dummy soft link bodies together separately in this unit.
 
 pragma Polling (Off);
---  Turn polling off for this package. We don't need polling during any
---  of the routines in this package, and more to the point, if we try
---  to poll it can cause infinite loops.
+--  Turn polling off for this package. We don't need polling during any of the
+--  routines in this package, and more to the point, if we try to poll it can
+--  cause infinite loops.
 
 with Ada.Exceptions;
---  Used for Exception_Occurrence_Access
-
-with System.Tasking;
-pragma Elaborate_All (System.Tasking);
---  Ensure that the first step initializations have been performed
 
 with System.Task_Primitives;
---  Used for Lock
-
 with System.Task_Primitives.Operations;
---  Used for Set_Priority
---           Write_Lock
---           Unlock
---           Initialize_Lock
-
 with System.Soft_Links;
---  Used for the non-tasking routines (*_NT) that refer to global data.
---  They are needed here before the tasking run time has been elaborated.
-
 with System.Soft_Links.Tasking;
---  Used for Init_Tasking_Soft_Links
-
 with System.Tasking.Debug;
---  Used for Trace
-
-with System.Stack_Checking;
-
 with System.Parameters;
---  used for Single_Lock
 
 package body System.Tasking.Initialization is
 
@@ -85,14 +63,15 @@ package body System.Tasking.Initialization is
    --  from all other tasks. It is only used by Task_Lock,
    --  Task_Unlock, and Final_Task_Unlock.
 
-   function Current_Target_Exception return AE.Exception_Occurrence;
-   pragma Import
-     (Ada, Current_Target_Exception, "__gnat_current_target_exception");
-   --  Import this subprogram from the private part of Ada.Exceptions
-
    ----------------------------------------------------------------------
    -- Tasking versions of some services needed by non-tasking programs --
    ----------------------------------------------------------------------
+
+   procedure Abort_Defer;
+   --  NON-INLINE versions without Self_ID for soft links
+
+   procedure Abort_Undefer;
+   --  NON-INLINE versions without Self_ID for soft links
 
    procedure Task_Lock;
    --  Locks out other tasks. Preceding a section of code by Task_Lock and
@@ -107,18 +86,11 @@ package body System.Tasking.Initialization is
    --  all nested locks must be released before other tasks competing for the
    --  tasking lock are released.
 
-   function  Get_Exc_Stack_Addr return Address;
-   --  Get the exception stack for the current task
-
-   procedure Set_Exc_Stack_Addr (Self_ID : Address; Addr : Address);
-   --  Self_ID is the Task_Id of the task that gets the exception stack.
-   --  For Self_ID = Null_Address, the current task gets the exception stack.
-
-   function Get_Stack_Info return Stack_Checking.Stack_Access;
-   --  Get access to the current task's Stack_Info
+   function Get_Current_Excep return SSL.EOA;
+   --  Task-safe version of SSL.Get_Current_Excep
 
    procedure Update_Exception
-     (X : AE.Exception_Occurrence := Current_Target_Exception);
+     (X : AE.Exception_Occurrence := SSL.Current_Target_Exception);
    --  Handle exception setting and check for pending actions
 
    function Task_Name return String;
@@ -131,13 +103,6 @@ package body System.Tasking.Initialization is
    ----------------------------
    -- Tasking Initialization --
    ----------------------------
-
-   procedure Gnat_Install_Locks (Lock, Unlock : SSL.No_Param_Proc);
-   pragma Import (C, Gnat_Install_Locks, "__gnatlib_install_locks");
-   --  Used by Init_RTS to install procedure Lock and Unlock for the
-   --  thread locking. This has no effect on GCC 2. For GCC 3,
-   --  it has an effect only if gcc is configured with
-   --  --enable_threads=gnat.
 
    procedure Init_RTS;
    --  This procedure completes the initialization of the GNARL. The first
@@ -182,7 +147,7 @@ package body System.Tasking.Initialization is
 
    procedure Defer_Abort (Self_ID : Task_Id) is
    begin
-      if No_Abort and then not Dynamic_Priority_Support then
+      if No_Abort then
          return;
       end if;
 
@@ -223,7 +188,7 @@ package body System.Tasking.Initialization is
 
    procedure Defer_Abort_Nestable (Self_ID : Task_Id) is
    begin
-      if No_Abort and then not Dynamic_Priority_Support then
+      if No_Abort then
          return;
       end if;
 
@@ -237,21 +202,29 @@ package body System.Tasking.Initialization is
       Self_ID.Deferral_Level := Self_ID.Deferral_Level + 1;
    end Defer_Abort_Nestable;
 
-   --------------------
-   -- Defer_Abortion --
-   --------------------
+   -----------------
+   -- Abort_Defer --
+   -----------------
 
-   procedure Defer_Abortion is
+   procedure Abort_Defer is
       Self_ID : Task_Id;
-
    begin
-      if No_Abort and then not Dynamic_Priority_Support then
+      if No_Abort then
          return;
       end if;
 
       Self_ID := STPO.Self;
       Self_ID.Deferral_Level := Self_ID.Deferral_Level + 1;
-   end Defer_Abortion;
+   end Abort_Defer;
+
+   -----------------------
+   -- Get_Current_Excep --
+   -----------------------
+
+   function Get_Current_Excep return SSL.EOA is
+   begin
+      return STPO.Self.Common.Compiler_Data.Current_Excep'Access;
+   end Get_Current_Excep;
 
    -----------------------
    -- Do_Pending_Action --
@@ -279,7 +252,6 @@ package body System.Tasking.Initialization is
 
          Write_Lock (Self_ID);
          Self_ID.Pending_Action := False;
-         Poll_Base_Priority_Change (Self_ID);
          Unlock (Self_ID);
 
          if Single_Lock then
@@ -336,7 +308,7 @@ package body System.Tasking.Initialization is
 
    procedure Final_Task_Unlock (Self_ID : Task_Id) is
    begin
-      pragma Assert (Self_ID.Global_Task_Lock_Nesting = 1);
+      pragma Assert (Self_ID.Common.Global_Task_Lock_Nesting = 1);
       Unlock (Global_Task_Lock'Access, Global_Lock => True);
    end Final_Task_Unlock;
 
@@ -346,8 +318,9 @@ package body System.Tasking.Initialization is
 
    procedure Init_RTS is
       Self_Id : Task_Id;
-
    begin
+      Tasking.Initialize;
+
       --  Terminate run time (regular vs restricted) specific initialization
       --  of the environment task.
 
@@ -380,30 +353,22 @@ package body System.Tasking.Initialization is
       --  Notify that the tasking run time has been elaborated so that
       --  the tasking version of the soft links can be used.
 
-      if not No_Abort or else Dynamic_Priority_Support then
-         SSL.Abort_Defer   := Defer_Abortion'Access;
-         SSL.Abort_Undefer := Undefer_Abortion'Access;
+      if not No_Abort then
+         SSL.Abort_Defer   := Abort_Defer'Access;
+         SSL.Abort_Undefer := Abort_Undefer'Access;
       end if;
 
-      SSL.Update_Exception   := Update_Exception'Access;
       SSL.Lock_Task          := Task_Lock'Access;
       SSL.Unlock_Task        := Task_Unlock'Access;
-      SSL.Get_Exc_Stack_Addr := Get_Exc_Stack_Addr'Access;
-      SSL.Set_Exc_Stack_Addr := Set_Exc_Stack_Addr'Access;
       SSL.Check_Abort_Status := Check_Abort_Status'Access;
-      SSL.Get_Stack_Info     := Get_Stack_Info'Access;
       SSL.Task_Name          := Task_Name'Access;
-
-      SSL.Set_Exc_Stack_Addr (Null_Address, SSL.Get_Exc_Stack_Addr_NT);
+      SSL.Update_Exception   := Update_Exception'Access;
+      SSL.Get_Current_Excep  := Get_Current_Excep'Access;
 
       --  Initialize the tasking soft links (if not done yet) that are common
       --  to the full and the restricted run times.
 
       SSL.Tasking.Init_Tasking_Soft_Links;
-
-      --  Install tasking locks in the GCC runtime
-
-      Gnat_Install_Locks (Task_Lock'Access, Task_Unlock'Access);
 
       --  Abort is deferred in a new ATCB, so we need to undefer abort
       --  at this stage to make the environment task abortable.
@@ -422,7 +387,7 @@ package body System.Tasking.Initialization is
    --  should not be necessary here, if Abort_Task is implemented correctly,
    --  since Abort_Task should include the effect of Wakeup. However, the
    --  above call was in earlier versions of this file, and at least for
-   --  some targets Abort_Task has not beek doing Wakeup. It should not
+   --  some targets Abort_Task has not been doing Wakeup. It should not
    --  hurt to uncomment the above call, until the error is corrected for
    --  all targets.
 
@@ -437,7 +402,7 @@ package body System.Tasking.Initialization is
    --  and let it decide if it wants to complete the aborted construct
    --  immediately.
 
-   --  Note that the effect of the lowl-level Abort_Task is not persistent.
+   --  Note that the effect of the low-level Abort_Task is not persistent.
    --  If the target task is not blocked, this wakeup will be missed.
 
    --  We don't bother calling Abort_Task if this task is aborting itself,
@@ -448,7 +413,7 @@ package body System.Tasking.Initialization is
 
    --  Note that an earlier version of this code had some false reasoning
    --  about being able to reliably wake up a task that had suspended on
-   --  a blocking system call that does not atomically relase the task's
+   --  a blocking system call that does not atomically release the task's
    --  lock (e.g., UNIX nanosleep, which we once thought could be used to
    --  implement delays). That still left the possibility of missed
    --  wakeups.
@@ -542,68 +507,6 @@ package body System.Tasking.Initialization is
       end if;
    end Locked_Abort_To_Level;
 
-   -------------------------------
-   -- Poll_Base_Priority_Change --
-   -------------------------------
-
-   --  Poll for pending base priority change and for held tasks.
-   --  This should always be called with (only) Self_ID locked.
-   --  It may temporarily release Self_ID's lock.
-
-   --  The call to Yield is to force enqueuing at the
-   --  tail of the dispatching queue.
-
-   --  We must unlock Self_ID for this to take effect,
-   --  since we are inheriting high active priority from the lock.
-
-   --  See also Poll_Base_Priority_Change_At_Entry_Call,
-   --  in package System.Tasking.Entry_Calls.
-
-   --  In this version, we check if the task is held too because
-   --  doing this only in Do_Pending_Action is not enough.
-
-   procedure Poll_Base_Priority_Change (Self_ID : Task_Id) is
-   begin
-      if Dynamic_Priority_Support and then Self_ID.Pending_Priority_Change then
-
-         --  Check for ceiling violations ???
-
-         Self_ID.Pending_Priority_Change := False;
-
-         if Self_ID.Common.Base_Priority = Self_ID.New_Base_Priority then
-            if Single_Lock then
-               Unlock_RTS;
-               Yield;
-               Lock_RTS;
-            else
-               Unlock (Self_ID);
-               Yield;
-               Write_Lock (Self_ID);
-            end if;
-
-         elsif Self_ID.Common.Base_Priority < Self_ID.New_Base_Priority then
-            Self_ID.Common.Base_Priority := Self_ID.New_Base_Priority;
-            Set_Priority (Self_ID, Self_ID.Common.Base_Priority);
-
-         else
-            --  Lowering priority
-
-            Self_ID.Common.Base_Priority := Self_ID.New_Base_Priority;
-            Set_Priority (Self_ID, Self_ID.Common.Base_Priority);
-
-            if Single_Lock then
-               Unlock_RTS;
-               Yield;
-               Lock_RTS;
-            else
-               Unlock (Self_ID);
-               Yield;
-               Write_Lock (Self_ID);
-            end if;
-         end if;
-      end if;
-   end Poll_Base_Priority_Change;
-
    --------------------------------
    -- Remove_From_All_Tasks_List --
    --------------------------------
@@ -644,9 +547,10 @@ package body System.Tasking.Initialization is
 
    procedure Task_Lock (Self_ID : Task_Id) is
    begin
-      Self_ID.Global_Task_Lock_Nesting := Self_ID.Global_Task_Lock_Nesting + 1;
+      Self_ID.Common.Global_Task_Lock_Nesting :=
+        Self_ID.Common.Global_Task_Lock_Nesting + 1;
 
-      if Self_ID.Global_Task_Lock_Nesting = 1 then
+      if Self_ID.Common.Global_Task_Lock_Nesting = 1 then
          Defer_Abort_Nestable (Self_ID);
          Write_Lock (Global_Task_Lock'Access, Global_Lock => True);
       end if;
@@ -674,10 +578,11 @@ package body System.Tasking.Initialization is
 
    procedure Task_Unlock (Self_ID : Task_Id) is
    begin
-      pragma Assert (Self_ID.Global_Task_Lock_Nesting > 0);
-      Self_ID.Global_Task_Lock_Nesting := Self_ID.Global_Task_Lock_Nesting - 1;
+      pragma Assert (Self_ID.Common.Global_Task_Lock_Nesting > 0);
+      Self_ID.Common.Global_Task_Lock_Nesting :=
+        Self_ID.Common.Global_Task_Lock_Nesting - 1;
 
-      if Self_ID.Global_Task_Lock_Nesting = 0 then
+      if Self_ID.Common.Global_Task_Lock_Nesting = 0 then
          Unlock (Global_Task_Lock'Access, Global_Lock => True);
          Undefer_Abort_Nestable (Self_ID);
       end if;
@@ -703,7 +608,7 @@ package body System.Tasking.Initialization is
 
    procedure Undefer_Abort (Self_ID : Task_Id) is
    begin
-      if No_Abort and then not Dynamic_Priority_Support then
+      if No_Abort then
          return;
       end if;
 
@@ -739,7 +644,7 @@ package body System.Tasking.Initialization is
 
    procedure Undefer_Abort_Nestable (Self_ID : Task_Id) is
    begin
-      if No_Abort and then not Dynamic_Priority_Support then
+      if No_Abort then
          return;
       end if;
 
@@ -757,18 +662,14 @@ package body System.Tasking.Initialization is
       end if;
    end Undefer_Abort_Nestable;
 
-   ----------------------
-   -- Undefer_Abortion --
-   ----------------------
+   -------------------
+   -- Abort_Undefer --
+   -------------------
 
-   --  Phase out RTS-internal use of Undefer_Abortion to reduce overhead due
-   --  to multiple calls to Self.
-
-   procedure Undefer_Abortion is
+   procedure Abort_Undefer is
       Self_ID : Task_Id;
-
    begin
-      if No_Abort and then not Dynamic_Priority_Support then
+      if No_Abort then
          return;
       end if;
 
@@ -800,7 +701,7 @@ package body System.Tasking.Initialization is
             Do_Pending_Action (Self_ID);
          end if;
       end if;
-   end Undefer_Abortion;
+   end Abort_Undefer;
 
    ----------------------
    -- Update_Exception --
@@ -809,7 +710,7 @@ package body System.Tasking.Initialization is
    --  Call only when holding no locks
 
    procedure Update_Exception
-     (X : AE.Exception_Occurrence := Current_Target_Exception)
+     (X : AE.Exception_Occurrence := SSL.Current_Target_Exception)
    is
       Self_Id : constant Task_Id := Self;
       use Ada.Exceptions;
@@ -828,7 +729,6 @@ package body System.Tasking.Initialization is
 
             Write_Lock (Self_Id);
             Self_Id.Pending_Action := False;
-            Poll_Base_Priority_Change (Self_Id);
             Unlock (Self_Id);
 
             if Single_Lock then
@@ -878,15 +778,12 @@ package body System.Tasking.Initialization is
       New_State  : Entry_Call_State)
    is
       Caller : constant Task_Id := Entry_Call.Self;
-
    begin
       pragma Debug (Debug.Trace
         (Self_ID, "Wakeup_Entry_Caller", 'E', Caller));
       pragma Assert (New_State = Done or else New_State = Cancelled);
 
-      pragma Assert
-        (Caller.Common.State /= Terminated
-          and then Caller.Common.State /= Unactivated);
+      pragma Assert (Caller.Common.State /= Unactivated);
 
       Entry_Call.State := New_State;
 
@@ -904,30 +801,6 @@ package body System.Tasking.Initialization is
       end if;
    end Wakeup_Entry_Caller;
 
-   ----------------------
-   -- Soft-Link Bodies --
-   ----------------------
-
-   function Get_Exc_Stack_Addr return Address is
-   begin
-      return STPO.Self.Common.Compiler_Data.Exc_Stack_Addr;
-   end Get_Exc_Stack_Addr;
-
-   function Get_Stack_Info return Stack_Checking.Stack_Access is
-   begin
-      return STPO.Self.Common.Compiler_Data.Pri_Stack_Info'Access;
-   end Get_Stack_Info;
-
-   procedure Set_Exc_Stack_Addr (Self_ID : Address; Addr : Address) is
-      Me : Task_Id := To_Task_Id (Self_ID);
-   begin
-      if Me = Null_Task then
-         Me := STPO.Self;
-      end if;
-
-      Me.Common.Compiler_Data.Exc_Stack_Addr := Addr;
-   end Set_Exc_Stack_Addr;
-
    -----------------------
    -- Soft-Link Dummies --
    -----------------------
@@ -938,15 +811,13 @@ package body System.Tasking.Initialization is
    --  the subprogram body where the real subprogram is declared.
 
    procedure Finalize_Attributes (T : Task_Id) is
-      pragma Warnings (Off, T);
-
+      pragma Unreferenced (T);
    begin
       null;
    end Finalize_Attributes;
 
    procedure Initialize_Attributes (T : Task_Id) is
-      pragma Warnings (Off, T);
-
+      pragma Unreferenced (T);
    begin
       null;
    end Initialize_Attributes;

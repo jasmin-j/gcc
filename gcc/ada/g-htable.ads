@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                          G N A T . H T A B L E                           --
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---           Copyright (C) 1995-2002 Ada Core Technologies, Inc.            --
+--                     Copyright (C) 1995-2007, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -43,16 +43,19 @@
 --  this facility is accessed from run time routines, but clients should
 --  always access the version supplied via GNAT.HTable.
 
+pragma Warnings (Off);
+pragma Compiler_Unit;
+pragma Warnings (On);
+
 with System.HTable;
 
 package GNAT.HTable is
-pragma Preelaborate (HTable);
-
-pragma Elaborate_Body;
---  The elaborate body is because we have a dummy body to deal with bootstrap
---  path problems (we used to have a real body, and now we don't need it any
---  more, but the bootstrap requires that we have a dummy body, since otherwise
---  the old body gets picked up.
+   pragma Preelaborate;
+   pragma Elaborate_Body;
+   --  The elaborate body is because we have a dummy body to deal with
+   --  bootstrap path problems (we used to have a real body, and now we don't
+   --  need it any more, but the bootstrap requires that we have a dummy body,
+   --  since otherwise the old body gets picked up.
 
    -------------------
    -- Simple_HTable --
@@ -193,7 +196,7 @@ pragma Elaborate_Body;
    --     function Get_Next return Elmt_Ptr;
    --     --  Returns a non-specified element that has not been returned by
    --     --  the same function since the last call to Get_First or Null_Ptr
-   --     --  if there is no such element or Get_First has bever been called.
+   --     --  if there is no such element or Get_First has never been called.
    --     --  If there is no call to 'Set' in between Get_Next calls, all
    --     --  the elements of the HTable will be traversed.
 

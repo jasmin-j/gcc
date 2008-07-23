@@ -6,29 +6,27 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1999-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1999-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Csets;  use Csets;
-with Namet;  use Namet;
-with Opt;    use Opt;
-with Osint;  use Osint;
-with Output; use Output;
+with Csets;    use Csets;
+with Opt;      use Opt;
+with Osint;    use Osint;
+with Output;   use Output;
 
 package body Targparm is
    use ASCII;
@@ -41,17 +39,18 @@ package body Targparm is
 
    type Targparm_Tags is
      (AAM,  --   AAMP
+      ACR,  --   Always_Compatible_Rep
       BDC,  --   Backend_Divide_Checks
       BOC,  --   Backend_Overflow_Checks
       CLA,  --   Command_Line_Args
+      CLI,  --   CLI (.NET)
       CRT,  --   Configurable_Run_Times
-      CSV,  --   Compiler_System_Version
       D32,  --   Duration_32_Bits
       DEN,  --   Denorm
-      DSP,  --   Functions_Return_By_DSP
       EXS,  --   Exit_Status_Supported
       FEL,  --   Frontend_Layout
       FFO,  --   Fractional_Fixed_Ops
+      JVM,  --   JVM
       MOV,  --   Machine_Overflows
       MRN,  --   Machine_Rounds
       PAS,  --   Preallocated_Stacks
@@ -60,6 +59,7 @@ package body Targparm is
       SCA,  --   Support_Composite_Assign
       SCC,  --   Support_Composite_Compare
       SCD,  --   Stack_Check_Default
+      SCL,  --   Stack_Check_Limits
       SCP,  --   Stack_Check_Probes
       SLS,  --   Support_Long_Shifts
       SNZ,  --   Signed_Zeros
@@ -67,11 +67,7 @@ package body Targparm is
       UAM,  --   Use_Ada_Main_Program_Name
       VMS,  --   OpenVMS
       ZCD,  --   ZCX_By_Default
-      ZCG,  --   GCC_ZCX_Support
-      ZCF); --   Front_End_ZCX_Support
-
-   subtype Targparm_Tags_OK is Targparm_Tags range AAM .. ZCF;
-   --  Range excluding obsolete entries
+      ZCG); --   GCC_ZCX_Support
 
    Targparm_Flags : array (Targparm_Tags) of Boolean := (others => False);
    --  Flag is set True if corresponding parameter is scanned
@@ -79,17 +75,18 @@ package body Targparm is
    --  The following list of string constants gives the parameter names
 
    AAM_Str : aliased constant Source_Buffer := "AAMP";
+   ACR_Str : aliased constant Source_Buffer := "Always_Compatible_Rep";
    BDC_Str : aliased constant Source_Buffer := "Backend_Divide_Checks";
    BOC_Str : aliased constant Source_Buffer := "Backend_Overflow_Checks";
    CLA_Str : aliased constant Source_Buffer := "Command_Line_Args";
+   CLI_Str : aliased constant Source_Buffer := "CLI";
    CRT_Str : aliased constant Source_Buffer := "Configurable_Run_Time";
-   CSV_Str : aliased constant Source_Buffer := "Compiler_System_Version";
    D32_Str : aliased constant Source_Buffer := "Duration_32_Bits";
    DEN_Str : aliased constant Source_Buffer := "Denorm";
-   DSP_Str : aliased constant Source_Buffer := "Functions_Return_By_DSP";
    EXS_Str : aliased constant Source_Buffer := "Exit_Status_Supported";
    FEL_Str : aliased constant Source_Buffer := "Frontend_Layout";
    FFO_Str : aliased constant Source_Buffer := "Fractional_Fixed_Ops";
+   JVM_Str : aliased constant Source_Buffer := "JVM";
    MOV_Str : aliased constant Source_Buffer := "Machine_Overflows";
    MRN_Str : aliased constant Source_Buffer := "Machine_Rounds";
    PAS_Str : aliased constant Source_Buffer := "Preallocated_Stacks";
@@ -98,6 +95,7 @@ package body Targparm is
    SCA_Str : aliased constant Source_Buffer := "Support_Composite_Assign";
    SCC_Str : aliased constant Source_Buffer := "Support_Composite_Compare";
    SCD_Str : aliased constant Source_Buffer := "Stack_Check_Default";
+   SCL_Str : aliased constant Source_Buffer := "Stack_Check_Limits";
    SCP_Str : aliased constant Source_Buffer := "Stack_Check_Probes";
    SLS_Str : aliased constant Source_Buffer := "Support_Long_Shifts";
    SNZ_Str : aliased constant Source_Buffer := "Signed_Zeros";
@@ -106,7 +104,6 @@ package body Targparm is
    VMS_Str : aliased constant Source_Buffer := "OpenVMS";
    ZCD_Str : aliased constant Source_Buffer := "ZCX_By_Default";
    ZCG_Str : aliased constant Source_Buffer := "GCC_ZCX_Support";
-   ZCF_Str : aliased constant Source_Buffer := "Front_End_ZCX_Support";
 
    --  The following defines a set of pointers to the above strings,
    --  indexed by the tag values.
@@ -114,17 +111,18 @@ package body Targparm is
    type Buffer_Ptr is access constant Source_Buffer;
    Targparm_Str : constant array (Targparm_Tags) of Buffer_Ptr :=
      (AAM_Str'Access,
+      ACR_Str'Access,
       BDC_Str'Access,
       BOC_Str'Access,
       CLA_Str'Access,
+      CLI_Str'Access,
       CRT_Str'Access,
-      CSV_Str'Access,
       D32_Str'Access,
       DEN_Str'Access,
-      DSP_Str'Access,
       EXS_Str'Access,
       FEL_Str'Access,
       FFO_Str'Access,
+      JVM_Str'Access,
       MOV_Str'Access,
       MRN_Str'Access,
       PAS_Str'Access,
@@ -133,6 +131,7 @@ package body Targparm is
       SCA_Str'Access,
       SCC_Str'Access,
       SCD_Str'Access,
+      SCL_Str'Access,
       SCP_Str'Access,
       SLS_Str'Access,
       SNZ_Str'Access,
@@ -140,8 +139,7 @@ package body Targparm is
       UAM_Str'Access,
       VMS_Str'Access,
       ZCD_Str'Access,
-      ZCG_Str'Access,
-      ZCF_Str'Access);
+      ZCG_Str'Access);
 
    -----------------------
    -- Local Subprograms --
@@ -149,26 +147,6 @@ package body Targparm is
 
    procedure Set_Profile_Restrictions (P : Profile_Name);
    --  Set Restrictions_On_Target for the given profile
-
-   ------------------------------
-   -- Set_Profile_Restrictions --
-   ------------------------------
-
-   procedure Set_Profile_Restrictions (P : Profile_Name) is
-      R : Restriction_Flags  renames Profile_Info (P).Set;
-      V : Restriction_Values renames Profile_Info (P).Value;
-
-   begin
-      for J in R'Range loop
-         if R (J) then
-            Restrictions_On_Target.Set (J) := True;
-
-            if J in All_Parameter_Restrictions then
-               Restrictions_On_Target.Value (J) := V (J);
-            end if;
-         end if;
-      end loop;
-   end Set_Profile_Restrictions;
 
    ---------------------------
    -- Get_Target_Parameters --
@@ -196,7 +174,7 @@ package body Targparm is
          raise Unrecoverable_Error;
       end if;
 
-      Targparm.Get_Target_Parameters
+      Get_Target_Parameters
         (System_Text  => Text,
          Source_First => 0,
          Source_Last  => Hi);
@@ -501,6 +479,34 @@ package body Targparm is
 
             goto Line_Loop_Continue;
 
+         --  See if we have an Executable_Extension
+
+         elsif System_Text (P .. P + 45) =
+                  "   Executable_Extension : constant String := """
+         then
+            P := P + 46;
+
+            Name_Len := 0;
+            while System_Text (P) /= '"'
+              and then System_Text (P) /= ASCII.LF
+            loop
+               Add_Char_To_Name_Buffer (System_Text (P));
+               P := P + 1;
+            end loop;
+
+            if System_Text (P) /= '"' or else System_Text (P + 1) /= ';' then
+               Set_Standard_Error;
+               Write_Line
+                 ("incorrectly formatted Executable_Extension in system.ads");
+               Set_Standard_Output;
+               Fatal := True;
+
+            else
+               Executable_Extension_On_Target := Name_Enter;
+            end if;
+
+            goto Line_Loop_Continue;
+
          --  Next See if we have a configuration parameter
 
          else
@@ -544,17 +550,26 @@ package body Targparm is
 
                   case K is
                      when AAM => AAMP_On_Target                      := Result;
+                     when ACR => Always_Compatible_Rep_On_Target     := Result;
                      when BDC => Backend_Divide_Checks_On_Target     := Result;
                      when BOC => Backend_Overflow_Checks_On_Target   := Result;
                      when CLA => Command_Line_Args_On_Target         := Result;
+                     when CLI =>
+                        if Result then
+                           VM_Target := CLI_Target;
+                        end if;
+
                      when CRT => Configurable_Run_Time_On_Target     := Result;
-                     when CSV => Compiler_System_Version             := Result;
                      when D32 => Duration_32_Bits_On_Target          := Result;
                      when DEN => Denorm_On_Target                    := Result;
-                     when DSP => Functions_Return_By_DSP_On_Target   := Result;
                      when EXS => Exit_Status_Supported_On_Target     := Result;
                      when FEL => Frontend_Layout_On_Target           := Result;
                      when FFO => Fractional_Fixed_Ops_On_Target      := Result;
+                     when JVM =>
+                        if Result then
+                           VM_Target := JVM_Target;
+                        end if;
+
                      when MOV => Machine_Overflows_On_Target         := Result;
                      when MRN => Machine_Rounds_On_Target            := Result;
                      when PAS => Preallocated_Stacks_On_Target       := Result;
@@ -563,6 +578,7 @@ package body Targparm is
                      when SCA => Support_Composite_Assign_On_Target  := Result;
                      when SCC => Support_Composite_Compare_On_Target := Result;
                      when SCD => Stack_Check_Default_On_Target       := Result;
+                     when SCL => Stack_Check_Limits_On_Target        := Result;
                      when SCP => Stack_Check_Probes_On_Target        := Result;
                      when SLS => Support_Long_Shifts_On_Target       := Result;
                      when SSL => Suppress_Standard_Library_On_Target := Result;
@@ -571,7 +587,6 @@ package body Targparm is
                      when VMS => OpenVMS_On_Target                   := Result;
                      when ZCD => ZCX_By_Default_On_Target            := Result;
                      when ZCG => GCC_ZCX_Support_On_Target           := Result;
-                     when ZCF => Front_End_ZCX_Support_On_Target     := Result;
 
                      goto Line_Loop_Continue;
                   end case;
@@ -579,7 +594,7 @@ package body Targparm is
                   --  Here we are seeing a parameter we do not understand. We
                   --  simply ignore this (will happen when an old compiler is
                   --  used to compile a newer version of GNAT which does not
-                  --  support the
+                  --  support the parameter).
                end if;
             end loop Config_Param_Loop;
          end if;
@@ -607,31 +622,35 @@ package body Targparm is
          end if;
       end loop Line_Loop;
 
-      --  Check no missing target parameter settings (skip for compiler vsn)
+      --  Now that OpenVMS_On_Target has been given its definitive value,
+      --  change the multi-unit index character from '~' to '$' for OpenVMS.
 
-      if not Compiler_System_Version then
-         for K in Targparm_Tags_OK loop
-            if not Targparm_Flags (K) then
-               Set_Standard_Error;
-               Write_Line
-                 ("fatal error: system.ads is incorrectly formatted");
-               Write_Str ("missing line for parameter: ");
-
-               for J in Targparm_Str (K)'Range loop
-                  Write_Char (Targparm_Str (K).all (J));
-               end loop;
-
-               Write_Eol;
-               Set_Standard_Output;
-               Fatal := True;
-            end if;
-         end loop;
+      if OpenVMS_On_Target then
+         Multi_Unit_Index_Character := '$';
       end if;
-
 
       if Fatal then
          raise Unrecoverable_Error;
       end if;
    end Get_Target_Parameters;
+
+   ------------------------------
+   -- Set_Profile_Restrictions --
+   ------------------------------
+
+   procedure Set_Profile_Restrictions (P : Profile_Name) is
+      R : Restriction_Flags  renames Profile_Info (P).Set;
+      V : Restriction_Values renames Profile_Info (P).Value;
+   begin
+      for J in R'Range loop
+         if R (J) then
+            Restrictions_On_Target.Set (J) := True;
+
+            if J in All_Parameter_Restrictions then
+               Restrictions_On_Target.Value (J) := V (J);
+            end if;
+         end if;
+      end loop;
+   end Set_Profile_Restrictions;
 
 end Targparm;

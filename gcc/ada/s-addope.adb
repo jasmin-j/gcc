@@ -6,11 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---             Copyright (C) 2004 Free Software Foundation, Inc.            --
---                                                                          --
--- This specification is derived from the Ada Reference Manual for use with --
--- GNAT. The copyright notice above, and the license provisions that follow --
--- apply solely to the implementation dependent sections of this file.      --
+--          Copyright (C) 2004-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -20,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,15 +31,19 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Unchecked_Conversion;
+pragma Warnings (Off);
+pragma Compiler_Unit;
+pragma Warnings (On);
+
+with Ada.Unchecked_Conversion;
 
 package body System.Address_Operations is
 
    type IA is mod 2 ** Address'Size;
    --  The type used to provide the actual desired operations
 
-   function I is new Unchecked_Conversion (Address, IA);
-   function A is new Unchecked_Conversion (IA, Address);
+   function I is new Ada.Unchecked_Conversion (Address, IA);
+   function A is new Ada.Unchecked_Conversion (IA, Address);
    --  The operations are implemented by unchecked conversion to type IA,
    --  followed by doing the intrinsic operation on the IA values, followed
    --  by converting the result back to type Address.

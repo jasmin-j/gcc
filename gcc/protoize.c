@@ -1,12 +1,13 @@
 /* Protoize program - Original version by Ron Guilmette (rfg@segfault.us.com).
    Copyright (C) 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004 Free Software Foundation, Inc.
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008 Free Software
+   Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,9 +16,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -361,6 +361,8 @@ static const char *pname;
 static int errors = 0;
 
 /* Option flags.  */
+/* ??? The variables are not marked static because some of them have
+   the same names as gcc variables declared in options.h.  */
 /* ??? These comments should say what the flag mean as well as the options
    that set them.  */
 
@@ -368,20 +370,20 @@ static int errors = 0;
    something other than gcc.  */
 static const char *compiler_file_name = "gcc";
 
-static int version_flag = 0;		/* Print our version number.  */
-static int quiet_flag = 0;		/* Don't print messages normally.  */
-static int nochange_flag = 0;		/* Don't convert, just say what files
-					   we would have converted.  */
-static int nosave_flag = 0;		/* Don't save the old version.  */
-static int keep_flag = 0;		/* Don't delete the .X files.  */
+int version_flag = 0;		/* Print our version number.  */
+int quiet_flag = 0;		/* Don't print messages normally.  */
+int nochange_flag = 0;		/* Don't convert, just say what files
+				   we would have converted.  */
+int nosave_flag = 0;		/* Don't save the old version.  */
+int keep_flag = 0;		/* Don't delete the .X files.  */
 static const char ** compile_params = 0;	/* Option string for gcc.  */
 #ifdef UNPROTOIZE
 static const char *indent_string = "     ";	/* Indentation for newly
 						   inserted parm decls.  */
 #else /* !defined (UNPROTOIZE) */
-static int local_flag = 0;		/* Insert new local decls (when?).  */
-static int global_flag = 0;		/* set by -g option */
-static int cplusplus_flag = 0;		/* Rename converted files to *.C.  */
+int local_flag = 0;		/* Insert new local decls (when?).  */
+int global_flag = 0;		/* set by -g option */
+int cplusplus_flag = 0;		/* Rename converted files to *.C.  */
 static const char *nondefault_syscalls_dir = 0; /* Dir to look for
 						   SYSCALLS.c.X in.  */
 #endif /* !defined (UNPROTOIZE) */
@@ -503,12 +505,12 @@ static char * saved_repl_write_ptr;
 
 /* Translate and output an error message.  */
 static void
-notice (const char *msgid, ...)
+notice (const char *cmsgid, ...)
 {
   va_list ap;
   
-  va_start (ap, msgid);
-  vfprintf (stderr, _(msgid), ap);
+  va_start (ap, cmsgid);
+  vfprintf (stderr, _(cmsgid), ap);
   va_end (ap);
 }
 
@@ -1722,7 +1724,7 @@ save_def_or_dec (const char *l, int is_syscalls)
     }
 
   /* Since we are unprotoizing, if this item is already in old (K&R) style,
-     we can just ignore it.  If that is true, throw away the itme now.  */
+     we can just ignore it.  If that is true, throw away the item now.  */
 
   if (!def_dec_p->prototyped)
     {
@@ -3501,7 +3503,8 @@ add_global_decls (const file_info *file_p, const char *clean_text_p)
    separate routine above.  */
 
 static void
-edit_fn_definition (const def_dec_info *def_dec_p, const char *clean_text_p)
+edit_fn_definition (const def_dec_info *def_dec_p,
+		    const char *volatile clean_text_p)
 {
   const char *end_formals;
   const char *function_to_edit = def_dec_p->hash_entry->symbol;
@@ -4391,6 +4394,9 @@ main (int argc, char **const argv)
   signal (SIGCHLD, SIG_DFL);
 #endif
 
+  /* Unlock the stdio streams.  */
+  unlock_std_streams ();
+
   gcc_init_libintl ();
 
   cwd_buffer = getpwd ();
@@ -4520,7 +4526,8 @@ main (int argc, char **const argv)
   else
     {
       if (version_flag)
-	fprintf (stderr, "%s: %s\n", pname, version_string);
+	fprintf (stderr, "%s %s%s\n", pname, pkgversion_string,
+		 version_string);
       do_processing ();
     }
 

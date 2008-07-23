@@ -1,5 +1,5 @@
 /* Generic helper function for repacking arrays.
-   Copyright 2003 Free Software Foundation, Inc.
+   Copyright 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -25,14 +25,13 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
+#include "libgfortran.h"
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include "libgfortran.h"
 
 extern void internal_unpack (gfc_array_char *, const void *);
 export_proto(internal_unpack);
@@ -40,9 +39,9 @@ export_proto(internal_unpack);
 void
 internal_unpack (gfc_array_char * d, const void * s)
 {
-  index_type count[GFC_MAX_DIMENSIONS - 1];
-  index_type extent[GFC_MAX_DIMENSIONS - 1];
-  index_type stride[GFC_MAX_DIMENSIONS - 1];
+  index_type count[GFC_MAX_DIMENSIONS];
+  index_type extent[GFC_MAX_DIMENSIONS];
+  index_type stride[GFC_MAX_DIMENSIONS];
   index_type stride0;
   index_type dim;
   index_type dsize;
@@ -50,23 +49,123 @@ internal_unpack (gfc_array_char * d, const void * s)
   const char *src;
   int n;
   int size;
+  int type_size;
 
   dest = d->data;
   /* This check may be redundant, but do it anyway.  */
   if (s == dest || !s)
     return;
 
-  size = GFC_DESCRIPTOR_SIZE (d);
-  switch (size)
+  type_size = GFC_DTYPE_TYPE_SIZE (d);
+  switch (type_size)
     {
-    case 4:
-      internal_unpack_4 ((gfc_array_i4 *)d, (const GFC_INTEGER_4 *)s);
+    case GFC_DTYPE_INTEGER_1:
+    case GFC_DTYPE_LOGICAL_1:
+    case GFC_DTYPE_DERIVED_1:
+      internal_unpack_1 ((gfc_array_i1 *) d, (const GFC_INTEGER_1 *) s);
       return;
 
-    case 8:
-      internal_unpack_8 ((gfc_array_i8 *)d, (const GFC_INTEGER_8 *)s);
+    case GFC_DTYPE_INTEGER_2:
+    case GFC_DTYPE_LOGICAL_2:
+      internal_unpack_2 ((gfc_array_i2 *) d, (const GFC_INTEGER_2 *) s);
       return;
+
+    case GFC_DTYPE_INTEGER_4:
+    case GFC_DTYPE_LOGICAL_4:
+      internal_unpack_4 ((gfc_array_i4 *) d, (const GFC_INTEGER_4 *) s);
+      return;
+
+    case GFC_DTYPE_INTEGER_8:
+    case GFC_DTYPE_LOGICAL_8:
+      internal_unpack_8 ((gfc_array_i8 *) d, (const GFC_INTEGER_8 *) s);
+      return;
+
+#if defined (HAVE_GFC_INTEGER_16)
+    case GFC_DTYPE_INTEGER_16:
+    case GFC_DTYPE_LOGICAL_16:
+      internal_unpack_16 ((gfc_array_i16 *) d, (const GFC_INTEGER_16 *) s);
+      return;
+#endif
+    case GFC_DTYPE_REAL_4:
+      internal_unpack_r4 ((gfc_array_r4 *) d, (const GFC_REAL_4 *) s);
+      return;
+
+    case GFC_DTYPE_REAL_8:
+      internal_unpack_r8 ((gfc_array_r8 *) d, (const GFC_REAL_8 *) s);
+      return;
+
+#if defined(HAVE_GFC_REAL_10)
+    case GFC_DTYPE_REAL_10:
+      internal_unpack_r10 ((gfc_array_r10 *) d, (const GFC_REAL_10 *) s);
+      return;
+#endif
+
+#if defined(HAVE_GFC_REAL_16)
+    case GFC_DTYPE_REAL_16:
+      internal_unpack_r16 ((gfc_array_r16 *) d, (const GFC_REAL_16 *) s);
+      return;
+#endif
+    case GFC_DTYPE_COMPLEX_4:
+      internal_unpack_c4 ((gfc_array_c4 *)d, (const GFC_COMPLEX_4 *)s);
+      return;
+
+    case GFC_DTYPE_COMPLEX_8:
+      internal_unpack_c8 ((gfc_array_c8 *)d, (const GFC_COMPLEX_8 *)s);
+      return;
+
+#if defined(HAVE_GFC_COMPLEX_10)
+    case GFC_DTYPE_COMPLEX_10:
+      internal_unpack_c10 ((gfc_array_c10 *) d, (const GFC_COMPLEX_10 *) s);
+      return;
+#endif
+
+#if defined(HAVE_GFC_COMPLEX_16)
+    case GFC_DTYPE_COMPLEX_16:
+      internal_unpack_c16 ((gfc_array_c16 *) d, (const GFC_COMPLEX_16 *) s);
+      return;
+#endif
+    case GFC_DTYPE_DERIVED_2:
+      if (GFC_UNALIGNED_2(d->data) || GFC_UNALIGNED_2(s))
+	break;
+      else
+	{
+	  internal_unpack_2 ((gfc_array_i2 *) d, (const GFC_INTEGER_2 *) s);
+	  return;
+	}
+    case GFC_DTYPE_DERIVED_4:
+      if (GFC_UNALIGNED_4(d->data) || GFC_UNALIGNED_4(s))
+	break;
+      else
+	{
+	  internal_unpack_4 ((gfc_array_i4 *) d, (const GFC_INTEGER_4 *) s);
+	  return;
+	}
+
+    case GFC_DTYPE_DERIVED_8:
+      if (GFC_UNALIGNED_8(d->data) || GFC_UNALIGNED_8(s))
+	break;
+      else
+	{
+	  internal_unpack_8 ((gfc_array_i8 *) d, (const GFC_INTEGER_8 *) s);
+	  return;
+	}
+
+#ifdef HAVE_GFC_INTEGER_16
+    case GFC_DTYPE_DERIVED_16:
+      if (GFC_UNALIGNED_16(d->data) || GFC_UNALIGNED_16(s))
+	break;
+      else
+	{
+	  internal_unpack_16 ((gfc_array_i16 *) d, (const GFC_INTEGER_16 *) s);
+	  return;
+	}
+#endif
+
+    default:
+      break;
     }
+
+  size = GFC_DESCRIPTOR_SIZE (d);
 
   if (d->dim[0].stride == 0)
     d->dim[0].stride = 1;
@@ -113,7 +212,7 @@ internal_unpack (gfc_array_char * d, const void * s)
              the next dimension.  */
           count[n] = 0;
           /* We could precalculate these products, but this is a less
-             frequently used path so proabably not worth it.  */
+             frequently used path so probably not worth it.  */
           dest -= stride[n] * extent[n] * size;
           n++;
           if (n == dim)

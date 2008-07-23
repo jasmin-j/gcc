@@ -1,20 +1,20 @@
 /* scan-decls.c - Extracts declarations from cpp output.
    Copyright (C) 1993, 1995, 1997, 1998,
-   1999, 2000, 2003, 2004 Free Software Foundation, Inc.
+   1999, 2000, 2003, 2004, 2007 Free Software Foundation, Inc.
 
-This program is free software; you can redistribute it and/or modify it
-under the terms of the GNU General Public License as published by the
-Free Software Foundation; either version 2, or (at your option) any
-later version.
+   This program is free software; you can redistribute it and/or modify it
+   under the terms of the GNU General Public License as published by the
+   Free Software Foundation; either version 3, or (at your option) any
+   later version.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+   You should have received a copy of the GNU General Public License
+   along with this program; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  
 
    Written by Per Bothner <bothner@cygnus.com>, July 1993.  */
 
@@ -202,6 +202,8 @@ scan_decls (cpp_reader *pfile, int argc ATTRIBUTE_UNUSED,
 		 parameter list */
 	      while (token->type != CPP_SEMICOLON && token->type != CPP_EOF)
 		token = get_a_token (pfile);
+	      if (token->type == CPP_EOF)
+		return 0;
 	      goto new_statement;
 	    }
 	  break;

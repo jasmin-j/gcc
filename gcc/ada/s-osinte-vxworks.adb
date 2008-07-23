@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                 GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS              --
+--                  GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                --
 --                                                                          --
 --                   S Y S T E M . O S _ I N T E R F A C E                  --
 --                                                                          --
 --                                   B o d y                                --
 --                                                                          --
---             Copyright (C) 1997-2002 Free Software Foundation             --
+--         Copyright (C) 1997-2007, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -31,21 +31,30 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This is the VxWorks version.
+--  This is the VxWorks version
 
---  This package encapsulates all direct interfaces to OS services
---  that are needed by children of System.
+--  This package encapsulates all direct interfaces to OS services that are
+--  needed by children of System.
 
 pragma Polling (Off);
---  Turn off polling, we do not want ATC polling to take place during
---  tasking operations. It causes infinite loops and other problems.
+--  Turn off polling, we do not want ATC polling to take place during tasking
+--  operations. It causes infinite loops and other problems.
 
 package body System.OS_Interface is
 
    use type Interfaces.C.int;
 
    Low_Priority : constant := 255;
-   --  VxWorks native (default) lowest scheduling priority.
+   --  VxWorks native (default) lowest scheduling priority
+
+   ----------
+   -- kill --
+   ----------
+
+   function kill (pid : t_id; sig : Signal) return int is
+   begin
+      return System.VxWorks.Ext.kill (pid, int (sig));
+   end kill;
 
    -------------
    -- sigwait --
@@ -89,12 +98,13 @@ package body System.OS_Interface is
    function To_Timespec (D : Duration) return timespec is
       S : time_t;
       F : Duration;
+
    begin
       S := time_t (Long_Long_Integer (D));
       F := D - Duration (S);
 
-      --  If F has negative value due to a round-up, adjust for positive F
-      --  value.
+      --  If F is negative due to a round-up, adjust for positive F value
+
       if F < 0.0 then
          S := S - 1;
          F := F + 1.0;
@@ -108,7 +118,7 @@ package body System.OS_Interface is
    -- To_VxWorks_Priority --
    -------------------------
 
-   function To_VxWorks_Priority (Priority : in int) return int is
+   function To_VxWorks_Priority (Priority : int) return int is
    begin
       return Low_Priority - Priority;
    end To_VxWorks_Priority;
@@ -117,16 +127,15 @@ package body System.OS_Interface is
    -- To_Clock_Ticks --
    --------------------
 
-   --  ??? - For now, we'll always get the system clock rate
-   --  since it is allowed to be changed during run-time in
-   --  VxWorks. A better method would be to provide an operation
-   --  to set it that so we can always know its value.
-   --
-   --  Another thing we should probably allow for is a resultant
-   --  tick count greater than int'Last. This should probably
-   --  be a procedure with two output parameters, one in the
-   --  range 0 .. int'Last, and another representing the overflow
-   --  count.
+   --  ??? - For now, we'll always get the system clock rate since it is
+   --  allowed to be changed during run-time in VxWorks. A better method would
+   --  be to provide an operation to set it that so we can always know its
+   --  value.
+
+   --  Another thing we should probably allow for is a resultant tick count
+   --  greater than int'Last. This should probably be a procedure with two
+   --  output parameters, one in the range 0 .. int'Last, and another
+   --  representing the overflow count.
 
    function To_Clock_Ticks (D : Duration) return int is
       Ticks          : Long_Long_Integer;

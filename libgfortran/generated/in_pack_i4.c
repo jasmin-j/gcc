@@ -1,5 +1,5 @@
 /* Helper function for repacking arrays.
-   Copyright 2003 Free Software Foundation, Inc.
+   Copyright 2003, 2006, 2007 Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -25,13 +25,15 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
+#include "libgfortran.h"
 #include <stdlib.h>
 #include <assert.h>
-#include "libgfortran.h"
+
+
+#if defined (HAVE_GFC_INTEGER_4)
 
 /* Allocates a block of memory with internal_malloc if the array needs
    repacking.  */
@@ -39,23 +41,20 @@ Boston, MA 02111-1307, USA.  */
 GFC_INTEGER_4 *
 internal_pack_4 (gfc_array_i4 * source)
 {
-  index_type count[GFC_MAX_DIMENSIONS - 1];
-  index_type extent[GFC_MAX_DIMENSIONS - 1];
-  index_type stride[GFC_MAX_DIMENSIONS - 1];
+  index_type count[GFC_MAX_DIMENSIONS];
+  index_type extent[GFC_MAX_DIMENSIONS];
+  index_type stride[GFC_MAX_DIMENSIONS];
   index_type stride0;
   index_type dim;
   index_type ssize;
   const GFC_INTEGER_4 *src;
-  GFC_INTEGER_4 *dest;
+  GFC_INTEGER_4 * restrict dest;
   GFC_INTEGER_4 *destptr;
   int n;
   int packed;
 
-  if (source->dim[0].stride == 0)
-    {
-      source->dim[0].stride = 1;
-      return source->data;
-    }
+  /* TODO: Investigate how we can figure out if this is a temporary
+     since the stride=0 thing has been removed from the frontend.  */
 
   dim = GFC_DESCRIPTOR_RANK (source);
   ssize = 1;
@@ -82,7 +81,7 @@ internal_pack_4 (gfc_array_i4 * source)
     return source->data;
 
   /* Allocate storage for the destination.  */
-  destptr = (GFC_INTEGER_4 *)internal_malloc_size (ssize * 4);
+  destptr = (GFC_INTEGER_4 *)internal_malloc_size (ssize * sizeof (GFC_INTEGER_4));
   dest = destptr;
   src = source->data;
   stride0 = stride[0];
@@ -103,7 +102,7 @@ internal_pack_4 (gfc_array_i4 * source)
              the next dimension.  */
           count[n] = 0;
           /* We could precalculate these products, but this is a less
-             frequently used path so proabably not worth it.  */
+             frequently used path so probably not worth it.  */
           src -= stride[n] * extent[n];
           n++;
           if (n == dim)
@@ -120,4 +119,6 @@ internal_pack_4 (gfc_array_i4 * source)
     }
   return destptr;
 }
+
+#endif
 

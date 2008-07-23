@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -29,11 +28,11 @@ with Einfo;    use Einfo;
 with Elists;   use Elists;
 with Errout;   use Errout;
 with Exp_Ch7;  use Exp_Ch7;
-with Exp_Ch11; use Exp_Ch11;
 with Exp_Tss;  use Exp_Tss;
 with Fname;    use Fname;
 with Fname.UF; use Fname.UF;
 with Lib;      use Lib;
+with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Opt;      use Opt;
 with Sem_Ch8;  use Sem_Ch8;
@@ -89,7 +88,7 @@ package body Inline is
    type Subp_Index is new Nat;
    No_Subp : constant Subp_Index := 0;
 
-   --  The subprogram entities are hashed into the Inlined table.
+   --  The subprogram entities are hashed into the Inlined table
 
    Num_Hash_Headers : constant := 512;
 
@@ -183,10 +182,10 @@ package body Inline is
    To_Clean : Elist_Id;
 
    procedure Add_Scope_To_Clean (Inst : Entity_Id);
-   --  Build set of scopes on which cleanup actions must be performed.
+   --  Build set of scopes on which cleanup actions must be performed
 
    procedure Cleanup_Scopes;
-   --  Complete cleanup actions on scopes that need it.
+   --  Complete cleanup actions on scopes that need it
 
    --------------
    -- Add_Call --
@@ -216,7 +215,7 @@ package body Inline is
             J := Successors.Table (J).Next;
          end loop;
 
-         --  On exit, make a successor entry for P2.
+         --  On exit, make a successor entry for P2
 
          Successors.Increment_Last;
          Successors.Table (Successors.Last).Subp := P2;
@@ -247,11 +246,23 @@ package body Inline is
       -----------------
 
       function Must_Inline return Boolean is
-         Scop : Entity_Id := Current_Scope;
+         Scop : Entity_Id;
          Comp : Node_Id;
 
       begin
          --  Check if call is in main unit
+
+         Scop := Current_Scope;
+
+         --  Do not try to inline if scope is standard. This could happen, for
+         --  example, for a call to Add_Global_Declaration, and it causes
+         --  trouble to try to inline at this level.
+
+         if Scop = Standard_Standard then
+            return False;
+         end if;
+
+         --  Otherwise lookup scope stack to outer scope
 
          while Scope (Scop) /= Standard_Standard
            and then not Is_Child_Unit (Scop)
@@ -260,7 +271,6 @@ package body Inline is
          end loop;
 
          Comp := Parent (Scop);
-
          while Nkind (Comp) /= N_Compilation_Unit loop
             Comp := Parent (Comp);
          end loop;
@@ -272,8 +282,7 @@ package body Inline is
             return True;
          end if;
 
-         --  Call is not in main unit. See if it's in some inlined
-         --  subprogram.
+         --  Call is not in main unit. See if it's in some inlined subprogram
 
          Scop := Current_Scope;
          while Scope (Scop) /= Standard_Standard
@@ -290,7 +299,6 @@ package body Inline is
          end loop;
 
          return False;
-
       end Must_Inline;
 
    --  Start of processing for Add_Inlined_Body
@@ -309,7 +317,7 @@ package body Inline is
       --  no enclosing package to retrieve. In this case, it is the body of
       --  the function that will have to be loaded.
 
-      if not Is_Abstract (E) and then not Is_Nested (E)
+      if not Is_Abstract_Subprogram (E) and then not Is_Nested (E)
         and then Convention (E) /= Convention_Protected
       then
          Pack := Scope (E);
@@ -321,7 +329,7 @@ package body Inline is
 
             if Pack = Standard_Standard then
 
-               --  Library-level inlined function. Add function iself to
+               --  Library-level inlined function. Add function itself to
                --  list of needed units.
 
                Inlined_Bodies.Increment_Last;
@@ -360,7 +368,7 @@ package body Inline is
       --    mode it will lead to undefined symbols at link time.
       --
       --    b) If a body contains inlined function instances, it cannot be
-      --    inlined under ZCX because the numerix suffix generated by gigi
+      --    inlined under ZCX because the numeric suffix generated by gigi
       --    will be different in the body and the place of the inlined call.
       --
       --  This procedure must be carefully coordinated with the back end
@@ -385,7 +393,7 @@ package body Inline is
 
          --  If subprogram is marked Inline_Always, inlining is mandatory
 
-         if Is_Always_Inlined (Subp) then
+         if Has_Pragma_Inline_Always (Subp) then
             return False;
          end if;
 
@@ -506,7 +514,7 @@ package body Inline is
       J     : Subp_Index;
 
       procedure New_Entry;
-      --  Initialize entry in Inlined table.
+      --  Initialize entry in Inlined table
 
       procedure New_Entry is
       begin
@@ -564,7 +572,7 @@ package body Inline is
       Analyzing_Inlined_Bodies := False;
 
       if Serious_Errors_Detected = 0 then
-         New_Scope (Standard_Standard);
+         Push_Scope (Standard_Standard);
 
          J := 0;
          while J <= Inlined_Bodies.Last
@@ -580,7 +588,6 @@ package body Inline is
             end loop;
 
             Comp_Unit := Parent (Pack);
-
             while Present (Comp_Unit)
               and then Nkind (Comp_Unit) /= N_Compilation_Unit
             loop
@@ -611,7 +618,7 @@ package body Inline is
                         Error_Msg_N
                           ("one or more inlined subprograms accessed in $!",
                            Comp_Unit);
-                        Error_Msg_Name_1 :=
+                        Error_Msg_File_1 :=
                           Get_File_Name (Bname, Subunit => False);
                         Error_Msg_N ("\but file{ was not found!", Comp_Unit);
                         raise Unrecoverable_Error;
@@ -693,7 +700,8 @@ package body Inline is
             then
                Error_Msg_N
                  ("& cannot be inlined?", Inlined.Table (Index).Name);
-               --  A warning on the first one might be sufficient.
+
+               --  A warning on the first one might be sufficient ???
             end if;
          end loop;
 
@@ -718,7 +726,7 @@ package body Inline is
          E := First_Entity (P);
 
          while Present (E) loop
-            if Is_Always_Inlined (E)
+            if Has_Pragma_Inline_Always (E)
               or else (Front_End_Inlining and then Has_Pragma_Inline (E))
             then
                if not Is_Loaded (Bname) then
@@ -839,11 +847,15 @@ package body Inline is
             --  cleanup operations have been delayed, and the subprogram
             --  has been rewritten in the expansion of the enclosing
             --  protected body. It is the corresponding subprogram that
-            --  may require the cleanup operations.
+            --  may require the cleanup operations, so propagate the
+            --  information that triggers cleanup activity.
 
             Set_Uses_Sec_Stack
               (Protected_Body_Subprogram (Scop),
                 Uses_Sec_Stack (Scop));
+            Set_Finalization_Chain_Entity
+              (Protected_Body_Subprogram (Scop),
+                Finalization_Chain_Entity (Scop));
             Scop := Protected_Body_Subprogram (Scop);
          end if;
 
@@ -861,7 +873,7 @@ package body Inline is
             end if;
          end if;
 
-         New_Scope (Scop);
+         Push_Scope (Scop);
          Expand_Cleanup_Actions (Decl);
          End_Scope;
 
@@ -936,7 +948,7 @@ package body Inline is
       if Serious_Errors_Detected = 0 then
 
          Expander_Active := (Operating_Mode = Opt.Generate_Code);
-         New_Scope (Standard_Standard);
+         Push_Scope (Standard_Standard);
          To_Clean := New_Elmt_List;
 
          if Is_Generic_Unit (Cunit_Entity (Main_Unit)) then
@@ -948,7 +960,6 @@ package body Inline is
          --  set (that's why we can't simply use a FOR loop here).
 
          J := 0;
-
          while J <= Pending_Instantiations.Last
            and then Serious_Errors_Detected = 0
          loop
@@ -986,29 +997,6 @@ package body Inline is
            and then not Is_Generic_Unit (Main_Unit_Entity)
          then
             Cleanup_Scopes;
-
-            --  Also generate subprogram descriptors that were delayed
-
-            for J in Pending_Descriptor.First .. Pending_Descriptor.Last loop
-               declare
-                  Ent : constant Entity_Id := Pending_Descriptor.Table (J);
-
-               begin
-                  if Is_Subprogram (Ent) then
-                     Generate_Subprogram_Descriptor_For_Subprogram
-                       (Get_Subprogram_Body (Ent), Ent);
-
-                  elsif Ekind (Ent) = E_Package then
-                     Generate_Subprogram_Descriptor_For_Package
-                       (Parent (Declaration_Node (Ent)), Ent);
-
-                  elsif Ekind (Ent) = E_Package_Body then
-                     Generate_Subprogram_Descriptor_For_Package
-                       (Declaration_Node (Ent), Ent);
-                  end if;
-               end;
-            end loop;
-
          elsif Is_Generic_Unit (Cunit_Entity (Main_Unit)) then
             End_Generic;
          end if;

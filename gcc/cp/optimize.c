@@ -1,5 +1,5 @@
 /* Perform optimizations on tree structure.
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004, 2005, 2007
    Free Software Foundation, Inc.
    Written by Mark Michell (mark@codesourcery.com).
 
@@ -7,7 +7,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful, but
@@ -16,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -45,7 +44,7 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 
 /* Prototypes.  */
 
-static void update_cloned_parm (tree, tree);
+static void update_cloned_parm (tree, tree, bool);
 
 /* CLONED_PARM is a copy of CLONE, generated for a cloned constructor
    or destructor.  Update it to ensure that the source-position for
@@ -53,7 +52,7 @@ static void update_cloned_parm (tree, tree);
    debugging generation code will be able to find the original PARM.  */
 
 static void
-update_cloned_parm (tree parm, tree cloned_parm)
+update_cloned_parm (tree parm, tree cloned_parm, bool first)
 {
   DECL_ABSTRACT_ORIGIN (cloned_parm) = parm;
 
@@ -62,12 +61,46 @@ update_cloned_parm (tree parm, tree cloned_parm)
 
   /* The definition might have different constness.  */
   TREE_READONLY (cloned_parm) = TREE_READONLY (parm);
-  
-  TREE_USED (cloned_parm) = TREE_USED (parm);
-  
+
+  TREE_USED (cloned_parm) = !first || TREE_USED (parm);
+
   /* The name may have changed from the declaration.  */
   DECL_NAME (cloned_parm) = DECL_NAME (parm);
   DECL_SOURCE_LOCATION (cloned_parm) = DECL_SOURCE_LOCATION (parm);
+  TREE_TYPE (cloned_parm) = TREE_TYPE (parm);
+
+  DECL_GIMPLE_REG_P (cloned_parm) = DECL_GIMPLE_REG_P (parm);
+}
+
+/* FN is a function that has a complete body, and CLONE is a function whose
+   body is to be set to a copy of FN, mapping argument declarations according
+   to the ARG_MAP splay_tree.  */
+
+static void
+clone_body (tree clone, tree fn, void *arg_map)
+{
+  copy_body_data id;
+
+  /* Clone the body, as if we were making an inline call.  But, remap the
+     parameters in the callee to the parameters of caller.  */
+  memset (&id, 0, sizeof (id));
+  id.src_fn = fn;
+  id.dst_fn = clone;
+  id.src_cfun = DECL_STRUCT_FUNCTION (fn);
+  id.decl_map = (struct pointer_map_t *)arg_map;
+
+  id.copy_decl = copy_decl_no_change;
+  id.transform_call_graph_edges = CB_CGE_DUPLICATE;
+  id.transform_new_cfg = true;
+  id.transform_return_to_modify = false;
+  id.transform_lang_insert_block = insert_block;
+
+  /* We're not inside any EH region.  */
+  id.eh_region = -1;
+
+  /* Actually copy the body.  */
+  append_to_statement_list_force (copy_generic_body (&id),
+				  &DECL_SAVED_TREE (clone));
 }
 
 /* FN is a function that has a complete body.  Clone the body as
@@ -78,6 +111,7 @@ bool
 maybe_clone_body (tree fn)
 {
   tree clone;
+  bool first = true;
 
   /* We only clone constructors and destructors.  */
   if (!DECL_MAYBE_IN_CHARGE_CONSTRUCTOR_P (fn)
@@ -95,7 +129,7 @@ maybe_clone_body (tree fn)
       tree parm;
       tree clone_parm;
       int parmno;
-      splay_tree decl_map;
+      struct pointer_map_t *decl_map;
 
       /* Update CLONE's source position information to match FN's.  */
       DECL_SOURCE_LOCATION (clone) = DECL_SOURCE_LOCATION (fn);
@@ -112,12 +146,13 @@ maybe_clone_body (tree fn)
       TREE_PUBLIC (clone) = TREE_PUBLIC (fn);
       DECL_VISIBILITY (clone) = DECL_VISIBILITY (fn);
       DECL_VISIBILITY_SPECIFIED (clone) = DECL_VISIBILITY_SPECIFIED (fn);
+      DECL_DLLIMPORT_P (clone) = DECL_DLLIMPORT_P (fn);
 
       /* Adjust the parameter names and locations.  */
       parm = DECL_ARGUMENTS (fn);
       clone_parm = DECL_ARGUMENTS (clone);
       /* Update the `this' parameter, which is always first.  */
-      update_cloned_parm (parm, clone_parm);
+      update_cloned_parm (parm, clone_parm, first);
       parm = TREE_CHAIN (parm);
       clone_parm = TREE_CHAIN (clone_parm);
       if (DECL_HAS_IN_CHARGE_PARM_P (fn))
@@ -129,13 +164,13 @@ maybe_clone_body (tree fn)
       for (; parm;
 	   parm = TREE_CHAIN (parm), clone_parm = TREE_CHAIN (clone_parm))
 	/* Update this parameter.  */
-	update_cloned_parm (parm, clone_parm);
+	update_cloned_parm (parm, clone_parm, first);
 
       /* Start processing the function.  */
       start_preparsed_function (clone, NULL_TREE, SF_PRE_PARSED);
 
       /* Remap the parameters.  */
-      decl_map = splay_tree_new (splay_tree_compare_pointers, NULL, NULL);
+      decl_map = pointer_map_create ();
       for (parmno = 0,
 	     parm = DECL_ARGUMENTS (fn),
 	     clone_parm = DECL_ARGUMENTS (clone);
@@ -148,9 +183,7 @@ maybe_clone_body (tree fn)
 	    {
 	      tree in_charge;
 	      in_charge = in_charge_arg_for_name (DECL_NAME (clone));
-	      splay_tree_insert (decl_map,
-				 (splay_tree_key) parm,
-				 (splay_tree_value) in_charge);
+	      *pointer_map_insert (decl_map, parm) = in_charge;
 	    }
 	  else if (DECL_ARTIFICIAL (parm)
 		   && DECL_NAME (parm) == vtt_parm_identifier)
@@ -161,26 +194,18 @@ maybe_clone_body (tree fn)
 	      if (DECL_HAS_VTT_PARM_P (clone))
 		{
 		  DECL_ABSTRACT_ORIGIN (clone_parm) = parm;
-		  splay_tree_insert (decl_map,
-				     (splay_tree_key) parm,
-				     (splay_tree_value) clone_parm);
+		  *pointer_map_insert (decl_map, parm) = clone_parm;
 		  clone_parm = TREE_CHAIN (clone_parm);
 		}
 	      /* Otherwise, map the VTT parameter to `NULL'.  */
 	      else
-		{
-		  splay_tree_insert (decl_map,
-				     (splay_tree_key) parm,
-				     (splay_tree_value) null_pointer_node);
-		}
+		*pointer_map_insert (decl_map, parm) = null_pointer_node;
 	    }
 	  /* Map other parameters to their equivalents in the cloned
 	     function.  */
 	  else
 	    {
-	      splay_tree_insert (decl_map,
-				 (splay_tree_key) parm,
-				 (splay_tree_value) clone_parm);
+	      *pointer_map_insert (decl_map, parm) = clone_parm;
 	      clone_parm = TREE_CHAIN (clone_parm);
 	    }
 	}
@@ -189,14 +214,13 @@ maybe_clone_body (tree fn)
 	{
 	  parm = DECL_RESULT (fn);
 	  clone_parm = DECL_RESULT (clone);
-	  splay_tree_insert (decl_map, (splay_tree_key) parm,
-			     (splay_tree_value) clone_parm);
+	  *pointer_map_insert (decl_map, parm) = clone_parm;
 	}
       /* Clone the body.  */
       clone_body (clone, fn, decl_map);
 
       /* Clean up.  */
-      splay_tree_delete (decl_map);
+      pointer_map_destroy (decl_map);
 
       /* The clone can throw iff the original function can throw.  */
       cp_function_chain->can_throw = !TREE_NOTHROW (fn);
@@ -205,6 +229,7 @@ maybe_clone_body (tree fn)
       finish_function (0);
       BLOCK_ABSTRACT_ORIGIN (DECL_INITIAL (clone)) = DECL_INITIAL (fn);
       expand_or_defer_fn (clone);
+      first = false;
     }
   pop_from_top_level ();
 

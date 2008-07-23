@@ -1,5 +1,5 @@
 `/* Support routines for the intrinsic power (**) operator.
-   Copyright 2004 Free Software Foundation, Inc.
+   Copyright 2004, 2007 Free Software Foundation, Inc.
    Contributed by Paul Brook
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -25,11 +25,11 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
 #include "libgfortran.h"'
+
 include(iparm.m4)dnl
 
 /* Use Binary Method to calculate the powi. This is not an optimal but
@@ -37,14 +37,17 @@ include(iparm.m4)dnl
    Powers" of Donald E. Knuth, "Seminumerical Algorithms", Vol. 2, "The Art
    of Computer Programming", 3rd Edition, 1998.  */
 
-rtype_name `pow_'rtype_code`_'atype_code (rtype_name a, atype_name b);
-export_proto(pow_`'rtype_code`_'atype_code);
+`#if defined (HAVE_'rtype_name`) && defined (HAVE_'atype_name`)'
 
-rtype_name
-`pow_'rtype_code`_'atype_code (rtype_name a, atype_name b)
+rtype_name `pow_'rtype_code`_'atype_code` ('rtype_name` a, 'atype_name` b);
+export_proto(pow_'rtype_code`_'atype_code`);
+
+'rtype_name`
+pow_'rtype_code`_'atype_code` ('rtype_name` a, 'atype_name` b)
 {
-  rtype_name pow, x;
-  atype_name n, u;
+  'rtype_name` pow, x;
+  'atype_name` n;
+  GFC_UINTEGER_'atype_kind` u;
   
   n = b;
   x = a;
@@ -53,18 +56,21 @@ rtype_name
     {
       if (n < 0)
 	{
-ifelse(rtype_letter,i,`dnl
+'ifelse(rtype_letter,i,`dnl
 	  if (x == 1)
 	    return 1;
 	  if (x == -1)
 	    return (n & 1) ? -1 : 1;
 	  return (x == 0) ? 1 / x : 0;
 ',`
-	  n = -n;
+	  u = -n;
 	  x = pow / x;
 ')dnl
+`	}
+      else
+	{
+	   u = n;
 	}
-      u = n;
       for (;;)
 	{
 	  if (u & 1)
@@ -78,3 +84,5 @@ ifelse(rtype_letter,i,`dnl
     }
   return pow;
 }
+
+#endif'

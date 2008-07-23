@@ -1,7 +1,7 @@
 /* Scan linker error messages for missing template instantiations and provide
    them.
 
-   Copyright (C) 1995, 1998, 1999, 2000, 2001, 2003, 2004, 2005
+   Copyright (C) 1995, 1998, 1999, 2000, 2001, 2003, 2004, 2005, 2007, 2008
    Free Software Foundation, Inc.
    Contributed by Jason Merrill (jason@cygnus.com).
 
@@ -9,7 +9,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -18,9 +18,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -125,10 +124,10 @@ symbol_hash_lookup (const char *string, int create)
   if (*e == NULL)
     {
       struct symbol_hash_entry *v;
-      *e = v = xcalloc (1, sizeof (*v));
+      *e = v = XCNEW (struct symbol_hash_entry);
       v->key = xstrdup (string);
     }
-  return *e;
+  return (struct symbol_hash_entry *) *e;
 }
 
 static htab_t file_table;
@@ -145,10 +144,10 @@ file_hash_lookup (const char *string)
   if (*e == NULL)
     {
       struct file_hash_entry *v;
-      *e = v = xcalloc (1, sizeof (*v));
+      *e = v = XCNEW (struct file_hash_entry);
       v->key = xstrdup (string);
     }
-  return *e;
+  return (struct file_hash_entry *) *e;
 }
 
 static htab_t demangled_table;
@@ -167,10 +166,10 @@ demangled_hash_lookup (const char *string, int create)
   if (*e == NULL)
     {
       struct demangled_hash_entry *v;
-      *e = v = xcalloc (1, sizeof (*v));
+      *e = v = XCNEW (struct demangled_hash_entry);
       v->key = xstrdup (string);
     }
-  return *e;
+  return (struct demangled_hash_entry *) *e;
 }
 
 /* Stack code.  */
@@ -194,8 +193,8 @@ struct file_stack_entry *file_stack;
 static void
 symbol_push (symbol *p)
 {
-  struct symbol_stack_entry *ep = obstack_alloc
-    (&symbol_stack_obstack, sizeof (struct symbol_stack_entry));
+  struct symbol_stack_entry *ep
+    = XOBNEW (&symbol_stack_obstack, struct symbol_stack_entry);
   ep->value = p;
   ep->next = symbol_stack;
   symbol_stack = ep;
@@ -222,8 +221,7 @@ file_push (file *p)
   if (p->tweaking)
     return;
 
-  ep = obstack_alloc
-    (&file_stack_obstack, sizeof (struct file_stack_entry));
+  ep = XOBNEW (&file_stack_obstack, struct file_stack_entry);
   ep->value = p;
   ep->next = file_stack;
   file_stack = ep;
@@ -299,7 +297,7 @@ frob_extension (const char *s, const char *ext)
     p = s + strlen (s);
 
   obstack_grow (&temporary_obstack, s, p - s);
-  return obstack_copy0 (&temporary_obstack, ext, strlen (ext));
+  return (char *) obstack_copy0 (&temporary_obstack, ext, strlen (ext));
 }
 
 static char *
@@ -311,7 +309,7 @@ obstack_fgets (FILE *stream, struct obstack *ob)
   if (obstack_object_size (ob) == 0)
     return NULL;
   obstack_1grow (ob, '\0');
-  return obstack_finish (ob);
+  return XOBFINISH (ob, char *);
 }
 
 static char *
@@ -528,7 +526,7 @@ recompile_files (void)
     done:
       obstack_ptr_grow (&temporary_obstack, f->main);
       obstack_ptr_grow (&temporary_obstack, NULL);
-      argv = obstack_finish (&temporary_obstack);
+      argv = XOBFINISH (&temporary_obstack, char **);
 
       if (tlink_verbose)
 	fprintf (stderr, _("collect: recompiling %s\n"), f->main);
@@ -607,12 +605,20 @@ scan_linker_output (const char *fname)
 {
   FILE *stream = fopen (fname, "r");
   char *line;
+  int skip_next_in_line = 0;
 
   while ((line = tfgets (stream)) != NULL)
     {
       char *p = line, *q;
       symbol *sym;
       int end;
+      int ok = 0;
+
+      /* On darwin9, we might have to skip " in " lines as well.  */
+      if (skip_next_in_line
+	  && strstr (p, " in "))
+	  continue;
+      skip_next_in_line = 0;
 
       while (*p && ISSPACE ((unsigned char) *p))
 	++p;
@@ -650,9 +656,24 @@ scan_linker_output (const char *fname)
       if (! sym && ! end)
 	/* Try a mangled name in quotes.  */
 	{
-	  const char *oldq = q + 1;
+	  char *oldq = q + 1;
 	  demangled *dem = 0;
 	  q = 0;
+
+	  /* On darwin9, we look for "foo" referenced from:\n\(.* in .*\n\)*  */
+	  if (strcmp (oldq, "referenced from:") == 0)
+	    {
+	      /* We have to remember that we found a symbol to tweak.  */
+	      ok = 1;
+
+	      /* We actually want to start from the first word on the
+		 line.  */
+	      oldq = p;
+
+	      /* Since the format is multiline, we have to skip
+		 following lines with " in ".  */
+	      skip_next_in_line = 1;
+	    }
 
 	  /* First try `GNU style'.  */
 	  p = strchr (oldq, '`');
@@ -661,6 +682,9 @@ scan_linker_output (const char *fname)
 	  /* Then try "double quotes".  */
 	  else if (p = strchr (oldq, '"'), p)
 	    p++, q = strchr (p, '"');
+	  /* Then try 'single quotes'.  */
+	  else if (p = strchr (oldq, '\''), p)
+	    p++, q = strchr (p, '\'');
 	  else {
 	    /* Then try entire line.  */
 	    q = strchr (oldq, 0);
@@ -681,7 +705,8 @@ scan_linker_output (const char *fname)
 
 	  /* We need to check for certain error keywords here, or we would
 	     mistakenly use GNU ld's "In function `foo':" message.  */
-	  if (q && (strstr (oldq, "ndefined")
+	  if (q && (ok
+		    || strstr (oldq, "ndefined")
 		    || strstr (oldq, "nresolved")
 		    || strstr (oldq, "nsatisfied")
 		    || strstr (oldq, "ultiple")))

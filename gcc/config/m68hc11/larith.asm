@@ -23,8 +23,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
 /* As a special exception, if you link this library with other files,
    some of which are compiled with GCC, to produce an executable,
@@ -32,8 +32,6 @@ Boston, MA 02111-1307, USA.  */
    to be covered by the GNU General Public License.
    This exception does not however invalidate any other reasons why
    the executable file might be covered by the GNU General Public License.  */
-
-	.file "larith.asm"
 
 #ifdef __HAVE_SHORT_INT__
 	.mode mshort
@@ -804,7 +802,7 @@ AB_neg:
 #else
 #ifdef NO_TMP
 	;
-	; 16 bit multiplication without temp memory location.
+	; 16-bit multiplication without temp memory location.
 	; (smaller but slower)
 	;
 	pshx			; (4)

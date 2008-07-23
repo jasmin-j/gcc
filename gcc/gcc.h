@@ -1,11 +1,11 @@
 /* Header file for modules that link with gcc.c
-   Copyright (C) 1999, 2000, 2001, 2003, 2004 Free Software Foundation, Inc.
+   Copyright (C) 1999, 2000, 2001, 2003, 2004, 2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -14,9 +14,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_GCC_H
 #define GCC_GCC_H
@@ -36,9 +35,9 @@ struct spec_function
 #define DEFAULT_SWITCH_TAKES_ARG(CHAR) \
   ((CHAR) == 'D' || (CHAR) == 'U' || (CHAR) == 'o' \
    || (CHAR) == 'e' || (CHAR) == 'T' || (CHAR) == 'u' \
-   || (CHAR) == 'I' || (CHAR) == 'm' || (CHAR) == 'x' \
-   || (CHAR) == 'L' || (CHAR) == 'A' || (CHAR) == 'V' \
-   || (CHAR) == 'B' || (CHAR) == 'b')
+   || (CHAR) == 'I' || (CHAR) == 'J' || (CHAR) == 'm' \
+   || (CHAR) == 'x' || (CHAR) == 'L' || (CHAR) == 'A' \
+   || (CHAR) == 'V' || (CHAR) == 'B' || (CHAR) == 'b')
 
 /* This defines which multi-letter switches take arguments.  */
 
@@ -51,7 +50,8 @@ struct spec_function
   || !strcmp (STR, "iquote") || !strcmp (STR, "isystem") \
   || !strcmp (STR, "isysroot") \
   || !strcmp (STR, "-param") || !strcmp (STR, "specs") \
-  || !strcmp (STR, "MF") || !strcmp (STR, "MT") || !strcmp (STR, "MQ"))
+  || !strcmp (STR, "MF") || !strcmp (STR, "MT") || !strcmp (STR, "MQ") \
+  || !strcmp (STR, "fintrinsic-modules-path"))
 
 
 /* These are exported by gcc.c.  */
@@ -74,9 +74,6 @@ extern int n_infiles;
 
 /* Number of extra output files that lang_specific_pre_link may generate.  */
 extern int lang_specific_extra_outfiles;
-
-/* Table of language-specific spec functions.  */
-extern const struct spec_function lang_specific_spec_functions[];
 
 /* A vector of corresponding output files is made up later.  */
 

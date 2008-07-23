@@ -1,13 +1,15 @@
 /* { dg-do run } */
 /* { dg-require-effective-target sync_int_long } */
 /* { dg-options } */
-/* { dg-options "-march=i486" { target i?86-*-* } } */
-/* { dg-options "-march=i486" { target { x86_64-*-* && ilp32 } } } */
+/* { dg-options "-march=i486" { target { { i?86-*-* x86_64-*-* } && ilp32 } } } */
+/* { dg-options "-mcpu=v9" { target sparc*-*-* } } */
 
 /* Test basic functionality of the intrinsics.  */
 
+__extension__ typedef __SIZE_TYPE__ size_t;
+
 extern void abort (void);
-extern void *memcpy (void *, const void *, __SIZE_TYPE__);
+extern void *memcpy (void *, const void *, size_t);
 
 static int AI[18];
 static int init_si[18] = { 0,0,0,1,0,0,0,0,-1,0,0,0,0,0,-1,0,0,0 };

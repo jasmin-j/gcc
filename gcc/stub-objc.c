@@ -1,14 +1,14 @@
 /* Stub functions for Objective-C and Objective-C++ routines
    that are called from within the C and C++ front-ends,
    respectively.
-   Copyright (C) 1991, 1995, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 1991, 1995, 1997, 1998, 1999, 2000, 2001, 2002, 2003,
+   2004, 2005, 2007  Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -17,9 +17,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -63,11 +62,28 @@ objc_is_reserved_word (tree ARG_UNUSED (ident))
   return 0;
 }
 
-int
-objc_comptypes (tree ARG_UNUSED (lhs), tree ARG_UNUSED (rhs),
-                int ARG_UNUSED (reflexive))
+bool
+objc_compare_types (tree ARG_UNUSED (ltyp), tree ARG_UNUSED (rtyp),
+		    int ARG_UNUSED (argno), tree ARG_UNUSED (callee))
 {
-  return -1;
+  return false;
+}
+
+void
+objc_volatilize_decl (tree ARG_UNUSED (decl))
+{
+}
+
+bool
+objc_type_quals_match (tree ARG_UNUSED (ltyp), tree ARG_UNUSED (rtyp))
+{
+  return false;
+}
+
+tree
+objc_rewrite_function_call (tree function, tree ARG_UNUSED (params))
+{
+  return function;
 }
 
 tree
@@ -180,7 +196,7 @@ objc_finish_method_definition (tree ARG_UNUSED (fndecl))
 
 tree
 objc_build_keyword_decl (tree ARG_UNUSED (selector),
-			 tree ARG_UNUSED (typename),
+			 tree ARG_UNUSED (type),
 			 tree ARG_UNUSED (identifier))
 {
   return 0;
@@ -257,21 +273,22 @@ objc_is_public (tree ARG_UNUSED (expr), tree ARG_UNUSED (identifier))
 }
 
 tree
-objc_get_class_ivars (tree ARG_UNUSED (class_name))
+objc_get_class_ivars (tree ARG_UNUSED (name))
 {
   return 0;
 }
 
 tree
-objc_build_throw_stmt (tree ARG_UNUSED (throw_expr))
+objc_build_throw_stmt (tree ARG_UNUSED (expr))
 {
   return 0;
 }
 
-void
+tree
 objc_build_synchronized (location_t ARG_UNUSED (start_locus),
 			 tree ARG_UNUSED (mutex), tree ARG_UNUSED (body))
 {
+  return 0;
 }
 
 void
@@ -295,7 +312,16 @@ objc_build_finally_clause (location_t ARG_UNUSED (finally_locus),
 {
 }
 
-void
+tree
 objc_finish_try_stmt (void)
 {
+  return 0;
 }
+
+tree
+objc_generate_write_barrier (tree ARG_UNUSED (lhs),
+			     enum tree_code ARG_UNUSED (modifycode),
+			     tree ARG_UNUSED (rhs))
+{
+  return 0;
+}  

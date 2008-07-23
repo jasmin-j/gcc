@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -58,7 +58,7 @@ import java.nio.channels.FileChannel;
  * @author Aaron M. Renn (arenn@urbanophile.com)
  * @author Tom Tromey (tromey@cygnus.com)
  */
-public class RandomAccessFile implements DataOutput, DataInput
+public class RandomAccessFile implements DataOutput, DataInput, Closeable
 {
 
   // The underlying file.
@@ -86,12 +86,49 @@ public class RandomAccessFile implements DataOutput, DataInput
    * illegal value
    * @exception SecurityException If the requested access to the file 
    * is not allowed
-   * @exception IOException If any other error occurs
+   * @exception FileNotFoundException If the file is a directory, or 
+   * any other error occurs
    */
   public RandomAccessFile (File file, String mode)
     throws FileNotFoundException
   {
-    this (file.getPath(), mode);
+    int fdmode;
+    if (mode.equals("r"))
+      fdmode = FileChannelImpl.READ;
+    else if (mode.equals("rw"))
+      fdmode = FileChannelImpl.READ | FileChannelImpl.WRITE;
+    else if (mode.equals("rws"))
+      {
+	fdmode = (FileChannelImpl.READ | FileChannelImpl.WRITE
+		  | FileChannelImpl.SYNC);
+      }
+    else if (mode.equals("rwd"))
+      {
+	fdmode = (FileChannelImpl.READ | FileChannelImpl.WRITE
+		  | FileChannelImpl.DSYNC);
+      }
+    else
+      throw new IllegalArgumentException ("invalid mode: " + mode);
+
+    final String fileName = file.getPath();
+
+    // The obligatory SecurityManager stuff
+    SecurityManager s = System.getSecurityManager();
+    if (s != null)
+      {
+        s.checkRead(fileName);
+
+        if ((fdmode & FileChannelImpl.WRITE) != 0)
+          s.checkWrite(fileName);
+      }
+
+    ch = FileChannelImpl.create(file, fdmode);
+    fd = new FileDescriptor(ch);
+    if ((fdmode & FileChannelImpl.WRITE) != 0)
+      out = new DataOutputStream (new FileOutputStream (fd));
+    else
+      out = null;
+    in = new DataInputStream (new FileInputStream (fd));
   }
 
   /**
@@ -113,43 +150,13 @@ public class RandomAccessFile implements DataOutput, DataInput
    * illegal value
    * @exception SecurityException If the requested access to the file 
    * is not allowed
-   * @exception FileNotFoundException If any other error occurs
+   * @exception FileNotFoundException If the file is a directory or 
+   * any other error occurs
    */
   public RandomAccessFile (String fileName, String mode)
     throws FileNotFoundException
   {
-    int fdmode;
-    if (mode.equals("r"))
-      fdmode = FileChannelImpl.READ;
-    else if (mode.equals("rw"))
-      fdmode = FileChannelImpl.READ | FileChannelImpl.WRITE;
-    else if (mode.equals("rws"))
-      {
-	fdmode = (FileChannelImpl.READ | FileChannelImpl.WRITE
-		  | FileChannelImpl.SYNC);
-      }
-    else if (mode.equals("rwd"))
-      {
-	fdmode = (FileChannelImpl.READ | FileChannelImpl.WRITE
-		  | FileChannelImpl.DSYNC);
-      }
-    else
-      throw new IllegalArgumentException ("invalid mode: " + mode);
-
-    // The obligatory SecurityManager stuff
-    SecurityManager s = System.getSecurityManager();
-    if (s != null)
-      {
-        s.checkRead(fileName);
-
-        if ((fdmode & FileChannelImpl.WRITE) != 0)
-          s.checkWrite(fileName);
-      }
-
-    ch = new FileChannelImpl (fileName, fdmode);
-    fd = new FileDescriptor(ch);
-    out = new DataOutputStream (new FileOutputStream (fd));
-    in = new DataInputStream (new FileInputStream (fd));
+    this (new File(fileName), mode);
   }
 
   /**
@@ -762,6 +769,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public void write (int oneByte) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.write(oneByte);
   }
 
@@ -773,6 +783,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public void write (byte[] buffer) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.write(buffer);
   }
 
@@ -788,6 +801,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public void write (byte[] buffer, int offset, int len) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.write (buffer, offset, len);
   }
 
@@ -802,6 +818,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public final void writeBoolean (boolean val) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.writeBoolean(val);
   }
 
@@ -816,6 +835,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public final void writeByte (int val) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.writeByte(val);
   }
 
@@ -830,6 +852,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public final void writeShort (int val) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.writeShort(val);
   }
 
@@ -844,6 +869,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public final void writeChar (int val) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.writeChar(val);
   }
 
@@ -857,6 +885,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public final void writeInt (int val) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.writeInt(val);
   }
 
@@ -870,6 +901,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public final void writeLong (long val) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.writeLong(val);
   }
 
@@ -889,6 +923,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public final void writeFloat (float val) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.writeFloat(val);
   }
 
@@ -909,6 +946,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public final void writeDouble (double val) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.writeDouble(val);
   }
 
@@ -923,6 +963,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public final void writeBytes (String val) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.writeBytes(val);
   }
   
@@ -937,6 +980,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public final void writeChars (String val) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.writeChars(val);
   }
   
@@ -971,6 +1017,9 @@ public class RandomAccessFile implements DataOutput, DataInput
    */
   public final void writeUTF (String val) throws IOException
   {
+    if (out == null)
+      throw new IOException("Bad file descriptor");
+
     out.writeUTF(val);
   }
   

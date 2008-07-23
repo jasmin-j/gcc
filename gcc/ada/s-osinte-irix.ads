@@ -1,13 +1,13 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                   S Y S T E M . O S _ I N T E R F A C E                  --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
 --             Copyright (C) 1991-1994, Florida State University            --
---             Copyright (C) 1995-2004, Free Software Foundation, Inc.      --
+--          Copyright (C) 1995-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +17,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -34,14 +34,15 @@
 
 --  This is the SGI Pthreads version of this package
 
---  This package encapsulates all direct interfaces to OS services
---  that are needed by children of System.
+--  This package encapsulates all direct interfaces to OS services that are
+--  needed by the tasking run-time (libgnarl).
 
 --  PLEASE DO NOT add any with-clauses to this package or remove the pragma
 --  Preelaborate. This package is designed to be a bottom-level (leaf) package.
 
+with Ada.Unchecked_Conversion;
+
 with Interfaces.C;
-with Unchecked_Conversion;
 
 package System.OS_Interface is
 
@@ -119,7 +120,7 @@ package System.OS_Interface is
    SIGCKPT    : constant := 33; --  Checkpoint warning
    SIGRESTART : constant := 34; --  Restart warning
    SIGUME     : constant := 35; --  Uncorrectable memory error
-   --  Signals defined for Posix 1003.1c.
+   --  Signals defined for Posix 1003.1c
    SIGPTINTR    : constant := 47;
    SIGPTRESCHED : constant := 48;
    --  Posix 1003.1b signals
@@ -127,7 +128,6 @@ package System.OS_Interface is
    SIGRTMAX   : constant := 64; --  Posix 1003.1b signals
 
    type sigset_t is private;
-   type sigset_t_ptr is access all sigset_t;
 
    function sigaddset (set : access sigset_t; sig : Signal) return int;
    pragma Import (C, sigaddset, "sigaddset");
@@ -244,9 +244,10 @@ package System.OS_Interface is
 
    type Thread_Body is access
      function (arg : System.Address) return System.Address;
+   pragma Convention (C, Thread_Body);
 
    function Thread_Body_Access is new
-     Unchecked_Conversion (System.Address, Thread_Body);
+     Ada.Unchecked_Conversion (System.Address, Thread_Body);
 
    type pthread_t           is private;
    subtype Thread_Id        is pthread_t;
@@ -259,6 +260,13 @@ package System.OS_Interface is
    type pthread_key_t       is private;
 
    PTHREAD_CREATE_DETACHED : constant := 1;
+
+   -----------
+   -- Stack --
+   -----------
+
+   Alternate_Stack_Size : constant := 0;
+   --  No alternate signal stack is used on this platform
 
    ---------------------------------------
    -- Nonstandard Thread Initialization --
@@ -284,8 +292,8 @@ package System.OS_Interface is
 
    function pthread_sigmask
      (how  : int;
-      set  : sigset_t_ptr;
-      oset : sigset_t_ptr) return int;
+      set  : access sigset_t;
+      oset : access sigset_t) return int;
    pragma Import (C, pthread_sigmask, "pthread_sigmask");
 
    --------------------------
@@ -446,6 +454,7 @@ package System.OS_Interface is
    pragma Import (C, pthread_getspecific, "pthread_getspecific");
 
    type destructor_pointer is access procedure (arg : System.Address);
+   pragma Convention (C, destructor_pointer);
 
    function pthread_key_create
      (key        : access pthread_key_t;

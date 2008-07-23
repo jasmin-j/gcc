@@ -1,6 +1,6 @@
 // jni.cc - JNI implementation, including the jump table.
 
-/* Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005
+/* Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
    Free Software Foundation
 
    This file is part of libgcj.
@@ -22,7 +22,10 @@ details.  */
 #ifdef ENABLE_JVMPI
 #include <jvmpi.h>
 #endif
-
+#ifdef INTERPRETER
+#include <jvmti.h>
+#include "jvmti-int.h"
+#endif
 #include <java/lang/Class.h>
 #include <java/lang/ClassLoader.h>
 #include <java/lang/Throwable.h>
@@ -67,8 +70,8 @@ enum invocation_type
 };
 
 // Forward declarations.
-extern struct JNINativeInterface _Jv_JNIFunctions;
-extern struct JNIInvokeInterface _Jv_JNI_InvokeFunctions;
+extern struct JNINativeInterface_ _Jv_JNIFunctions;
+extern struct JNIInvokeInterface_ _Jv_JNI_InvokeFunctions;
 
 // Number of slots in the default frame.  The VM must allow at least
 // 16.
@@ -84,15 +87,17 @@ extern struct JNIInvokeInterface _Jv_JNI_InvokeFunctions;
 // This structure is used to keep track of local references.
 struct _Jv_JNI_LocalFrame
 {
-  // This is true if this frame object represents a pushed frame (eg
-  // from PushLocalFrame).
-  int marker;
+  // This is one of the MARK_ constants.
+  unsigned char marker;
 
   // Flag to indicate some locals were allocated.
-  int allocated_p;
+  bool allocated_p;
 
   // Number of elements in frame.
   int size;
+
+  // The class loader of the JNI method that allocated this frame.
+  ::java::lang::ClassLoader *loader;
 
   // Next frame in chain.
   _Jv_JNI_LocalFrame *next;
@@ -107,7 +112,7 @@ static java::util::IdentityHashMap *local_ref_table;
 static java::util::IdentityHashMap *global_ref_table;
 
 // The only VM.
-static JavaVM *the_vm;
+JavaVM *_Jv_the_vm;
 
 #ifdef ENABLE_JVMPI
 // The only JVMPI interface description.
@@ -226,6 +231,12 @@ unwrap (T *obj)
   return reinterpret_cast<T *> (wr->get ());
 }
 
+jobject
+_Jv_UnwrapJNIweakReference (jobject obj)
+{
+  return unwrap (obj);
+}
+
 
 
 static jobject JNICALL
@@ -242,6 +253,12 @@ _Jv_JNI_DeleteGlobalRef (JNIEnv *, jobject obj)
 {
   // This seems weird but I think it is correct.
   obj = unwrap (obj);
+  
+  // NULL is ok here -- the JNI specification doesn't say so, but this
+  // is a no-op.
+  if (! obj)
+    return;
+
   unmark_for_gc (obj, global_ref_table);
 }
 
@@ -252,6 +269,11 @@ _Jv_JNI_DeleteLocalRef (JNIEnv *env, jobject obj)
 
   // This seems weird but I think it is correct.
   obj = unwrap (obj);
+
+  // NULL is ok here -- the JNI specification doesn't say so, but this
+  // is a no-op.
+  if (! obj)
+    return;
 
   for (frame = env->locals; frame != NULL; frame = frame->next)
     {
@@ -293,8 +315,9 @@ _Jv_JNI_EnsureLocalCapacity (JNIEnv *env, jint size)
 
   frame->marker = MARK_NONE;
   frame->size = size;
-  frame->allocated_p = 0;
+  frame->allocated_p = false;
   memset (&frame->vec[0], 0, size * sizeof (jobject));
+  frame->loader = env->locals->loader;
   frame->next = env->locals;
   env->locals = frame;
 
@@ -332,7 +355,7 @@ _Jv_JNI_NewLocalRef (JNIEnv *env, jobject obj)
 	      set = true;
 	      done = true;
 	      frame->vec[i] = obj;
-	      frame->allocated_p = 1;
+	      frame->allocated_p = true;
 	      break;
 	    }
 	}
@@ -350,7 +373,7 @@ _Jv_JNI_NewLocalRef (JNIEnv *env, jobject obj)
       _Jv_JNI_EnsureLocalCapacity (env, 16);
       // We know the first element of the new frame will be ok.
       env->locals->vec[0] = obj;
-      env->locals->allocated_p = 1;
+      env->locals->allocated_p = true;
     }
 
   mark_for_gc (obj, local_ref_table);
@@ -379,7 +402,7 @@ _Jv_JNI_PopLocalFrame (JNIEnv *env, jobject result, int stop)
 	{
 	  if (rf->allocated_p)
 	    memset (&rf->vec[0], 0, rf->size * sizeof (jobject));
-	  rf->allocated_p = 0;
+	  rf->allocated_p = false;
 	  rf = NULL;
 	  break;
 	}
@@ -430,13 +453,17 @@ _Jv_JNI_PopSystemFrame (JNIEnv *env)
     _Jv_JNI_PopLocalFrame (env, NULL, MARK_SYSTEM);
   else
     env->locals = NULL;
-  
+
+#ifdef INTERPRETER
   if (__builtin_expect (env->ex != NULL, false))
     {
       jthrowable t = env->ex;
       env->ex = NULL;
+      if (JVMTI_REQUESTED_EVENT (Exception))
+	_Jv_ReportJVMTIExceptionThrow (t);
       throw t;
     }
+#endif
 }
 
 template<typename T> T extract_from_jvalue(jvalue const & t);
@@ -523,8 +550,8 @@ _Jv_JNI_FindClass (JNIEnv *env, const char *name)
       jstring n = JvNewStringUTF (s);
 
       java::lang::ClassLoader *loader = NULL;
-      if (env->klass != NULL)
-	loader = env->klass->getClassLoaderInternal ();
+      if (env->locals->loader != NULL)
+	loader = env->locals->loader;
 
       if (loader == NULL)
 	{
@@ -534,6 +561,7 @@ _Jv_JNI_FindClass (JNIEnv *env, const char *name)
 	}
 
       r = loader->loadClass (n);
+      _Jv_InitClass (r);
     }
   catch (jthrowable t)
     {
@@ -552,7 +580,7 @@ _Jv_JNI_GetSuperclass (JNIEnv *env, jclass clazz)
 static jboolean JNICALL
 _Jv_JNI_IsAssignableFrom (JNIEnv *, jclass clazz1, jclass clazz2)
 {
-  return unwrap (clazz1)->isAssignableFrom (unwrap (clazz2));
+  return unwrap (clazz2)->isAssignableFrom (unwrap (clazz1));
 }
 
 static jint JNICALL
@@ -729,7 +757,8 @@ _Jv_JNI_GetAnyMethodID (JNIEnv *env, jclass clazz,
 
       java::lang::StringBuffer *name_sig =
         new java::lang::StringBuffer (JvNewStringUTF (name));
-      name_sig->append ((jchar) ' ')->append (JvNewStringUTF (s));
+      name_sig->append ((jchar) ' ');
+      name_sig->append (JvNewStringUTF (s));
       env->ex = new java::lang::NoSuchMethodError (name_sig->toString ());
     }
   catch (jthrowable t)
@@ -844,7 +873,7 @@ _Jv_JNI_CallAnyMethod (JNIEnv *env, jobject obj, jclass klass,
 template<typename T, invocation_type style>
 static T JNICALL
 _Jv_JNI_CallAnyMethodA (JNIEnv *env, jobject obj, jclass klass,
-			jmethodID id, jvalue *args)
+			jmethodID id, const jvalue *args)
 {
   obj = unwrap (obj);
   klass = unwrap (klass);
@@ -941,7 +970,7 @@ _Jv_JNI_CallAnyVoidMethod (JNIEnv *env, jobject obj, jclass klass,
 template<invocation_type style>
 static void JNICALL
 _Jv_JNI_CallAnyVoidMethodA (JNIEnv *env, jobject obj, jclass klass,
-			    jmethodID id, jvalue *args)
+			    jmethodID id, const jvalue *args)
 {
   jclass decl_class = klass ? klass : obj->getClass ();
   JvAssert (decl_class != NULL);
@@ -1006,7 +1035,7 @@ _Jv_JNI_CallMethod (JNIEnv *env, jobject obj, jmethodID id, ...)
 template<typename T>
 static T JNICALL
 _Jv_JNI_CallMethodA (JNIEnv *env, jobject obj, 
-		     jmethodID id, jvalue *args)
+		     jmethodID id, const jvalue *args)
 {
   return _Jv_JNI_CallAnyMethodA<T, normal> (env, obj, NULL, id, args);
 }
@@ -1030,7 +1059,7 @@ _Jv_JNI_CallVoidMethod (JNIEnv *env, jobject obj, jmethodID id, ...)
 
 static void JNICALL
 _Jv_JNI_CallVoidMethodA (JNIEnv *env, jobject obj, 
-			 jmethodID id, jvalue *args)
+			 jmethodID id, const jvalue *args)
 {
   _Jv_JNI_CallAnyVoidMethodA<normal> (env, obj, NULL, id, args);
 }
@@ -1074,7 +1103,7 @@ _Jv_JNI_CallStaticMethod (JNIEnv *env, jclass klass,
 template<typename T>
 static T JNICALL
 _Jv_JNI_CallStaticMethodA (JNIEnv *env, jclass klass, jmethodID id,
-			   jvalue *args)
+			   const jvalue *args)
 {
   JvAssert (((id->accflags) & java::lang::reflect::Modifier::STATIC));
   JvAssert (java::lang::Class::class$.isInstance (unwrap (klass)));
@@ -1102,7 +1131,7 @@ _Jv_JNI_CallStaticVoidMethod (JNIEnv *env, jclass klass,
 
 static void JNICALL
 _Jv_JNI_CallStaticVoidMethodA (JNIEnv *env, jclass klass, 
-			       jmethodID id, jvalue *args)
+			       jmethodID id, const jvalue *args)
 {
   _Jv_JNI_CallAnyVoidMethodA<static_type> (env, NULL, klass, id, args);
 }
@@ -1112,10 +1141,10 @@ _Jv_JNI_NewObjectV (JNIEnv *env, jclass klass,
 		    jmethodID id, va_list args)
 {
   JvAssert (klass && ! klass->isArray ());
-  JvAssert (! strcmp (id->name->data, "<init>")
-	    && id->signature->length > 2
-	    && id->signature->data[0] == '('
-	    && ! strcmp (&id->signature->data[id->signature->length - 2],
+  JvAssert (! strcmp (id->name->chars(), "<init>")
+	    && id->signature->len() > 2
+	    && id->signature->chars()[0] == '('
+	    && ! strcmp (&id->signature->chars()[id->signature->len() - 2],
 			 ")V"));
 
   return _Jv_JNI_CallAnyMethodV<jobject, constructor> (env, NULL, klass,
@@ -1126,10 +1155,10 @@ static jobject JNICALL
 _Jv_JNI_NewObject (JNIEnv *env, jclass klass, jmethodID id, ...)
 {
   JvAssert (klass && ! klass->isArray ());
-  JvAssert (! strcmp (id->name->data, "<init>")
-	    && id->signature->length > 2
-	    && id->signature->data[0] == '('
-	    && ! strcmp (&id->signature->data[id->signature->length - 2],
+  JvAssert (! strcmp (id->name->chars(), "<init>")
+	    && id->signature->len() > 2
+	    && id->signature->chars()[0] == '('
+	    && ! strcmp (&id->signature->chars()[id->signature->len() - 2],
 			 ")V"));
 
   va_list args;
@@ -1145,13 +1174,13 @@ _Jv_JNI_NewObject (JNIEnv *env, jclass klass, jmethodID id, ...)
 
 static jobject JNICALL
 _Jv_JNI_NewObjectA (JNIEnv *env, jclass klass, jmethodID id,
-		    jvalue *args)
+		    const jvalue *args)
 {
   JvAssert (klass && ! klass->isArray ());
-  JvAssert (! strcmp (id->name->data, "<init>")
-	    && id->signature->length > 2
-	    && id->signature->data[0] == '('
-	    && ! strcmp (&id->signature->data[id->signature->length - 2],
+  JvAssert (! strcmp (id->name->chars(), "<init>")
+	    && id->signature->len() > 2
+	    && id->signature->chars()[0] == '('
+	    && ! strcmp (&id->signature->chars()[id->signature->len() - 2],
 			 ")V"));
 
   return _Jv_JNI_CallAnyMethodA<jobject, constructor> (env, NULL, klass,
@@ -1200,11 +1229,11 @@ _Jv_JNI_GetAnyFieldID (JNIEnv *env, jclass clazz,
       char s[len + 1];
       for (int i = 0; i <= len; ++i)
 	s[i] = (sig[i] == '/') ? '.' : sig[i];
-      jclass field_class = _Jv_FindClassFromSignature ((char *) s, NULL);
+      java::lang::ClassLoader *loader = clazz->getClassLoaderInternal ();
+      jclass field_class = _Jv_FindClassFromSignature ((char *) s, loader);
       if (! field_class)
 	throw new java::lang::ClassNotFoundException(JvNewStringUTF(s));
 
-      java::lang::ClassLoader *loader = clazz->getClassLoaderInternal ();
       while (clazz != NULL)
 	{
 	  // We acquire the class lock so that fields aren't resolved
@@ -1303,6 +1332,9 @@ _Jv_JNI_NewStringUTF (JNIEnv *env, const char *bytes)
 {
   try
     {
+      // For compatibility with the JDK.
+      if (!bytes)
+	return NULL;
       jstring result = JvNewStringUTF (bytes);
       return (jstring) wrap_value (env, result);
     }
@@ -1548,7 +1580,7 @@ _Jv_JNI_GetPrimitiveArrayRegion (JNIEnv *env, JArray<T> *array,
 template<typename T, jclass K>
 static void JNICALL
 _Jv_JNI_SetPrimitiveArrayRegion (JNIEnv *env, JArray<T> *array,
-				 jsize start, jsize len, T *buf)
+				 jsize start, jsize len, const T *buf)
 {
   array = unwrap (array);
   if (! _Jv_JNI_check_types (env, array, K))
@@ -1728,6 +1760,10 @@ _Jv_JNI_NewWeakGlobalRef (JNIEnv *env, jobject obj)
 void JNICALL
 _Jv_JNI_DeleteWeakGlobalRef (JNIEnv *, jweak obj)
 {
+  // JDK compatibility.
+  if (obj == NULL)
+    return;
+
   using namespace gnu::gcj::runtime;
   JNIWeakRef *ref = reinterpret_cast<JNIWeakRef *> (obj);
   unmark_for_gc (ref, global_ref_table);
@@ -1769,10 +1805,22 @@ _Jv_JNI_GetDirectBufferCapacity (JNIEnv *, jobject buffer)
   return tmp->capacity();
 }
 
+static jobjectRefType JNICALL
+_Jv_JNI_GetObjectRefType (JNIEnv *, jobject object)
+{
+  JvFail("GetObjectRefType not implemented");
+  return JNIInvalidRefType;
+}
+
 
 
+struct NativeMethodCacheEntry : public JNINativeMethod
+{
+  char *className;
+};
+
 // Hash table of native methods.
-static JNINativeMethod *nathash;
+static NativeMethodCacheEntry *nathash;
 // Number of slots used.
 static int nathash_count = 0;
 // Number of slots available.  Must be power of 2.
@@ -1782,10 +1830,14 @@ static int nathash_size = 0;
 
 // Compute a hash value for a native method descriptor.
 static int
-hash (const JNINativeMethod *method)
+hash (const NativeMethodCacheEntry *method)
 {
   char *ptr;
   int hash = 0;
+
+  ptr = method->className;
+  while (*ptr)
+    hash = (31 * hash) + *ptr++;
 
   ptr = method->name;
   while (*ptr)
@@ -1799,8 +1851,8 @@ hash (const JNINativeMethod *method)
 }
 
 // Find the slot where a native method goes.
-static JNINativeMethod *
-nathash_find_slot (const JNINativeMethod *method)
+static NativeMethodCacheEntry *
+nathash_find_slot (const NativeMethodCacheEntry *method)
 {
   jint h = hash (method);
   int step = (h ^ (h >> 16)) | 1;
@@ -1809,7 +1861,7 @@ nathash_find_slot (const JNINativeMethod *method)
 
   for (;;)
     {
-      JNINativeMethod *slotp = &nathash[w];
+      NativeMethodCacheEntry *slotp = &nathash[w];
       if (slotp->name == NULL)
 	{
 	  if (del >= 0)
@@ -1820,7 +1872,8 @@ nathash_find_slot (const JNINativeMethod *method)
       else if (slotp->name == DELETED_ENTRY)
 	del = w;
       else if (! strcmp (slotp->name, method->name)
-	       && ! strcmp (slotp->signature, method->signature))
+	       && ! strcmp (slotp->signature, method->signature)
+	       && ! strcmp (slotp->className, method->className))
 	return slotp;
       w = (w + step) & (nathash_size - 1);
     }
@@ -1828,11 +1881,11 @@ nathash_find_slot (const JNINativeMethod *method)
 
 // Find a method.  Return NULL if it isn't in the hash table.
 static void *
-nathash_find (JNINativeMethod *method)
+nathash_find (NativeMethodCacheEntry *method)
 {
   if (nathash == NULL)
     return NULL;
-  JNINativeMethod *slot = nathash_find_slot (method);
+  NativeMethodCacheEntry *slot = nathash_find_slot (method);
   if (slot->name == NULL || slot->name == DELETED_ENTRY)
     return NULL;
   return slot->fnPtr;
@@ -1845,25 +1898,23 @@ natrehash ()
     {
       nathash_size = 1024;
       nathash =
-	(JNINativeMethod *) _Jv_AllocBytes (nathash_size
-					    * sizeof (JNINativeMethod));
-      memset (nathash, 0, nathash_size * sizeof (JNINativeMethod));
+	(NativeMethodCacheEntry *) _Jv_AllocBytes (nathash_size
+						   * sizeof (NativeMethodCacheEntry));
     }
   else
     {
       int savesize = nathash_size;
-      JNINativeMethod *savehash = nathash;
+      NativeMethodCacheEntry *savehash = nathash;
       nathash_size *= 2;
       nathash =
-	(JNINativeMethod *) _Jv_AllocBytes (nathash_size
-					    * sizeof (JNINativeMethod));
-      memset (nathash, 0, nathash_size * sizeof (JNINativeMethod));
+	(NativeMethodCacheEntry *) _Jv_AllocBytes (nathash_size
+						   * sizeof (NativeMethodCacheEntry));
 
       for (int i = 0; i < savesize; ++i)
 	{
 	  if (savehash[i].name != NULL && savehash[i].name != DELETED_ENTRY)
 	    {
-	      JNINativeMethod *slot = nathash_find_slot (&savehash[i]);
+	      NativeMethodCacheEntry *slot = nathash_find_slot (&savehash[i]);
 	      *slot = savehash[i];
 	    }
 	}
@@ -1871,16 +1922,17 @@ natrehash ()
 }
 
 static void
-nathash_add (const JNINativeMethod *method)
+nathash_add (const NativeMethodCacheEntry *method)
 {
   if (3 * nathash_count >= 2 * nathash_size)
     natrehash ();
-  JNINativeMethod *slot = nathash_find_slot (method);
+  NativeMethodCacheEntry *slot = nathash_find_slot (method);
   // If the slot has a real entry in it, then there is no work to do.
   if (slot->name != NULL && slot->name != DELETED_ENTRY)
     return;
-  // FIXME
+  // FIXME: memory leak?
   slot->name = strdup (method->name);
+  slot->className = strdup (method->className);
   // This was already strduped in _Jv_JNI_RegisterNatives.
   slot->signature = method->signature;
   slot->fnPtr = method->fnPtr;
@@ -1896,7 +1948,7 @@ _Jv_JNI_RegisterNatives (JNIEnv *env, jclass klass,
   // the nathash table.
   JvSynchronize sync (global_ref_table);
 
-  JNINativeMethod dottedMethod;
+  NativeMethodCacheEntry dottedMethod;
 
   // Look at each descriptor given us, and find the corresponding
   // method in the class.
@@ -1912,8 +1964,11 @@ _Jv_JNI_RegisterNatives (JNIEnv *env, jclass klass,
 	  // Copy this JNINativeMethod and do a slash to dot
 	  // conversion on the signature.
 	  dottedMethod.name = methods[j].name;
+	  // FIXME: we leak a little memory here if the method
+	  // is not found.
 	  dottedMethod.signature = strdup (methods[j].signature);
 	  dottedMethod.fnPtr = methods[j].fnPtr;
+	  dottedMethod.className = _Jv_GetClassNameUtf8 (klass)->chars();
 	  char *c = dottedMethod.signature;
 	  while (*c)
 	    {
@@ -2056,18 +2111,14 @@ mangled_name (jclass klass, _Jv_Utf8Const *func_name,
   buf[here] = '\0';
 }
 
-// Return the current thread's JNIEnv; if one does not exist, create
-// it.  Also create a new system frame for use.  This is `extern "C"'
-// because the compiler calls it.
-extern "C" JNIEnv *
-_Jv_GetJNIEnvNewFrame (jclass klass)
+JNIEnv *
+_Jv_GetJNIEnvNewFrameWithLoader (::java::lang::ClassLoader *loader)
 {
   JNIEnv *env = _Jv_GetCurrentJNIEnv ();
   if (__builtin_expect (env == NULL, false))
     {
       env = (JNIEnv *) _Jv_MallocUnchecked (sizeof (JNIEnv));
       env->p = &_Jv_JNIFunctions;
-      env->klass = klass;
       env->locals = NULL;
       // We set env->ex below.
 
@@ -2076,11 +2127,12 @@ _Jv_GetJNIEnvNewFrame (jclass klass)
 	_Jv_MallocUnchecked (sizeof (_Jv_JNI_LocalFrame)
 			     + (FRAME_SIZE
 				* sizeof (jobject)));
-      
+
       env->bottom_locals->marker = MARK_SYSTEM;
       env->bottom_locals->size = FRAME_SIZE;
       env->bottom_locals->next = NULL;
-      env->bottom_locals->allocated_p = 0;
+      env->bottom_locals->allocated_p = false;
+      // We set the klass field below.
       memset (&env->bottom_locals->vec[0], 0, 
 	      env->bottom_locals->size * sizeof (jobject));
 
@@ -2092,23 +2144,25 @@ _Jv_GetJNIEnvNewFrame (jclass klass)
   // built, above.
 
   if (__builtin_expect (env->locals == NULL, true))
-    env->locals = env->bottom_locals;
-
+    {
+      env->locals = env->bottom_locals;
+      env->locals->loader = loader;
+    }
   else
     {
       // Alternatively, we might be re-entering JNI, in which case we can't
       // reuse the bottom_locals frame, because it is already underneath
       // us. So we need to make a new one.
-
       _Jv_JNI_LocalFrame *frame
 	= (_Jv_JNI_LocalFrame *) _Jv_MallocUnchecked (sizeof (_Jv_JNI_LocalFrame)
 						      + (FRAME_SIZE
 							 * sizeof (jobject)));
-      
+
       frame->marker = MARK_SYSTEM;
       frame->size = FRAME_SIZE;
-      frame->allocated_p = 0;
+      frame->allocated_p = false;
       frame->next = env->locals;
+      frame->loader = loader;
 
       memset (&frame->vec[0], 0, 
 	      frame->size * sizeof (jobject));
@@ -2119,6 +2173,15 @@ _Jv_GetJNIEnvNewFrame (jclass klass)
   env->ex = NULL;
 
   return env;
+}
+
+// Return the current thread's JNIEnv; if one does not exist, create
+// it.  Also create a new system frame for use.  This is `extern "C"'
+// because the compiler calls it.
+extern "C" JNIEnv *
+_Jv_GetJNIEnvNewFrame (jclass klass)
+{
+  return _Jv_GetJNIEnvNewFrameWithLoader (klass->getClassLoaderInternal());
 }
 
 // Destroy the env's reusable resources. This is called from the thread
@@ -2156,9 +2219,10 @@ _Jv_LookupJNIMethod (jclass klass, _Jv_Utf8Const *name,
   buf[name_length] = '\0';
   strncpy (buf + name_length + 1, signature->chars (), sig_length);
   buf[name_length + sig_length + 1] = '\0';
-  JNINativeMethod meth;
+  NativeMethodCacheEntry meth;
   meth.name = buf;
   meth.signature = buf + name_length + 1;
+  meth.className = _Jv_GetClassNameUtf8(klass)->chars();
   function = nathash_find (&meth);
   if (function != NULL)
     return function;
@@ -2239,7 +2303,8 @@ _Jv_LookupJNIMethod (jclass klass, _Jv_Utf8Const *name,
 // This function is the stub which is used to turn an ordinary (CNI)
 // method call into a JNI call.
 void
-_Jv_JNIMethod::call (ffi_cif *, void *ret, ffi_raw *args, void *__this)
+_Jv_JNIMethod::call (ffi_cif *, void *ret, INTERP_FFI_RAW_TYPE *args,
+		     void *__this)
 {
   _Jv_JNIMethod* _this = (_Jv_JNIMethod *) __this;
 
@@ -2271,8 +2336,9 @@ _Jv_JNIMethod::call (ffi_cif *, void *ret, ffi_raw *args, void *__this)
       }
   }
 
-  JvAssert (_this->args_raw_size % sizeof (ffi_raw) == 0);
-  ffi_raw real_args[2 + _this->args_raw_size / sizeof (ffi_raw)];
+  JvAssert (_this->args_raw_size % sizeof (INTERP_FFI_RAW_TYPE) == 0);
+  INTERP_FFI_RAW_TYPE
+      real_args[2 + _this->args_raw_size / sizeof (INTERP_FFI_RAW_TYPE)];
   int offset = 0;
 
   // First argument is always the environment pointer.
@@ -2296,6 +2362,10 @@ _Jv_JNIMethod::call (ffi_cif *, void *ret, ffi_raw *args, void *__this)
 
   // Copy over passed-in arguments.
   memcpy (&real_args[offset], args, _this->args_raw_size);
+  
+  // Add a frame to the composite (interpreted + JNI) call stack
+  java::lang::Thread *thread = java::lang::Thread::currentThread();
+  _Jv_NativeFrame nat_frame (_this, thread);
 
   // The actual call to the JNI function.
 #if FFI_NATIVE_RAW_API
@@ -2305,6 +2375,13 @@ _Jv_JNIMethod::call (ffi_cif *, void *ret, ffi_raw *args, void *__this)
   ffi_java_raw_call (&_this->jni_cif, (void (*)()) _this->function,
 		     ret, real_args);
 #endif
+
+  // We might need to unwrap a JNI weak reference here.
+  if (_this->jni_cif.rtype == &ffi_type_pointer)
+    {
+      _Jv_value *val = (_Jv_value *) ret;
+      val->object_value = unwrap (val->object_value);
+    }
 
   if (sync != NULL)
     _Jv_MonitorExit (sync);
@@ -2341,15 +2418,18 @@ _Jv_JNI_AttachCurrentThread (JavaVM *, jstring name, void **penv,
     }
 
   // Attaching an already-attached thread is a no-op.
-  if (_Jv_GetCurrentJNIEnv () != NULL)
-    return 0;
+  JNIEnv *env = _Jv_GetCurrentJNIEnv ();
+  if (env != NULL)
+    {
+      *penv = reinterpret_cast<void *> (env);
+      return 0;
+    }
 
-  JNIEnv *env = (JNIEnv *) _Jv_MallocUnchecked (sizeof (JNIEnv));
+  env = (JNIEnv *) _Jv_MallocUnchecked (sizeof (JNIEnv));
   if (env == NULL)
     return JNI_ERR;
   env->p = &_Jv_JNIFunctions;
   env->ex = NULL;
-  env->klass = NULL;
   env->bottom_locals
     = (_Jv_JNI_LocalFrame *) _Jv_MallocUnchecked (sizeof (_Jv_JNI_LocalFrame)
 						  + (FRAME_SIZE
@@ -2361,9 +2441,10 @@ _Jv_JNI_AttachCurrentThread (JavaVM *, jstring name, void **penv,
       return JNI_ERR;
     }
 
-  env->locals->allocated_p = 0;
+  env->locals->allocated_p = false;
   env->locals->marker = MARK_SYSTEM;
   env->locals->size = FRAME_SIZE;
+  env->locals->loader = NULL;
   env->locals->next = NULL;
 
   for (int i = 0; i < env->locals->size; ++i)
@@ -2393,7 +2474,7 @@ _Jv_JNI_AttachCurrentThread (JavaVM *, jstring name, void **penv,
 }
 
 // This is the one actually used by JNI.
-static jint JNICALL
+jint JNICALL
 _Jv_JNI_AttachCurrentThread (JavaVM *vm, void **penv, void *args)
 {
   return _Jv_JNI_AttachCurrentThread (vm, NULL, penv, args, false);
@@ -2409,9 +2490,14 @@ _Jv_JNI_AttachCurrentThreadAsDaemon (JavaVM *vm, void **penv,
 static jint JNICALL
 _Jv_JNI_DestroyJavaVM (JavaVM *vm)
 {
-  JvAssert (the_vm && vm == the_vm);
+  JvAssert (_Jv_the_vm && vm == _Jv_the_vm);
 
-  JNIEnv *env;
+  union
+  {
+    JNIEnv *env;
+    void *env_p;
+  };
+
   if (_Jv_ThreadCurrent () != NULL)
     {
       jstring main_name;
@@ -2425,8 +2511,7 @@ _Jv_JNI_DestroyJavaVM (JavaVM *vm)
 	  return JNI_ERR;
 	}
 
-      jint r = _Jv_JNI_AttachCurrentThread (vm, main_name,
-					    reinterpret_cast<void **> (&env),
+      jint r = _Jv_JNI_AttachCurrentThread (vm, main_name, &env_p,
 					    NULL, false);
       if (r < 0)
 	return r;
@@ -2465,6 +2550,15 @@ _Jv_JNI_GetEnv (JavaVM *, void **penv, jint version)
     }
 #endif
 
+#ifdef INTERPRETER
+  // Handle JVMTI requests
+  if (version == JVMTI_VERSION_1_0)
+    {
+      *penv = (void *) _Jv_GetJVMTIEnv ();
+      return 0;
+    }
+#endif
+
   // FIXME: do we really want to support 1.1?
   if (version != JNI_VERSION_1_4 && version != JNI_VERSION_1_2
       && version != JNI_VERSION_1_1)
@@ -2477,82 +2571,16 @@ _Jv_JNI_GetEnv (JavaVM *, void **penv, jint version)
   return 0;
 }
 
-jint JNICALL
-JNI_GetDefaultJavaVMInitArgs (void *args)
-{
-  jint version = * (jint *) args;
-  // Here we only support 1.2 and 1.4.
-  if (version != JNI_VERSION_1_2 && version != JNI_VERSION_1_4)
-    return JNI_EVERSION;
-
-  JavaVMInitArgs *ia = reinterpret_cast<JavaVMInitArgs *> (args);
-  ia->version = JNI_VERSION_1_4;
-  ia->nOptions = 0;
-  ia->options = NULL;
-  ia->ignoreUnrecognized = true;
-
-  return 0;
-}
-
-jint JNICALL
-JNI_CreateJavaVM (JavaVM **vm, void **penv, void *args)
-{
-  JvAssert (! the_vm);
-
-  jint version = * (jint *) args;
-  // We only support 1.2 and 1.4.
-  if (version != JNI_VERSION_1_2 && version != JNI_VERSION_1_4)
-    return JNI_EVERSION;
-
-  JvVMInitArgs* vm_args = reinterpret_cast<JvVMInitArgs *> (args);
-
-  jint result = _Jv_CreateJavaVM (vm_args);
-  if (result)
-    return result;
-
-  // FIXME: synchronize
-  JavaVM *nvm = (JavaVM *) _Jv_MallocUnchecked (sizeof (JavaVM));
-  if (nvm == NULL)
-    return JNI_ERR;
-  nvm->functions = &_Jv_JNI_InvokeFunctions;
-
-  jint r =_Jv_JNI_AttachCurrentThread (nvm, penv, NULL);
-  if (r < 0)
-    return r;
-
-  the_vm = nvm;
-  *vm = the_vm;
-
-  return 0;
-}
-
-jint JNICALL
-JNI_GetCreatedJavaVMs (JavaVM **vm_buffer, jsize buf_len, jsize *n_vms)
-{
-  if (buf_len <= 0)
-    return JNI_ERR;
-
-  // We only support a single VM.
-  if (the_vm != NULL)
-    {
-      vm_buffer[0] = the_vm;
-      *n_vms = 1;
-    }
-  else
-    *n_vms = 0;
-  return 0;
-}
-
 JavaVM *
 _Jv_GetJavaVM ()
 {
   // FIXME: synchronize
-  if (! the_vm)
+  if (! _Jv_the_vm)
     {
       JavaVM *nvm = (JavaVM *) _Jv_MallocUnchecked (sizeof (JavaVM));
       if (nvm != NULL)
 	nvm->functions = &_Jv_JNI_InvokeFunctions;
-      the_vm = nvm;
+      _Jv_the_vm = nvm;
     }
 
   // If this is a Java thread, we want to make sure it has an
@@ -2560,10 +2588,10 @@ _Jv_GetJavaVM ()
   if (_Jv_ThreadCurrent () != NULL)
     {
       void *ignore;
-      _Jv_JNI_AttachCurrentThread (the_vm, &ignore, NULL);
+      _Jv_JNI_AttachCurrentThread (_Jv_the_vm, &ignore, NULL);
     }
 
-  return the_vm;
+  return _Jv_the_vm;
 }
 
 static jint JNICALL
@@ -2577,7 +2605,7 @@ _Jv_JNI_GetJavaVM (JNIEnv *, JavaVM **vm)
 
 #define RESERVED NULL
 
-struct JNINativeInterface _Jv_JNIFunctions =
+struct JNINativeInterface_ _Jv_JNIFunctions =
 {
   RESERVED,
   RESERVED,
@@ -2857,10 +2885,12 @@ struct JNINativeInterface _Jv_JNIFunctions =
 
   _Jv_JNI_NewDirectByteBuffer,		    // NewDirectByteBuffer
   _Jv_JNI_GetDirectBufferAddress,	    // GetDirectBufferAddress
-  _Jv_JNI_GetDirectBufferCapacity	    // GetDirectBufferCapacity
+  _Jv_JNI_GetDirectBufferCapacity,	    // GetDirectBufferCapacity
+
+  _Jv_JNI_GetObjectRefType		    // GetObjectRefType
 };
 
-struct JNIInvokeInterface _Jv_JNI_InvokeFunctions =
+struct JNIInvokeInterface_ _Jv_JNI_InvokeFunctions =
 {
   RESERVED,
   RESERVED,

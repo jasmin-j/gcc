@@ -1,6 +1,7 @@
 // { dg-do compile }
 
-// Copyright (C) 2003, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008 Free Software
+// Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -40,6 +41,7 @@ void test01()
   test_base io2;
   io1 = io2;
 }
-// { dg-error "within this context" "" { target *-*-* } 41 } 
-// { dg-error "is private" "" { target *-*-* } 782 } 
+// { dg-error "synthesized" "" { target *-*-* } 42 } 
+// { dg-error "within this context" "" { target *-*-* } 35 } 
+// { dg-error "is private" "" { target *-*-* } 786 } 
 // { dg-error "operator=" "" { target *-*-* } 0 } 

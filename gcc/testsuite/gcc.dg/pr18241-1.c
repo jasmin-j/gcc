@@ -1,7 +1,7 @@
 /* { dg-do run } */
 /* { dg-options "-std=gnu99 -Wall -Wextra -O1" } */ 
 
-extern void *memset (void*, int, unsigned long);
+extern void *memset (void*, int, __SIZE_TYPE__);
 extern void abort (void);
 
 struct radix_tree_root {
@@ -27,7 +27,11 @@ static inline void tag_clear(struct radix_tree_node *node, int tag, int offset)
 {
 	int nr;
 	volatile unsigned long *addr;
+#if(__SIZEOF_INT__ >= 4)	
 	int mask;
+#else
+	long mask;
+#endif
 	
 	nr = offset;
 	addr = &node->tags[tag][0];

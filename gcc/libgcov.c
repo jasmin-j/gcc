@@ -1,7 +1,7 @@
 /* Routines required for instrumenting a program.  */
 /* Compile this one with gcc.  */
 /* Copyright (C) 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001, 2002, 2003, 2004  Free Software Foundation, Inc.
+   2000, 2001, 2002, 2003, 2004, 2005  Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -26,12 +26,8 @@ for more details.
 
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
-
-/* It is incorrect to include config.h here, because this file is being
-   compiled for the target, and hence definitions concerning only the host
-   do not apply.  */
+Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301, USA.  */
 
 #include "tconfig.h"
 #include "tsystem.h"
@@ -92,8 +88,51 @@ static struct gcov_info *gcov_list;
    object file included in multiple programs.  */
 static gcov_unsigned_t gcov_crc32;
 
+/* Size of the longest file name. */
+static size_t gcov_max_filename = 0;
+
+#ifdef TARGET_POSIX_IO
+/* Make sure path component of the given FILENAME exists, create 
+   missing directories. FILENAME must be writable. 
+   Returns zero on success, or -1 if an error occurred.  */
+
 static int
-gcov_version (struct gcov_info *ptr, gcov_unsigned_t version)
+create_file_directory (char *filename)
+{
+  char *s;
+
+  for (s = filename + 1; *s != '\0'; s++)
+    if (IS_DIR_SEPARATOR(*s))
+      {
+        char sep = *s;
+	*s  = '\0';
+
+        /* Try to make directory if it doesn't already exist.  */
+        if (access (filename, F_OK) == -1
+            && mkdir (filename, 0755) == -1
+            /* The directory might have been made by another process.  */
+	    && errno != EEXIST)
+	  {
+            fprintf (stderr, "profiling:%s:Cannot create directory\n",
+		     filename);
+            *s = sep;
+	    return -1;
+	  };
+        
+	*s = sep;
+      };
+  return 0;
+}
+#endif
+
+/* Check if VERSION of the info block PTR matches libgcov one.
+   Return 1 on success, or zero in case of versions mismatch.
+   If FILENAME is not NULL, its value used for reporting purposes 
+   instead of value from the info block.  */
+   
+static int
+gcov_version (struct gcov_info *ptr, gcov_unsigned_t version,
+	      const char *filename)
 {
   if (version != GCOV_VERSION)
     {
@@ -104,7 +143,7 @@ gcov_version (struct gcov_info *ptr, gcov_unsigned_t version)
       
       fprintf (stderr,
 	       "profiling:%s:Version mismatch - expected %.4s got %.4s\n",
-	       ptr->filename, e, v);
+	       filename? filename : ptr->filename, e, v);
       return 0;
     }
   return 1;
@@ -127,6 +166,10 @@ gcov_exit (void)
   const struct gcov_ctr_info *ci_ptr;
   unsigned t_ix;
   gcov_unsigned_t c_num;
+  const char *gcov_prefix;
+  int gcov_prefix_strip = 0;
+  size_t prefix_length;
+  char *gi_filename, *gi_filename_up;
 
   memset (&all, 0, sizeof (all));
   /* Find the totals for this execution.  */
@@ -151,6 +194,35 @@ gcov_exit (void)
 	}
     }
 
+  /* Get file name relocation prefix.  Non-absolute values are ignored. */
+  gcov_prefix = getenv("GCOV_PREFIX");
+  if (gcov_prefix && IS_ABSOLUTE_PATH (gcov_prefix))
+    {
+      /* Check if the level of dirs to strip off specified. */
+      char *tmp = getenv("GCOV_PREFIX_STRIP");
+      if (tmp)
+        {
+          gcov_prefix_strip = atoi (tmp);
+          /* Do not consider negative values. */
+          if (gcov_prefix_strip < 0)
+            gcov_prefix_strip = 0;
+        }
+      
+      prefix_length = strlen(gcov_prefix);
+
+      /* Remove an unnecessary trailing '/' */
+      if (IS_DIR_SEPARATOR (gcov_prefix[prefix_length - 1]))
+	prefix_length--;
+    }
+  else
+    prefix_length = 0;
+  
+  /* Allocate and initialize the filename scratch space.  */
+  gi_filename = (char *) alloca (prefix_length + gcov_max_filename + 1);
+  if (prefix_length)
+    memcpy (gi_filename, gcov_prefix, prefix_length);
+  gi_filename_up = gi_filename + prefix_length;
+  
   /* Now merge each file.  */
   for (gi_ptr = gcov_list; gi_ptr; gi_ptr = gi_ptr->next)
     {
@@ -169,6 +241,28 @@ gcov_exit (void)
       memset (&this_object, 0, sizeof (this_object));
       memset (&object, 0, sizeof (object));
       
+      /* Build relocated filename, stripping off leading 
+         directories from the initial filename if requested. */
+      if (gcov_prefix_strip > 0)
+        {
+          int level = 0;
+          const char *fname = gi_ptr->filename;
+          const char *s;
+
+          /* Skip selected directory levels. */
+	  for (s = fname + 1; (*s != '\0') && (level < gcov_prefix_strip); s++)
+	    if (IS_DIR_SEPARATOR(*s))
+	      {
+		fname = s;
+		level++;
+	      };
+
+          /* Update complete filename with stripped original. */
+          strcpy (gi_filename_up, fname);
+        }
+      else
+        strcpy (gi_filename_up, gi_ptr->filename);
+
       /* Totals for this object file.  */
       ci_ptr = gi_ptr->counts;
       for (t_ix = 0; t_ix < GCOV_COUNTERS_SUMMABLE; t_ix++)
@@ -205,10 +299,22 @@ gcov_exit (void)
 	  fi_stride &= ~(__alignof__ (struct gcov_fn_info) - 1);
 	}
       
-      if (!gcov_open (gi_ptr->filename))
+      if (!gcov_open (gi_filename))
 	{
-	  fprintf (stderr, "profiling:%s:Cannot open\n", gi_ptr->filename);
-	  continue;
+#ifdef TARGET_POSIX_IO
+	  /* Open failed likely due to missed directory.
+	     Create directory and retry to open file. */
+          if (create_file_directory (gi_filename))
+	    {
+	      fprintf (stderr, "profiling:%s:Skip\n", gi_filename);
+	      continue;
+	    }
+#endif
+	  if (!gcov_open (gi_filename))
+	    {
+              fprintf (stderr, "profiling:%s:Cannot open\n", gi_filename);
+	      continue;
+	    }
 	}
 
       tag = gcov_read_unsigned ();
@@ -218,11 +324,11 @@ gcov_exit (void)
 	  if (tag != GCOV_DATA_MAGIC)
 	    {
 	      fprintf (stderr, "profiling:%s:Not a gcov data file\n",
-		       gi_ptr->filename);
+		       gi_filename);
 	      goto read_fatal;
 	    }
 	  length = gcov_read_unsigned ();
-	  if (!gcov_version (gi_ptr, length))
+	  if (!gcov_version (gi_ptr, length, gi_filename))
 	    goto read_fatal;
 
 	  length = gcov_read_unsigned ();
@@ -246,7 +352,7 @@ gcov_exit (void)
 		{
 		read_mismatch:;
 		  fprintf (stderr, "profiling:%s:Merge mismatch for %s\n",
-			   gi_ptr->filename,
+			   gi_filename,
 			   f_ix + 1 ? "function" : "summaries");
 		  goto read_fatal;
 		}
@@ -305,7 +411,7 @@ gcov_exit (void)
       
     read_error:;
       fprintf (stderr, error < 0 ? "profiling:%s:Overflow merging\n"
-	       : "profiling:%s:Error merging\n", gi_ptr->filename);
+	       : "profiling:%s:Error merging\n", gi_filename);
 	      
     read_fatal:;
       gcov_close ();
@@ -356,7 +462,7 @@ gcov_exit (void)
 		   && memcmp (cs_all, cs_prg, sizeof (*cs_all)))
 	    {
 	      fprintf (stderr, "profiling:%s:Invocation mismatch - some data files may have been removed%s",
-		       gi_ptr->filename, GCOV_LOCKED
+		       gi_filename, GCOV_LOCKED
 		       ? "" : " or concurrent update without locking support");
 	      all.checksum = ~0u;
 	    }
@@ -421,7 +527,7 @@ gcov_exit (void)
 	  fprintf (stderr, error  < 0 ?
 		   "profiling:%s:Overflow writing\n" :
 		   "profiling:%s:Error writing\n",
-		   gi_ptr->filename);
+		   gi_filename);
     }
 }
 
@@ -433,11 +539,16 @@ __gcov_init (struct gcov_info *info)
 {
   if (!info->version)
     return;
-  if (gcov_version (info, info->version))
+  if (gcov_version (info, info->version, 0))
     {
       const char *ptr = info->filename;
       gcov_unsigned_t crc32 = gcov_crc32;
-  
+      size_t filename_length =  strlen(info->filename);
+
+      /* Refresh the longest file name information */
+      if (filename_length > gcov_max_filename)
+        gcov_max_filename = filename_length;
+      
       do
 	{
 	  unsigned ix;
@@ -502,6 +613,18 @@ __gcov_merge_add (gcov_type *counters, unsigned n_counters)
     *counters += gcov_read_counter ();
 }
 #endif /* L_gcov_merge_add */
+
+#ifdef L_gcov_merge_ior
+/* The profile merging function that just adds the counters.  It is given
+   an array COUNTERS of N_COUNTERS old counters and it reads the same number
+   of counters from the gcov file.  */
+void
+__gcov_merge_ior (gcov_type *counters, unsigned n_counters)
+{
+  for (; n_counters; counters++, n_counters--)
+    *counters |= gcov_read_counter ();
+}
+#endif
 
 #ifdef L_gcov_merge_single
 /* The profile merging function for choosing the most common value.
@@ -615,7 +738,6 @@ __gcov_pow2_profiler (gcov_type *counters, gcov_type value)
 }
 #endif
 
-#ifdef L_gcov_one_value_profiler
 /* Tries to determine the most common value among its inputs.  Checks if the
    value stored in COUNTERS[0] matches VALUE.  If this is the case, COUNTERS[1]
    is incremented.  If this is not the case and COUNTERS[1] is not zero,
@@ -626,8 +748,8 @@ __gcov_pow2_profiler (gcov_type *counters, gcov_type value)
 
    In any case, COUNTERS[2] is incremented.  */
 
-void
-__gcov_one_value_profiler (gcov_type *counters, gcov_type value)
+static inline void
+__gcov_one_value_profiler_body (gcov_type *counters, gcov_type value)
 {
   if (value == counters[0])
     counters[1]++;
@@ -639,6 +761,48 @@ __gcov_one_value_profiler (gcov_type *counters, gcov_type value)
   else
     counters[1]--;
   counters[2]++;
+}
+
+#ifdef L_gcov_one_value_profiler
+void
+__gcov_one_value_profiler (gcov_type *counters, gcov_type value)
+{
+  __gcov_one_value_profiler_body (counters, value);
+}
+#endif
+
+#ifdef L_gcov_indirect_call_profiler
+/* Tries to determine the most common value among its inputs. */
+void
+__gcov_indirect_call_profiler (gcov_type* counter, gcov_type value, 
+			       void* cur_func, void* callee_func)
+{
+  if (cur_func == callee_func)
+    __gcov_one_value_profiler_body (counter, value);
+}
+#endif
+
+
+#ifdef L_gcov_average_profiler
+/* Increase corresponding COUNTER by VALUE.  FIXME: Perhaps we want
+   to saturate up.  */
+
+void
+__gcov_average_profiler (gcov_type *counters, gcov_type value)
+{
+  counters[0] += value;
+  counters[1] ++;
+}
+#endif
+
+#ifdef L_gcov_ior_profiler
+/* Increase corresponding COUNTER by VALUE.  FIXME: Perhaps we want
+   to saturate up.  */
+
+void
+__gcov_ior_profiler (gcov_type *counters, gcov_type value)
+{
+  *counters |= value;
 }
 #endif
 
@@ -675,7 +839,7 @@ __gcov_execl (const char *path, const char *arg, ...)
     length++;
   va_end (ap);
 
-  args = alloca (length * sizeof (void *));
+  args = (char **) alloca (length * sizeof (void *));
   args[0] = (char *) arg;
   for (i = 1; i < length; i++)
     args[i] = va_arg (aq, char *);
@@ -706,7 +870,7 @@ __gcov_execlp (const char *path, const char *arg, ...)
     length++;
   va_end (ap);
 
-  args = alloca (length * sizeof (void *));
+  args = (char **) alloca (length * sizeof (void *));
   args[0] = (char *) arg;
   for (i = 1; i < length; i++)
     args[i] = va_arg (aq, char *);
@@ -738,7 +902,7 @@ __gcov_execle (const char *path, const char *arg, ...)
     length++;
   va_end (ap);
 
-  args = alloca (length * sizeof (void *));
+  args = (char **) alloca (length * sizeof (void *));
   args[0] = (char *) arg;
   for (i = 1; i < length; i++)
     args[i] = va_arg (aq, char *);

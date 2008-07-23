@@ -7,7 +7,7 @@
 --                                  B o d y                                 --
 --                   (Dummy body for non-distributed case)                  --
 --                                                                          --
---          Copyright (C) 1995-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1995-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +17,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -34,13 +34,13 @@
 
 package body System.Partition_Interface is
 
-   pragma Warnings (Off); -- supress warnings for unreferenced formals
+   pragma Warnings (Off); -- suppress warnings for unreferenced formals
 
    M : constant := 7;
 
    type String_Access is access String;
 
-   --  To have a minimal implementation of U'Partition_ID.
+   --  To have a minimal implementation of U'Partition_ID
 
    type Pkg_Node;
    type Pkg_List is access Pkg_Node;
@@ -215,8 +215,7 @@ package body System.Partition_Interface is
      (E : Ada.Exceptions.Exception_Occurrence)
    is
    begin
-      Ada.Exceptions.Raise_Exception
-        (Program_Error'Identity, Ada.Exceptions.Exception_Message (E));
+      raise Program_Error with Ada.Exceptions.Exception_Message (E);
    end Raise_Program_Error_Unknown_Tag;
 
    -----------------
@@ -311,8 +310,8 @@ package body System.Partition_Interface is
    --------------------
 
    function Same_Partition
-      (Left  : access RACW_Stub_Type;
-       Right : access RACW_Stub_Type) return Boolean
+      (Left  : not null access RACW_Stub_Type;
+       Right : not null access RACW_Stub_Type) return Boolean
    is
       pragma Unreferenced (Left);
       pragma Unreferenced (Right);

@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.1.5 - Template class codecvt [lib.locale.codecvt]
@@ -51,7 +51,7 @@ void test02()
 
   bool test __attribute__((unused)) = true;
   const char* 		c_lit = "black pearl jasmine tea";
-  int 			size = 25;
+  int 			size = 23;
 
   locale 		loc (locale::classic(), new length_codecvt);
   c_codecvt::state_type state;

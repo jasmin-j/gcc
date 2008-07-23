@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -31,14 +31,14 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  The body of Interfaces.COBOL is implementation independent (i.e. the
---  same version is used with all versions of GNAT). The specialization
---  to a particular COBOL format is completely contained in the private
---  part ot the spec.
+--  The body of Interfaces.COBOL is implementation independent (i.e. the same
+--  version is used with all versions of GNAT). The specialization to a
+--  particular COBOL format is completely contained in the private part of
+--  the spec.
 
 with Interfaces; use Interfaces;
 with System;     use System;
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package body Interfaces.COBOL is
 
@@ -52,22 +52,22 @@ package body Interfaces.COBOL is
    subtype B8 is Byte_Array (1 .. 8);
    --  Representations for 1,2,4,8 byte binary values
 
-   function To_B1 is new Unchecked_Conversion (Integer_8,  B1);
-   function To_B2 is new Unchecked_Conversion (Integer_16, B2);
-   function To_B4 is new Unchecked_Conversion (Integer_32, B4);
-   function To_B8 is new Unchecked_Conversion (Integer_64, B8);
+   function To_B1 is new Ada.Unchecked_Conversion (Integer_8,  B1);
+   function To_B2 is new Ada.Unchecked_Conversion (Integer_16, B2);
+   function To_B4 is new Ada.Unchecked_Conversion (Integer_32, B4);
+   function To_B8 is new Ada.Unchecked_Conversion (Integer_64, B8);
    --  Conversions from native binary to external binary
 
-   function From_B1 is new Unchecked_Conversion (B1, Integer_8);
-   function From_B2 is new Unchecked_Conversion (B2, Integer_16);
-   function From_B4 is new Unchecked_Conversion (B4, Integer_32);
-   function From_B8 is new Unchecked_Conversion (B8, Integer_64);
+   function From_B1 is new Ada.Unchecked_Conversion (B1, Integer_8);
+   function From_B2 is new Ada.Unchecked_Conversion (B2, Integer_16);
+   function From_B4 is new Ada.Unchecked_Conversion (B4, Integer_32);
+   function From_B8 is new Ada.Unchecked_Conversion (B8, Integer_64);
    --  Conversions from external binary to signed native binary
 
-   function From_B1U is new Unchecked_Conversion (B1, Unsigned_8);
-   function From_B2U is new Unchecked_Conversion (B2, Unsigned_16);
-   function From_B4U is new Unchecked_Conversion (B4, Unsigned_32);
-   function From_B8U is new Unchecked_Conversion (B8, Unsigned_64);
+   function From_B1U is new Ada.Unchecked_Conversion (B1, Unsigned_8);
+   function From_B2U is new Ada.Unchecked_Conversion (B2, Unsigned_16);
+   function From_B4U is new Ada.Unchecked_Conversion (B4, Unsigned_32);
+   function From_B8U is new Ada.Unchecked_Conversion (B8, Unsigned_64);
    --  Conversions from external binary to unsigned native binary
 
    -----------------------
@@ -76,8 +76,7 @@ package body Interfaces.COBOL is
 
    function Binary_To_Decimal
      (Item   : Byte_Array;
-      Format : Binary_Format)
-      return   Integer_64;
+      Format : Binary_Format) return Integer_64;
    --  This function converts a numeric value in the given format to its
    --  corresponding integer value. This is the non-generic implementation
    --  of Decimal_Conversions.To_Decimal. The generic routine does the
@@ -85,8 +84,7 @@ package body Interfaces.COBOL is
 
    function Numeric_To_Decimal
      (Item   : Numeric;
-      Format : Display_Format)
-      return   Integer_64;
+      Format : Display_Format) return Integer_64;
    --  This function converts a numeric value in the given format to its
    --  corresponding integer value. This is the non-generic implementation
    --  of Decimal_Conversions.To_Decimal. The generic routine does the
@@ -94,8 +92,7 @@ package body Interfaces.COBOL is
 
    function Packed_To_Decimal
      (Item   : Packed_Decimal;
-      Format : Packed_Format)
-      return   Integer_64;
+      Format : Packed_Format) return Integer_64;
    --  This function converts a packed value in the given format to its
    --  corresponding integer value. This is the non-generic implementation
    --  of Decimal_Conversions.To_Decimal. The generic routine does the
@@ -207,7 +204,7 @@ package body Interfaces.COBOL is
    -- Numeric_To_Decimal --
    ------------------------
 
-   --  The following assumptions are made in the coding of this routine
+   --  The following assumptions are made in the coding of this routine:
 
    --    The range of COBOL_Digits is compact and the ten values
    --    represent the digits 0-9 in sequence
@@ -220,7 +217,7 @@ package body Interfaces.COBOL is
 
    --    The COBOL_Minus_Digits set is disjoint from COBOL_Digits
 
-   --  These assumptions are true for all COBOL representations we know of.
+   --  These assumptions are true for all COBOL representations we know of
 
    function Numeric_To_Decimal
      (Item   : Numeric;
@@ -708,7 +705,7 @@ package body Interfaces.COBOL is
       --  Note that the tests here are all compile time tests
 
       function Length (Format : Binary_Format) return Natural is
-         pragma Warnings (Off, Format);
+         pragma Unreferenced (Format);
       begin
          if Num'Digits <= 2 then
             return 1;
@@ -743,8 +740,7 @@ package body Interfaces.COBOL is
       function Length
         (Format : Packed_Format) return Natural
       is
-         pragma Warnings (Off, Format);
-
+         pragma Unreferenced (Format);
       begin
          case Packed_Representation is
             when IBM =>
@@ -847,14 +843,12 @@ package body Interfaces.COBOL is
 
       function To_Decimal
         (Item   : Numeric;
-         Format : Display_Format)
-         return   Num
+         Format : Display_Format) return Num
       is
          pragma Unsuppress (Range_Check);
 
       begin
          return Num'Fixed_Value (Numeric_To_Decimal (Item, Format));
-
       exception
          when Constraint_Error =>
             raise Conversion_Error;

@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                 GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS              --
+--                  GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                --
 --                                                                          --
 --                      I N T E R F A C E S . V X W O R K S                 --
 --                                                                          --
 --                                   S p e c                                --
 --                                                                          --
---             Copyright (C) 1999-2004 Ada Core Technologies, Inc.          --
+--                     Copyright (C) 1999-2008, AdaCore                     --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -47,10 +47,13 @@
 --  For complete documentation of the operations in this package, please
 --  consult the VxWorks Programmer's Manual and VxWorks Reference Manual.
 
+pragma Warnings (Off, "*foreign convention*");
+pragma Warnings (Off, "*add Convention pragma*");
+
 with System.VxWorks;
 
 package Interfaces.VxWorks is
-   pragma Preelaborate (VxWorks);
+   pragma Preelaborate;
 
    ------------------------------------------------------------------------
    --  Here is a complete example that shows how to handle the Interrupt 0x33
@@ -73,7 +76,7 @@ package Interfaces.VxWorks is
    --     procedure Handler (Parameter : System.Address) is
    --     begin
    --        Count := Count + 1;
-   --        logMsg ("received an interrupt" & ASCII.LF & ASCII.Nul);
+   --        logMsg ("received an interrupt" & ASCII.LF & ASCII.NUL);
    --     end Handler;
    --  end P;
    --
@@ -137,6 +140,10 @@ package Interfaces.VxWorks is
    --  user handler. The routine generates a wrapper around the user
    --  handler to save and restore context
 
+   function intContext return int;
+   --  Binding to the C routine intContext. This function returns 1 only
+   --  if the current execution state is in interrupt context.
+
    function intVecGet
      (Vector : Interrupt_Vector) return VOIDFUNCPTR;
    --  Binding to the C routine intVecGet. Use this to get the
@@ -151,16 +158,16 @@ package Interfaces.VxWorks is
    procedure intVecGet2
      (vector       : Interrupt_Vector;
       pFunction    : out VOIDFUNCPTR;
-      pIdtGate     : access int;
-      pIdtSelector : access int);
+      pIdtGate     : not null access int;
+      pIdtSelector : not null access int);
    --  Binding to the C routine intVecGet2. Use this to get the
    --  existing handler for later restoral
 
    procedure intVecSet2
      (vector       : Interrupt_Vector;
       pFunction    : VOIDFUNCPTR;
-      pIdtGate     : access int;
-      pIdtSelector : access int);
+      pIdtGate     : not null access int;
+      pIdtSelector : not null access int);
    --  Binding to the C routine intVecSet2. Use this to restore a
    --  handler obtained using intVecGet2
 
@@ -200,6 +207,7 @@ private
    --  Target-dependent floating point context type
 
    pragma Import (C, intConnect, "intConnect");
+   pragma Import (C, intContext, "intContext");
    pragma Import (C, intVecGet, "intVecGet");
    pragma Import (C, intVecSet, "intVecSet");
    pragma Import (C, intVecGet2, "intVecGet2");

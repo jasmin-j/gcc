@@ -1,5 +1,5 @@
 /* Part of CPP library.
-   Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005
+   Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
    Free Software Foundation, Inc.
 
 This program is free software; you can redistribute it and/or modify it
@@ -14,7 +14,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
-Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.  */
 
 /* This header defines all the internal data structures and functions
    that need to be visible across files.  It should not be used outside
@@ -48,6 +48,7 @@ struct cset_converter
 {
   convert_f func;
   iconv_t cd;
+  int width;
 };
 
 #define BITS_PER_CPPCHAR_T (CHAR_BIT * sizeof (cppchar_t))
@@ -67,7 +68,7 @@ struct cset_converter
 #define CPP_INCREMENT_LINE(PFILE, COLS_HINT) do { \
     const struct line_maps *line_table = PFILE->line_table; \
     const struct line_map *map = &line_table->maps[line_table->used-1]; \
-    unsigned int line = SOURCE_LINE (map, line_table->highest_line); \
+    linenum_type line = SOURCE_LINE (map, line_table->highest_line); \
     linemap_line_start (PFILE->line_table, line + 1, COLS_HINT); \
   } while (0)
 
@@ -205,9 +206,6 @@ struct lexer_state
   /* Nonzero to prevent macro expansion.  */
   unsigned char prevent_expansion;
 
-  /* Nonzero when handling a deferred pragma.  */
-  unsigned char in_deferred_pragma;
-
   /* Nonzero when parsing arguments to a function-like macro.  */
   unsigned char parsing_args;
 
@@ -217,6 +215,12 @@ struct lexer_state
 
   /* Nonzero to skip evaluating part of an expression.  */
   unsigned int skip_eval;
+
+  /* Nonzero when handling a deferred pragma.  */
+  unsigned char in_deferred_pragma;
+
+  /* Nonzero if the deferred pragma being handled allows macro expansion.  */
+  unsigned char pragma_allow_expansion;
 };
 
 /* Special nodes - identifiers with predefined significance.  */
@@ -260,6 +264,10 @@ struct cpp_buffer
   /* Pointer into the file table; non-NULL if this is a file buffer.
      Used for include_next and to record control macros.  */
   struct _cpp_file *file;
+
+  /* Saved value of __TIMESTAMP__ macro - date and time of last modification
+     of the assotiated file.  */
+  const unsigned char *timestamp;
 
   /* Value of if_stack at start of this file.
      Used to prohibit unmatched #endif (etc) in an include file.  */
@@ -332,6 +340,14 @@ struct cpp_reader
   /* Token generated while handling a directive, if any. */
   cpp_token directive_result;
 
+  /* When expanding a macro at top-level, this is the location of the
+     macro invocation.  */
+  source_location invocation_location;
+
+  /* True if this call to cpp_get_token should consider setting
+     invocation_location.  */
+  bool set_invocation_location;
+
   /* Search paths for include files.  */
   struct cpp_dir *quote_include;	/* "" */
   struct cpp_dir *bracket_include;	/* <> */
@@ -345,8 +361,11 @@ struct cpp_reader
   /* File and directory hash table.  */
   struct htab *file_hash;
   struct htab *dir_hash;
-  struct file_hash_entry *file_hash_entries;
-  unsigned int file_hash_entries_allocated, file_hash_entries_used;
+  struct file_hash_entry_pool *file_hash_entries;
+
+  /* Negative path lookup hash table.  */
+  struct htab *nonexistent_file_hash;
+  struct obstack nonexistent_file_ob;
 
   /* Nonzero means don't look for #include "foo" the source-file
      directory.  */
@@ -379,6 +398,14 @@ struct cpp_reader
   /* Descriptor for converting from the source character set to the
      execution character set.  */
   struct cset_converter narrow_cset_desc;
+
+  /* Descriptor for converting from the source character set to the
+     UTF-16 execution character set.  */
+  struct cset_converter char16_cset_desc;
+
+  /* Descriptor for converting from the source character set to the
+     UTF-32 execution character set.  */
+  struct cset_converter char32_cset_desc;
 
   /* Descriptor for converting from the source character set to the
      wide execution character set.  */
@@ -441,6 +468,9 @@ struct cpp_reader
   /* A saved list of the defined macros, for dependency checking
      of precompiled headers.  */
   struct cpp_savedstate *savedstate;
+
+  /* Next value of __COUNTER__ macro. */
+  unsigned int counter;
 };
 
 /* Character classes.  Based on the more primitive macros in safe-ctype.h.
@@ -481,9 +511,12 @@ cpp_in_system_header (cpp_reader *pfile)
 #define CPP_PEDANTIC(PF) CPP_OPTION (PF, pedantic)
 #define CPP_WTRADITIONAL(PF) CPP_OPTION (PF, warn_traditional)
 
-/* In errors.c  */
-extern int _cpp_begin_message (cpp_reader *, int,
-			       source_location, unsigned int);
+static inline int cpp_in_primary_file (cpp_reader *);
+static inline int
+cpp_in_primary_file (cpp_reader *pfile)
+{
+  return pfile->line_table->depth == 1;
+}
 
 /* In macro.c */
 extern void _cpp_free_definition (cpp_hashnode *);
@@ -496,15 +529,19 @@ extern bool _cpp_arguments_ok (cpp_reader *, cpp_macro *, const cpp_hashnode *,
 			       unsigned int);
 extern const unsigned char *_cpp_builtin_macro_text (cpp_reader *,
 						     cpp_hashnode *);
-int _cpp_warn_if_unused_macro (cpp_reader *, cpp_hashnode *, void *);
+extern int _cpp_warn_if_unused_macro (cpp_reader *, cpp_hashnode *, void *);
+extern void _cpp_push_token_context (cpp_reader *, cpp_hashnode *,
+				     const cpp_token *, unsigned int);
+extern void _cpp_backup_tokens_direct (cpp_reader *, unsigned int);
+
 /* In identifiers.c */
 extern void _cpp_init_hashtable (cpp_reader *, hash_table *);
 extern void _cpp_destroy_hashtable (cpp_reader *);
 
 /* In files.c */
 typedef struct _cpp_file _cpp_file;
-extern _cpp_file *_cpp_find_file (cpp_reader *, const char *fname,
-				  cpp_dir *start_dir, bool fake);
+extern _cpp_file *_cpp_find_file (cpp_reader *, const char *, cpp_dir *,
+				  bool, int);
 extern bool _cpp_find_failed (_cpp_file *);
 extern void _cpp_mark_file_once_only (cpp_reader *, struct _cpp_file *);
 extern void _cpp_fake_include (cpp_reader *, const char *);
@@ -518,9 +555,10 @@ extern void _cpp_cleanup_files (cpp_reader *);
 extern void _cpp_pop_file_buffer (cpp_reader *, struct _cpp_file *);
 extern bool _cpp_save_file_entries (cpp_reader *pfile, FILE *f);
 extern bool _cpp_read_file_entries (cpp_reader *, FILE *);
+extern struct stat *_cpp_get_file_stat (_cpp_file *);
 
 /* In expr.c */
-extern bool _cpp_parse_expr (cpp_reader *);
+extern bool _cpp_parse_expr (cpp_reader *, bool);
 extern struct op *_cpp_expand_op_stack (cpp_reader *);
 
 /* In lex.c */
@@ -543,12 +581,23 @@ extern int _cpp_handle_directive (cpp_reader *, int);
 extern void _cpp_define_builtin (cpp_reader *, const char *);
 extern char ** _cpp_save_pragma_names (cpp_reader *);
 extern void _cpp_restore_pragma_names (cpp_reader *, char **);
-extern void _cpp_do__Pragma (cpp_reader *);
+extern int _cpp_do__Pragma (cpp_reader *);
 extern void _cpp_init_directives (cpp_reader *);
 extern void _cpp_init_internal_pragmas (cpp_reader *);
 extern void _cpp_do_file_change (cpp_reader *, enum lc_reason, const char *,
-				 unsigned int, unsigned int);
+				 linenum_type, unsigned int);
 extern void _cpp_pop_buffer (cpp_reader *);
+
+/* In directives.c */
+struct _cpp_dir_only_callbacks
+{
+  /* Called to print a block of lines. */
+  void (*print_lines) (int, const void *, size_t);
+  void (*maybe_print_line) (source_location);
+};
+
+extern void _cpp_preprocess_dir_only (cpp_reader *,
+				      const struct _cpp_dir_only_callbacks *);
 
 /* In traditional.c.  */
 extern bool _cpp_scan_out_logical_line (cpp_reader *, cpp_macro *);
@@ -592,7 +641,7 @@ extern cppchar_t _cpp_valid_ucn (cpp_reader *, const unsigned char **,
 extern void _cpp_destroy_iconv (cpp_reader *);
 extern unsigned char *_cpp_convert_input (cpp_reader *, const char *,
 					  unsigned char *, size_t, size_t,
-					  off_t *);
+					  const unsigned char **, off_t *);
 extern const char *_cpp_default_encoding (void);
 extern cpp_hashnode * _cpp_interpret_identifier (cpp_reader *pfile,
 						 const unsigned char *id,

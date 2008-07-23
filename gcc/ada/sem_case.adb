@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1996-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1996-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -42,7 +41,7 @@ with Sinfo;    use Sinfo;
 with Tbuild;   use Tbuild;
 with Uintp;    use Uintp;
 
-with GNAT.Heap_Sort_A; use GNAT.Heap_Sort_A;
+with GNAT.Heap_Sort_G;
 
 package body Sem_Case is
 
@@ -53,7 +52,7 @@ package body Sem_Case is
    type Sort_Choice_Table_Type is array (Nat range <>) of Choice_Bounds;
    --  This new array type is used as the actual table type for sorting
    --  discrete choices. The reason for not using Choice_Table_Type, is that
-   --  in Sort_Choice_Table_Type we reserve entry 0 for the sorting algortim
+   --  in Sort_Choice_Table_Type we reserve entry 0 for the sorting algorithm
    --  (this is not absolutely necessary but it makes the code more
    --  efficient).
 
@@ -99,11 +98,13 @@ package body Sem_Case is
       Msg_Sloc       : Source_Ptr)
    is
       function Lt_Choice (C1, C2 : Natural) return Boolean;
-      --  Comparison routine for comparing Choice_Table entries.
-      --  Use the lower bound of each Choice as the key.
+      --  Comparison routine for comparing Choice_Table entries. Use the lower
+      --  bound of each Choice as the key.
 
       procedure Move_Choice (From : Natural; To : Natural);
-      --  Move routine for sorting the Choice_Table.
+      --  Move routine for sorting the Choice_Table
+
+      package Sorting is new GNAT.Heap_Sort_G (Move_Choice, Lt_Choice);
 
       procedure Issue_Msg (Value1 : Node_Id; Value2 : Node_Id);
       procedure Issue_Msg (Value1 : Node_Id; Value2 : Uint);
@@ -216,10 +217,7 @@ package body Sem_Case is
          return;
       end if;
 
-      Sort
-        (Positive (Choice_Table'Last),
-         Move_Choice'Unrestricted_Access,
-         Lt_Choice'Unrestricted_Access);
+      Sorting.Sort (Positive (Choice_Table'Last));
 
       Lo      := Expr_Value (Choice_Table (1).Lo);
       Hi      := Expr_Value (Choice_Table (1).Hi);
@@ -270,10 +268,7 @@ package body Sem_Case is
       --  For character, or wide [wide] character. If 7-bit ASCII graphic
       --  range, then build and return appropriate character literal name
 
-      if Rtp = Standard_Character
-        or else Rtp = Standard_Wide_Character
-        or else Rtp = Standard_Wide_Wide_Character
-      then
+      if Is_Standard_Character_Type (Ctype) then
          C := UI_To_Int (Value);
 
          if C in 16#20# .. 16#7E# then
@@ -427,12 +422,7 @@ package body Sem_Case is
          --  of literals to search. Instead, a N_Character_Literal node
          --  is created with the appropriate Char_Code and Chars fields.
 
-         if Root_Type (Choice_Type) = Standard_Character
-              or else
-            Root_Type (Choice_Type) = Standard_Wide_Character
-              or else
-            Root_Type (Choice_Type) = Standard_Wide_Wide_Character
-         then
+         if Is_Standard_Character_Type (Choice_Type) then
             Set_Character_Literal_Name (Char_Code (UI_To_Int (Value)));
             Lit := New_Node (N_Character_Literal, Loc);
             Set_Chars (Lit, Name_Find);
@@ -524,7 +514,8 @@ package body Sem_Case is
         and then Comes_From_Source (Others_Choice)
         and then Is_Empty_List (Choice_List)
       then
-         Error_Msg_N ("?others choice is empty", Others_Choice);
+         Error_Msg_N ("?OTHERS choice is redundant", Others_Choice);
+         Error_Msg_N ("\previous choices cover all values", Others_Choice);
       end if;
    end Expand_Others_Choice;
 
@@ -557,6 +548,8 @@ package body Sem_Case is
          Raises_CE      : out Boolean;
          Others_Present : out Boolean)
       is
+         pragma Assert (Choice_Table'First = 1);
+
          E : Entity_Id;
 
          Enode : Node_Id;
@@ -577,7 +570,7 @@ package body Sem_Case is
 
          Bounds_Lo : Uint;
          Bounds_Hi : Uint;
-         --  The actual bounds of the above type.
+         --  The actual bounds of the above type
 
          Expected_Type : Entity_Id;
          --  The expected type of each choice. Equal to Choice_Type, except
@@ -755,7 +748,6 @@ package body Sem_Case is
 
             else
                Choice := First (Get_Choices (Alt));
-
                while Present (Choice) loop
                   Analyze (Choice);
                   Kind := Nkind (Choice);
@@ -903,7 +895,7 @@ package body Sem_Case is
          Count  : Nat := 0;
 
       begin
-         if not Present (Get_Alternatives (N)) then
+         if No (Get_Alternatives (N)) then
             return 0;
          end if;
 

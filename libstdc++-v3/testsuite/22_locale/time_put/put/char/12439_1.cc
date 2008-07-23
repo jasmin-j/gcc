@@ -13,10 +13,12 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.5.3.1 time_put members
+
+// { dg-require-time "" }
 
 #include <locale>
 #include <sstream>
@@ -31,7 +33,7 @@ public:
 
 protected:
   iter_type do_put(iter_type s, std::ios_base&, char_type fill,
-		   const std::tm* t, char format, char modifier) const
+		   const std::tm*, char, char) const
   {
     fill_chars.push_back(fill);
     return s;

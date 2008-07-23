@@ -1,6 +1,6 @@
 /* Function declarations for libiberty.
 
-   Copyright 2001, 2002, 2005 Free Software Foundation, Inc.
+   Copyright 2001, 2002, 2005, 2007 Free Software Foundation, Inc.
    
    Note - certain prototypes declared in this header file are for
    functions whoes implementation copyright does not belong to the
@@ -21,8 +21,8 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place - Suite 330,
-   Boston, MA 02111-1307, USA.
+   Foundation, Inc., 51 Franklin Street - Fifth Floor,
+   Boston, MA 02110-1301, USA.
    
    Written by Cygnus Support, 1994.
 
@@ -54,6 +54,12 @@ extern "C" {
 
 extern void unlock_stream (FILE *);
 
+/* If the OS supports it, ensure that the standard I/O streams, stdin,
+   stdout and stderr are setup to avoid any multi-threaded locking.
+   Otherwise do nothing.  */
+
+extern void unlock_std_streams (void);
+
 /* Open and return a FILE pointer.  If the OS supports it, ensure that
    the stream is setup to avoid any multi-threaded locking.  Otherwise
    return the FILE pointer unchanged.  */
@@ -76,6 +82,13 @@ extern void freeargv (char **);
 
 extern char **dupargv (char **) ATTRIBUTE_MALLOC;
 
+/* Expand "@file" arguments in argv.  */
+
+extern void expandargv PARAMS ((int *, char ***));
+
+/* Write argv to an @-file, inserting necessary quoting.  */
+
+extern int writeargv PARAMS ((char **, FILE *));
 
 /* Return the last component of a path name.  Note that we can't use a
    prototype here because the parameter is declared inconsistently
@@ -91,7 +104,10 @@ extern char **dupargv (char **) ATTRIBUTE_MALLOC;
 #if defined (__GNU_LIBRARY__ ) || defined (__linux__) || defined (__FreeBSD__) || defined (__OpenBSD__) || defined(__NetBSD__) || defined (__CYGWIN__) || defined (__CYGWIN32__) || defined (__MINGW32__) || defined (HAVE_DECL_BASENAME)
 extern char *basename (const char *);
 #else
-extern char *basename ();
+/* Do not allow basename to be used if there is no prototype seen.  We
+   either need to use the above prototype or have one from
+   autoconf which would result in HAVE_DECL_BASENAME being set.  */
+#define basename basename_cannot_be_used_without_a_prototype
 #endif
 #endif
 
@@ -147,7 +163,7 @@ extern char *libiberty_concat_ptr;
    strings.  Allocates memory using alloca.  The arguments are
    evaluated twice!  */
 #define ACONCAT(ACONCAT_PARAMS) \
-  (libiberty_concat_ptr = alloca (concat_length ACONCAT_PARAMS + 1), \
+  (libiberty_concat_ptr = (char *) alloca (concat_length ACONCAT_PARAMS + 1), \
    concat_copy2 ACONCAT_PARAMS)
 
 /* Check whether two file descriptors refer to the same file.  */
@@ -184,6 +200,13 @@ extern long get_run_time (void);
 
 extern char *make_relative_prefix (const char *, const char *,
                                    const char *) ATTRIBUTE_MALLOC;
+
+/* Generate a relocated path to some installation directory without
+   attempting to follow any soft links.  Allocates
+   return value using malloc.  */
+
+extern char *make_relative_prefix_ignore_links (const char *, const char *,
+						const char *) ATTRIBUTE_MALLOC;
 
 /* Choose a temporary directory to use for scratch files.  */
 
@@ -297,27 +320,35 @@ extern double physmem_available (void);
 
 /* Scalar allocators.  */
 
+#define XALLOCA(T)		((T *) alloca (sizeof (T)))
 #define XNEW(T)			((T *) xmalloc (sizeof (T)))
 #define XCNEW(T)		((T *) xcalloc (1, sizeof (T)))
+#define XDUP(T, P)		((T *) xmemdup ((P), sizeof (T), sizeof (T)))
 #define XDELETE(P)		free ((void*) (P))
 
 /* Array allocators.  */
 
+#define XALLOCAVEC(T, N)	((T *) alloca (sizeof (T) * (N)))
 #define XNEWVEC(T, N)		((T *) xmalloc (sizeof (T) * (N)))
 #define XCNEWVEC(T, N)		((T *) xcalloc ((N), sizeof (T)))
+#define XDUPVEC(T, P, N)	((T *) xmemdup ((P), sizeof (T) * (N), sizeof (T) * (N)))
 #define XRESIZEVEC(T, P, N)	((T *) xrealloc ((void *) (P), sizeof (T) * (N)))
 #define XDELETEVEC(P)		free ((void*) (P))
 
 /* Allocators for variable-sized structures and raw buffers.  */
 
+#define XALLOCAVAR(T, S)	((T *) alloca ((S)))
 #define XNEWVAR(T, S)		((T *) xmalloc ((S)))
 #define XCNEWVAR(T, S)		((T *) xcalloc (1, (S)))
+#define XDUPVAR(T, P, S1, S2)	((T *) xmemdup ((P), (S1), (S2)))
 #define XRESIZEVAR(T, P, S)	((T *) xrealloc ((P), (S)))
 
 /* Type-safe obstack allocator.  */
 
 #define XOBNEW(O, T)		((T *) obstack_alloc ((O), sizeof (T)))
-
+#define XOBNEWVEC(O, T, N)	((T *) obstack_alloc ((O), sizeof (T) * (N)))
+#define XOBNEWVAR(O, T, S)	((T *) obstack_alloc ((O), (S)))
+#define XOBFINISH(O, T)         ((T) obstack_finish ((O)))
 
 /* hex character manipulation routines */
 
@@ -381,6 +412,19 @@ extern struct pex_obj *pex_init (int flags, const char *pname,
    PEX_BINARY_INPUT.  */
 #define PEX_BINARY_OUTPUT	0x20
 
+/* Capture stderr to a pipe.  The output can be read by
+   calling pex_read_err and reading from the returned
+   FILE object.  This flag may be specified only for
+   the last program in a pipeline.  
+
+   This flag is supported only on Unix and Windows.  */
+#define PEX_STDERR_TO_PIPE	0x40
+
+/* Capture stderr in binary mode.  This flag is ignored
+   on Unix.  */
+#define PEX_BINARY_ERROR	0x80
+
+
 /* Execute one program.  Returns NULL on success.  On error returns an
    error string (typically just the name of a system call); the error
    string is statically allocated.
@@ -436,6 +480,37 @@ extern const char *pex_run (struct pex_obj *obj, int flags,
 			    const char *outname, const char *errname,
 			    int *err);
 
+/* As for pex_run (), but takes an extra parameter to enable the
+   environment for the child process to be specified.
+
+   ENV		The environment for the child process, specified as
+		an array of character pointers.  Each element of the
+		array should point to a string of the form VAR=VALUE,
+                with the exception of the last element which must be
+                a null pointer.
+*/
+
+extern const char *pex_run_in_environment (struct pex_obj *obj, int flags,
+			                   const char *executable,
+                                           char * const *argv,
+                                           char * const *env,
+              	          		   const char *outname,
+					   const char *errname, int *err);
+
+/* Return a stream for a temporary file to pass to the first program
+   in the pipeline as input.  The file name is chosen as for pex_run.
+   pex_run closes the file automatically; don't close it yourself.  */
+
+extern FILE *pex_input_file (struct pex_obj *obj, int flags,
+                             const char *in_name);
+
+/* Return a stream for a pipe connected to the standard input of the
+   first program in the pipeline.  You must have passed
+   `PEX_USE_PIPES' to `pex_init'.  Close the returned stream
+   yourself.  */
+
+extern FILE *pex_input_pipe (struct pex_obj *obj, int binary);
+
 /* Read the standard output of the last program to be executed.
    pex_run can not be called after this.  BINARY should be non-zero if
    the file should be opened in binary mode; this is ignored on Unix.
@@ -443,6 +518,14 @@ extern const char *pex_run (struct pex_obj *obj, int flags,
    will be closed by pex_free.  */
 
 extern FILE *pex_read_output (struct pex_obj *, int binary);
+
+/* Read the standard error of the last program to be executed.
+   pex_run can not be called after this.  BINARY should be non-zero if
+   the file should be opened in binary mode; this is ignored on Unix.
+   Returns NULL on error.  Don't call fclose on the returned FILE; it
+   will be closed by pex_free.  */
+
+extern FILE *pex_read_err (struct pex_obj *, int binary);
 
 /* Return exit status of all programs in VECTOR.  COUNT indicates the
    size of VECTOR.  The status codes in the vector are in the order of
@@ -466,7 +549,8 @@ struct pex_time
 extern int pex_get_times (struct pex_obj *, int count,
 			  struct pex_time *vector);
 
-/* Clean up a pex_obj.  */
+/* Clean up a pex_obj.  If you have not called pex_get_times or
+   pex_get_status, this will try to kill the subprocesses.  */
 
 extern void pex_free (struct pex_obj *);
 
@@ -518,8 +602,22 @@ extern int asprintf (char **, const char *, ...) ATTRIBUTE_PRINTF_2;
 /* Like vsprintf but provides a pointer to malloc'd storage, which
    must be freed by the caller.  */
 
-extern int vasprintf (char **, const char *, va_list)
-  ATTRIBUTE_PRINTF(2,0);
+extern int vasprintf (char **, const char *, va_list) ATTRIBUTE_PRINTF(2,0);
+#endif
+
+#if defined(HAVE_DECL_SNPRINTF) && !HAVE_DECL_SNPRINTF
+/* Like sprintf but prints at most N characters.  */
+extern int snprintf (char *, size_t, const char *, ...) ATTRIBUTE_PRINTF_3;
+#endif
+
+#if defined(HAVE_DECL_VSNPRINTF) && !HAVE_DECL_VSNPRINTF
+/* Like vsprintf but prints at most N characters.  */
+extern int vsnprintf (char *, size_t, const char *, va_list) ATTRIBUTE_PRINTF(3,0);
+#endif
+
+#if defined(HAVE_DECL_STRVERSCMP) && !HAVE_DECL_STRVERSCMP
+/* Compare version strings.  */
+extern int strverscmp (const char *, const char *);
 #endif
 
 #define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))

@@ -1,11 +1,11 @@
 /* Dwarf2 assembler output helper routines.
-   Copyright (C) 2001, 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -14,9 +14,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 #include "config.h"
@@ -53,7 +52,8 @@ dw2_assemble_integer (int size, rtx x)
     {
       fputs (op, asm_out_file);
       if (GET_CODE (x) == CONST_INT)
-	fprintf (asm_out_file, HOST_WIDE_INT_PRINT_HEX, INTVAL (x));
+	fprintf (asm_out_file, HOST_WIDE_INT_PRINT_HEX,
+		 (unsigned HOST_WIDE_INT) INTVAL (x));
       else
 	output_addr_const (asm_out_file, x);
     }
@@ -62,20 +62,24 @@ dw2_assemble_integer (int size, rtx x)
 }
 
 
-/* Output an immediate constant in a given size.  */
+/* Output an immediate constant in a given SIZE in bytes.  */
 
 void
 dw2_asm_output_data (int size, unsigned HOST_WIDE_INT value,
 		     const char *comment, ...)
 {
   va_list ap;
+  const char *op = integer_asm_op (size, FALSE);
 
   va_start (ap, comment);
 
   if (size * 8 < HOST_BITS_PER_WIDE_INT)
     value &= ~(~(unsigned HOST_WIDE_INT) 0 << (size * 8));
 
-  dw2_assemble_integer (size, GEN_INT (value));
+  if (op)
+    fprintf (asm_out_file, "%s" HOST_WIDE_INT_PRINT_HEX, op, value);
+  else
+    assemble_integer (GEN_INT (value), size, BITS_PER_UNIT, 1);
 
   if (flag_debug_asm && comment)
     {
@@ -119,14 +123,16 @@ dw2_asm_output_delta (int size, const char *lab1, const char *lab2,
   va_end (ap);
 }
 
-/* Output a section-relative reference to a label.  In general this
-   can only be done for debugging symbols.  E.g. on most targets with
-   the GNU linker, this is accomplished with a direct reference and
-   the knowledge that the debugging section will be placed at VMA 0.
-   Some targets have special relocations for this that we must use.  */
+/* Output a section-relative reference to a LABEL, which was placed in
+   BASE.  In general this can only be done for debugging symbols.
+   E.g. on most targets with the GNU linker, this is accomplished with
+   a direct reference and the knowledge that the debugging section
+   will be placed at VMA 0.  Some targets have special relocations for
+   this that we must use.  */
 
 void
 dw2_asm_output_offset (int size, const char *label,
+		       section *base ATTRIBUTE_UNUSED,
 		       const char *comment, ...)
 {
   va_list ap;
@@ -134,7 +140,7 @@ dw2_asm_output_offset (int size, const char *label,
   va_start (ap, comment);
 
 #ifdef ASM_OUTPUT_DWARF_OFFSET
-  ASM_OUTPUT_DWARF_OFFSET (asm_out_file, size, label);
+  ASM_OUTPUT_DWARF_OFFSET (asm_out_file, size, label, base);
 #else
   dw2_assemble_integer (size, gen_rtx_SYMBOL_REF (Pmode, label));
 #endif
@@ -683,7 +689,7 @@ dw2_asm_output_delta_sleb128 (const char *lab1 ATTRIBUTE_UNUSED,
 }
 #endif /* 0 */
 
-static rtx dw2_force_const_mem (rtx);
+static rtx dw2_force_const_mem (rtx, bool);
 static int dw2_output_indirect_constant_1 (splay_tree_node, void *);
 
 static GTY((param1_is (char *), param2_is (tree))) splay_tree indirect_pool;
@@ -696,20 +702,48 @@ static GTY(()) int dw2_const_labelno;
 # define USE_LINKONCE_INDIRECT 0
 #endif
 
+/* Comparison function for a splay tree in which the keys are strings.
+   K1 and K2 have the dynamic type "const char *".  Returns <0, 0, or
+   >0 to indicate whether K1 is less than, equal to, or greater than
+   K2, respectively.  */
+
+static int
+splay_tree_compare_strings (splay_tree_key k1, splay_tree_key k2)
+{
+  const char *s1 = (const char *)k1;
+  const char *s2 = (const char *)k2;
+  int ret;
+
+  if (s1 == s2)
+    return 0;
+
+  ret = strcmp (s1, s2);
+
+  /* The strings are always those from IDENTIFIER_NODEs, and,
+     therefore, we should never have two copies of the same
+     string.  */
+  gcc_assert (ret);
+
+  return ret;
+}
+
 /* Put X, a SYMBOL_REF, in memory.  Return a SYMBOL_REF to the allocated
    memory.  Differs from force_const_mem in that a single pool is used for
    the entire unit of translation, and the memory is not guaranteed to be
-   "near" the function in any interesting sense.  */
+   "near" the function in any interesting sense.  IS_PUBLIC controls whether
+   the symbol can be shared across the entire application (or DSO).  */
 
 static rtx
-dw2_force_const_mem (rtx x)
+dw2_force_const_mem (rtx x, bool is_public)
 {
   splay_tree_node node;
   const char *str;
   tree decl;
 
   if (! indirect_pool)
-    indirect_pool = splay_tree_new_ggc (splay_tree_compare_pointers);
+    /* We use strcmp, rather than just comparing pointers, so that the
+       sort order will not depend on the host system.  */
+    indirect_pool = splay_tree_new_ggc (splay_tree_compare_strings);
 
   gcc_assert (GET_CODE (x) == SYMBOL_REF);
 
@@ -721,9 +755,9 @@ dw2_force_const_mem (rtx x)
     {
       tree id;
 
-      if (USE_LINKONCE_INDIRECT)
+      if (is_public && USE_LINKONCE_INDIRECT)
 	{
-	  char *ref_name = alloca (strlen (str) + sizeof "DW.ref.");
+	  char *ref_name = XALLOCAVEC (char, strlen (str) + sizeof "DW.ref.");
 
 	  sprintf (ref_name, "DW.ref.%s", str);
 	  id = get_identifier (ref_name);
@@ -768,12 +802,14 @@ dw2_output_indirect_constant_1 (splay_tree_node node,
 {
   const char *sym;
   rtx sym_ref;
+  tree decl;
 
   sym = (const char *) node->key;
+  decl = (tree) node->value;
   sym_ref = gen_rtx_SYMBOL_REF (Pmode, sym);
-  if (USE_LINKONCE_INDIRECT)
+  if (TREE_PUBLIC (decl) && USE_LINKONCE_INDIRECT)
     fprintf (asm_out_file, "\t.hidden %sDW.ref.%s\n", user_label_prefix, sym);
-  assemble_variable ((tree) node->value, 1, 1, 1);
+  assemble_variable (decl, 1, 1, 1);
   assemble_integer (sym_ref, POINTER_SIZE / BITS_PER_UNIT, POINTER_SIZE, 1);
 
   return 0;
@@ -788,10 +824,12 @@ dw2_output_indirect_constants (void)
     splay_tree_foreach (indirect_pool, dw2_output_indirect_constant_1, NULL);
 }
 
-/* Like dw2_asm_output_addr_rtx, but encode the pointer as directed.  */
+/* Like dw2_asm_output_addr_rtx, but encode the pointer as directed.
+   If PUBLIC is set and the encoding is DW_EH_PE_indirect, the indirect
+   reference is shared across the entire application (or DSO).  */
 
 void
-dw2_asm_output_encoded_addr_rtx (int encoding, rtx addr,
+dw2_asm_output_encoded_addr_rtx (int encoding, rtx addr, bool is_public,
 				 const char *comment, ...)
 {
   int size;
@@ -830,9 +868,9 @@ dw2_asm_output_encoded_addr_rtx (int encoding, rtx addr,
 	  /* It is very tempting to use force_const_mem so that we share data
 	     with the normal constant pool.  However, we've already emitted
 	     the constant pool for this function.  Moreover, we'd like to
-	     share these constants across the entire unit of translation,
-	     or better, across the entire application (or DSO).  */
-	  addr = dw2_force_const_mem (addr);
+	     share these constants across the entire unit of translation and
+	     even, if possible, across the entire application (or DSO).  */
+	  addr = dw2_force_const_mem (addr, is_public);
 	  encoding &= ~DW_EH_PE_indirect;
 	  goto restart;
 	}

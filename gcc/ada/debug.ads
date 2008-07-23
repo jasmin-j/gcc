@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2003 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -31,12 +31,12 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-package Debug is
-pragma Preelaborate (Debug);
-
 --  This package contains global flags used to control the inclusion
 --  of debugging code in various phases of the compiler. Some of these
 --  flags are also used by the binder and gnatmake.
+
+package Debug is
+   pragma Preelaborate;
 
    -------------------------
    -- Dynamic Debug Flags --
@@ -178,10 +178,6 @@ pragma Preelaborate (Debug);
    Debug_Flag_Dot_7 : Boolean := False;
    Debug_Flag_Dot_8 : Boolean := False;
    Debug_Flag_Dot_9 : Boolean := False;
-
-   function Get_Debug_Flag_K return Boolean;
-   --  This function is called from C code to get the setting of the K flag
-   --  (it does not work to try to access a constant object directly).
 
    procedure Set_Debug_Flag (C : Character; Val : Boolean := True);
    --  Where C is 0-9, A-Z, or a-z, sets the corresponding debug flag to

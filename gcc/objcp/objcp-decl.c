@@ -1,13 +1,13 @@
 /* Process the ObjC-specific declarations and variables for 
    the Objective-C++ compiler.
-   Copyright (C) 2005 Free Software Foundation, Inc.
+   Copyright (C) 2005, 2007 Free Software Foundation, Inc.
    Contributed by Ziemowit Laski  <zlaski@apple.com>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -16,9 +16,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -51,13 +50,15 @@ objcp_start_struct (enum tree_code code ATTRIBUTE_UNUSED, tree name)
   /* The idea here is to mimic the actions that the C++ parser takes when
      constructing 'extern "C" struct NAME {'.  */
   push_lang_context (lang_name_c);
+
   if (!name)
     name = make_anon_name ();
-  s = xref_tag (record_type, name, ts_current, 0);
+
+  s = xref_tag (record_type, name, ts_global, 0);
   CLASSTYPE_DECLARED_CLASS (s) = 0;  /* this is a 'struct', not a 'class'.  */
   xref_basetypes (s, NULL_TREE);     /* no base classes here!  */
 
-  return begin_class_definition (s);
+  return begin_class_definition (s, NULL_TREE);
 }
 
 tree 
@@ -86,24 +87,9 @@ objcp_finish_function (void)
 }
 
 tree
-objcp_lookup_name (tree name)
-{
-  return lookup_name (name, -1);
-}
-
-tree
 objcp_xref_tag (enum tree_code code ATTRIBUTE_UNUSED, tree name)
 {
-  return xref_tag (record_type, name, true, false);
-}
-
-tree
-objcp_build_component_ref (tree datum, tree component)
-{
-  /* The 'build_component_ref' routine has been removed from the C++
-     front-end, but 'finish_class_member_access_expr' seems to be
-     a worthy substitute.  */
-  return finish_class_member_access_expr (datum, component);
+  return xref_tag (record_type, name, ts_global, false);
 }
 
 int

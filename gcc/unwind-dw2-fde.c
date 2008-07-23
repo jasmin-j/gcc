@@ -1,5 +1,5 @@
 /* Subroutines needed for unwinding stack frames for exception handling.  */
-/* Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004
+/* Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2008
    Free Software Foundation, Inc.
    Contributed by Jason Merrill <jason@cygnus.com>.
 
@@ -26,8 +26,8 @@ for more details.
 
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301, USA.  */
 
 #ifndef _Unwind_Find_FDE
 #include "tconfig.h"
@@ -44,7 +44,7 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 
 /* The unseen_objects list contains objects that have been registered
    but not yet categorized in any way.  The seen_objects list has had
-   it's pc_begin and count fields initialized at minimum, and is sorted
+   its pc_begin and count fields initialized at minimum, and is sorted
    by decreasing value of pc_begin.  */
 static struct object *unseen_objects;
 static struct object *seen_objects;
@@ -79,7 +79,7 @@ __register_frame_info_bases (const void *begin, struct object *ob,
 			     void *tbase, void *dbase)
 {
   /* If .eh_frame is empty, don't register at all.  */
-  if ((uword *) begin == 0 || *(uword *) begin == 0)
+  if ((const uword *) begin == 0 || *(const uword *) begin == 0)
     return;
 
   ob->pc_begin = (void *)-1;
@@ -164,7 +164,7 @@ __register_frame_table (void *begin)
    from crtbegin (wherein it is declared weak), and this object does
    not get pulled from libgcc.a for other reasons, then the
    invocation of __deregister_frame_info will be resolved from glibc.
-   Since the registration did not happen there, we'll abort.
+   Since the registration did not happen there, we'll die.
 
    Therefore, declare a new deregistration entry point that does the
    exact same thing, but will resolve to the same library as
@@ -177,7 +177,7 @@ __deregister_frame_info_bases (const void *begin)
   struct object *ob = 0;
 
   /* If .eh_frame is empty, we haven't registered.  */
-  if ((uword *) begin == 0 || *(uword *) begin == 0)
+  if ((const uword *) begin == 0 || *(const uword *) begin == 0)
     return ob;
 
   init_object_mutex_once ();
@@ -212,11 +212,9 @@ __deregister_frame_info_bases (const void *begin)
 	  }
       }
 
-  __gthread_mutex_unlock (&object_mutex);
-  abort ();
-
  out:
   __gthread_mutex_unlock (&object_mutex);
+  gcc_assert (ob);
   return (void *) ob;
 }
 
@@ -255,8 +253,9 @@ base_from_object (unsigned char encoding, struct object *ob)
       return (_Unwind_Ptr) ob->tbase;
     case DW_EH_PE_datarel:
       return (_Unwind_Ptr) ob->dbase;
+    default:
+      gcc_unreachable ();
     }
-  abort ();
 }
 
 /* Return the FDE pointer encoding from the CIE.  */
@@ -267,8 +266,8 @@ get_cie_encoding (const struct dwarf_cie *cie)
 {
   const unsigned char *aug, *p;
   _Unwind_Ptr dummy;
-  _Unwind_Word utmp;
-  _Unwind_Sword stmp;
+  _uleb128_t utmp;
+  _sleb128_t stmp;
 
   aug = cie->augmentation;
   if (aug[0] != 'z')
@@ -324,8 +323,8 @@ static int
 fde_unencoded_compare (struct object *ob __attribute__((unused)),
 		       const fde *x, const fde *y)
 {
-  _Unwind_Ptr x_ptr = *(_Unwind_Ptr *) x->pc_begin;
-  _Unwind_Ptr y_ptr = *(_Unwind_Ptr *) y->pc_begin;
+  const _Unwind_Ptr x_ptr = *(const _Unwind_Ptr *) x->pc_begin;
+  const _Unwind_Ptr y_ptr = *(const _Unwind_Ptr *) y->pc_begin;
 
   if (x_ptr > y_ptr)
     return 1;
@@ -435,24 +434,23 @@ fde_split (struct object *ob, fde_compare_t fde_compare,
 {
   static const fde *marker;
   size_t count = linear->count;
-  const fde **chain_end = &marker;
+  const fde *const *chain_end = &marker;
   size_t i, j, k;
 
   /* This should optimize out, but it is wise to make sure this assumption
      is correct. Should these have different sizes, we cannot cast between
      them and the overlaying onto ERRATIC will not work.  */
-  if (sizeof (const fde *) != sizeof (const fde **))
-    abort ();
+  gcc_assert (sizeof (const fde *) == sizeof (const fde **));
 
   for (i = 0; i < count; i++)
     {
-      const fde **probe;
+      const fde *const *probe;
 
       for (probe = chain_end;
 	   probe != &marker && fde_compare (ob, linear->array[i], *probe) < 0;
 	   probe = chain_end)
 	{
-	  chain_end = (const fde **) erratic->array[probe - linear->array];
+	  chain_end = (const fde *const*) erratic->array[probe - linear->array];
 	  erratic->array[probe - linear->array] = NULL;
 	}
       erratic->array[i] = (const fde *) chain_end;
@@ -566,8 +564,7 @@ end_fde_sort (struct object *ob, struct fde_accumulator *accu, size_t count)
 {
   fde_compare_t fde_compare;
 
-  if (accu->linear && accu->linear->count != count)
-    abort ();
+  gcc_assert (!accu->linear || accu->linear->count == count);
 
   if (ob->s.b.mixed_encoding)
     fde_compare = fde_mixed_encoding_compare;
@@ -579,8 +576,7 @@ end_fde_sort (struct object *ob, struct fde_accumulator *accu, size_t count)
   if (accu->erratic)
     {
       fde_split (ob, fde_compare, accu->linear, accu->erratic);
-      if (accu->linear->count + accu->erratic->count != count)
-	abort ();
+      gcc_assert (accu->linear->count + accu->erratic->count == count);
       frame_heapsort (ob, fde_compare, accu->erratic);
       fde_merge (ob, fde_compare, accu->linear, accu->erratic);
       free (accu->erratic);
@@ -683,7 +679,7 @@ add_fdes (struct object *ob, struct fde_accumulator *accu, const fde *this_fde)
 
       if (encoding == DW_EH_PE_absptr)
 	{
-	  if (*(_Unwind_Ptr *) this_fde->pc_begin == 0)
+	  if (*(const _Unwind_Ptr *) this_fde->pc_begin == 0)
 	    continue;
 	}
       else
@@ -801,8 +797,8 @@ linear_search_fdes (struct object *ob, const fde *this_fde, void *pc)
 
       if (encoding == DW_EH_PE_absptr)
 	{
-	  pc_begin = ((_Unwind_Ptr *) this_fde->pc_begin)[0];
-	  pc_range = ((_Unwind_Ptr *) this_fde->pc_begin)[1];
+	  pc_begin = ((const _Unwind_Ptr *) this_fde->pc_begin)[0];
+	  pc_range = ((const _Unwind_Ptr *) this_fde->pc_begin)[1];
 	  if (pc_begin == 0)
 	    continue;
 	}
@@ -848,12 +844,9 @@ binary_search_unencoded_fdes (struct object *ob, void *pc)
   for (lo = 0, hi = vec->count; lo < hi; )
     {
       size_t i = (lo + hi) / 2;
-      const fde *f = vec->array[i];
-      void *pc_begin;
-      uaddr pc_range;
-
-      pc_begin = ((void **) f->pc_begin)[0];
-      pc_range = ((uaddr *) f->pc_begin)[1];
+      const fde *const f = vec->array[i];
+      const void *pc_begin = ((const void *const*) f->pc_begin)[0];
+      const uaddr pc_range = ((const uaddr *) f->pc_begin)[1];
 
       if (pc < pc_begin)
 	hi = i;
@@ -954,7 +947,7 @@ search_object (struct object* ob, void *pc)
     }
   else
     {
-      /* Long slow labourious linear search, cos we've no memory.  */
+      /* Long slow laborious linear search, cos we've no memory.  */
       if (ob->s.b.from_array)
 	{
 	  fde **p;
@@ -1017,6 +1010,7 @@ _Unwind_Find_FDE (void *pc, struct dwarf_eh_bases *bases)
   if (f)
     {
       int encoding;
+      _Unwind_Ptr func;
 
       bases->tbase = ob->tbase;
       bases->dbase = ob->dbase;
@@ -1025,7 +1019,8 @@ _Unwind_Find_FDE (void *pc, struct dwarf_eh_bases *bases)
       if (ob->s.b.mixed_encoding)
 	encoding = get_fde_encoding (f);
       read_encoded_value_with_base (encoding, base_from_object (encoding, ob),
-				    f->pc_begin, (_Unwind_Ptr *)&bases->func);
+				    f->pc_begin, &func);
+      bases->func = (void *) func;
     }
 
   return f;

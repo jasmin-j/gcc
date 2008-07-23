@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1996-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1996-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -31,9 +31,9 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This is the Alpha/VMS version.
+--  This is the Alpha/VMS version
 
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 package body Interfaces.C_Streams is
 
    use type System.CRTL.size_t;
@@ -81,14 +81,14 @@ package body Interfaces.C_Streams is
       type Buffer_Type is array (size_t range 1 .. count,
                                  size_t range 1 .. size) of Character;
       type Buffer_Access is access Buffer_Type;
-      function To_BA is new Unchecked_Conversion (voids, Buffer_Access);
+      function To_BA is new Ada.Unchecked_Conversion (voids, Buffer_Access);
 
       BA : constant Buffer_Access := To_BA (buffer);
       Ch : int;
 
    begin
-      --  This Fread goes with the Fwrite below.
-      --  The C library fread sometimes can't read fputc generated files.
+      --  This Fread goes with the Fwrite below. The C library fread sometimes
+      --  can't read fputc generated files.
 
       for C in 1 .. count loop
          for S in 1 .. size loop
@@ -119,14 +119,14 @@ package body Interfaces.C_Streams is
       type Buffer_Type is array (size_t range 1 .. count,
                                  size_t range 1 .. size) of Character;
       type Buffer_Access is access Buffer_Type;
-      function To_BA is new Unchecked_Conversion (voids, Buffer_Access);
+      function To_BA is new Ada.Unchecked_Conversion (voids, Buffer_Access);
 
       BA : constant Buffer_Access := To_BA (buffer);
       Ch : int;
 
    begin
-      --  This Fread goes with the Fwrite below.
-      --  The C library fread sometimes can't read fputc generated files.
+      --  This Fread goes with the Fwrite below. The C library fread sometimes
+      --  can't read fputc generated files.
 
       for C in 1 + index .. count + index loop
          for S in 1 .. size loop
@@ -181,7 +181,7 @@ package body Interfaces.C_Streams is
       type Buffer_Type is array (size_t range 1 .. count,
                                  size_t range 1 .. size) of Character;
       type Buffer_Access is access Buffer_Type;
-      function To_BA is new Unchecked_Conversion (voids, Buffer_Access);
+      function To_BA is new Ada.Unchecked_Conversion (voids, Buffer_Access);
 
       BA : constant Buffer_Access := To_BA (buffer);
 
@@ -229,7 +229,7 @@ package body Interfaces.C_Streams is
       --  In order for the above fwrite hack to work, we must always buffer
       --  stdout and stderr. Is_regular_file on VMS cannot detect when
       --  these are redirected to a file, so checking for that condition
-      --  doesnt help.
+      --  doesn't help.
 
       if mode = IONBF
         and then (stream = stdout or else stream = stderr)

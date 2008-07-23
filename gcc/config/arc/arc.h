@@ -1,12 +1,12 @@
 /* Definitions of target machine for GNU compiler, Argonaut ARC cpu.
-   Copyright (C) 1994, 1995, 1997, 1998, 1999, 2000, 2001, 2002, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 1994, 1995, 1997, 1998, 1999, 2000, 2001, 2002, 2004, 2005,
+   2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,15 +15,13 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* ??? This is an old port, and is undoubtedly suffering from bit rot.  */
 
 /* Things to do:
 
-   - PREDICATE_CODES
    - incscc, decscc?
    - print active compiler options in assembler output
 */
@@ -431,7 +429,7 @@ extern enum reg_class arc_regno_reg_class[FIRST_PSEUDO_REGISTER];
    Here VALUE is the CONST_DOUBLE rtx itself.  */
 /* 'G' is used for integer values for the multiplication insns where the
    operands are extended from 4 bytes to 8 bytes.
-   'H' is used when any 64 bit constant is allowed.  */
+   'H' is used when any 64-bit constant is allowed.  */
 #define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C) \
 ((C) == 'G' ? arc_double_limm_p (VALUE) \
  : (C) == 'H' ? 1 \
@@ -456,11 +454,11 @@ extern enum reg_class arc_regno_reg_class[FIRST_PSEUDO_REGISTER];
    pointer to a smaller address.  */
 #define STACK_GROWS_DOWNWARD
 
-/* Define this if the nominal address of the stack frame
+/* Define this to nonzero if the nominal address of the stack frame
    is at the high-address end of the local variables;
    that is, each additional local variable allocated
    goes at a more negative offset in the frame.  */
-#define FRAME_GROWS_DOWNWARD
+#define FRAME_GROWS_DOWNWARD 1
 
 /* Offset within stack frame to start allocating local variables at.
    If FRAME_GROWS_DOWNWARD, this is the offset to the END of the
@@ -522,7 +520,7 @@ extern enum reg_class arc_regno_reg_class[FIRST_PSEUDO_REGISTER];
    frame pointer.  This expression is evaluated in the reload pass.
    If its value is nonzero the function will have a frame pointer.  */
 #define FRAME_POINTER_REQUIRED \
-(current_function_calls_alloca)
+(cfun->calls_alloca)
 
 /* C statement to store the difference between the frame pointer
    and the stack pointer values immediately after the function prologue.  */
@@ -533,7 +531,7 @@ extern enum reg_class arc_regno_reg_class[FIRST_PSEUDO_REGISTER];
 
 /* If defined, the maximum amount of space required for outgoing
    arguments will be computed and placed into the variable
-   `current_function_outgoing_args_size'.  No space will be pushed
+   `crtl->outgoing_args_size'.  No space will be pushed
    onto the stack for each call; instead, the function prologue should
    increase the stack frame size by this amount.  */
 #define ACCUMULATE_OUTGOING_ARGS 1
@@ -672,7 +670,7 @@ arc_eligible_for_epilogue_delay (TRIAL, SLOTS_FILLED)
 
 /* Output assembler code for a block containing the constant parts
    of a trampoline, leaving space for the variable parts.  */
-/* On the ARC, the trampoline is quite simple as we have 32 bit immediate
+/* On the ARC, the trampoline is quite simple as we have 32-bit immediate
    constants.
 
 	mov r24,STATIC
@@ -715,7 +713,7 @@ do { \
  || GET_CODE (X) == CONST_INT || GET_CODE (X) == CONST)
 
 /* Nonzero if the constant value X is a legitimate general operand.
-   We can handle any 32 or 64 bit constant.  */
+   We can handle any 32- or 64-bit constant.  */
 /* "1" should work since the largest constant should be a 64 bit critter.  */
 /* ??? Not sure what to do for 64x32 compiler.  */
 #define LEGITIMATE_CONSTANT_P(X) 1
@@ -800,12 +798,7 @@ do { \
 
 /* Go to LABEL if ADDR (a legitimate address expression)
    has an effect that depends on the machine mode it is used for.  */
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR, LABEL) \
-{ if (GET_CODE (ADDR) == PRE_DEC)	\
-    goto LABEL;				\
-  if (GET_CODE (ADDR) == PRE_INC)	\
-    goto LABEL;				\
-}
+#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR, LABEL)
 
 /* Given a comparison code (EQ, NE, etc.) and the first operand of a COMPARE,
    return the mode to be used for the comparison.  */
@@ -899,22 +892,6 @@ extern const char *arc_text_section, *arc_data_section, *arc_rodata_section;
    is not defined.  */
 /* This register is call-saved on the ARC.  */
 /*#define PIC_OFFSET_TABLE_REG_CALL_CLOBBERED*/
-
-/* By generating position-independent code, when two different programs (A
-   and B) share a common library (libC.a), the text of the library can be
-   shared whether or not the library is linked at the same address for both
-   programs.  In some of these environments, position-independent code
-   requires not only the use of different addressing modes, but also
-   special code to enable the use of these addressing modes.
-
-   The FINALIZE_PIC macro serves as a hook to emit these special
-   codes once the function is being compiled into assembly code, but not
-   before.  (It is not done before, because in the case of compiling an
-   inline function, it would lead to multiple PIC prologues being
-   included in functions which used inline functions and were compiled to
-   assembly language.)  */
-
-#define FINALIZE_PIC arc_finalize_pic ()
 
 /* A C expression that is nonzero if X is a legitimate immediate
    operand on the target machine when generating position independent code.
@@ -1082,7 +1059,7 @@ do { if ((LOG) != 0) fprintf (FILE, "\t.align %d\n", 1 << (LOG)); } while (0)
 /* Specify the machine mode that pointers have.
    After generation of rtl, the compiler makes no further distinction
    between pointers and any other objects of this machine mode.  */
-/* ??? The arc doesn't have full 32 bit pointers, but making this PSImode has
+/* ??? The arc doesn't have full 32-bit pointers, but making this PSImode has
    its own problems (you have to add extendpsisi2 and trucnsipsi2 but how does
    one do it without getting excess code?).  Try to avoid it.  */
 #define Pmode SImode
@@ -1109,8 +1086,3 @@ enum arc_function_type {
 #define ARC_INTERRUPT_P(TYPE) \
 ((TYPE) == ARC_FUNCTION_ILINK1 || (TYPE) == ARC_FUNCTION_ILINK2)
 /* Compute the type of a function from its DECL.  */
-
-
-/* Implement `va_start' for varargs and stdarg.  */
-#define EXPAND_BUILTIN_VA_START(valist, nextarg) \
-  arc_va_start (valist, nextarg)

@@ -6,7 +6,7 @@
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *         Copyright (C) 1992-2003 Free Software Foundation, Inc.           *
+ *         Copyright (C) 1992-2007, Free Software Foundation, Inc.           *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -16,8 +16,8 @@
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
  * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
+ * Boston, MA 02110-1301, USA.                                              *
  *                                                                          *
  * As a  special  exception,  if you  link  this file  with other  files to *
  * produce an executable,  this file does not by itself cause the resulting *
@@ -79,13 +79,17 @@ __gnat_arg_count (void)
 int
 __gnat_len_arg (int arg_num)
 {
-  return strlen (gnat_argv[arg_num]);
+  if (gnat_argv != NULL)
+    return strlen (gnat_argv[arg_num]);
+  else
+    return 0;
 }
 
 void
 __gnat_fill_arg (char *a, int i)
 {
-  strncpy (a, gnat_argv[i], strlen(gnat_argv[i]));
+  if (gnat_argv != NULL)
+    strncpy (a, gnat_argv[i], strlen(gnat_argv[i]));
 }
 
 int
@@ -101,11 +105,15 @@ __gnat_env_count (void)
 int
 __gnat_len_env (int env_num)
 {
-  return strlen (gnat_envp[env_num]);
+  if (gnat_envp != NULL)
+    return strlen (gnat_envp[env_num]);
+  else
+    return 0;
 }
 
 void
 __gnat_fill_env (char *a, int i)
 {
-  strncpy (a, gnat_envp[i], strlen (gnat_envp[i]));
+  if (gnat_envp != NULL)
+    strncpy (a, gnat_envp[i], strlen (gnat_envp[i]));
 }

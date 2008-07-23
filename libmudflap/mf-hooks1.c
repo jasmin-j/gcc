@@ -26,8 +26,8 @@ for more details.
 
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301, USA.  */
 
 
 #include "config.h"
@@ -75,11 +75,26 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 
 
 #if PIC
+
+enum { BS = 4096, NB=10 };
+static char __mf_0fn_bufs[NB][BS];
+static unsigned __mf_0fn_bufs_used[NB];
+
+
 /* A special bootstrap variant. */
 void *
 __mf_0fn_malloc (size_t c)
 {
-  /* fprintf (stderr, "0fn malloc c=%lu\n", c); */
+  unsigned i;
+
+  for (i=0; i<NB; i++)
+    {
+      if (! __mf_0fn_bufs_used[i] && c < BS)
+	{
+	  __mf_0fn_bufs_used[i] = 1;
+	  return & __mf_0fn_bufs[i][0];
+	}
+    }
   return NULL;
 }
 #endif
@@ -96,7 +111,9 @@ WRAPPER(void *, malloc, size_t c)
   size_with_crumple_zones =
     CLAMPADD(c,CLAMPADD(__mf_opts.crumple_zone,
 			__mf_opts.crumple_zone));
+  BEGIN_MALLOC_PROTECT ();
   result = (char *) CALL_REAL (malloc, size_with_crumple_zones);
+  END_MALLOC_PROTECT ();
 
   if (LIKELY(result))
     {
@@ -114,21 +131,7 @@ WRAPPER(void *, malloc, size_t c)
 void *
 __mf_0fn_calloc (size_t c, size_t n)
 {
-  enum foo { BS = 4096, NB=10 };
-  static char bufs[NB][BS];
-  static unsigned bufs_used[NB];
-  unsigned i;
-
-  /* fprintf (stderr, "0fn calloc c=%lu n=%lu\n", c, n); */
-  for (i=0; i<NB; i++)
-    {
-      if (! bufs_used[i] && (c*n) < BS)
-	{
-	  bufs_used[i] = 1;
-	  return & bufs[i][0];
-	}
-    }
-  return NULL;
+  return __mf_0fn_malloc (c * n);
 }
 #endif
 
@@ -147,7 +150,9 @@ WRAPPER(void *, calloc, size_t c, size_t n)
     CLAMPADD((c * n), /* XXX: CLAMPMUL */
 	     CLAMPADD(__mf_opts.crumple_zone,
 		      __mf_opts.crumple_zone));
+  BEGIN_MALLOC_PROTECT ();
   result = (char *) CALL_REAL (malloc, size_with_crumple_zones);
+  END_MALLOC_PROTECT ();
 
   if (LIKELY(result))
     memset (result, 0, size_with_crumple_zones);
@@ -189,12 +194,14 @@ WRAPPER(void *, realloc, void *buf, size_t c)
   size_with_crumple_zones =
     CLAMPADD(c, CLAMPADD(__mf_opts.crumple_zone,
 			 __mf_opts.crumple_zone));
+  BEGIN_MALLOC_PROTECT ();
   result = (char *) CALL_REAL (realloc, base, size_with_crumple_zones);
+  END_MALLOC_PROTECT ();
 
   /* Ensure heap wiping doesn't occur during this peculiar
      unregister/reregister pair.  */
   LOCKTH ();
-  __mf_state = reentrant;
+  __mf_set_state (reentrant);
   saved_wipe_heap = __mf_opts.wipe_heap;
   __mf_opts.wipe_heap = 0;
 
@@ -212,7 +219,7 @@ WRAPPER(void *, realloc, void *buf, size_t c)
   /* Restore previous setting.  */
   __mf_opts.wipe_heap = saved_wipe_heap;
 
-  __mf_state = active;
+  __mf_set_state (active);
   UNLOCKTH ();
 
   return result;
@@ -241,6 +248,19 @@ WRAPPER(void, free, void *buf)
 
   if (UNLIKELY(buf == NULL))
     return;
+
+#if PIC
+  /* Check whether the given buffer might have come from a
+     __mf_0fn_malloc/calloc call that for whatever reason was not
+     redirected back to __mf_0fn_free.  If so, we just ignore the
+     call. */
+  if (UNLIKELY((uintptr_t) buf >= (uintptr_t) __mf_0fn_bufs &&
+               (uintptr_t) buf < ((uintptr_t) __mf_0fn_bufs + sizeof(__mf_0fn_bufs))))
+  {
+    VERBOSE_TRACE ("skipping free of boot (0fn) alloc buffer %p\n", buf);
+    return;
+  }
+#endif
 
   LOCKTH ();
   if (UNLIKELY(!freeq_initialized))
@@ -274,7 +294,9 @@ WRAPPER(void, free, void *buf)
 			     (void *) freeme,
 			     __mf_opts.crumple_zone);
 	    }
+	  BEGIN_MALLOC_PROTECT ();
 	  CALL_REAL (free, freeme);
+	  END_MALLOC_PROTECT ();
 	}
     }
   else
@@ -289,10 +311,16 @@ WRAPPER(void, free, void *buf)
 			 (void *) buf,
 			 __mf_opts.crumple_zone);
 	}
+      BEGIN_MALLOC_PROTECT ();
       CALL_REAL (free, base);
+      END_MALLOC_PROTECT ();
     }
 }
 
+
+/* We can only wrap mmap if the target supports it.  Likewise for munmap.
+   We assume we have both if we have mmap.  */
+#ifdef HAVE_MMAP
 
 #if PIC
 /* A special bootstrap variant. */
@@ -384,6 +412,7 @@ WRAPPER(int , munmap, void *start, size_t length)
     }
   return result;
 }
+#endif /* HAVE_MMAP */
 
 
 /* This wrapper is a little different, as it's called indirectly from
@@ -422,8 +451,10 @@ __mf_wrap_alloca_indirect (size_t c)
     {
       struct alloca_tracking *next = alloca_history->next;
       __mf_unregister (alloca_history->ptr, 0, __MF_TYPE_HEAP);
+      BEGIN_MALLOC_PROTECT ();
       CALL_REAL (free, alloca_history->ptr);
       CALL_REAL (free, alloca_history);
+      END_MALLOC_PROTECT ();
       alloca_history = next;
     }
 
@@ -431,14 +462,20 @@ __mf_wrap_alloca_indirect (size_t c)
   result = NULL;
   if (LIKELY (c > 0)) /* alloca(0) causes no allocation.  */
     {
+      BEGIN_MALLOC_PROTECT ();
       track = (struct alloca_tracking *) CALL_REAL (malloc,
 						    sizeof (struct alloca_tracking));
+      END_MALLOC_PROTECT ();
       if (LIKELY (track != NULL))
 	{
+	  BEGIN_MALLOC_PROTECT ();
 	  result = CALL_REAL (malloc, c);
+	  END_MALLOC_PROTECT ();
 	  if (UNLIKELY (result == NULL))
 	    {
+	      BEGIN_MALLOC_PROTECT ();
 	      CALL_REAL (free, track);
+	      END_MALLOC_PROTECT ();
 	      /* Too bad.  XXX: What about errno?  */
 	    }
 	  else

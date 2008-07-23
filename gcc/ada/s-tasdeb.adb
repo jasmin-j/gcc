@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                 GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS              --
+--                  GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                --
 --                                                                          --
 --                  S Y S T E M . T A S K I N G . D E B U G                 --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---          Copyright (C) 1997-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1997-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -40,15 +40,16 @@
 --  in both normal and restricted (ravenscar) environments.
 
 with System.CRTL;
+with System.Task_Primitives;
 with System.Task_Primitives.Operations;
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package body System.Tasking.Debug is
 
    package STPO renames System.Task_Primitives.Operations;
 
    function To_Integer is new
-     Unchecked_Conversion (Task_Id, System.Address);
+     Ada.Unchecked_Conversion (Task_Id, System.Task_Primitives.Task_Address);
 
    type Trace_Flag_Set is array (Character) of Boolean;
 
@@ -61,10 +62,32 @@ package body System.Tasking.Debug is
    procedure Write (Fd : Integer; S : String; Count : Integer);
 
    procedure Put (S : String);
-   --  Display S on standard output.
+   --  Display S on standard output
 
    procedure Put_Line (S : String := "");
-   --  Display S on standard output with an additional line terminator.
+   --  Display S on standard output with an additional line terminator
+
+   ------------------------
+   -- Continue_All_Tasks --
+   ------------------------
+
+   procedure Continue_All_Tasks is
+      C : Task_Id;
+
+      Dummy : Boolean;
+      pragma Unreferenced (Dummy);
+
+   begin
+      STPO.Lock_RTS;
+
+      C := All_Tasks_List;
+      while C /= null loop
+         Dummy := STPO.Continue_Task (C);
+         C := C.Common.All_Tasks_Link;
+      end loop;
+
+      STPO.Unlock_RTS;
+   end Continue_All_Tasks;
 
    --------------------
    -- Get_User_State --
@@ -224,6 +247,37 @@ package body System.Tasking.Debug is
    begin
       STPO.Self.User_State := Value;
    end Set_User_State;
+
+   --------------------
+   -- Stop_All_Tasks --
+   --------------------
+
+   procedure Stop_All_Tasks is
+      C : Task_Id;
+
+      Dummy : Boolean;
+      pragma Unreferenced (Dummy);
+
+   begin
+      STPO.Lock_RTS;
+
+      C := All_Tasks_List;
+      while C /= null loop
+         Dummy := STPO.Stop_Task (C);
+         C := C.Common.All_Tasks_Link;
+      end loop;
+
+      STPO.Unlock_RTS;
+   end Stop_All_Tasks;
+
+   ----------------------------
+   -- Stop_All_Tasks_Handler --
+   ----------------------------
+
+   procedure Stop_All_Tasks_Handler is
+   begin
+      STPO.Stop_All_Tasks;
+   end Stop_All_Tasks_Handler;
 
    -----------------------
    -- Suspend_All_Tasks --

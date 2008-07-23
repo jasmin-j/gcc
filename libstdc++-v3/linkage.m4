@@ -239,7 +239,7 @@ dnl 2) has "C" linkage
 dnl
 dnl argument 1 is name of function to check
 dnl
-dnl ASSUMES argument is a math function with TWO parameters
+dnl ASSUMES argument is a stdlib function with TWO parameters
 dnl
 dnl GLIBCXX_CHECK_STDLIB_DECL_AND_LINKAGE_2
 AC_DEFUN([GLIBCXX_CHECK_STDLIB_DECL_AND_LINKAGE_2], [
@@ -269,7 +269,7 @@ dnl 2) has "C" linkage
 dnl
 dnl argument 1 is name of function to check
 dnl
-dnl ASSUMES argument is a function with THREE parameters
+dnl ASSUMES argument is a stdlib function with THREE parameters
 dnl
 dnl GLIBCXX_CHECK_STDLIB_DECL_AND_LINKAGE_3
 AC_DEFUN([GLIBCXX_CHECK_STDLIB_DECL_AND_LINKAGE_3], [
@@ -534,9 +534,6 @@ AC_DEFUN([GLIBCXX_CHECK_COMPLEX_MATH_SUPPORT], [
 # be used in projects which are not available under the GNU Public License
 # but which still want to provide support for the GNU gettext functionality.
 # Please note that the actual code is *not* freely available.
-#
-# serial 1
-#
 dnl AC_REPLACE_MATHFUNCS(FUNCTION...)
 AC_DEFUN([AC_REPLACE_MATHFUNCS],
 [AC_CHECK_FUNCS([$1], , [LIBMATHOBJS="$LIBMATHOBJS ${ac_func}.lo"])])

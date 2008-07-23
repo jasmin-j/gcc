@@ -1,5 +1,6 @@
 /* Functions to analyze and validate GIMPLE trees.
-   Copyright (C) 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007
+   Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
    Rewritten by Jason Merrill <jason@redhat.com>
 
@@ -7,7 +8,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +17,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -34,8 +34,6 @@ Boston, MA 02111-1307, USA.  */
 #include "bitmap.h"
 
 /* For the definitive definition of GIMPLE, see doc/tree-ssa.texi.  */
-
-static inline bool is_gimple_id (tree);
 
 /* Validation of GIMPLE expressions.  */
 
@@ -63,12 +61,14 @@ is_gimple_formal_tmp_rhs (tree t)
     case TRUTH_AND_EXPR:
     case TRUTH_OR_EXPR:
     case TRUTH_XOR_EXPR:
+    case COND_EXPR:
     case ADDR_EXPR:
     case CALL_EXPR:
     case CONSTRUCTOR:
     case COMPLEX_EXPR:
     case INTEGER_CST:
     case REAL_CST:
+    case FIXED_CST:
     case STRING_CST:
     case COMPLEX_CST:
     case VECTOR_CST:
@@ -89,13 +89,13 @@ is_gimple_formal_tmp_rhs (tree t)
 bool
 is_gimple_reg_rhs (tree t)
 {
-  /* If the RHS of the MODIFY_EXPR may throw or make a nonlocal goto
+  /* If the RHS of the GIMPLE_MODIFY_STMT may throw or make a nonlocal goto
      and the LHS is a user variable, then we need to introduce a formal
      temporary.  This way the optimizers can determine that the user
      variable is only modified if evaluation of the RHS does not throw.
 
      Don't force a temp of a non-renamable type; the copy could be
-     arbitrarily expensive.  Instead we will generate a V_MAY_DEF for
+     arbitrarily expensive.  Instead we will generate a VDEF for
      the assignment.  */
 
   if (is_gimple_reg_type (TREE_TYPE (t))
@@ -113,11 +113,8 @@ bool
 is_gimple_mem_rhs (tree t)
 {
   /* If we're dealing with a renamable type, either source or dest must be
-     a renamed variable.  Also force a temporary if the type doesn't need
-     to be stored in memory, since it's cheap and prevents erroneous
-     tailcalls (PR 17526).  */
-  if (is_gimple_reg_type (TREE_TYPE (t))
-      || TYPE_MODE (TREE_TYPE (t)) != BLKmode)
+     a renamed variable.  */
+  if (is_gimple_reg_type (TREE_TYPE (t)))
     return is_gimple_val (t);
   else
     return is_gimple_formal_tmp_rhs (t);
@@ -153,7 +150,10 @@ is_gimple_lvalue (tree t)
 bool
 is_gimple_condexpr (tree t)
 {
-  return (is_gimple_val (t) || COMPARISON_CLASS_P (t));
+  return (is_gimple_val (t) || (COMPARISON_CLASS_P (t)
+				&& !tree_could_trap_p (t)
+				&& is_gimple_val (TREE_OPERAND (t, 0))
+				&& is_gimple_val (TREE_OPERAND (t, 1))));
 }
 
 /*  Return true if T is something whose address can be taken.  */
@@ -165,22 +165,65 @@ is_gimple_addressable (tree t)
 	  || INDIRECT_REF_P (t));
 }
 
-/* Return true if T is function invariant.  Or rather a restricted
-   form of function invariant.  */
+/* Return true if T is a valid gimple constant.  */
 
 bool
-is_gimple_min_invariant (tree t)
+is_gimple_constant (const_tree t)
 {
   switch (TREE_CODE (t))
     {
-    case ADDR_EXPR:
-      return TREE_INVARIANT (t);
-
     case INTEGER_CST:
     case REAL_CST:
+    case FIXED_CST:
     case STRING_CST:
     case COMPLEX_CST:
     case VECTOR_CST:
+      return true;
+
+    /* Vector constant constructors are gimple invariant.  */
+    case CONSTRUCTOR:
+      if (TREE_TYPE (t) && TREE_CODE (TREE_TYPE (t)) == VECTOR_TYPE)
+	return TREE_CONSTANT (t);
+      else
+	return false;
+
+    default:
+      return false;
+    }
+}
+
+/* Return true if T is a gimple address.  */
+
+bool
+is_gimple_address (const_tree t)
+{
+  tree op;
+
+  if (TREE_CODE (t) != ADDR_EXPR)
+    return false;
+
+  op = TREE_OPERAND (t, 0);
+  while (handled_component_p (op))
+    {
+      if ((TREE_CODE (op) == ARRAY_REF
+	   || TREE_CODE (op) == ARRAY_RANGE_REF)
+	  && !is_gimple_val (TREE_OPERAND (op, 1)))
+	    return false;
+
+      op = TREE_OPERAND (op, 0);
+    }
+
+  if (CONSTANT_CLASS_P (op) || INDIRECT_REF_P (op))
+    return true;
+
+  switch (TREE_CODE (op))
+    {
+    case PARM_DECL:
+    case RESULT_DECL:
+    case LABEL_DECL:
+    case FUNCTION_DECL:
+    case VAR_DECL:
+    case CONST_DECL:
       return true;
 
     default:
@@ -188,18 +231,67 @@ is_gimple_min_invariant (tree t)
     }
 }
 
+/* Return true if T is a gimple invariant address.  */
+
+bool
+is_gimple_invariant_address (const_tree t)
+{
+  tree op;
+
+  if (TREE_CODE (t) != ADDR_EXPR)
+    return false;
+
+  op = TREE_OPERAND (t, 0);
+  while (handled_component_p (op))
+    {
+      switch (TREE_CODE (op))
+	{
+	case ARRAY_REF:
+	case ARRAY_RANGE_REF:
+	  if (!is_gimple_constant (TREE_OPERAND (op, 1))
+	      || TREE_OPERAND (op, 2) != NULL_TREE
+	      || TREE_OPERAND (op, 3) != NULL_TREE)
+	    return false;
+	  break;
+
+	case COMPONENT_REF:
+	  if (TREE_OPERAND (op, 2) != NULL_TREE)
+	    return false;
+	  break;
+
+	default:;
+	}
+      op = TREE_OPERAND (op, 0);
+    }
+
+  return CONSTANT_CLASS_P (op) || decl_address_invariant_p (op);
+}
+
+/* Return true if T is a GIMPLE minimal invariant.  It's a restricted
+   form of function invariant.  */
+
+bool
+is_gimple_min_invariant (const_tree t)
+{
+  if (TREE_CODE (t) == ADDR_EXPR)
+    return is_gimple_invariant_address (t);
+
+  return is_gimple_constant (t);
+}
+
 /* Return true if T looks like a valid GIMPLE statement.  */
 
 bool
 is_gimple_stmt (tree t)
 {
-  enum tree_code code = TREE_CODE (t);
-
-  if (IS_EMPTY_STMT (t))
-    return 1;
+  const enum tree_code code = TREE_CODE (t);
 
   switch (code)
     {
+    case NOP_EXPR:
+      /* The only valid NOP_EXPR is the empty statement.  */
+      return IS_EMPTY_STMT (t);
+
     case BIND_EXPR:
     case COND_EXPR:
       /* These are only valid if they're void.  */
@@ -214,15 +306,31 @@ is_gimple_stmt (tree t)
     case TRY_FINALLY_EXPR:
     case EH_FILTER_EXPR:
     case CATCH_EXPR:
+    case CHANGE_DYNAMIC_TYPE_EXPR:
     case ASM_EXPR:
     case RESX_EXPR:
     case PHI_NODE:
     case STATEMENT_LIST:
+    case OMP_PARALLEL:
+    case OMP_FOR:
+    case OMP_SECTIONS:
+    case OMP_SECTIONS_SWITCH:
+    case OMP_SECTION:
+    case OMP_SINGLE:
+    case OMP_MASTER:
+    case OMP_ORDERED:
+    case OMP_CRITICAL:
+    case OMP_RETURN:
+    case OMP_CONTINUE:
+    case OMP_TASK:
+    case OMP_ATOMIC_LOAD:
+    case OMP_ATOMIC_STORE:
       /* These are always void.  */
       return true;
 
     case CALL_EXPR:
-    case MODIFY_EXPR:
+    case GIMPLE_MODIFY_STMT:
+    case PREDICT_EXPR:
       /* These are valid regardless of their type.  */
       return true;
 
@@ -244,7 +352,7 @@ is_gimple_variable (tree t)
 
 /*  Return true if T is a GIMPLE identifier (something with an address).  */
 
-static inline bool
+bool
 is_gimple_id (tree t)
 {
   return (is_gimple_variable (t)
@@ -260,12 +368,16 @@ is_gimple_id (tree t)
 bool
 is_gimple_reg_type (tree type)
 {
-  return (!AGGREGATE_TYPE_P (type)
-          && TREE_CODE (type) != COMPLEX_TYPE);
+  /* In addition to aggregate types, we also exclude complex types if not
+     optimizing because they can be subject to partial stores in GNU C by
+     means of the __real__ and __imag__ operators and we cannot promote
+     them to total stores (see gimplify_modify_expr_complex_part).  */
+  return !(AGGREGATE_TYPE_P (type)
+	   || (TREE_CODE (type) == COMPLEX_TYPE && !optimize));
+
 }
 
-
-/* Return true if T is a scalar register variable.  */
+/* Return true if T is a non-aggregate register variable.  */
 
 bool
 is_gimple_reg (tree t)
@@ -273,8 +385,12 @@ is_gimple_reg (tree t)
   if (TREE_CODE (t) == SSA_NAME)
     t = SSA_NAME_VAR (t);
 
+  if (MTAG_P (t))
+    return false;
+
   if (!is_gimple_variable (t))
     return false;
+
   if (!is_gimple_reg_type (TREE_TYPE (t)))
     return false;
 
@@ -301,8 +417,15 @@ is_gimple_reg (tree t)
   if (TREE_CODE (t) == VAR_DECL && DECL_HARD_REGISTER (t))
     return false;
 
+  /* Complex and vector values must have been put into SSA-like form.
+     That is, no assignments to the individual components.  */
+  if (TREE_CODE (TREE_TYPE (t)) == COMPLEX_TYPE
+      || TREE_CODE (TREE_TYPE (t)) == VECTOR_TYPE)
+    return DECL_GIMPLE_REG_P (t);
+
   return true;
 }
+
 
 /* Returns true if T is a GIMPLE formal temporary variable.  */
 
@@ -358,7 +481,7 @@ is_gimple_val (tree t)
   /* FIXME make these decls.  That can happen only when we expose the
      entire landing-pad construct at the tree level.  */
   if (TREE_CODE (t) == EXC_PTR_EXPR || TREE_CODE (t) == FILTER_EXPR)
-    return 1;
+    return true;
 
   return (is_gimple_variable (t) || is_gimple_min_invariant (t));
 }
@@ -388,15 +511,11 @@ is_gimple_min_lval (tree t)
 bool
 is_gimple_cast (tree t)
 {
-  return (TREE_CODE (t) == NOP_EXPR
-	  || TREE_CODE (t) == CONVERT_EXPR
-          || TREE_CODE (t) == FIX_TRUNC_EXPR
-          || TREE_CODE (t) == FIX_CEIL_EXPR
-          || TREE_CODE (t) == FIX_FLOOR_EXPR
-          || TREE_CODE (t) == FIX_ROUND_EXPR);
+  return (CONVERT_EXPR_P (t)
+          || TREE_CODE (t) == FIX_TRUNC_EXPR);
 }
 
-/* Return true if T is a valid op0 of a CALL_EXPR.  */
+/* Return true if T is a valid function operand of a CALL_EXPR.  */
 
 bool
 is_gimple_call_addr (tree t)
@@ -411,8 +530,10 @@ is_gimple_call_addr (tree t)
 tree
 get_call_expr_in (tree t)
 {
-  if (TREE_CODE (t) == MODIFY_EXPR)
-    t = TREE_OPERAND (t, 1);
+  /* FIXME tuples: delete the assertion below when conversion complete.  */
+  gcc_assert (TREE_CODE (t) != MODIFY_EXPR);
+  if (TREE_CODE (t) == GIMPLE_MODIFY_STMT)
+    t = GIMPLE_STMT_OPERAND (t, 1);
   if (TREE_CODE (t) == WITH_SIZE_EXPR)
     t = TREE_OPERAND (t, 0);
   if (TREE_CODE (t) == CALL_EXPR)
@@ -448,7 +569,7 @@ void
 recalculate_side_effects (tree t)
 {
   enum tree_code code = TREE_CODE (t);
-  int len = TREE_CODE_LENGTH (code);
+  int len = TREE_OPERAND_LENGTH (t);
   int i;
 
   switch (TREE_CODE_CLASS (code))
@@ -457,7 +578,7 @@ recalculate_side_effects (tree t)
       switch (code)
 	{
 	case INIT_EXPR:
-	case MODIFY_EXPR:
+	case GIMPLE_MODIFY_STMT:
 	case VA_ARG_EXPR:
 	case PREDECREMENT_EXPR:
 	case PREINCREMENT_EXPR:
@@ -476,6 +597,7 @@ recalculate_side_effects (tree t)
     case tcc_unary:       /* a unary arithmetic expression */
     case tcc_binary:      /* a binary arithmetic expression */
     case tcc_reference:   /* a reference */
+    case tcc_vl_exp:        /* a function call */
       TREE_SIDE_EFFECTS (t) = TREE_THIS_VOLATILE (t);
       for (i = 0; i < len; ++i)
 	{
@@ -489,4 +611,43 @@ recalculate_side_effects (tree t)
       /* Can never be used with non-expressions.  */
       gcc_unreachable ();
    }
+}
+
+/* Canonicalize a tree T for use in a COND_EXPR as conditional.  Returns
+   a canonicalized tree that is valid for a COND_EXPR or NULL_TREE, if
+   we failed to create one.  */
+
+tree
+canonicalize_cond_expr_cond (tree t)
+{
+  /* For (bool)x use x != 0.  */
+  if (TREE_CODE (t) == NOP_EXPR
+      && TREE_TYPE (t) == boolean_type_node)
+    {
+      tree top0 = TREE_OPERAND (t, 0);
+      t = build2 (NE_EXPR, TREE_TYPE (t),
+		  top0, build_int_cst (TREE_TYPE (top0), 0));
+    }
+  /* For !x use x == 0.  */
+  else if (TREE_CODE (t) == TRUTH_NOT_EXPR)
+    {
+      tree top0 = TREE_OPERAND (t, 0);
+      t = build2 (EQ_EXPR, TREE_TYPE (t),
+		  top0, build_int_cst (TREE_TYPE (top0), 0));
+    }
+  /* For cmp ? 1 : 0 use cmp.  */
+  else if (TREE_CODE (t) == COND_EXPR
+	   && COMPARISON_CLASS_P (TREE_OPERAND (t, 0))
+	   && integer_onep (TREE_OPERAND (t, 1))
+	   && integer_zerop (TREE_OPERAND (t, 2)))
+    {
+      tree top0 = TREE_OPERAND (t, 0);
+      t = build2 (TREE_CODE (top0), TREE_TYPE (t),
+		  TREE_OPERAND (top0, 0), TREE_OPERAND (top0, 1));
+    }
+
+  if (is_gimple_condexpr (t))
+    return t;
+
+  return NULL_TREE;
 }

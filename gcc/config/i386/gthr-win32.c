@@ -20,8 +20,8 @@ for more details.
 
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301, USA.  */
 
 /* As a special exception, if you link this library with other files,
    some of which are compiled with GCC, to produce an executable,
@@ -102,7 +102,8 @@ __gthr_win32_once (__gthread_once_t *once, void (*func) (void))
    C++ EH. Mingw uses a thread-support DLL to work-around this problem.  */
 
 int
-__gthr_win32_key_create (__gthread_key_t *key, void (*dtor) (void *))
+__gthr_win32_key_create (__gthread_key_t *key,
+			 void (*dtor) (void *) __attribute__((unused)))
 {
   int status = 0;
   DWORD tls_index = TlsAlloc ();
@@ -148,6 +149,12 @@ __gthr_win32_mutex_init_function (__gthread_mutex_t *mutex)
 {
   mutex->counter = -1;
   mutex->sema = CreateSemaphore (NULL, 0, 65535, NULL);
+}
+
+void
+__gthr_win32_mutex_destroy (__gthread_mutex_t *mutex)
+{
+  CloseHandle ((HANDLE) mutex->sema);
 }
 
 int

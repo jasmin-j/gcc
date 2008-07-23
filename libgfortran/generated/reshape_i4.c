@@ -1,5 +1,5 @@
 /* Implementation of the RESHAPE
-   Copyright 2002 Free Software Foundation, Inc.
+   Copyright 2002, 2006, 2007 Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -25,26 +25,32 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
+#include "libgfortran.h"
 #include <stdlib.h>
 #include <assert.h>
-#include "libgfortran.h"
+
+
+#if defined (HAVE_GFC_INTEGER_4)
 
 typedef GFC_ARRAY_DESCRIPTOR(1, index_type) shape_type;
 
-/* The shape parameter is ignored. We can currently deduce the shape from the
-   return array.  */
 
-extern void reshape_4 (gfc_array_i4 *, gfc_array_i4 *, shape_type *,
-				    gfc_array_i4 *, shape_type *);
+extern void reshape_4 (gfc_array_i4 * const restrict, 
+	gfc_array_i4 * const restrict, 
+	shape_type * const restrict,
+	gfc_array_i4 * const restrict, 
+	shape_type * const restrict);
 export_proto(reshape_4);
 
 void
-reshape_4 (gfc_array_i4 * ret, gfc_array_i4 * source, shape_type * shape,
-                      gfc_array_i4 * pad, shape_type * order)
+reshape_4 (gfc_array_i4 * const restrict ret, 
+	gfc_array_i4 * const restrict source, 
+	shape_type * const restrict shape,
+	gfc_array_i4 * const restrict pad, 
+	shape_type * const restrict order)
 {
   /* r.* indicates the return array.  */
   index_type rcount[GFC_MAX_DIMENSIONS];
@@ -53,6 +59,8 @@ reshape_4 (gfc_array_i4 * ret, gfc_array_i4 * source, shape_type * shape,
   index_type rstride0;
   index_type rdim;
   index_type rsize;
+  index_type rs;
+  index_type rex;
   GFC_INTEGER_4 *rptr;
   /* s.* indicates the source array.  */
   index_type scount[GFC_MAX_DIMENSIONS];
@@ -73,19 +81,44 @@ reshape_4 (gfc_array_i4 * ret, gfc_array_i4 * source, shape_type * shape,
   const GFC_INTEGER_4 *src;
   int n;
   int dim;
+  int sempty, pempty, shape_empty;
+  index_type shape_data[GFC_MAX_DIMENSIONS];
 
-  if (ret->dim[0].stride == 0)
-    ret->dim[0].stride = 1;
-  if (source->dim[0].stride == 0)
-    source->dim[0].stride = 1;
-  if (shape->dim[0].stride == 0)
-    shape->dim[0].stride = 1;
-  if (pad && pad->dim[0].stride == 0)
-    pad->dim[0].stride = 1;
-  if (order && order->dim[0].stride == 0)
-    order->dim[0].stride = 1;
+  rdim = shape->dim[0].ubound - shape->dim[0].lbound + 1;
+  if (rdim != GFC_DESCRIPTOR_RANK(ret))
+    runtime_error("rank of return array incorrect in RESHAPE intrinsic");
 
-  rdim = GFC_DESCRIPTOR_RANK (ret);
+  shape_empty = 0;
+
+  for (n = 0; n < rdim; n++)
+    {
+      shape_data[n] = shape->data[n * shape->dim[0].stride];
+      if (shape_data[n] <= 0)
+      {
+        shape_data[n] = 0;
+	shape_empty = 1;
+      }
+    }
+
+  if (ret->data == NULL)
+    {
+      rs = 1;
+      for (n = 0; n < rdim; n++)
+	{
+	  ret->dim[n].lbound = 0;
+	  rex = shape_data[n];
+	  ret->dim[n].ubound =  rex - 1;
+	  ret->dim[n].stride = rs;
+	  rs *= rex;
+	}
+      ret->offset = 0;
+      ret->data = internal_malloc_size ( rs * sizeof (GFC_INTEGER_4));
+      ret->dtype = (source->dtype & ~GFC_DTYPE_RANK_MASK) | rdim;
+    }
+
+  if (shape_empty)
+    return;
+
   rsize = 1;
   for (n = 0; n < rdim; n++)
     {
@@ -97,27 +130,33 @@ reshape_4 (gfc_array_i4 * ret, gfc_array_i4 * source, shape_type * shape,
       rcount[n] = 0;
       rstride[n] = ret->dim[dim].stride;
       rextent[n] = ret->dim[dim].ubound + 1 - ret->dim[dim].lbound;
+      if (rextent[n] < 0)
+        rextent[n] = 0;
 
-      if (rextent[n] != shape->data[dim * shape->dim[0].stride])
+      if (rextent[n] != shape_data[dim])
         runtime_error ("shape and target do not conform");
 
       if (rsize == rstride[n])
         rsize *= rextent[n];
       else
         rsize = 0;
-      if (rextent[dim] <= 0)
+      if (rextent[n] <= 0)
         return;
     }
 
   sdim = GFC_DESCRIPTOR_RANK (source);
   ssize = 1;
+  sempty = 0;
   for (n = 0; n < sdim; n++)
     {
       scount[n] = 0;
       sstride[n] = source->dim[n].stride;
       sextent[n] = source->dim[n].ubound + 1 - source->dim[n].lbound;
       if (sextent[n] <= 0)
-        abort ();
+	{
+	  sempty = 1;
+	  sextent[n] = 0;
+	}
 
       if (ssize == sstride[n])
         ssize *= sextent[n];
@@ -127,17 +166,20 @@ reshape_4 (gfc_array_i4 * ret, gfc_array_i4 * source, shape_type * shape,
 
   if (pad)
     {
-      if (pad->dim[0].stride == 0)
-        pad->dim[0].stride = 1;
       pdim = GFC_DESCRIPTOR_RANK (pad);
       psize = 1;
+      pempty = 0;
       for (n = 0; n < pdim; n++)
         {
           pcount[n] = 0;
           pstride[n] = pad->dim[n].stride;
           pextent[n] = pad->dim[n].ubound + 1 - pad->dim[n].lbound;
           if (pextent[n] <= 0)
-            abort ();
+	    {
+	      pempty = 1;
+	      pextent[n] = 0;
+	    }
+
           if (psize == pstride[n])
             psize *= pextent[n];
           else
@@ -149,14 +191,15 @@ reshape_4 (gfc_array_i4 * ret, gfc_array_i4 * source, shape_type * shape,
     {
       pdim = 0;
       psize = 1;
+      pempty = 1;
       pptr = NULL;
     }
 
   if (rsize != 0 && ssize != 0 && psize != 0)
     {
-      rsize *= 4;
-      ssize *= 4;
-      psize *= 4;
+      rsize *= sizeof (GFC_INTEGER_4);
+      ssize *= sizeof (GFC_INTEGER_4);
+      psize *= sizeof (GFC_INTEGER_4);
       reshape_packed ((char *)ret->data, rsize, (char *)source->data,
 		      ssize, pad ? (char *)pad->data : NULL, psize);
       return;
@@ -165,6 +208,24 @@ reshape_4 (gfc_array_i4 * ret, gfc_array_i4 * source, shape_type * shape,
   src = sptr = source->data;
   rstride0 = rstride[0];
   sstride0 = sstride[0];
+
+  if (sempty && pempty)
+    abort ();
+
+  if (sempty)
+    {
+      /* Switch immediately to the pad array.  */
+      src = pptr;
+      sptr = NULL;
+      sdim = pdim;
+      for (dim = 0; dim < pdim; dim++)
+	{
+	  scount[dim] = pcount[dim];
+	  sextent[dim] = pextent[dim];
+	  sstride[dim] = pstride[dim];
+	  sstride0 = sstride[0] * sizeof (GFC_INTEGER_4);
+	}
+    }
 
   while (rptr)
     {
@@ -175,6 +236,7 @@ reshape_4 (gfc_array_i4 * ret, gfc_array_i4 * source, shape_type * shape,
       src += sstride0;
       rcount[0]++;
       scount[0]++;
+
       /* Advance to the next destination element.  */
       n = 0;
       while (rcount[n] == rextent[n])
@@ -183,7 +245,7 @@ reshape_4 (gfc_array_i4 * ret, gfc_array_i4 * source, shape_type * shape,
              the next dimension.  */
           rcount[n] = 0;
           /* We could precalculate these products, but this is a less
-             frequently used path so proabably not worth it.  */
+             frequently used path so probably not worth it.  */
           rptr -= rstride[n] * rextent[n];
           n++;
           if (n == rdim)
@@ -206,7 +268,7 @@ reshape_4 (gfc_array_i4 * ret, gfc_array_i4 * source, shape_type * shape,
              the next dimension.  */
           scount[n] = 0;
           /* We could precalculate these products, but this is a less
-             frequently used path so proabably not worth it.  */
+             frequently used path so probably not worth it.  */
           src -= sstride[n] * sextent[n];
           n++;
           if (n == sdim)
@@ -236,3 +298,5 @@ reshape_4 (gfc_array_i4 * ret, gfc_array_i4 * source, shape_type * shape,
         }
     }
 }
+
+#endif

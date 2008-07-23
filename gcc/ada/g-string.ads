@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1995-2002 Free Software Foundation, Inc.          --
+--          Copyright (C) 1995-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -33,26 +33,8 @@
 
 --  Common String access types and related subprograms
 
-with Unchecked_Deallocation;
+--  See file s-string.ads for full documentation of the interface
 
-package GNAT.Strings is
+with System.Strings;
 
-   type String_Access is access all String;
-   --  General purpose string access type. Note that the caller is
-   --  responsible for freeing allocated strings to avoid memory leaks.
-
-   procedure Free is new Unchecked_Deallocation
-     (Object => String, Name => String_Access);
-   --  This procedure is provided for freeing allocated values of type
-   --  String_Access.
-
-   type String_List is array (Positive range <>) of String_Access;
-   type String_List_Access is access all String_List;
-   --  General purpose array and pointer for list of string accesses
-
-   procedure Free (Arg : in out String_List_Access);
-   --  Frees the given array and all strings that its elements reference,
-   --  and then sets the argument to null. Provided for freeing allocated
-   --  values of this type.
-
-end GNAT.Strings;
+package GNAT.Strings renames System.Strings;

@@ -1,6 +1,6 @@
 ## Makefile for the toplevel directory of the GNU C++ Standard library.
 ##
-## Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003
+## Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2008
 ## Free Software Foundation, Inc.
 ##
 ## This file is part of the libstdc++ version 3 distribution.
@@ -19,46 +19,25 @@
 
 ## You should have received a copy of the GNU General Public License along
 ## with this library; see the file COPYING.  If not, write to the Free
-## Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+## Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 ## USA.
 
 include $(top_srcdir)/fragment.am
 
 if GLIBCXX_HOSTED
-  hosted_source = libmath src po testsuite
+  hosted_source = libmath doc src po testsuite
 endif
 ## Keep this list sync'd with acinclude.m4:GLIBCXX_CONFIGURE.
 SUBDIRS = include libsupc++ $(hosted_source)
 
 ACLOCAL_AMFLAGS = -I . -I .. -I ../config
 
-# These rules are messy, but are hella worth it.
-doxygen:
-	-(srcdir=`cd ${top_srcdir}; ${PWD_COMMAND}`; \
-	  builddir=`${PWD_COMMAND}`; \
-	  ${SHELL} ${srcdir}/docs/doxygen/run_doxygen \
-	            --host_alias=${host_alias} \
-	            --mode=user $${srcdir} $${builddir})
-
-doxygen-maint:
-	-(srcdir=`cd ${top_srcdir}; ${PWD_COMMAND}`; \
-	  builddir=`${PWD_COMMAND}`; \
-	  ${SHELL} ${srcdir}/docs/doxygen/run_doxygen \
-	            --host_alias=${host_alias} \
-	            --mode=maint $${srcdir} $${builddir})
-
-doxygen-man:
-	-(srcdir=`cd ${top_srcdir}; ${PWD_COMMAND}`; \
-	  builddir=`${PWD_COMMAND}`; \
-	  ${SHELL} ${srcdir}/docs/doxygen/run_doxygen \
-	            --host_alias=${host_alias} \
-	            --mode=man $${srcdir} $${builddir})
-
-.PHONY: doxygen doxygen-maint doxygen-man
-
 # Handy forwarding targets.
 check-%:
 	cd testsuite && $(MAKE) $@
+
+doc-%:
+	cd doc && $(MAKE) $@
 
 # Multilib support.
 MAKEOVERRIDES=
@@ -110,3 +89,7 @@ AM_MAKEFLAGS = \
 
 # Subdir rules rely on $(FLAGS_TO_PASS)
 FLAGS_TO_PASS = $(AM_MAKEFLAGS)
+
+.PHONY: install-html install-pdf
+install-html:
+install-pdf:

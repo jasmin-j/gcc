@@ -1,13 +1,13 @@
 /* Subroutines for gcc2 for pdp11.
-   Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2001, 2004
-   Free Software Foundation, Inc.
+   Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2001, 2004, 2005,
+   2006, 2007 Free Software Foundation, Inc.
    Contributed by Michael K. Gschwind (mike@vlsivie.tuwien.ac.at).
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -78,6 +77,7 @@ const struct real_format pdp11_f_format =
     false,
     false,
     false,
+    false,
     false
   };
 
@@ -92,6 +92,7 @@ const struct real_format pdp11_d_format =
     -127,
     127,
     15,
+    false,
     false,
     false,
     false,
@@ -145,7 +146,7 @@ static bool pdp11_assemble_integer (rtx, unsigned int, int);
 static void pdp11_output_function_prologue (FILE *, HOST_WIDE_INT);
 static void pdp11_output_function_epilogue (FILE *, HOST_WIDE_INT);
 static bool pdp11_rtx_costs (rtx, int, int, int *);
-static bool pdp11_return_in_memory (tree, tree);
+static bool pdp11_return_in_memory (const_tree, const_tree);
 
 /* Initialize the GCC target structure.  */
 #undef TARGET_ASM_BYTE_OP
@@ -245,7 +246,7 @@ pdp11_output_function_prologue (FILE *stream, HOST_WIDE_INT size)
     {
       fprintf (stream, "\t/*abuse empty parameter slot for locals!*/\n");
       if (size > 2)
-	fprintf(stream, "\tsub $%#o, sp\n", size - 2);
+	asm_fprintf (stream, "\tsub $%#wo, sp\n", size - 2);
 
     }
 }
@@ -285,11 +286,11 @@ pdp11_output_function_prologue (FILE *stream, HOST_WIDE_INT size)
 
     /* make frame */
     if (fsize)							
-	fprintf (stream, "\tsub $%#o, sp\n", fsize);			
+	asm_fprintf (stream, "\tsub $%#wo, sp\n", fsize);
 
     /* save CPU registers  */
     for (regno = 0; regno < 8; regno++)				
-	if (regs_ever_live[regno] && ! call_used_regs[regno])	
+      if (df_regs_ever_live_p (regno) && ! call_used_regs[regno])	
 	    if (! ((regno == FRAME_POINTER_REGNUM)			
 		   && frame_pointer_needed))				
 		fprintf (stream, "\tmov %s, -(sp)\n", reg_names[regno]);	
@@ -302,7 +303,7 @@ pdp11_output_function_prologue (FILE *stream, HOST_WIDE_INT size)
     {
 	/* ac0 - ac3 */						
 	if (LOAD_FPU_REG_P(regno)
-	    && regs_ever_live[regno] 
+	    && df_regs_ever_live_p (regno) 
 	    && ! call_used_regs[regno])
 	{
 	    fprintf (stream, "\tstd %s, -(sp)\n", reg_names[regno]);
@@ -312,14 +313,13 @@ pdp11_output_function_prologue (FILE *stream, HOST_WIDE_INT size)
 	/* maybe make ac4, ac5 call used regs?? */
 	/* ac4 - ac5 */
 	if (NO_LOAD_FPU_REG_P(regno)
-	    && regs_ever_live[regno]
+	    && df_regs_ever_live_p (regno)
 	    && ! call_used_regs[regno])
 	{
-	    if (via_ac == -1)
-		abort();
-	    
-	    fprintf (stream, "\tldd %s, %s\n", reg_names[regno], reg_names[via_ac]);
-	    fprintf (stream, "\tstd %s, -(sp)\n", reg_names[via_ac]);
+	  gcc_assert (via_ac != -1);
+	  fprintf (stream, "\tldd %s, %s\n",
+		   reg_names[regno], reg_names[via_ac]);
+	  fprintf (stream, "\tstd %s, -(sp)\n", reg_names[via_ac]);
 	}
     }
 
@@ -372,10 +372,10 @@ pdp11_output_function_epilogue (FILE *stream, HOST_WIDE_INT size)
     if (frame_pointer_needed)					
     {								
 	/* hope this is safe - m68k does it also .... */		
-	regs_ever_live[FRAME_POINTER_REGNUM] = 0;			
+      df_regs_ever_live_p (FRAME_POINTER_REGNUM) = 0;			
 								
 	for (i =7, j = 0 ; i >= 0 ; i--)				
-	    if (regs_ever_live[i] && ! call_used_regs[i])		
+	  if (df_regs_ever_live_p (i) && ! call_used_regs[i])		
 		j++;
 	
 	/* remember # of pushed bytes for CPU regs */
@@ -383,14 +383,15 @@ pdp11_output_function_epilogue (FILE *stream, HOST_WIDE_INT size)
 	
 	/* change fp -> r5 due to the compile error on libgcc2.c */
 	for (i =7 ; i >= 0 ; i--)					
-	    if (regs_ever_live[i] && ! call_used_regs[i])		
-		fprintf(stream, "\tmov %#o(r5), %s\n",(-fsize-2*j--)&0xffff, reg_names[i]);
+	  if (df_regs_ever_live_p (i) && ! call_used_regs[i])		
+		fprintf(stream, "\tmov %#" HOST_WIDE_INT_PRINT "o(r5), %s\n",
+			(-fsize-2*j--)&0xffff, reg_names[i]);
 
 	/* get ACs */						
 	via_ac = FIRST_PSEUDO_REGISTER -1;
 	
 	for (i = FIRST_PSEUDO_REGISTER; i > 7; i--)
-	    if (regs_ever_live[i] && ! call_used_regs[i])
+	  if (df_regs_ever_live_p (i) && ! call_used_regs[i])
 	    {
 		via_ac = i;
 		k += 8;
@@ -399,21 +400,22 @@ pdp11_output_function_epilogue (FILE *stream, HOST_WIDE_INT size)
 	for (i = FIRST_PSEUDO_REGISTER; i > 7; i--)
 	{
 	    if (LOAD_FPU_REG_P(i)
-		&& regs_ever_live[i]
+		&& df_regs_ever_live_p (i)
 		&& ! call_used_regs[i])
 	    {
-		fprintf(stream, "\tldd %#o(r5), %s\n", (-fsize-k)&0xffff, reg_names[i]);
+		fprintf(stream, "\tldd %#" HOST_WIDE_INT_PRINT "o(r5), %s\n",
+			(-fsize-k)&0xffff, reg_names[i]);
 		k -= 8;
 	    }
 	    
 	    if (NO_LOAD_FPU_REG_P(i)
-		&& regs_ever_live[i]
+		&& df_regs_ever_live_p (i)
 		&& ! call_used_regs[i])
 	    {
-		if (! LOAD_FPU_REG_P(via_ac))
-		    abort();
+	        gcc_assert (LOAD_FPU_REG_P(via_ac));
 		    
-		fprintf(stream, "\tldd %#o(r5), %s\n", (-fsize-k)&0xffff, reg_names[via_ac]);
+		fprintf(stream, "\tldd %#" HOST_WIDE_INT_PRINT "o(r5), %s\n",
+			(-fsize-k)&0xffff, reg_names[via_ac]);
 		fprintf(stream, "\tstd %s, %s\n", reg_names[via_ac], reg_names[i]);
 		k -= 8;
 	    }
@@ -428,22 +430,21 @@ pdp11_output_function_epilogue (FILE *stream, HOST_WIDE_INT size)
 	
 	/* get ACs */
 	for (i = FIRST_PSEUDO_REGISTER; i > 7; i--)
-	    if (regs_ever_live[i] && call_used_regs[i])
+	  if (df_regs_ever_live_p (i) && call_used_regs[i])
 		via_ac = i;
 	
 	for (i = FIRST_PSEUDO_REGISTER; i > 7; i--)
 	{
 	    if (LOAD_FPU_REG_P(i)
-		&& regs_ever_live[i]
+		&& df_regs_ever_live_p (i)
 		&& ! call_used_regs[i])
 	      fprintf(stream, "\tldd (sp)+, %s\n", reg_names[i]);
 	    
 	    if (NO_LOAD_FPU_REG_P(i)
-		&& regs_ever_live[i]
+		&& df_regs_ever_live_p (i)
 		&& ! call_used_regs[i])
 	    {
-		if (! LOAD_FPU_REG_P(via_ac))
-		    abort();
+	        gcc_assert (LOAD_FPU_REG_P(via_ac));
 		    
 		fprintf(stream, "\tldd (sp)+, %s\n", reg_names[via_ac]);
 		fprintf(stream, "\tstd %s, %s\n", reg_names[via_ac], reg_names[i]);
@@ -451,11 +452,12 @@ pdp11_output_function_epilogue (FILE *stream, HOST_WIDE_INT size)
 	}
 
 	for (i=7; i >= 0; i--)					
-	    if (regs_ever_live[i] && !call_used_regs[i])		
+	  if (df_regs_ever_live_p (i) && !call_used_regs[i])		
 		fprintf(stream, "\tmov (sp)+, %s\n", reg_names[i]);	
 								
 	if (fsize)						
-	    fprintf((stream), "\tadd $%#o, sp\n", (fsize)&0xffff);      		
+	    fprintf((stream), "\tadd $%#" HOST_WIDE_INT_PRINT "o, sp\n",
+		    (fsize)&0xffff);      		
     }			
 					
     fprintf (stream, "\trts pc\n");					
@@ -524,8 +526,7 @@ output_move_double (rtx *operands)
      supposed to allow to happen.  Abort if we get one,
      because generating code for these cases is painful.  */
 
-  if (optype0 == RNDOP || optype1 == RNDOP)
-    abort ();
+  gcc_assert (optype0 != RNDOP && optype1 != RNDOP);
 
   /* If one operand is decrementing and one is incrementing
      decrement the former register explicitly
@@ -585,11 +586,9 @@ output_move_double (rtx *operands)
 	    latehalf[1] = GEN_INT (INTVAL(operands[1]) >> 16);
 	    operands[1] = GEN_INT (INTVAL(operands[1]) & 0xff);
 	}
-      else if (GET_CODE (operands[1]) == CONST_DOUBLE)
-	{
-	    /* immediate 32 bit values not allowed */
-	    abort();
-	}
+	else
+	  /* immediate 32-bit values not allowed */
+	  gcc_assert (GET_CODE (operands[1]) != CONST_DOUBLE);
     }
   else
     latehalf[1] = operands[1];
@@ -699,15 +698,13 @@ output_move_quad (rtx *operands)
      supposed to allow to happen.  Abort if we get one,
      because generating code for these cases is painful.  */
 
-  if (optype0 == RNDOP || optype1 == RNDOP)
-    abort ();
+  gcc_assert (optype0 != RNDOP && optype1 != RNDOP);
   
   /* check if we move a CPU reg to an FPU reg, or vice versa! */
   if (optype0 == REGOP && optype1 == REGOP)
       /* bogus - 64 bit cannot reside in CPU! */
-      if (CPU_REG_P(REGNO(operands[0]))
-	  || CPU_REG_P (REGNO(operands[1])))
-	  abort();
+      gcc_assert (!CPU_REG_P(REGNO(operands[0]))
+		  && !CPU_REG_P (REGNO(operands[1])));
   
   if (optype0 == REGOP || optype1 == REGOP)
   {
@@ -801,7 +798,7 @@ output_move_quad (rtx *operands)
 	  latehalf[1] = const0_rtx;
 	}
       else
-	abort();
+	gcc_unreachable ();
     }
   else
     latehalf[1] = operands[1];
@@ -995,7 +992,7 @@ print_operand_address (FILE *file, register rtx addr)
 	}
       if (offset != 0)
 	{
-	  if (addr != 0) abort ();
+	  gcc_assert (addr == 0);
 	  addr = offset;
 	}
       if (reg1 != 0 && GET_CODE (reg1) == MULT)
@@ -1022,17 +1019,15 @@ print_operand_address (FILE *file, register rtx addr)
 	output_address (addr);
       if (breg != 0)
 	{
-	  if (GET_CODE (breg) != REG)
-	    abort ();
+	  gcc_assert (GET_CODE (breg) == REG);
 	  fprintf (file, "(%s)", reg_names[REGNO (breg)]);
 	}
       if (ireg != 0)
 	{
 	  if (GET_CODE (ireg) == MULT)
 	    ireg = XEXP (ireg, 0);
-	  if (GET_CODE (ireg) != REG)
-	    abort ();
-	  abort();
+	  gcc_assert (GET_CODE (ireg) == REG);
+	  gcc_unreachable(); /* ??? */
 	  fprintf (file, "[%s]", reg_names[REGNO (ireg)]);
 	}
       break;
@@ -1089,8 +1084,7 @@ static const int move_costs[N_REG_CLASSES][N_REG_CLASSES] =
    -- as we do here with 22 -- or not ? */
 
 int 
-register_move_cost(c1, c2)
-  enum reg_class c1, c2;
+register_move_cost(enum reg_class c1, enum reg_class c2)
 {
     return move_costs[(int)c1][(int)c2];
 }
@@ -1203,7 +1197,7 @@ pdp11_rtx_costs (rtx x, int code, int outer_code ATTRIBUTE_UNUSED, int *total)
 }
 
 const char *
-output_jump(const char *pos, const char *neg, int length)
+output_jump (const char *pos, const char *neg, int length)
 {
     static int x = 0;
     
@@ -1238,7 +1232,7 @@ output_jump(const char *pos, const char *neg, int length)
 	
       default:
 	
-	abort();
+	gcc_unreachable ();
     }
     
 }
@@ -1667,10 +1661,8 @@ output_addr_const_pdp11 (FILE *file, rtx x)
   switch (GET_CODE (x))
     {
     case PC:
-      if (flag_pic)
-	putc ('.', file);
-      else
-	abort ();
+      gcc_assert (flag_pic);
+      putc ('.', file);
       break;
 
     case SYMBOL_REF:
@@ -1703,10 +1695,8 @@ output_addr_const_pdp11 (FILE *file, rtx x)
       if (GET_MODE (x) == VOIDmode)
 	{
 	  /* We can use %o if the number is one word and positive.  */
-	  if (CONST_DOUBLE_HIGH (x))
-	    abort (); /* Should we just silently drop the high part?  */
-	  else
-	    fprintf (file, "%#ho", (unsigned short) CONST_DOUBLE_LOW (x));
+	  gcc_assert (!CONST_DOUBLE_HIGH (x));
+	  fprintf (file, "%#ho", (unsigned short) CONST_DOUBLE_LOW (x));
 	}
       else
 	/* We can't handle floating point constants;
@@ -1765,7 +1755,7 @@ output_addr_const_pdp11 (FILE *file, rtx x)
 /* Worker function for TARGET_RETURN_IN_MEMORY.  */
 
 static bool
-pdp11_return_in_memory (tree type, tree fntype ATTRIBUTE_UNUSED)
+pdp11_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
 {
   /* Should probably return DImode and DFmode in memory, lest
      we fill up all regs!

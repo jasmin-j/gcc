@@ -1,6 +1,7 @@
 // File based streams -*- C++ -*-
 
-// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005
+// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
+// 2007
 // Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
@@ -16,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -42,8 +43,10 @@
 
 #pragma GCC system_header
 
-namespace std
-{
+#include <cxxabi-forced.h>
+
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
   template<typename _CharT, typename _Traits>
     void
     basic_filebuf<_CharT, _Traits>::
@@ -127,36 +130,51 @@ namespace std
   template<typename _CharT, typename _Traits>
     typename basic_filebuf<_CharT, _Traits>::__filebuf_type*
     basic_filebuf<_CharT, _Traits>::
-    close() throw()
+    close()
     {
-      __filebuf_type* __ret = NULL;
-      if (this->is_open())
+      if (!this->is_open())
+	return NULL;
+
+      bool __testfail = false;
+      {
+	// NB: Do this here so that re-opened filebufs will be cool...
+	struct __close_sentry
 	{
-	  bool __testfail = false;
-	  try
-	    {
-	      if (!_M_terminate_output())
-		__testfail = true;
-	    }
-	  catch(...)
-	    { __testfail = true; }
+	  basic_filebuf *__fb;
+	  __close_sentry (basic_filebuf *__fbi): __fb(__fbi) { }
+	  ~__close_sentry ()
+	  {
+	    __fb->_M_mode = ios_base::openmode(0);
+	    __fb->_M_pback_init = false;
+	    __fb->_M_destroy_internal_buffer();
+	    __fb->_M_reading = false;
+	    __fb->_M_writing = false;
+	    __fb->_M_set_buffer(-1);
+	    __fb->_M_state_last = __fb->_M_state_cur = __fb->_M_state_beg;
+	  }
+	} __cs (this);
 
-	  // NB: Do this here so that re-opened filebufs will be cool...
-	  _M_mode = ios_base::openmode(0);
-	  _M_pback_init = false;
-	  _M_destroy_internal_buffer();
-	  _M_reading = false;
-	  _M_writing = false;
-	  _M_set_buffer(-1);
-	  _M_state_last = _M_state_cur = _M_state_beg;
+	try
+	  {
+	    if (!_M_terminate_output())
+	      __testfail = true;
+	  }
+	catch(__cxxabiv1::__forced_unwind&)
+	  {
+	    _M_file.close();
+	    __throw_exception_again;
+	  }
+	catch(...)
+	  { __testfail = true; }
+      }
 
-	  if (!_M_file.close())
-	    __testfail = true;
+      if (!_M_file.close())
+	__testfail = true;
 
-	  if (!__testfail)
-	    __ret = this;
-	}
-      return __ret;
+      if (__testfail)
+	return NULL;
+      else
+	return this;
     }
 
   template<typename _CharT, typename _Traits>
@@ -194,7 +212,7 @@ namespace std
       const bool __testin = _M_mode & ios_base::in;
       if (__testin && !_M_writing)
 	{
-	  // Check for pback madness, and if so swich back to the
+	  // Check for pback madness, and if so switch back to the
 	  // normal buffers and jet outta here before expensive
 	  // fileops happen...
 	  _M_destroy_pback();
@@ -203,8 +221,7 @@ namespace std
 	    return traits_type::to_int_type(*this->gptr());
 
 	  // Get and convert input sequence.
-	  const size_t __buflen = _M_buf_size > 1
-	                          ? _M_buf_size - 1 : 1;
+	  const size_t __buflen = _M_buf_size > 1 ? _M_buf_size - 1 : 1;
 
 	  // Will be set to true if ::read() returns 0 indicating EOF.
 	  bool __got_eof = false;
@@ -246,14 +263,14 @@ namespace std
 		{
 		  char* __buf = new char[__blen];
 		  if (__remainder)
-		    std::memcpy(__buf, _M_ext_next, __remainder);
+		    __builtin_memcpy(__buf, _M_ext_next, __remainder);
 
 		  delete [] _M_ext_buf;
 		  _M_ext_buf = __buf;
 		  _M_ext_buf_size = __blen;
 		}
 	      else if (__remainder)
-		std::memmove(_M_ext_buf, _M_ext_next, __remainder);
+		__builtin_memmove(_M_ext_buf, _M_ext_next, __remainder);
 
 	      _M_ext_next = _M_ext_buf;
 	      _M_ext_end = _M_ext_buf + __remainder;
@@ -280,16 +297,19 @@ namespace std
 		      _M_ext_end += __elen;
 		    }
 
-		  char_type* __iend;
-		  __r = _M_codecvt->in(_M_state_cur, _M_ext_next,
-				       _M_ext_end, _M_ext_next, this->eback(),
-				       this->eback() + __buflen, __iend);
+		  char_type* __iend = this->eback();
+		  if (_M_ext_next < _M_ext_end)
+		    __r = _M_codecvt->in(_M_state_cur, _M_ext_next,
+					 _M_ext_end, _M_ext_next,
+					 this->eback(),
+					 this->eback() + __buflen, __iend);
 		  if (__r == codecvt_base::noconv)
 		    {
 		      size_t __avail = _M_ext_end - _M_ext_buf;
 		      __ilen = std::min(__avail, __buflen);
 		      traits_type::copy(this->eback(),
-					reinterpret_cast<char_type*>(_M_ext_buf), __ilen);
+					reinterpret_cast<char_type*>
+					(_M_ext_buf), __ilen);
 		      _M_ext_next = _M_ext_buf + __ilen;
 		    }
 		  else
@@ -531,15 +551,8 @@ namespace std
        const bool __testin = _M_mode & ios_base::in;
        const streamsize __buflen = _M_buf_size > 1 ? _M_buf_size - 1 : 1;
 
-#if _GLIBCXX_HAVE_DOS_BASED_FILESYSTEM
-       // About this workaround, see libstdc++/20806.
-       const bool __testbinary = _M_mode & ios_base::binary;
-       if (__n > __buflen && __check_facet(_M_codecvt).always_noconv()
-	   && __testin && __testbinary && !_M_writing)
-#else
        if (__n > __buflen && __check_facet(_M_codecvt).always_noconv()
 	   && __testin && !_M_writing)
-#endif
 	 {
 	   // First, copy the chars already present in the buffer.
 	   const streamsize __avail = this->egptr() - this->gptr();
@@ -555,13 +568,28 @@ namespace std
 	       __n -= __avail;
 	     }
 
-	   const streamsize __len = _M_file.xsgetn(reinterpret_cast<char*>(__s),
-						   __n);
-	   if (__len == -1)
-	     __throw_ios_failure(__N("basic_filebuf::xsgetn "
-				     "error reading the file"));
-	   __ret += __len;
-	   if (__len == __n)
+	   // Need to loop in case of short reads (relatively common
+	   // with pipes).
+	   streamsize __len;
+	   for (;;)
+	     {
+	       __len = _M_file.xsgetn(reinterpret_cast<char*>(__s),
+				      __n);
+	       if (__len == -1)
+		 __throw_ios_failure(__N("basic_filebuf::xsgetn "
+					 "error reading the file"));
+	       if (__len == 0)
+		 break;
+
+	       __n -= __len;
+	       __ret += __len;
+	       if (__n == 0)
+		 break;
+
+	       __s += __len;
+	     }
+
+	   if (__n == 0)
 	     {
 	       _M_set_buffer(0);
 	       _M_reading = true;
@@ -634,21 +662,23 @@ namespace std
     setbuf(char_type* __s, streamsize __n)
     {
       if (!this->is_open())
-	if (__s == 0 && __n == 0)
-	  _M_buf_size = 1;
-	else if (__s && __n > 0)
-	  {
-	    // This is implementation-defined behavior, and assumes that
-	    // an external char_type array of length __n exists and has
-	    // been pre-allocated. If this is not the case, things will
-	    // quickly blow up. When __n > 1, __n - 1 positions will be
-	    // used for the get area, __n - 1 for the put area and 1
-	    // position to host the overflow char of a full put area.
-	    // When __n == 1, 1 position will be used for the get area
-	    // and 0 for the put area, as in the unbuffered case above.
-	    _M_buf = __s;
-	    _M_buf_size = __n;
-	  }
+	{
+	  if (__s == 0 && __n == 0)
+	    _M_buf_size = 1;
+	  else if (__s && __n > 0)
+	    {
+	      // This is implementation-defined behavior, and assumes that
+	      // an external char_type array of length __n exists and has
+	      // been pre-allocated. If this is not the case, things will
+	      // quickly blow up. When __n > 1, __n - 1 positions will be
+	      // used for the get area, __n - 1 for the put area and 1
+	      // position to host the overflow char of a full put area.
+	      // When __n == 1, 1 position will be used for the get area
+	      // and 0 for the put area, as in the unbuffered case above.
+	      _M_buf = __s;
+	      _M_buf_size = __n;
+	    }
+	}
       return this;
     }
 
@@ -733,12 +763,15 @@ namespace std
 	{
 	  // Returns pos_type(off_type(-1)) in case of failure.
 	  __ret = pos_type(_M_file.seekoff(__off, __way));
-	  _M_reading = false;
-	  _M_writing = false;
-	  _M_ext_next = _M_ext_end = _M_ext_buf;
-	  _M_set_buffer(-1);
-	  _M_state_cur = __state;
-	  __ret.state(_M_state_cur);
+	  if (__ret != pos_type(off_type(-1)))
+	    {
+	      _M_reading = false;
+	      _M_writing = false;
+	      _M_ext_next = _M_ext_end = _M_ext_buf;
+	      _M_set_buffer(-1);
+	      _M_state_cur = __state;
+	      __ret.state(_M_state_cur);
+	    }
 	}
       return __ret;
     }
@@ -857,7 +890,7 @@ namespace std
 					     this->gptr() - this->eback());
 		      const streamsize __remainder = _M_ext_end - _M_ext_next;
 		      if (__remainder)
-			std::memmove(_M_ext_buf, _M_ext_next, __remainder);
+			__builtin_memmove(_M_ext_buf, _M_ext_next, __remainder);
 
 		      _M_ext_next = _M_ext_buf;
 		      _M_ext_end = _M_ext_buf + __remainder;
@@ -892,6 +925,7 @@ namespace std
   extern template class basic_fstream<wchar_t>;
 #endif
 #endif
-} // namespace std
+
+_GLIBCXX_END_NAMESPACE
 
 #endif

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -20,8 +20,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -39,8 +39,10 @@ with Ada.Strings.Wide_Wide_Maps;
 with Ada.Finalization;
 
 package Ada.Strings.Wide_Wide_Unbounded is
-pragma Preelaborate (Wide_Wide_Unbounded);
+   pragma Preelaborate;
+
    type Unbounded_Wide_Wide_String is private;
+   pragma Preelaborable_Initialization (Unbounded_Wide_Wide_String);
 
    Null_Unbounded_Wide_Wide_String : constant Unbounded_Wide_Wide_String;
 
@@ -440,10 +442,4 @@ private
                                           Reference =>
                                             Null_Wide_Wide_String'Access,
                                           Last => 0);
-   --  Note: this declaration is illegal since library level controlled
-   --  objects are not allowed in preelaborated units. See AI-161 for a
-   --  discussion of this issue and an attempt to address it. Meanwhile,
-   --  what happens in GNAT is that this check is omitted for internal
-   --  implementation units (see check in sem_cat.adb).
-
 end Ada.Strings.Wide_Wide_Unbounded;

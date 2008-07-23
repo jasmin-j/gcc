@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---            Copyright (C) 1992-2004 Free Software Foundation, Inc.        --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -34,20 +34,20 @@
 --  This unit provides the basic support for controlled (finalizable) types
 
 with Ada.Streams;
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package System.Finalization_Root is
-pragma Preelaborate (Finalization_Root);
+   pragma Preelaborate;
 
-   type Root_Controlled;
+   type Root_Controlled is tagged;
 
    type Finalizable_Ptr is access all Root_Controlled'Class;
 
    function To_Finalizable_Ptr is
-     new Unchecked_Conversion (Address, Finalizable_Ptr);
+     new Ada.Unchecked_Conversion (Address, Finalizable_Ptr);
 
    function To_Addr is
-     new Unchecked_Conversion (Finalizable_Ptr, Address);
+     new Ada.Unchecked_Conversion (Finalizable_Ptr, Address);
 
    type Empty_Root_Controlled is abstract tagged null record;
    --  Just for the sake of Controlled equality (see Ada.Finalization)
@@ -61,11 +61,27 @@ pragma Preelaborate (Finalization_Root);
    procedure Finalize   (Object : in out Root_Controlled);
    procedure Adjust     (Object : in out Root_Controlled);
 
-   procedure Write     (Stream : access Ada.Streams.Root_Stream_Type'Class;
-                        Item : in Root_Controlled);
-   procedure Read      (Stream : access Ada.Streams.Root_Stream_Type'Class;
-                        Item : out Root_Controlled);
+   --  Stream-oriented attributes for Root_Controlled. These must be empty so
+   --  as to not copy the finalization chain pointers. They are declared in
+   --  a nested package so that they do not create primitive operations of
+   --  Root_Controlled. Otherwise this would add unwanted primitives to (the
+   --  full view of) Ada.Finalization.Limited_Controlled, which would cause
+   --  trouble in cases where a limited controlled type is used as the
+   --  designated type of a remote access-to-classwide type.
 
-   for Root_Controlled'Read use Read;
-   for Root_Controlled'Write use Write;
+   package Stream_Attributes is
+
+      procedure Write
+        (Stream : not null access Ada.Streams.Root_Stream_Type'Class;
+         Item   : Root_Controlled) is null;
+
+      procedure Read
+        (Stream : not null access Ada.Streams.Root_Stream_Type'Class;
+         Item   : out Root_Controlled) is null;
+
+   end Stream_Attributes;
+
+   for Root_Controlled'Read use Stream_Attributes.Read;
+   for Root_Controlled'Write use Stream_Attributes.Write;
+
 end System.Finalization_Root;

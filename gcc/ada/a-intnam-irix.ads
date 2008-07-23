@@ -1,13 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                 GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS              --
+--                  GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                --
 --                                                                          --
 --                   A D A . I N T E R R U P T S . N A M E S                --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---             Copyright (C) 1991-1994, Florida State University            --
---             Copyright (C) 1995-2003, Ada Core Technologies               --
+--          Copyright (C) 1991-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can redistribute it  and/or modify it  under --
 -- terms  of  the  GNU  Library General Public License  as published by the --
@@ -17,8 +16,8 @@
 -- MERCHANTABILITY  or  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Gen- --
 -- eral Library Public License  for more details.  You should have received --
 -- a  copy of the GNU Library General Public License along with GNARL;  see --
--- file COPYING.LIB.  If not,  write to the  Free Software Foundation,   59 --
--- Temple Place - Suite 330, Boston, MA 02111-1307, USA.                    --
+-- file COPYING.LIB.  If not,  write to the  Free Software Foundation,   51 --
+-- Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.                --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -53,14 +52,12 @@
 --  supported by the local system.
 
 with System.OS_Interface;
---  used for names of interrupts
 
 package Ada.Interrupts.Names is
 
-   --  Beware that the mapping of names to signals may be
-   --  many-to-one.  There may be aliases.  Also, for all
-   --  signal names that are not supported on the current system
-   --  the value of the corresponding constant will be zero.
+   --  Beware that the mapping of names to signals may be many-to-one. There
+   --  may be aliases. Also, for all signal names that are not supported on
+   --  the current system the value of the corresponding constant will be zero.
 
    SIGHUP : constant Interrupt_ID :=
      System.OS_Interface.SIGHUP;      --  hangup
@@ -177,7 +174,7 @@ package Ada.Interrupts.Names is
    SIGUME : constant Interrupt_ID :=
      System.OS_Interface.SIGUME;      --  Uncorrectable memory error
 
-   --  Signals defined for Posix 1003.1c.
+   --  Signals defined for Posix 1003.1c
 
    SIGPTINTR : constant Interrupt_ID :=
      System.OS_Interface.SIGPTINTR;    --  Pthread Interrupt Signal

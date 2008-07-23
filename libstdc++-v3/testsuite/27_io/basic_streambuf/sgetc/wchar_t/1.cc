@@ -16,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -106,11 +106,11 @@ void test01()
   buf01.pub_setg(lit01, lit01, (lit01 + i01));
   VERIFY( i01 == buf01.in_avail() );
 
-  VERIFY( buf01.pub_uflow() == lit01[0] );
+  VERIFY( buf01.pub_uflow() == traits_type::to_int_type(lit01[0]) );
   VERIFY( buf01.sgetc() == traits_type::to_int_type(lit01[1]) );
-  VERIFY( buf01.pub_uflow() == lit01[1] );
+  VERIFY( buf01.pub_uflow() == traits_type::to_int_type(lit01[1]) );
   VERIFY( buf01.sgetc() == traits_type::to_int_type(lit01[2]) );
-  VERIFY( buf01.pub_uflow() == lit01[2] );
+  VERIFY( buf01.pub_uflow() == traits_type::to_int_type(lit01[2]) );
   VERIFY( buf01.sgetc() == traits_type::eof() );
 }
 

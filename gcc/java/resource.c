@@ -1,12 +1,12 @@
 /* Functions related to building resource files.
-   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004
-   Free Software Foundation, Inc.
+   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+   2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.
 
 Java and all Java-based marks are trademarks or registered trademarks
 of Sun Microsystems, Inc. in the United States and other countries.
@@ -52,14 +51,10 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 /* A list of all the resources files.  */
 static GTY(()) tree resources = NULL;
 
-/* Count of all the resources compiled in this invocation.  */
-static int Jr_count = 0;
-
 void
 compile_resource_data (const char *name, const char *buffer, int length)
 {
   tree rtype, field = NULL_TREE, data_type, rinit, data, decl;
-  char buf[60];
 
   data_type = build_prim_array_type (unsigned_byte_type_node,
 				     strlen (name) + length);
@@ -78,13 +73,11 @@ compile_resource_data (const char *name, const char *buffer, int length)
   PUSH_FIELD_VALUE (rinit, "data", data);
   FINISH_RECORD_CONSTRUCTOR (rinit);
   TREE_CONSTANT (rinit) = 1;
-  TREE_INVARIANT (rinit) = 1;
 
-  /* Generate a unique-enough identifier.  */
-  sprintf (buf, "_Jr%d", ++Jr_count);
-
-  decl = build_decl (VAR_DECL, get_identifier (buf), rtype);
+  decl = build_decl (VAR_DECL, java_mangle_resource_name (name), rtype);
   TREE_STATIC (decl) = 1;
+  TREE_PUBLIC (decl) = 1;
+  java_hide_decl (decl);
   DECL_ARTIFICIAL (decl) = 1;
   DECL_IGNORED_P (decl) = 1;
   TREE_READONLY (decl) = 1;
@@ -93,8 +86,7 @@ compile_resource_data (const char *name, const char *buffer, int length)
   layout_decl (decl, 0);
   pushdecl (decl);
   rest_of_decl_compilation (decl, global_bindings_p (), 0);
-  make_decl_rtl (decl);
-  cgraph_varpool_finalize_decl (decl);
+  varpool_finalize_decl (decl);
 
   resources = tree_cons (NULL_TREE, decl, resources);
 }
@@ -117,8 +109,7 @@ write_resource_constructor (tree *list_p)
   for (iter = nreverse (resources); iter ; iter = TREE_CHAIN (iter))
     {
       t = build_fold_addr_expr (TREE_VALUE (iter));
-      t = tree_cons (NULL, t, NULL);
-      t = build_function_call_expr (register_resource_fn, t);
+      t = build_call_expr (register_resource_fn, 1, t);
       append_to_statement_list (t, list_p);
     }
 }
@@ -146,7 +137,7 @@ compile_resource_file (const char *name, const char *filename)
       perror ("Could not figure length of resource file");
       return;
     }
-  buffer = xmalloc (strlen (name) + stat_buf.st_size);
+  buffer = XNEWVEC (char, strlen (name) + stat_buf.st_size);
   strcpy (buffer, name);
   read (fd, buffer + strlen (name), stat_buf.st_size);
   close (fd);

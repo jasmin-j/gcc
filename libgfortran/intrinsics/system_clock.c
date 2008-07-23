@@ -1,5 +1,5 @@
 /* Implementation of the SYSTEM_CLOCK intrinsic.
-   Copyright (C) 2004 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007 Free Software Foundation, Inc.
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
 
@@ -24,11 +24,9 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
-#include <sys/types.h>
 #include "libgfortran.h"
 
 #include <limits.h>
@@ -41,13 +39,6 @@ Boston, MA 02111-1307, USA.  */
 #  define TCK 1
 #else
 #define TCK 0
-#endif
-
-
-#if defined(HAVE_SYS_TIME_H) && defined(HAVE_GETTIMEOFDAY)
-static struct timeval tp0 = {-1, 0};
-#elif defined(HAVE_TIME_H)
-static time_t t0 = (time_t) -2;
 #endif
 
 
@@ -68,72 +59,57 @@ system_clock_4(GFC_INTEGER_4 *count, GFC_INTEGER_4 *count_rate,
 	       GFC_INTEGER_4 *count_max)
 {
   GFC_INTEGER_4 cnt;
-  GFC_INTEGER_4 rate;
   GFC_INTEGER_4 mx;
 
 #if defined(HAVE_SYS_TIME_H) && defined(HAVE_GETTIMEOFDAY)
   struct timeval tp1;
   struct timezone tzp;
-  double t;
+
+  if (sizeof (tp1.tv_sec) < sizeof (GFC_INTEGER_4))
+    internal_error (NULL, "tv_sec too small");
 
   if (gettimeofday(&tp1, &tzp) == 0)
     {
-      if (tp0.tv_sec < 0)
-        {
-          tp0 = tp1;
-          cnt = 0;
-        }
+      GFC_UINTEGER_4 ucnt = (GFC_UINTEGER_4) tp1.tv_sec * TCK;
+      ucnt += (tp1.tv_usec + 500000 / TCK) / (1000000 / TCK);
+      if (ucnt > GFC_INTEGER_4_HUGE)
+	cnt = ucnt - GFC_INTEGER_4_HUGE - 1;
       else
-        {
-	  /* TODO: Convert this to integer arithmetic.  */
-          t  = (double) (tp1.tv_sec  - tp0.tv_sec);
-          t += (double) (tp1.tv_usec - tp0.tv_usec) * 1.e-6;
-          t *= TCK;
-
-          if (t > (double) GFC_INTEGER_4_HUGE)
-            {
-              /* Time has wrapped. */
-              while (t > (double) GFC_INTEGER_4_HUGE)
-                t -= (double) GFC_INTEGER_4_HUGE;
-              tp0 = tp1;
-            }
-	  cnt = (GFC_INTEGER_4) t;
-        }
-      rate = TCK;
+	cnt = ucnt;
       mx = GFC_INTEGER_4_HUGE;
     }
   else
     {
-      if (count != NULL) *count = - GFC_INTEGER_4_HUGE;
-      if (count_rate != NULL) *count_rate = 0;
-      if (count_max != NULL) *count_max = 0;
+      if (count != NULL)
+	*count = - GFC_INTEGER_4_HUGE;
+      if (count_rate != NULL)
+	*count_rate = 0;
+      if (count_max != NULL)
+	*count_max = 0;
+      return;
     }
 #elif defined(HAVE_TIME_H)
-  time_t t, t1;
+  GFC_UINTEGER_4 ucnt;
 
-  t1 = time(NULL);
+  if (sizeof (time_t) < sizeof (GFC_INTEGER_4))
+    internal_error (NULL, "time_t too small");
 
-  if (t1 == (time_t) -1)
-    {
-      cnt = - GFC_INTEGER_4_HUGE;
-      mx = 0;
-    }
-  else if (t0 == (time_t) -2) 
-    t0 = t1;
+  ucnt = time (NULL);
+  if (ucnt > GFC_INTEGER_4_HUGE)
+    cnt = ucnt - GFC_INTEGER_4_HUGE - 1;
   else
-    {
-      /* The timer counts in seconts, so for simplicity assume it never wraps.
-	 Even with 32-bit counters this only happens once every 68 years.  */
-      cnt = t1 - t0;
-      mx = GFC_INTEGER_4_HUGE;
-    }
+    cnt = ucnt;
+  mx = GFC_INTEGER_4_HUGE;
 #else
   cnt = - GFC_INTEGER_4_HUGE;
   mx = 0;
 #endif
-  if (count != NULL) *count = cnt;
-  if (count_rate != NULL) *count_rate = TCK;
-  if (count_max != NULL) *count_max = mx;
+  if (count != NULL)
+    *count = cnt;
+  if (count_rate != NULL)
+    *count_rate = TCK;
+  if (count_max != NULL)
+    *count_max = mx;
 }
 
 
@@ -141,66 +117,71 @@ system_clock_4(GFC_INTEGER_4 *count, GFC_INTEGER_4 *count_rate,
 
 void
 system_clock_8 (GFC_INTEGER_8 *count, GFC_INTEGER_8 *count_rate,
-	        GFC_INTEGER_8 *count_max)
+		GFC_INTEGER_8 *count_max)
 {
   GFC_INTEGER_8 cnt;
-  GFC_INTEGER_8 rate;
   GFC_INTEGER_8 mx;
 
 #if defined(HAVE_SYS_TIME_H) && defined(HAVE_GETTIMEOFDAY)
   struct timeval tp1;
   struct timezone tzp;
-  double t;
+
+  if (sizeof (tp1.tv_sec) < sizeof (GFC_INTEGER_4))
+    internal_error (NULL, "tv_sec too small");
 
   if (gettimeofday(&tp1, &tzp) == 0)
     {
-      if (tp0.tv_sec < 0)
-        {
-          tp0 = tp1;
-          cnt = 0;
-        }
+      if (sizeof (tp1.tv_sec) < sizeof (GFC_INTEGER_8))
+	{
+	  GFC_UINTEGER_4 ucnt = (GFC_UINTEGER_4) tp1.tv_sec * TCK;
+	  ucnt += (tp1.tv_usec + 500000 / TCK) / (1000000 / TCK);
+	  if (ucnt > GFC_INTEGER_4_HUGE)
+	    cnt = ucnt - GFC_INTEGER_4_HUGE - 1;
+	  else
+	    cnt = ucnt;
+	  mx = GFC_INTEGER_4_HUGE;
+	}
       else
-        {
-	  /* TODO: Convert this to integer arithmetic.  */
-          t  = (double) (tp1.tv_sec  - tp0.tv_sec);
-          t += (double) (tp1.tv_usec - tp0.tv_usec) * 1.e-6;
-          t *= TCK;
-
-          if (t > (double) GFC_INTEGER_8_HUGE)
-            {
-              /* Time has wrapped. */
-              while (t > (double) GFC_INTEGER_8_HUGE)
-                t -= (double) GFC_INTEGER_8_HUGE;
-              tp0 = tp1;
-            }
-	  cnt = (GFC_INTEGER_8) t;
-        }
-      rate = TCK;
-      mx = GFC_INTEGER_8_HUGE;
+	{
+	  GFC_UINTEGER_8 ucnt = (GFC_UINTEGER_8) tp1.tv_sec * TCK;
+	  ucnt += (tp1.tv_usec + 500000 / TCK) / (1000000 / TCK);
+	  if (ucnt > GFC_INTEGER_8_HUGE)
+	    cnt = ucnt - GFC_INTEGER_8_HUGE - 1;
+	  else
+	    cnt = ucnt;
+	  mx = GFC_INTEGER_8_HUGE;
+	}
     }
   else
     {
-      if (count != NULL) *count = - GFC_INTEGER_8_HUGE;
-      if (count_rate != NULL) *count_rate = 0;
-      if (count_max != NULL) *count_max = 0;
+      if (count != NULL)
+	*count = - GFC_INTEGER_8_HUGE;
+      if (count_rate != NULL)
+	*count_rate = 0;
+      if (count_max != NULL)
+	*count_max = 0;
+
+      return;
     }
 #elif defined(HAVE_TIME_H)
-  time_t t, t1;
-
-  t1 = time(NULL);
-
-  if (t1 == (time_t) -1)
+  if (sizeof (time_t) < sizeof (GFC_INTEGER_4))
+    internal_error (NULL, "time_t too small");
+  else if (sizeof (time_t) == sizeof (GFC_INTEGER_4))
     {
-      cnt = - GFC_INTEGER_8_HUGE;
-      mx = 0;
+      GFC_UINTEGER_4 ucnt = time (NULL);
+      if (ucnt > GFC_INTEGER_4_HUGE)
+	cnt = ucnt - GFC_INTEGER_4_HUGE - 1;
+      else
+	cnt = ucnt;
+      mx = GFC_INTEGER_4_HUGE;
     }
-  else if (t0 == (time_t) -2) 
-    t0 = t1;
   else
     {
-      /* The timer counts in seconts, so for simplicity assume it never wraps.
-	 Even with 32-bit counters this only happens once every 68 years.  */
-      cnt = t1 - t0;
+      GFC_UINTEGER_8 ucnt = time (NULL);
+      if (ucnt > GFC_INTEGER_8_HUGE)
+	cnt = ucnt - GFC_INTEGER_8_HUGE - 1;
+      else
+	cnt = ucnt;
       mx = GFC_INTEGER_8_HUGE;
     }
 #else

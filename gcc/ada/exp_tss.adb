@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -29,7 +28,8 @@ with Einfo;    use Einfo;
 with Elists;   use Elists;
 with Exp_Util; use Exp_Util;
 with Lib;      use Lib;
-with Namet;    use Namet;
+with Restrict; use Restrict;
+with Rident;   use Rident;
 with Sem_Util; use Sem_Util;
 with Sinfo;    use Sinfo;
 
@@ -44,7 +44,7 @@ package body Exp_Tss is
       Proc      : Entity_Id;
 
    begin
-      pragma Assert (Ekind (Typ) in Type_Kind);
+      pragma Assert (Is_Type (Typ));
 
       if Is_Private_Type (Typ) then
          Full_Type := Underlying_Type (Base_Type (Typ));
@@ -161,11 +161,16 @@ package body Exp_Tss is
    -- Has_Non_Null_Base_Init_Proc --
    ---------------------------------
 
+   --  Note: if a base Init_Proc is present, and No_Default_Initialization is
+   --  present, then we must avoid testing for a null init proc, since there
+   --  is no init proc present in this case.
+
    function Has_Non_Null_Base_Init_Proc (Typ : Entity_Id) return Boolean is
       BIP : constant Entity_Id := Base_Init_Proc (Typ);
-
    begin
-      return Present (BIP) and then not Is_Null_Init_Proc (BIP);
+      return Present (BIP)
+        and then (Restriction_Active (No_Default_Initialization)
+                    or else not Is_Null_Init_Proc (BIP));
    end Has_Non_Null_Base_Init_Proc;
 
    ---------------
@@ -235,29 +240,8 @@ package body Exp_Tss is
 
    function Make_Init_Proc_Name (Typ : Entity_Id) return Name_Id is
    begin
-      Get_Name_String (Chars (Typ));
-      Name_Len := Name_Len + 2;
-      Name_Buffer (Name_Len - 1) := TSS_Init_Proc (1);
-      Name_Buffer (Name_Len)     := TSS_Init_Proc (2);
-      return Name_Find;
+      return Make_TSS_Name (Typ, TSS_Init_Proc);
    end Make_Init_Proc_Name;
-
-   -------------------------
-   -- Make_TSS_Name_Local --
-   -------------------------
-
-   function Make_TSS_Name_Local
-     (Typ : Entity_Id;
-      Nam : TSS_Name_Type) return Name_Id
-   is
-   begin
-      Get_Name_String (Chars (Typ));
-      Add_Char_To_Name_Buffer (Nam (1));
-      Add_Char_To_Name_Buffer (Nam (2));
-      Add_Char_To_Name_Buffer ('_');
-      Add_Nat_To_Name_Buffer (Increment_Serial_Number);
-      return Name_Find;
-   end Make_TSS_Name_Local;
 
    -------------------
    -- Make_TSS_Name --
@@ -273,6 +257,23 @@ package body Exp_Tss is
       Add_Char_To_Name_Buffer (Nam (2));
       return Name_Find;
    end Make_TSS_Name;
+
+   -------------------------
+   -- Make_TSS_Name_Local --
+   -------------------------
+
+   function Make_TSS_Name_Local
+     (Typ : Entity_Id;
+      Nam : TSS_Name_Type) return Name_Id
+   is
+   begin
+      Get_Name_String (Chars (Typ));
+      Add_Char_To_Name_Buffer ('_');
+      Add_Nat_To_Name_Buffer (Increment_Serial_Number);
+      Add_Char_To_Name_Buffer (Nam (1));
+      Add_Char_To_Name_Buffer (Nam (2));
+      return Name_Find;
+   end Make_TSS_Name_Local;
 
    --------------
    -- Same_TSS --
@@ -312,19 +313,30 @@ package body Exp_Tss is
    -------------
 
    procedure Set_TSS (Typ : Entity_Id; TSS : Entity_Id) is
-      Subprog_Body : constant Node_Id := Unit_Declaration_Node (TSS);
-
    begin
-      --  Case of insertion location is in unit defining the type
+      --  Make sure body of subprogram is frozen
 
-      if In_Same_Code_Unit (Typ, TSS) then
-         Append_Freeze_Action (Typ, Subprog_Body);
+      --  Skip this for Init_Proc with No_Default_Initialization, since the
+      --  Init proc is a dummy void entity in this case to be ignored.
 
-      --  Otherwise, we are using an already existing TSS in another unit
+      if Is_Init_Proc (TSS)
+        and then Restriction_Active (No_Default_Initialization)
+      then
+         null;
+
+      --  Skip this if not in the same code unit (since it means we are using
+      --  an already existing TSS in another unit)
+
+      elsif not In_Same_Code_Unit (Typ, TSS) then
+         null;
+
+      --  Otherwise make sure body is frozen
 
       else
-         null;
+         Append_Freeze_Action (Typ, Unit_Declaration_Node (TSS));
       end if;
+
+      --  Set TSS entry
 
       Copy_TSS (TSS, Typ);
    end Set_TSS;

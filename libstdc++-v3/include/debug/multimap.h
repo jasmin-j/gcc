@@ -1,6 +1,6 @@
 // Debugging multimap implementation -*- C++ -*-
 
-// Copyright (C) 2003, 2004
+// Copyright (C) 2003, 2004, 2005, 2006, 2007
 // Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
@@ -16,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -28,6 +28,10 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
+/** @file debug/multimap.h
+ *  This file is a GNU debug extension to the Standard C++ Library.
+ */
+
 #ifndef _GLIBCXX_DEBUG_MULTIMAP_H
 #define _GLIBCXX_DEBUG_MULTIMAP_H 1
 
@@ -35,15 +39,18 @@
 #include <debug/safe_iterator.h>
 #include <utility>
 
-namespace __gnu_debug_def
+namespace std
+{
+namespace __debug
 {
   template<typename _Key, typename _Tp, typename _Compare = std::less<_Key>,
 	   typename _Allocator = std::allocator<std::pair<const _Key, _Tp> > >
     class multimap
-    : public _GLIBCXX_STD::multimap<_Key, _Tp, _Compare, _Allocator>,
-    public __gnu_debug::_Safe_sequence<multimap<_Key,_Tp,_Compare,_Allocator> >
+    : public _GLIBCXX_STD_D::multimap<_Key, _Tp, _Compare, _Allocator>,
+      public __gnu_debug::_Safe_sequence<multimap<_Key, _Tp,
+						  _Compare, _Allocator> >
     {
-      typedef _GLIBCXX_STD::multimap<_Key, _Tp, _Compare, _Allocator> _Base;
+      typedef _GLIBCXX_STD_D::multimap<_Key, _Tp, _Compare, _Allocator> _Base;
       typedef __gnu_debug::_Safe_sequence<multimap> _Safe_base;
 
     public:
@@ -53,8 +60,8 @@ namespace __gnu_debug_def
       typedef std::pair<const _Key, _Tp>             value_type;
       typedef _Compare                               key_compare;
       typedef _Allocator                             allocator_type;
-      typedef typename _Allocator::reference         reference;
-      typedef typename _Allocator::const_reference   const_reference;
+      typedef typename _Base::reference              reference;
+      typedef typename _Base::const_reference        const_reference;
 
       typedef __gnu_debug::_Safe_iterator<typename _Base::iterator, multimap>
                                                      iterator;
@@ -63,8 +70,8 @@ namespace __gnu_debug_def
 
       typedef typename _Base::size_type              size_type;
       typedef typename _Base::difference_type        difference_type;
-      typedef typename _Allocator::pointer           pointer;
-      typedef typename _Allocator::const_pointer     const_pointer;
+      typedef typename _Base::pointer                pointer;
+      typedef typename _Base::const_pointer          const_pointer;
       typedef std::reverse_iterator<iterator>        reverse_iterator;
       typedef std::reverse_iterator<const_iterator>  const_reverse_iterator;
 
@@ -82,20 +89,51 @@ namespace __gnu_debug_def
       : _Base(__gnu_debug::__check_valid_range(__first, __last), __last,
 	      __comp, __a) { }
 
-      multimap(const multimap<_Key,_Tp,_Compare,_Allocator>& __x)
+      multimap(const multimap& __x)
       : _Base(__x), _Safe_base() { }
 
-      multimap(const _Base& __x) : _Base(__x), _Safe_base() { }
+      multimap(const _Base& __x)
+      : _Base(__x), _Safe_base() { }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      multimap(multimap&& __x)
+      : _Base(std::forward<multimap>(__x)), _Safe_base()
+      { this->_M_swap(__x); }
+
+      multimap(initializer_list<value_type> __l,
+	       const _Compare& __c = _Compare(),
+	       const allocator_type& __a = allocator_type())
+	: _Base(__l, __c, __a), _Safe_base() { }
+#endif
 
       ~multimap() { }
 
-      multimap<_Key,_Tp,_Compare,_Allocator>&
-      operator=(const multimap<_Key,_Tp,_Compare,_Allocator>& __x)
+      multimap&
+      operator=(const multimap& __x)
       {
 	*static_cast<_Base*>(this) = __x;
 	this->_M_invalidate_all();
 	return *this;
       }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      multimap&
+      operator=(multimap&& __x)
+      {
+        // NB: DR 675.
+	clear();
+	swap(__x);
+	return *this;
+      }
+
+      multimap&
+      operator=(initializer_list<value_type> __l)
+      {
+	this->clear();
+	this->insert(__l);
+	return *this;
+      }
+#endif
 
       using _Base::get_allocator;
 
@@ -132,6 +170,24 @@ namespace __gnu_debug_def
       rend() const
       { return const_reverse_iterator(begin()); }
 
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      const_iterator
+      cbegin() const
+      { return const_iterator(_Base::begin(), this); }
+
+      const_iterator
+      cend() const
+      { return const_iterator(_Base::end(), this); }
+
+      const_reverse_iterator
+      crbegin() const
+      { return const_reverse_iterator(end()); }
+
+      const_reverse_iterator
+      crend() const
+      { return const_reverse_iterator(begin()); }
+#endif
+
       // capacity:
       using _Base::empty;
       using _Base::size;
@@ -141,6 +197,12 @@ namespace __gnu_debug_def
       iterator
       insert(const value_type& __x)
       { return iterator(_Base::insert(__x), this); }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      void
+      insert(std::initializer_list<value_type> __list)
+      { _Base::insert(__list); }
+#endif
 
       iterator
       insert(iterator __position, const value_type& __x)
@@ -191,7 +253,11 @@ namespace __gnu_debug_def
       }
 
       void
-      swap(multimap<_Key,_Tp,_Compare,_Allocator>& __x)
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      swap(multimap&& __x)
+#else
+      swap(multimap& __x)
+#endif
       {
 	_Base::swap(__x);
 	this->_M_swap(__x);
@@ -268,47 +334,72 @@ namespace __gnu_debug_def
       }
     };
 
-  template<typename _Key,typename _Tp,typename _Compare,typename _Allocator>
+  template<typename _Key, typename _Tp,
+	   typename _Compare, typename _Allocator>
     inline bool
-    operator==(const multimap<_Key,_Tp,_Compare,_Allocator>& __lhs,
-	       const multimap<_Key,_Tp,_Compare,_Allocator>& __rhs)
+    operator==(const multimap<_Key, _Tp, _Compare, _Allocator>& __lhs,
+	       const multimap<_Key, _Tp, _Compare, _Allocator>& __rhs)
     { return __lhs._M_base() == __rhs._M_base(); }
 
-  template<typename _Key,typename _Tp,typename _Compare,typename _Allocator>
+  template<typename _Key, typename _Tp,
+	   typename _Compare, typename _Allocator>
     inline bool
-    operator!=(const multimap<_Key,_Tp,_Compare,_Allocator>& __lhs,
-	       const multimap<_Key,_Tp,_Compare,_Allocator>& __rhs)
+    operator!=(const multimap<_Key, _Tp, _Compare, _Allocator>& __lhs,
+	       const multimap<_Key, _Tp, _Compare, _Allocator>& __rhs)
     { return __lhs._M_base() != __rhs._M_base(); }
 
-  template<typename _Key,typename _Tp,typename _Compare,typename _Allocator>
+  template<typename _Key, typename _Tp,
+	   typename _Compare, typename _Allocator>
     inline bool
-    operator<(const multimap<_Key,_Tp,_Compare,_Allocator>& __lhs,
-	      const multimap<_Key,_Tp,_Compare,_Allocator>& __rhs)
+    operator<(const multimap<_Key, _Tp, _Compare, _Allocator>& __lhs,
+	      const multimap<_Key, _Tp, _Compare, _Allocator>& __rhs)
     { return __lhs._M_base() < __rhs._M_base(); }
 
-  template<typename _Key,typename _Tp,typename _Compare,typename _Allocator>
+  template<typename _Key, typename _Tp,
+	   typename _Compare, typename _Allocator>
     inline bool
-    operator<=(const multimap<_Key,_Tp,_Compare,_Allocator>& __lhs,
-	       const multimap<_Key,_Tp,_Compare,_Allocator>& __rhs)
+    operator<=(const multimap<_Key, _Tp, _Compare, _Allocator>& __lhs,
+	       const multimap<_Key, _Tp, _Compare, _Allocator>& __rhs)
     { return __lhs._M_base() <= __rhs._M_base(); }
 
-  template<typename _Key,typename _Tp,typename _Compare,typename _Allocator>
+  template<typename _Key, typename _Tp,
+	   typename _Compare, typename _Allocator>
     inline bool
-    operator>=(const multimap<_Key,_Tp,_Compare,_Allocator>& __lhs,
-	       const multimap<_Key,_Tp,_Compare,_Allocator>& __rhs)
+    operator>=(const multimap<_Key, _Tp, _Compare, _Allocator>& __lhs,
+	       const multimap<_Key, _Tp, _Compare, _Allocator>& __rhs)
     { return __lhs._M_base() >= __rhs._M_base(); }
 
-  template<typename _Key,typename _Tp,typename _Compare,typename _Allocator>
+  template<typename _Key, typename _Tp,
+	   typename _Compare, typename _Allocator>
     inline bool
-    operator>(const multimap<_Key,_Tp,_Compare,_Allocator>& __lhs,
-	      const multimap<_Key,_Tp,_Compare,_Allocator>& __rhs)
+    operator>(const multimap<_Key, _Tp, _Compare, _Allocator>& __lhs,
+	      const multimap<_Key, _Tp, _Compare, _Allocator>& __rhs)
     { return __lhs._M_base() > __rhs._M_base(); }
 
-  template<typename _Key,typename _Tp,typename _Compare,typename _Allocator>
+  template<typename _Key, typename _Tp,
+	   typename _Compare, typename _Allocator>
     inline void
-    swap(multimap<_Key,_Tp,_Compare,_Allocator>& __lhs,
-	 multimap<_Key,_Tp,_Compare,_Allocator>& __rhs)
+    swap(multimap<_Key, _Tp, _Compare, _Allocator>& __lhs,
+	 multimap<_Key, _Tp, _Compare, _Allocator>& __rhs)
     { __lhs.swap(__rhs); }
-} // namespace __gnu_debug_def
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+  template<typename _Key, typename _Tp,
+	   typename _Compare, typename _Allocator>
+    inline void
+    swap(multimap<_Key, _Tp, _Compare, _Allocator>&& __lhs,
+	 multimap<_Key, _Tp, _Compare, _Allocator>& __rhs)
+    { __lhs.swap(__rhs); }
+
+  template<typename _Key, typename _Tp,
+	   typename _Compare, typename _Allocator>
+    inline void
+    swap(multimap<_Key, _Tp, _Compare, _Allocator>& __lhs,
+	 multimap<_Key, _Tp, _Compare, _Allocator>&& __rhs)
+    { __lhs.swap(__rhs); }
+#endif
+
+} // namespace __debug
+} // namespace std
 
 #endif

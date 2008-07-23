@@ -1,11 +1,11 @@
 /* Darwin host-specific hook definitions.
-   Copyright (C) 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -14,9 +14,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the
-   Free Software Foundation, 59 Temple Place - Suite 330, Boston,
-   MA 02111-1307, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -49,9 +48,8 @@ darwin_gt_pch_use_address (void *addr, size_t sz, int fd, size_t off)
   void *mmap_result;
   int ret;
 
-  if ((size_t)pch_address_space % pagesize != 0
-      || sizeof (pch_address_space) % pagesize != 0)
-    abort ();
+  gcc_assert ((size_t)pch_address_space % pagesize == 0
+	      && sizeof (pch_address_space) % pagesize == 0);
   
   ret = (addr == pch_address_space && sz <= sizeof (pch_address_space));
   if (! ret)
@@ -61,7 +59,7 @@ darwin_gt_pch_use_address (void *addr, size_t sz, int fd, size_t off)
   sz = (sz + pagesize - 1) / pagesize * pagesize;
 
   if (munmap (pch_address_space + sz, sizeof (pch_address_space) - sz) != 0)
-    fatal_error ("couldn't unmap pch_address_space: %m\n");
+    fatal_error ("couldn't unmap pch_address_space: %m");
 
   if (ret)
     {
@@ -73,8 +71,7 @@ darwin_gt_pch_use_address (void *addr, size_t sz, int fd, size_t off)
       ret = mmap_result != (void *) MAP_FAILED;
 
       /* Sanity check for broken MAP_FIXED.  */
-      if (ret && mmap_result != addr)
-	abort ();
+      gcc_assert (!ret || mmap_result == addr);
     }
 
   return ret;

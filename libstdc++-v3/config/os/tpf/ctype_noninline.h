@@ -1,6 +1,6 @@
 // Locale support -*- C++ -*-
 
-// Copyright (C) 2004 Free Software Foundation, Inc.
+// Copyright (C) 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -27,6 +27,11 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
+/** @file ctype_noninline.h
+ *  This is an internal header file, included by other library headers.
+ *  You should not attempt to use it directly.
+ */
+
 //
 // ISO C++ 14882: 22.1  Locales
 //
@@ -37,11 +42,14 @@
   ctype<char>::classic_table() throw()
   {
     const ctype_base::mask* __ret;
-    char* __old = strdup(setlocale(LC_CTYPE, NULL));
+    char* __old = setlocale(LC_CTYPE, NULL);
+    const size_t __len = __builtin_strlen(__old) + 1;
+    char* __sav = new char[__len];
+    __builtin_memcpy(__sav, __old, __len);
     setlocale(LC_CTYPE, "C");
     __ret = *__ctype_b_loc();
-    setlocale(LC_CTYPE, __old);
-    free(__old);
+    setlocale(LC_CTYPE, __sav);
+    delete [] __sav;
     return __ret;
   }
 
@@ -49,26 +57,32 @@
 		     size_t __refs) 
   : facet(__refs), _M_del(__table != 0 && __del)
   {
-    char* __old=strdup(setlocale(LC_CTYPE, NULL));
+    char* __old = setlocale(LC_CTYPE, NULL);
+    const size_t __len = __builtin_strlen(__old) + 1;
+    char* __sav = new char[__len];
+    __builtin_memcpy(__sav, __old, __len);
     setlocale(LC_CTYPE, "C");
     _M_toupper = *__ctype_toupper_loc();
     _M_tolower = *__ctype_tolower_loc();
     _M_table = __table ? __table : *__ctype_b_loc();
-    setlocale(LC_CTYPE, __old);
-    free(__old);
+    setlocale(LC_CTYPE, __sav);
+    delete [] __sav;
     _M_c_locale_ctype = _S_get_c_locale();
   }
 
   ctype<char>::ctype(const mask* __table, bool __del, size_t __refs)
   : facet(__refs), _M_del(__table != 0 && __del)
   {
-    char* __old=strdup(setlocale(LC_CTYPE, NULL));
+    char* __old = setlocale(LC_CTYPE, NULL);
+    const size_t __len = __builtin_strlen(__old) + 1;
+    char* __sav = new char[__len];
+    __builtin_memcpy(__sav, __old, __len);
     setlocale(LC_CTYPE, "C");
     _M_toupper = *__ctype_toupper_loc();
     _M_tolower = *__ctype_tolower_loc();
     _M_table = __table ? __table : *__ctype_b_loc();
-    setlocale(LC_CTYPE, __old);
-    free(__old);
+    setlocale(LC_CTYPE, __sav);
+    delete [] __sav;
     _M_c_locale_ctype = _S_get_c_locale();
   }
 

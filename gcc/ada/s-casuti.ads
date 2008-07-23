@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                     S Y S T E M . C A S E _ U T I L                      --
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---           Copyright (C) 1995-2002 Ada Core Technologies, Inc.            --
+--          Copyright (C) 1995-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -39,8 +39,12 @@
 --  Note that all the routines in this package are available to the user
 --  via GNAT.Case_Util, which imports all the entities from this package.
 
+pragma Warnings (Off);
+pragma Compiler_Unit;
+pragma Warnings (On);
+
 package System.Case_Util is
-pragma Pure (Case_Util);
+   pragma Pure;
 
    --  Note: all the following functions handle the full Latin-1 set
 
@@ -49,7 +53,7 @@ pragma Pure (Case_Util);
    --  returns the input argument unchanged.
 
    procedure To_Upper (A : in out String);
-   --  Folds all characters of string A to upper csae
+   --  Folds all characters of string A to upper case
 
    function To_Lower (A : Character) return Character;
    --  Converts A to lower case if it is an upper case letter, otherwise

@@ -1,10 +1,12 @@
 /* { dg-do run { target powerpc*-*-* } } */
+/* { dg-require-effective-target vect_int } */
 
 #include <stdarg.h>
 #include "tree-vect.h"
 
 #define N 16
  
+__attribute__ ((noinline))
 int main1 ()
 {  
   long long unsigned int ca[N];
@@ -32,5 +34,5 @@ int main (void)
   return main1 ();
 } 
 
-/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 0 "vect" } } */
+/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" } } */
 /* { dg-final { cleanup-tree-dump "vect" } } */

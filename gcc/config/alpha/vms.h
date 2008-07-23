@@ -1,12 +1,12 @@
 /* Output variables, constants and external declarations, for GNU compiler.
-   Copyright (C) 1996, 1997, 1998, 2000, 2001, 2002, 2004, 2005
+   Copyright (C) 1996, 1997, 1998, 2000, 2001, 2002, 2004, 2005, 2007
    Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #define TARGET_OBJECT_SUFFIX ".obj"
 #define TARGET_EXECUTABLE_SUFFIX ".exe"
@@ -136,17 +135,22 @@ Boston, MA 02111-1307, USA.  */
 
 #undef INITIAL_ELIMINATION_OFFSET
 #define INITIAL_ELIMINATION_OFFSET(FROM, TO, OFFSET)			\
-{ if ((FROM) == FRAME_POINTER_REGNUM)					\
-    (OFFSET) = alpha_sa_size () + alpha_pv_save_size ();		\
-  else if ((FROM) == ARG_POINTER_REGNUM)				\
-    (OFFSET) = (ALPHA_ROUND (alpha_sa_size () + alpha_pv_save_size ()	\
-			     + get_frame_size ()			\
-			     + current_function_pretend_args_size)	\
-		- current_function_pretend_args_size);			\
-  else									\
-    abort();								\
+{ switch (FROM)								\
+    {									\
+    case FRAME_POINTER_REGNUM:						\
+      (OFFSET) = alpha_sa_size () + alpha_pv_save_size ();		\
+      break;								\
+    case ARG_POINTER_REGNUM:						\
+      (OFFSET) = (ALPHA_ROUND (alpha_sa_size () + alpha_pv_save_size ()	\
+			       + get_frame_size ()			\
+			       + crtl->args.pretend_args_size)	\
+		  - crtl->args.pretend_args_size);		\
+      break;								\
+    default:								\
+      gcc_unreachable ();						\
+    }									\
   if ((TO) == STACK_POINTER_REGNUM)					\
-    (OFFSET) += ALPHA_ROUND (current_function_outgoing_args_size);	\
+    (OFFSET) += ALPHA_ROUND (crtl->outgoing_args_size);	\
 }
 
 /* Define a data type for recording info about an argument list
@@ -193,41 +197,12 @@ typedef struct {int num_args; enum avms_arg_type atypes[6];} avms_arg_info;
 #undef STACK_CHECK_BUILTIN
 #define STACK_CHECK_BUILTIN 0
 
-#define LINK_SECTION_ASM_OP "\t.link"
 #define READONLY_DATA_SECTION_ASM_OP "\t.rdata"
-#define LITERALS_SECTION_ASM_OP "\t.literals"
 #define CTORS_SECTION_ASM_OP "\t.ctors"
 #define DTORS_SECTION_ASM_OP "\t.dtors"
 
-#undef EXTRA_SECTIONS
-#define EXTRA_SECTIONS	in_link, in_literals
-
-#undef EXTRA_SECTION_FUNCTIONS
-#define EXTRA_SECTION_FUNCTIONS					\
-void								\
-link_section (void)						\
-{								\
-  if (in_section != in_link)					\
-    {								\
-      fprintf (asm_out_file, "%s\n", LINK_SECTION_ASM_OP); 	\
-      in_section = in_link;					\
-    }								\
-}                                                               \
-void								\
-literals_section (void)						\
-{								\
-  if (in_section != in_literals)				\
-    {								\
-      fprintf (asm_out_file, "%s\n", LITERALS_SECTION_ASM_OP); 	\
-      in_section = in_literals;					\
-    }								\
-}
-
-extern void link_section (void);
-extern void literals_section (void);
-
 #undef ASM_OUTPUT_ADDR_DIFF_ELT
-#define ASM_OUTPUT_ADDR_DIFF_ELT(FILE, BODY, VALUE, REL) abort ()
+#define ASM_OUTPUT_ADDR_DIFF_ELT(FILE, BODY, VALUE, REL) gcc_unreachable ()
 
 #undef ASM_OUTPUT_ADDR_VEC_ELT
 #define ASM_OUTPUT_ADDR_VEC_ELT(FILE, VALUE) \
@@ -322,7 +297,8 @@ do {									\
 #define TARGET_ASM_NAMED_SECTION vms_asm_named_section
 
 #define ASM_OUTPUT_DEF(FILE,LABEL1,LABEL2)				\
-  do {	literals_section();                                             \
+  do {	fprintf ((FILE), "\t.literals\n");				\
+	in_section = NULL;						\
 	fprintf ((FILE), "\t");						\
 	assemble_name (FILE, LABEL1);					\
 	fprintf (FILE, " = ");						\

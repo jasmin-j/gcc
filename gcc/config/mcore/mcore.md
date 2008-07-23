@@ -1,5 +1,5 @@
 ;;  Machine description the Motorola MCore
-;;  Copyright (C) 1993, 1999, 2000, 2004, 2005
+;;  Copyright (C) 1993, 1999, 2000, 2004, 2005, 2007
 ;;  Free Software Foundation, Inc.
 ;;  Contributed by Motorola.
 
@@ -7,7 +7,7 @@
 
 ;; GCC is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation; either version 2, or (at your option)
+;; the Free Software Foundation; either version 3, or (at your option)
 ;; any later version.
 
 ;; GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GCC; see the file COPYING.  If not, write to
-;; the Free Software Foundation, 59 Temple Place - Suite 330,
-;; Boston, MA 02111-1307, USA.
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.
 
 ;;- See file "rtl.def" for documentation on define_insn, match_*, et. al.
 
@@ -192,11 +191,11 @@
 (define_split 
   [(parallel[
       (set (reg:CC 17)
-           (ne:CC (ne:SI (leu:CC (match_operand:SI 0 "mcore_arith_reg_operand" "r")
-                                 (match_operand:SI 1 "mcore_arith_reg_operand" "r"))
+           (ne:CC (ne:SI (leu:CC (match_operand:SI 0 "mcore_arith_reg_operand" "")
+                                 (match_operand:SI 1 "mcore_arith_reg_operand" ""))
                          (const_int 0))
                   (const_int 0)))
-      (clobber (match_operand:CC 2 "mcore_arith_reg_operand" "=r"))])]
+      (clobber (match_operand:CC 2 "mcore_arith_reg_operand" ""))])]
   ""
   [(set (reg:CC 17) (ne:SI (match_dup 0) (const_int 0)))
    (set (reg:CC 17) (leu:CC (match_dup 0) (match_dup 1)))])
@@ -355,7 +354,8 @@
   if (GET_CODE (operands[2]) == CONST_INT && INTVAL (operands[2]) < 0
       && ! mcore_arith_S_operand (operands[2]))
     {
-      int not_value = ~ INTVAL (operands[2]);
+      HOST_WIDE_INT not_value = ~ INTVAL (operands[2]);
+
       if (   CONST_OK_FOR_I (not_value)
           || CONST_OK_FOR_M (not_value)
 	  || CONST_OK_FOR_N (not_value))
@@ -384,7 +384,7 @@
      case 2: return \"and	%0,%1\";
      /* case -1: return \"bclri	%0,%Q2\";	 will not happen */
      case 3: return mcore_output_bclri (operands[0], INTVAL (operands[2]));
-     default: abort ();
+     default: gcc_unreachable ();
      }
 }")
 
@@ -404,7 +404,7 @@
      case 1: return \"andi	%0,%2\";
      case 2: return \"and	%0,%1\";
      case 3: return mcore_output_bclri (operands[0], INTVAL (operands[2]));
-     default: abort ();
+     default: gcc_unreachable ();
      }
 }")
 
@@ -439,7 +439,7 @@
      case 0: return \"or	%0,%2\";
      case 1: return \"bseti	%0,%P2\";
      case 2: return mcore_output_bseti (operands[0], INTVAL (operands[2]));
-     default: abort ();
+     default: gcc_unreachable ();
      }
 }")
 
@@ -455,7 +455,7 @@
      case 0: return \"or	%0,%2\";
      case 1: return \"bseti	%0,%P2\";
      case 2: return mcore_output_bseti (operands[0], INTVAL (operands[2]));
-     default: abort ();
+     default: gcc_unreachable ();
      }
 }")
 
@@ -730,9 +730,11 @@
   /* Convert adds to subtracts if this makes loading the constant cheaper.
      But only if we are allowed to generate new pseudos.  */
   if (! (reload_in_progress || reload_completed)
-      && GET_CODE (operands[2]) == CONST_INT && INTVAL (operands[2]) < -32)
+      && GET_CODE (operands[2]) == CONST_INT
+      && INTVAL (operands[2]) < -32)
     {
-      int neg_value = - INTVAL (operands[2]);
+      HOST_WIDE_INT neg_value = - INTVAL (operands[2]);
+
       if (   CONST_OK_FOR_I (neg_value)
 	  || CONST_OK_FOR_M (neg_value)
 	  || CONST_OK_FOR_N (neg_value))
@@ -764,7 +766,7 @@
 ;;        || (INTVAL (operands[2]) < -32 && INTVAL(operands[2]) >= -64))"
 ;;   "*
 ;; {
-;;    int n = INTVAL(operands[2]);
+;;    HOST_WIDE_INT n = INTVAL(operands[2]);
 ;;    if (n > 0)
 ;;      {
 ;;        operands[2] = GEN_INT(n - 32);
@@ -822,7 +824,7 @@
 ;;        || (INTVAL (operands[2]) < -32 && INTVAL(operands[2]) >= -64))"
 ;;   "*
 ;; {
-;;    int n = INTVAL(operands[2]);
+;;    HOST_WIDE_INT n = INTVAL(operands[2]);
 ;;    if ( n > 0)
 ;;      {
 ;;        operands[2] = GEN_INT( n - 32);
@@ -928,8 +930,7 @@
    && INTVAL (operands[2]) > 0 && ! (INTVAL (operands[2]) & 0x80000000)"
   "*
 {
-  if (GET_MODE (operands[2]) != SImode)
-     abort ();
+  gcc_assert (GET_MODE (operands[2]) == SImode);
   if (TARGET_LITTLE_END)
     return \"addu	%0,%2\;cmphs	%0,%2\;incf	%R0\";
   return \"addu	%R0,%2\;cmphs	%R0,%2\;incf	%0\";
@@ -2655,7 +2656,7 @@
 {
   if (INTVAL (operands[2]) == 8 && INTVAL (operands[3]) % 8 == 0)
     {
-       /* 8 bit field, aligned properly, use the xtrb[0123]+sext sequence.  */
+       /* 8-bit field, aligned properly, use the xtrb[0123]+sext sequence.  */
        /* not DONE, not FAIL, but let the RTL get generated....  */
     }
   else if (TARGET_W_FIELD)
@@ -2692,7 +2693,7 @@
 {
   if (INTVAL (operands[2]) == 8 && INTVAL (operands[3]) % 8 == 0)
     {
-       /* 8 bit field, aligned properly, use the xtrb[0123] sequence.  */
+       /* 8-bit field, aligned properly, use the xtrb[0123] sequence.  */
        /* Let the template generate some RTL....  */
     }
   else if (CONST_OK_FOR_K ((1 << INTVAL (operands[2])) - 1))
@@ -2977,8 +2978,9 @@
         (match_operand:SI 1 "const_int_operand" ""))
    (set (match_operand:SI 2 "mcore_arith_reg_operand" "")
         (ior:SI (match_dup 2) (match_dup 0)))]
-  "TARGET_HARDLIT && mcore_num_ones (INTVAL (operands[1])) == 2 &&
-       mcore_is_dead (insn, operands[0])"
+  "TARGET_HARDLIT
+   && mcore_num_ones (INTVAL (operands[1])) == 2
+   && mcore_is_dead (insn, operands[0])"
   "* return mcore_output_bseti (operands[2], INTVAL (operands[1]));")
 
 (define_peephole
@@ -3072,7 +3074,7 @@
    else if ((ofs = mcore_halfword_offset (INTVAL (operands[3]))) > -1)
       mode = HImode;
    else
-      abort ();
+      gcc_unreachable ();
 
    if (ofs > 0) 
       operands[4] = gen_rtx_MEM (mode, 
@@ -3148,15 +3150,14 @@
  	   return \"btsti	%1,%2\\n\\tmovt	%0,%4\";
        }
 
-     abort ();
+     gcc_unreachable ();
     }
   else if (GET_CODE (operands[3]) == CONST_INT
            && INTVAL (operands[3]) == 0
 	   && GET_CODE (operands[4]) == REG)
      return \"btsti	%1,%2\\n\\tclrt	%0\";
 
-  abort ();
-  return \"\"; 
+  gcc_unreachable ();
 }")
 
 ; experimental - do the constant folding ourselves.  note that this isn't
@@ -3278,7 +3279,7 @@
   if (GET_CODE (operands[1]) == CONST_INT
       && INTVAL (operands[1]) < 8 * STACK_UNITS_MAXSTEP)
     {
-      int left = INTVAL(operands[1]);
+      HOST_WIDE_INT left = INTVAL(operands[1]);
 
       /* If it's a long way, get close enough for a last shot.  */
       if (left >= STACK_UNITS_MAXSTEP)
@@ -3297,7 +3298,7 @@
 	  while (left > STACK_UNITS_MAXSTEP);
 	}
       /* Perform the final adjustment.  */
-      emit_insn (gen_addsi3 (stack_pointer_rtx,stack_pointer_rtx,GEN_INT(-left)));
+      emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx, GEN_INT (-left)));
 ;;      emit_move_insn (operands[0], virtual_stack_dynamic_rtx);
       DONE;
     }
@@ -3311,7 +3312,7 @@
 
 #if 1
       emit_insn (gen_movsi (tmp, operands[1]));
-      emit_insn (gen_movsi (step, GEN_INT(STACK_UNITS_MAXSTEP)));
+      emit_insn (gen_movsi (step, GEN_INT (STACK_UNITS_MAXSTEP)));
 
       if (GET_CODE (operands[1]) != CONST_INT)
 	{

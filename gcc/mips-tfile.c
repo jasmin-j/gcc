@@ -3,14 +3,14 @@
    in the form of comments (the mips assembler does not support
    assembly access to debug information).
    Copyright (C) 1991, 1993, 1994, 1995, 1997, 1998, 1999, 2000, 2001,
-   2002, 2003, 2004 Free Software Foundation, Inc.
+   2002, 2003, 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
    Contributed by Michael Meissner (meissner@cygnus.com).
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -19,9 +19,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 /* Here is a brief description of the MIPS ECOFF symbol table.  The
@@ -57,7 +56,7 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 
    The auxiliary table is a series of 32 bit integers, that are
    referenced as needed from the local symbol table.  Unlike standard
-   COFF, the aux.  information does not follow the symbol that uses
+   COFF, the aux. information does not follow the symbol that uses
    it, but rather is a separate table.  In theory, this would allow
    the MIPS compilers to collapse duplicate aux. entries, but I've not
    noticed this happening with the 1.31 compiler suite.  The different
@@ -667,11 +666,11 @@ main (void)
 
 #include <signal.h>
 
-#ifndef CROSS_COMPILE
+#ifndef CROSS_DIRECTORY_STRUCTURE
 #include <a.out.h>
 #else
 #include "mips/a.out.h"
-#endif /* CROSS_COMPILE */
+#endif /* CROSS_DIRECTORY_STRUCTURE */
 
 #include "gstab.h"
 
@@ -2352,15 +2351,28 @@ add_procedure (const char *func_start,  /* 1st byte of func name */
 STATIC void
 initialize_init_file (void)
 {
+  union {
+    unsigned char c[4];
+    int i;
+  } endian_test;
+
   memset (&init_file, 0, sizeof (init_file));
 
   init_file.fdr.lang = langC;
   init_file.fdr.fMerge = 1;
   init_file.fdr.glevel = GLEVEL_2;
 
-#ifdef HOST_WORDS_BIG_ENDIAN
-  init_file.fdr.fBigendian = 1;
-#endif
+  /* mips-tfile doesn't attempt to perform byte swapping and always writes
+     out integers in its native ordering.  For cross-compilers, this need
+     not be the same as either the host or the target.  The simplest thing
+     to do is skip the configury and perform an introspective test.  */
+  /* ??? Despite the name, mips-tfile is currently only used on alpha/Tru64
+     and would/may require significant work to be used in cross-compiler
+     configurations, so we could simply admit defeat and hard code this as
+     little-endian, i.e. init_file.fdr.fBigendian = 0.  */
+  endian_test.i = 1;
+  if (endian_test.c[3])
+    init_file.fdr.fBigendian = 1;
 
   INITIALIZE_VARRAY (&init_file.strings, char);
   INITIALIZE_VARRAY (&init_file.symbols, SYMR);
@@ -3980,8 +3992,7 @@ write_varray (varray_t *vp,    /* virtual array */
     return;
 
   if (debug)
-    fprintf (stderr, "\twarray\tvp = " HOST_PTR_PRINTF
-	     ", offset = %7lu, size = %7lu, %s\n",
+    fprintf (stderr, "\twarray\tvp = %p, offset = %7lu, size = %7lu, %s\n",
 	     (void *) vp, (unsigned long) offset,
 	     vp->num_allocated * vp->object_size, str);
 
@@ -4020,8 +4031,7 @@ write_object (void)
   off_t offset;
 
   if (debug)
-    fprintf (stderr, "\n\twrite\tvp = " HOST_PTR_PRINTF
-	     ", offset = %7u, size = %7lu, %s\n",
+    fprintf (stderr, "\n\twrite\tvp = %p, offset = %7u, size = %7lu, %s\n",
 	     (void *) &symbolic_header, 0,
 	     (unsigned long) sizeof (symbolic_header), "symbolic header");
 
@@ -4051,8 +4061,7 @@ write_object (void)
 	pfatal_with_name (object_name);
 
       if (debug)
-	fprintf (stderr, "\twrite\tvp = " HOST_PTR_PRINTF
-		 ", offset = %7lu, size = %7lu, %s\n",
+	fprintf (stderr, "\twrite\tvp = %p, offset = %7lu, size = %7lu, %s\n",
 		 (void *) &orig_linenum, (long) symbolic_header.cbLineOffset,
 		 (long) symbolic_header.cbLine, "Line numbers");
 
@@ -4083,8 +4092,7 @@ write_object (void)
 	pfatal_with_name (object_name);
 
       if (debug)
-	fprintf (stderr, "\twrite\tvp = " HOST_PTR_PRINTF
-		 ", offset = %7lu, size = %7lu, %s\n",
+	fprintf (stderr, "\twrite\tvp = %p, offset = %7lu, size = %7lu, %s\n",
 		 (void *) &orig_opt_syms, (long) symbolic_header.cbOptOffset,
 		 num_write, "Optimizer symbols");
 
@@ -4172,8 +4180,7 @@ write_object (void)
 	   file_ptr = file_ptr->next_file)
 	{
 	  if (debug)
-	    fprintf (stderr, "\twrite\tvp = " HOST_PTR_PRINTF
-		     ", offset = %7lu, size = %7lu, %s\n",
+	    fprintf (stderr, "\twrite\tvp = %p, offset = %7lu, size = %7lu, %s\n",
 		     (void *) &file_ptr->fdr, file_offset,
 		     (unsigned long) sizeof (FDR), "File header");
 
@@ -4205,8 +4212,7 @@ write_object (void)
 	pfatal_with_name (object_name);
 
       if (debug)
-	fprintf (stderr, "\twrite\tvp = " HOST_PTR_PRINTF
-		 ", offset = %7lu, size = %7lu, %s\n",
+	fprintf (stderr, "\twrite\tvp = %p, offset = %7lu, size = %7lu, %s\n",
 		 (void *) &orig_rfds, (long) symbolic_header.cbRfdOffset,
 		 num_write, "Relative file descriptors");
 
@@ -4369,7 +4375,7 @@ copy_object (void)
 
 
   /* Read in each of the sections if they exist in the object file.
-     We read things in in the order the mips assembler creates the
+     We read things in the order the mips assembler creates the
      sections, so in theory no extra seeks are done.
 
      For simplicity sake, round each read up to a page boundary,
@@ -4438,7 +4444,7 @@ copy_object (void)
 
 
 
-  /* Abort if the symbol table is not last.  */
+  /* The symbol table should be last.  */
   if (max_file_offset != (unsigned long) stat_buf.st_size)
     fatal ("symbol table is not last (symbol table ends at %ld, .o ends at %ld",
 	   max_file_offset,
@@ -4772,8 +4778,8 @@ main (int argc, char **argv)
 
   if (version)
     {
-      printf (_("mips-tfile (GCC) %s\n"), version_string);
-      fputs ("Copyright (C) 2004 Free Software Foundation, Inc.\n", stdout);
+      printf (_("mips-tfile %s%s\n"), pkgversion_string, version_string);
+      fputs ("Copyright (C) 2008 Free Software Foundation, Inc.\n", stdout);
       fputs (_("This is free software; see the source for copying conditions.  There is NO\n\
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"),
 	     stdout);
@@ -4940,7 +4946,7 @@ pfatal_with_name (const char *msg)
 }
 
 
-/* Procedure to abort with an out of bounds error message.  It has
+/* Procedure to die with an out of bounds error message.  It has
    type int, so it can be used with an ?: expression within the
    ORIG_xxx macros, but the function never returns.  */
 
@@ -4999,7 +5005,7 @@ allocate_cluster (Size_t npages)
     pfatal_with_name ("allocate_cluster");
 
   if (debug > 3)
-    fprintf (stderr, "\talloc\tnpages = %lu, value = " HOST_PTR_PRINTF "\n",
+    fprintf (stderr, "\talloc\tnpages = %lu, value = %p\n",
 	     (unsigned long) npages, (void *) ptr);
 
   return ptr;

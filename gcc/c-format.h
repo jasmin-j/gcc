@@ -1,12 +1,12 @@
 /* Check calls to formatted I/O functions (-Wformat).
    Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-   2001, 2002, 2003, 2004 Free Software Foundation, Inc.
+   2001, 2002, 2003, 2004, 2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,9 +15,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_C_FORMAT_H
 #define GCC_C_FORMAT_H
@@ -35,6 +34,9 @@ enum format_lengths
   FMT_LEN_z,
   FMT_LEN_t,
   FMT_LEN_j,
+  FMT_LEN_H,
+  FMT_LEN_D,
+  FMT_LEN_DD,
   FMT_LEN_MAX
 };
 
@@ -78,12 +80,13 @@ enum
      of whether length modifiers can occur (length_char_specs).  */
 };
 
-
 /* Structure describing a length modifier supported in format checking, and
    possibly a doubled version such as "hh".  */
 typedef struct
 {
-  /* Name of the single-character length modifier.  */
+  /* Name of the single-character length modifier. If prefixed by
+     a zero character, it describes a multi character length
+     modifier, like I64, I32, etc.  */
   const char *name;
   /* Index into a format_char_info.types array.  */
   enum format_lengths index;
@@ -114,7 +117,7 @@ typedef struct
 
 /* Macros to fill out tables of these.  */
 #define NOARGUMENTS	{ T89_V, BADLEN, BADLEN, BADLEN, BADLEN, BADLEN, BADLEN, BADLEN, BADLEN }
-#define BADLEN	{ 0, NULL, NULL }
+#define BADLEN	{ STD_C89, NULL, NULL }
 #define NOLENGTHS	{ BADLEN, BADLEN, BADLEN, BADLEN, BADLEN, BADLEN, BADLEN, BADLEN, BADLEN }
 
 
@@ -234,6 +237,8 @@ typedef struct
      specifiers, but is used to check for bad combinations such as length
      modifier with assignment suppression in scanf.  */
   int length_code_char;
+  /* Assignment-allocation flag character ('m' in scanf), otherwise 0.  */
+  int alloc_char;
   /* Pointer to type of argument expected if '*' is used for a width,
      or NULL if '*' not used for widths.  */
   tree *width_type;
@@ -295,5 +300,23 @@ typedef struct
 #define T99_IM	{ STD_C99, "intmax_t", T_IM }
 #define T_UIM   &uintmax_type_node
 #define T99_UIM	{ STD_C99, "uintmax_t", T_UIM }
+#define T_D32   &dfloat32_type_node
+#define TEX_D32 { STD_EXT, "_Decimal32", T_D32 }
+#define T_D64   &dfloat64_type_node
+#define TEX_D64 { STD_EXT, "_Decimal64", T_D64 }
+#define T_D128  &dfloat128_type_node
+#define TEX_D128 { STD_EXT, "_Decimal128", T_D128 }
+
+/* Structure describing how format attributes such as "printf" are
+   interpreted as "gnu_printf" or "ms_printf" on a particular system.
+   TARGET_OVERRIDES_FORMAT_ATTRIBUTES is used to specify target-specific
+   defaults.  */
+typedef struct
+{
+  /* The name of the to be copied format attribute. */
+  const char *named_attr_src;
+  /* The name of the to be overridden format attribute. */
+  const char *named_attr_dst;
+} target_ovr_attr;
 
 #endif /* GCC_C_FORMAT_H */

@@ -1,4 +1,6 @@
-// Copyright (C) 2004 Free Software Foundation
+// { dg-require-iconv "ISO-8859-1" }
+
+// Copyright (C) 2004, 2005, 2006, 2007 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -13,36 +15,36 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 #include <locale>
 #include <cstring>
+#include <cstddef>
 #include <testsuite_hooks.h>
-#ifdef _GLIBCXX_USE___ENC_TRAITS
 #include <ext/enc_filebuf.h>
-#endif
 
 int main()
 {
-#ifdef _GLIBCXX_USE___ENC_TRAITS
   bool test __attribute__((unused)) = true;
+  typedef char char_type;
+  typedef __gnu_cxx::enc_filebuf<char_type> filebuf_type;
+  typedef filebuf_type::state_type state_type;
 
   const char* str = "Hello, world!\n";
   std::locale loc(std::locale::classic(),
-		  new std::codecvt<char, char, std::__enc_traits>());
-  std::__enc_traits st("ISO-8859-1", "ISO-8859-1");
-  __gnu_cxx::enc_filebuf<char> fb(st);
+		  new std::codecvt<char, char, __gnu_cxx::encoding_state>());
+  state_type st("ISO-8859-1", "ISO-8859-1");
+  filebuf_type fb(st);
   fb.pubimbue(loc);
 
   fb.open("tmp_13598", std::ios_base::out);
   std::streamsize n = fb.sputn(str, std::strlen(str));
   int s = fb.pubsync();
   fb.close();
-  
-  VERIFY( n == std::strlen(str) );
+
+  VERIFY( std::size_t(n) == std::strlen(str) );
   VERIFY( s == 0 );
-#endif
   
   return 0;
 }

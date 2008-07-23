@@ -1,5 +1,8 @@
 /* config.h.in.  Generated from configure.ac by autoheader.  */
 
+/* Define to the name of the symbol used for the entry point. */
+#undef ENTRY_POINT
+
 /* Define to 1 if you have the `addmntent' function. */
 #undef HAVE_ADDMNTENT
 
@@ -11,6 +14,9 @@
 
 /* Define to 1 if you have the `backtrace_symbols' function. */
 #undef HAVE_BACKTRACE_SYMBOLS
+
+/* Define to 1 if the target assembler supports thread-local storage. */
+#undef HAVE_CC_TLS
 
 /* Define to 1 if you have the <ctype.h> header file. */
 #undef HAVE_CTYPE_H
@@ -144,7 +150,7 @@
 /* Define to 1 if you have the <netinet/in.h> header file. */
 #undef HAVE_NETINET_IN_H
 
-/* define if you have <pthread.h> */
+/* Define to 1 if you have the <pthread.h> header file. */
 #undef HAVE_PTHREAD_H
 
 /* Define to 1 if you have the <pwd.h> header file. */
@@ -222,6 +228,9 @@
 /* Define to 1 if you have the <sys/wait.h> header file. */
 #undef HAVE_SYS_WAIT_H
 
+/* Define to 1 if the target supports thread-local storage. */
+#undef HAVE_TLS
+
 /* union semun defined in sys/ipc.h or sys/sem.h */
 #undef HAVE_UNION_SEMUN
 
@@ -236,6 +245,13 @@
 
 /* Define to 1 if you have the `__ctype_toupper_loc' function. */
 #undef HAVE___CTYPE_TOUPPER_LOC
+
+/* Define to 1 if you have the `__libc_freeres' function. */
+#undef HAVE___LIBC_FREERES
+
+/* Define to the sub-directory in which libtool stores uninstalled libraries.
+   */
+#undef LT_OBJDIR
 
 /* Name of package */
 #undef PACKAGE

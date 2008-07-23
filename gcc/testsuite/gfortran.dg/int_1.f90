@@ -1,4 +1,5 @@
 ! { dg-do run }
+! { dg-options "-std=gnu" }
 !
 ! 13.7.53    INT(A [, KIND])
 !
@@ -170,3 +171,5 @@ program test_int
    if (i4 /= 17_ik4 .or. i8 /= 17_ik8) call abort
    
 end program test_int
+
+! { dg-final { cleanup-modules "mykinds" } }

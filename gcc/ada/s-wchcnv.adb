@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                       S Y S T E M . W C H _ C N V                        --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -31,9 +31,9 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This package contains generic subprograms used for converting between
---  sequences of Character and Wide_Character. All access to wide character
---  sequences is isolated in this unit.
+pragma Warnings (Off);
+pragma Compiler_Unit;
+pragma Warnings (On);
 
 with Interfaces;     use Interfaces;
 with System.WCh_Con; use System.WCh_Con;
@@ -46,8 +46,8 @@ package body System.WCh_Cnv is
    -----------------------------
 
    function Char_Sequence_To_UTF_32
-     (C       : Character;
-      EM      : WC_Encoding_Method) return UTF_32_Code
+     (C  : Character;
+      EM : System.WCh_Con.WC_Encoding_Method) return UTF_32_Code
    is
       B1 : Unsigned_32;
       C1 : Character;
@@ -94,7 +94,7 @@ package body System.WCh_Cnv is
             raise Constraint_Error;
          end if;
 
-         W := Shift_Left (W, 6)  or (U and 2#00111111#);
+         W := Shift_Left (W, 6) or (U and 2#00111111#);
       end Get_UTF_Byte;
 
    --  Start of processing for Char_Sequence_To_Wide
@@ -151,15 +151,8 @@ package body System.WCh_Cnv is
             --  16#00_0080#-16#00_07FF#: 110xxxxx 10xxxxxx
 
             elsif (U and 2#11100000#) = 2#110_00000# then
-               W := Shift_Left (U and 2#00011111#, 6);
-               U := Unsigned_32 (Character'Pos (In_Char));
-
-               if (U and 2#11000000#) /= 2#10_000000# then
-                  raise Constraint_Error;
-               end if;
-
-               W := W or (U and 2#00111111#);
-
+               W := U and 2#00011111#;
+               Get_UTF_Byte;
                return UTF_32_Code (W);
 
             --  16#00_0800#-16#00_ffff#: 1110xxxx 10xxxxxx 10xxxxxx
@@ -210,7 +203,6 @@ package body System.WCh_Cnv is
             end if;
 
          when WCEM_Brackets =>
-
             if C /= '[' then
                return Character'Pos (C);
             end if;
@@ -411,8 +403,25 @@ package body System.WCh_Cnv is
             end if;
 
          when WCEM_Brackets =>
+
+            --  Values in the range 0-255 are directly output. Note that there
+            --  is some issue with [ (16#5B#] since this will cause confusion
+            --  if the resulting string is interpreted using brackets encoding.
+
+            --  One possibility would be to always output [ as ["5B"] but in
+            --  practice this is undesirable, since for example normal use of
+            --  Wide_Text_IO for output (much more common than input), really
+            --  does want to be able to say something like
+
+            --     Put_Line ("Start of output [first run]");
+
+            --  and have it come out as intended, rather than contaminated by
+            --  a ["5B"] sequence in place of the left bracket.
+
             if Val < 256 then
                Out_Char (Character'Val (Val));
+
+            --  Otherwise use brackets notation for vales greater than 255
 
             else
                Out_Char ('[');

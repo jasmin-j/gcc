@@ -1,5 +1,5 @@
 /* Target macros for the FRV port of GCC.
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005
+   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
    Free Software Foundation, Inc.
    Contributed by Red Hat Inc.
 
@@ -7,7 +7,7 @@
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -16,9 +16,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the Free
-   Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-   02111-1307, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #ifndef __FRV_H__
 #define __FRV_H__
@@ -187,7 +186,7 @@
 #undef	LINK_SPEC
 #define LINK_SPEC "\
 %{h*} %{v:-V} \
-%{b} %{Wl,*:%*} \
+%{b} \
 %{mfdpic:-melf32frvfd -z text} \
 %{static:-dn -Bstatic} \
 %{shared:-Bdynamic} \
@@ -1272,21 +1271,21 @@ extern enum reg_class reg_class_from_letter[];
 
 #define ZERO_P(x) (x == CONST0_RTX (GET_MODE (x)))
 
-/* 6 bit signed immediate.  */
+/* 6-bit signed immediate.  */
 #define CONST_OK_FOR_I(VALUE) IN_RANGE_P(VALUE, -32, 31)
-/* 10 bit signed immediate.  */
+/* 10-bit signed immediate.  */
 #define CONST_OK_FOR_J(VALUE) IN_RANGE_P(VALUE, -512, 511)
 /* Unused */
 #define CONST_OK_FOR_K(VALUE)  0
-/* 16 bit signed immediate.  */
+/* 16-bit signed immediate.  */
 #define CONST_OK_FOR_L(VALUE) IN_RANGE_P(VALUE, -32768, 32767)
-/* 16 bit unsigned immediate.  */
+/* 16-bit unsigned immediate.  */
 #define CONST_OK_FOR_M(VALUE)  IN_RANGE_P (VALUE, 0, 65535)
-/* 12 bit signed immediate that is negative.  */
+/* 12-bit signed immediate that is negative.  */
 #define CONST_OK_FOR_N(VALUE) IN_RANGE_P(VALUE, -2048, -1)
 /* Zero */
 #define CONST_OK_FOR_O(VALUE) ((VALUE) == 0)
-/* 12 bit signed immediate that is negative.  */
+/* 12-bit signed immediate that is negative.  */
 #define CONST_OK_FOR_P(VALUE) IN_RANGE_P(VALUE, 1, 2047)
 
 /* A C expression that defines the machine-dependent operand constraint letters
@@ -1376,6 +1375,9 @@ extern enum reg_class reg_class_from_letter[];
    : (C) == 'U' ? EXTRA_CONSTRAINT_FOR_U (VALUE)			\
    : 0)
 
+#define EXTRA_MEMORY_CONSTRAINT(C,STR) \
+  ((C) == 'U' || (C) == 'R' || (C) == 'T')
+
 #define CONSTRAINT_LEN(C, STR) \
   ((C) == 'D' ? 3 : DEFAULT_CONSTRAINT_LEN ((C), (STR)))
 
@@ -1445,9 +1447,9 @@ typedef struct frv_stack {
    to a smaller address.  */
 #define STACK_GROWS_DOWNWARD 1
 
-/* Define this macro if the addresses of local variable slots are at negative
-   offsets from the frame pointer.  */
-#define FRAME_GROWS_DOWNWARD
+/* Define this macro to nonzero if the addresses of local variable slots
+   are at negative offsets from the frame pointer.  */
+#define FRAME_GROWS_DOWNWARD 1
 
 /* Offset from the frame pointer to the first local variable slot to be
    allocated.
@@ -1491,13 +1493,6 @@ typedef struct frv_stack {
    zero, but may be `NULL_RTX' if there is not way to determine the return
    address of other frames.  */
 #define RETURN_ADDR_RTX(COUNT, FRAMEADDR) frv_return_addr_rtx (COUNT, FRAMEADDR)
-
-/* This function contains machine specific function data.  */
-struct machine_function GTY(())
-{
-  /* True if we have created an rtx that relies on the stack frame.  */
-  int frame_needed;
-};
 
 #define RETURN_POINTER_REGNUM LR_REGNO
 
@@ -1625,7 +1620,7 @@ struct machine_function GTY(())
 
 /* If defined, the maximum amount of space required for outgoing arguments will
    be computed and placed into the variable
-   `current_function_outgoing_args_size'.  No space will be pushed onto the
+   `crtl->outgoing_args_size'.  No space will be pushed onto the
    stack for each call; instead, the function prologue should increase the
    stack frame size by this amount.
 
@@ -1815,7 +1810,7 @@ struct machine_function GTY(())
 
 /* How Large Values are Returned.  */
 
-/* The number of the register that is used to to pass the structure
+/* The number of the register that is used to pass the structure
    value address.  */
 #define FRV_STRUCT_VALUE_REGNUM (GPR_FIRST + 3)
 
@@ -1852,19 +1847,6 @@ struct machine_function GTY(())
 
 #define FUNCTION_PROFILER(FILE, LABELNO)
 
-
-/* Implementing the Varargs Macros.  */
-
-/* Implement the stdarg/varargs va_start macro.  STDARG_P is nonzero if this
-   is stdarg.h instead of varargs.h.  VALIST is the tree of the va_list
-   variable to initialize.  NEXTARG is the machine independent notion of the
-   'next' argument after the variable arguments.  If not defined, a standard
-   implementation will be defined that works for arguments passed on the stack.  */
-
-#define EXPAND_BUILTIN_VA_START(VALIST, NEXTARG)		\
-  (frv_expand_builtin_va_start(VALIST, NEXTARG))
-
-
 /* Trampolines for Nested Functions.  */
 
 /* A C expression for the size in bytes of the trampoline, as an integer.  */
@@ -2157,19 +2139,8 @@ do {							\
 #define HAVE_PRE_MODIFY_REG 1
 
 
-/* Returns a mode from class `MODE_CC' to be used when comparison operation
-   code OP is applied to rtx X and Y.  For example, on the SPARC,
-   `SELECT_CC_MODE' is defined as (see *note Jump Patterns::.  for a
-   description of the reason for this definition)
+/* We define extra CC modes in frv-modes.def so we need a selector.  */
 
-        #define SELECT_CC_MODE(OP,X,Y) \
-          (GET_MODE_CLASS (GET_MODE (X)) == MODE_FLOAT          \
-           ? ((OP == EQ || OP == NE) ? CCFPmode : CCFPEmode)    \
-           : ((GET_CODE (X) == PLUS || GET_CODE (X) == MINUS    \
-               || GET_CODE (X) == NEG) \
-              ? CC_NOOVmode : CCmode))
-
-   You need not define this macro if `EXTRA_CC_MODES' is not defined.  */
 #define SELECT_CC_MODE frv_select_cc_mode
 
 /* A C expression whose value is one if it is always safe to reverse a
@@ -2290,43 +2261,6 @@ do {							\
    program so they can be changed program startup time if the program is loaded
    at a different address than linked for.  */
 #define FIXUP_SECTION_ASM_OP	"\t.section .rofixup,\"a\""
-
-/* A list of names for sections other than the standard two, which are
-   `in_text' and `in_data'.  You need not define this macro
-   on a system with no other sections (that GCC needs to use).  */
-#undef  EXTRA_SECTIONS
-#define EXTRA_SECTIONS in_sdata, in_const, in_fixup
-
-/* One or more functions to be defined in "varasm.c".  These
-   functions should do jobs analogous to those of `text_section' and
-   `data_section', for your additional sections.  Do not define this
-   macro if you do not define `EXTRA_SECTIONS'.  */
-#undef  EXTRA_SECTION_FUNCTIONS
-#define EXTRA_SECTION_FUNCTIONS                                         \
-	SDATA_SECTION_FUNCTION						\
-	FIXUP_SECTION_FUNCTION
-
-#define SDATA_SECTION_FUNCTION						\
-void									\
-sdata_section (void)							\
-{									\
-  if (in_section != in_sdata)						\
-    {									\
-      fprintf (asm_out_file, "%s\n", SDATA_SECTION_ASM_OP);		\
-      in_section = in_sdata;						\
-    }									\
-}
-
-#define FIXUP_SECTION_FUNCTION						\
-void									\
-fixup_section (void)							\
-{									\
-  if (in_section != in_fixup)						\
-    {									\
-      fprintf (asm_out_file, "%s\n", FIXUP_SECTION_ASM_OP);		\
-      in_section = in_fixup;						\
-    }									\
-}
 
 /* Position Independent Code.  */
 
@@ -2372,13 +2306,6 @@ do {									\
   assemble_name (STREAM, LABEL);					\
 } while (0)
 
-#if HAVE_AS_TLS
-/* Emit a dtp-relative reference to a TLS variable.  */
-
-#define ASM_OUTPUT_DWARF_DTPREL(FILE, SIZE, X) \
-  frv_output_dwarf_dtprel ((FILE), (SIZE), (X))
-#endif
-
 /* Whether to emit the gas specific dwarf2 line number support.  */
 #define DWARF2_ASM_LINE_DEBUG_INFO (TARGET_DEBUG_LOC)
 
@@ -2419,9 +2346,9 @@ extern int size_directive_output;
 #define ASM_OUTPUT_ALIGNED_DECL_LOCAL(STREAM, DECL, NAME, SIZE, ALIGN)	\
 do {                                                                   	\
   if ((SIZE) > 0 && (SIZE) <= g_switch_value)				\
-    named_section (0, ".sbss", 0);                                    	\
+    switch_to_section (get_named_section (NULL, ".sbss", 0));           \
   else                                                                 	\
-    bss_section ();                                                  	\
+    switch_to_section (bss_section);                                  	\
   ASM_OUTPUT_ALIGN (STREAM, floor_log2 ((ALIGN) / BITS_PER_UNIT));     	\
   ASM_DECLARE_OBJECT_NAME (STREAM, NAME, DECL);                        	\
   ASM_OUTPUT_SKIP (STREAM, (SIZE) ? (SIZE) : 1);                       	\
@@ -2654,33 +2581,7 @@ fprintf (STREAM, "\t.word .L%d-.L%d\n", VALUE, REL)
 #define ASM_OUTPUT_ADDR_VEC_ELT(STREAM, VALUE) \
 fprintf (STREAM, "\t.word .L%d\n", VALUE)
 
-/* Define this if the label before a jump-table needs to be output specially.
-   The first three arguments are the same as for `(*targetm.asm_out.internal_label)';
-   the fourth argument is the jump-table which follows (a `jump_insn'
-   containing an `addr_vec' or `addr_diff_vec').
-
-   This feature is used on system V to output a `swbeg' statement for the
-   table.
-
-   If this macro is not defined, these labels are output with
-   `(*targetm.asm_out.internal_label)'.
-
-   Defined in svr4.h.  */
-/* When generating embedded PIC or mips16 code we want to put the jump
-   table in the .text section.  In all other cases, we want to put the
-   jump table in the .rdata section.  Unfortunately, we can't use
-   JUMP_TABLES_IN_TEXT_SECTION, because it is not conditional.
-   Instead, we use ASM_OUTPUT_CASE_LABEL to switch back to the .text
-   section if appropriate.  */
-
-#undef  ASM_OUTPUT_CASE_LABEL
-#define ASM_OUTPUT_CASE_LABEL(STREAM, PREFIX, NUM, TABLE)               \
-do {                                                                    \
-  if (flag_pic)                                                         \
-    function_section (current_function_decl);                           \
-  (*targetm.asm_out.internal_label) (STREAM, PREFIX, NUM);                      \
-} while (0)
-
+#define JUMP_TABLES_IN_TEXT_SECTION (flag_pic)
 
 /* Assembler Commands for Exception Regions.  */
 
@@ -3003,7 +2904,15 @@ enum frv_builtins
   FRV_BUILTIN_IACCreadl,
   FRV_BUILTIN_IACCsetll,
   FRV_BUILTIN_IACCsetl,
-  FRV_BUILTIN_SCAN
+  FRV_BUILTIN_SCAN,
+  FRV_BUILTIN_READ8,
+  FRV_BUILTIN_READ16,
+  FRV_BUILTIN_READ32,
+  FRV_BUILTIN_READ64,
+  FRV_BUILTIN_WRITE8,
+  FRV_BUILTIN_WRITE16,
+  FRV_BUILTIN_WRITE32,
+  FRV_BUILTIN_WRITE64
 };
 #define FRV_BUILTIN_FIRST_NONMEDIA FRV_BUILTIN_SMUL
 

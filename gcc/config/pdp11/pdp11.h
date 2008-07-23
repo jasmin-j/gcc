@@ -1,13 +1,13 @@
 /* Definitions of target machine for GNU compiler, for the pdp-11
-   Copyright (C) 1994, 1995, 1996, 1998, 1999, 2000, 2001, 2002, 2004
-   Free Software Foundation, Inc.
+   Copyright (C) 1994, 1995, 1996, 1998, 1999, 2000, 2001, 2002, 2004, 2005,
+   2006, 2007 Free Software Foundation, Inc.
    Contributed by Michael K. Gschwind (mike@vlsivie.tuwien.ac.at).
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #define CONSTANT_POOL_BEFORE_FUNCTION	0
 
@@ -97,7 +96,7 @@ Boston, MA 02111-1307, USA.  */
 #define UNITS_PER_WORD 2
 
 /* This machine doesn't use IEEE floats.  */
-/* Because the pdp11 (at least Unix) convention for 32 bit ints is
+/* Because the pdp11 (at least Unix) convention for 32-bit ints is
    big endian, opposite for what you need for float, the vax float
    conversion routines aren't actually used directly.  But the underlying
    format is indeed the vax/pdp11 float format.  */
@@ -286,10 +285,10 @@ extern const struct real_format pdp11_d_format;
    
 /* The pdp has a couple of classes:
 
-MUL_REGS are used for odd numbered regs, to use in 16 bit multiplication
-         (even numbered do 32 bit multiply)
+MUL_REGS are used for odd numbered regs, to use in 16-bit multiplication
+         (even numbered do 32-bit multiply)
 LMUL_REGS long multiply registers (even numbered regs )
-	  (don't need them, all 32 bit regs are even numbered!)
+	  (don't need them, all 32-bit regs are even numbered!)
 GENERAL_REGS is all cpu
 LOAD_FPU_REGS is the first four cpu regs, they are easier to load
 NO_LOAD_FPU_REGS is ac4 and ac5, currently - difficult to load them
@@ -415,12 +414,12 @@ loading is easier into LOAD_FPU_REGS than FPU_REGS! */
    makes the stack pointer a smaller address.  */
 #define STACK_GROWS_DOWNWARD
 
-/* Define this if the nominal address of the stack frame
+/* Define this to nonzero if the nominal address of the stack frame
    is at the high-address end of the local variables;
    that is, each additional local variable allocated
    goes at a more negative offset in the frame.
 */
-#define FRAME_GROWS_DOWNWARD
+#define FRAME_GROWS_DOWNWARD 1
 
 /* Offset within stack frame to start allocating local variables at.
    If FRAME_GROWS_DOWNWARD, this is the offset to the END of the
@@ -441,7 +440,7 @@ extern int current_first_parm_offset;
    For the pdp11, this is nonzero to account for the return address.
 	1 - return address
 	2 - frame pointer (always saved, even when not used!!!!)
-		-- chnage some day !!!:q!
+		-- change some day !!!:q!
 
 */
 #define FIRST_PARM_OFFSET(FNDECL) 4
@@ -550,7 +549,7 @@ maybe ac0 ? - as option someday! */
    for profiling a function entry.  */
 
 #define FUNCTION_PROFILER(FILE, LABELNO)  \
-   abort ();
+   gcc_unreachable ();
 
 /* EXIT_IGNORE_STACK should be nonzero if, when returning from a function,
    the stack pointer does not matter.  The value is tested only in
@@ -566,10 +565,10 @@ extern int may_call_alloca;
   int offset, regno;		      				\
   offset = get_frame_size();					\
   for (regno = 0; regno < 8; regno++)				\
-    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
+    if (df_regs_ever_live_p (regno) && ! call_used_regs[regno])	\
       offset += 2;						\
   for (regno = 8; regno < 14; regno++)				\
-    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
+    if (df_regs_ever_live_p (regno) && ! call_used_regs[regno])	\
       offset += 8;						\
   /* offset -= 2;   no fp on stack frame */			\
   (DEPTH_VAR) = offset;						\
@@ -760,12 +759,10 @@ extern int may_call_alloca;
 
 /* Go to LABEL if ADDR (a legitimate address expression)
    has an effect that depends on the machine mode it is used for.
-   On the pdp this is for predec/postinc */
+   On the pdp this is for predec/postinc, and this is now treated
+   generically in recog.c.  */
 
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)	\
- { if (GET_CODE (ADDR) == POST_INC || GET_CODE (ADDR) == PRE_DEC)	\
-     goto LABEL; 							\
- }
+#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)
 
 
 /* Specify the machine mode that this machine uses
@@ -944,7 +941,7 @@ extern struct rtx_def *cc0_reg_rtx;
 	fprintf (FILE, "\t.even\n");	\
 	break;				\
       default:				\
-	abort ();			\
+	gcc_unreachable ();		\
     }
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
@@ -986,7 +983,7 @@ extern struct rtx_def *cc0_reg_rtx;
       long sval[2];							\
       REAL_VALUE_FROM_CONST_DOUBLE (r, X);				\
       REAL_VALUE_TO_TARGET_DOUBLE (r, sval);				\
-      fprintf (FILE, "$%#o", sval[0] >> 16); }				\
+      fprintf (FILE, "$%#lo", sval[0] >> 16); }				\
   else { putc ('$', FILE); output_addr_const_pdp11 (FILE, X); }}
 
 /* Print a memory address as an operand to reference that memory location.  */
@@ -1016,8 +1013,7 @@ JMP	FUNCTION	0x0058  0x0000 <- FUNCTION
 
 #define TRAMPOLINE_TEMPLATE(FILE)	\
 {					\
-  if (TARGET_SPLIT)			\
-    abort();				\
+  gcc_assert (!TARGET_SPLIT);		\
 					\
   assemble_aligned_integer (2, GEN_INT (0x9400+STATIC_CHAIN_REGNUM));	\
   assemble_aligned_integer (2, const0_rtx);				\
@@ -1034,8 +1030,7 @@ JMP	FUNCTION	0x0058  0x0000 <- FUNCTION
 
 #define INITIALIZE_TRAMPOLINE(TRAMP,FNADDR,CXT)	\
 {					\
-  if (TARGET_SPLIT)			\
-    abort();				\
+  gcc_assert (!TARGET_SPLIT);		\
 					\
   emit_move_insn (gen_rtx_MEM (HImode, plus_constant (TRAMP, 2)), CXT); \
   emit_move_insn (gen_rtx_MEM (HImode, plus_constant (TRAMP, 6)), FNADDR); \

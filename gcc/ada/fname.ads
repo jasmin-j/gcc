@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,7 +35,7 @@
 --  association between source file names and unit names as defined
 --  (see package Uname for definition of format of unit names).
 
-with Types; use Types;
+with Namet; use Namet;
 
 package Fname is
 
@@ -68,12 +68,14 @@ package Fname is
      (Fname              : File_Name_Type;
       Renamings_Included : Boolean := True) return Boolean;
    --  This function determines if the given file name (which must be a simple
-   --  file name with no directory information) is the file name for one of
-   --  the predefined library units. On return, Name_Buffer contains the
-   --  file name. The Renamings_Included parameter indicates whether annex
-   --  J renamings such as Text_IO are to be considered as predefined. If
-   --  Renamings_Included is True, then Text_IO will return True, otherwise
-   --  only children of Ada, Interfaces and System return True.
+   --  file name with no directory information) is the file name for one of the
+   --  predefined library units (i.e. part of the Ada, System, or Interface
+   --  hierarchies). Note that units in the GNAT hierarchy are not considered
+   --  predefined (see Is_Internal_File_Name below). On return, Name_Buffer
+   --  contains the file name. The Renamings_Included parameter indicates
+   --  whether annex J renamings such as Text_IO are to be considered as
+   --  predefined. If Renamings_Included is True, then Text_IO will return
+   --  True, otherwise only children of Ada, Interfaces and System return True.
 
    function Is_Predefined_File_Name
      (Renamings_Included : Boolean := True) return Boolean;
@@ -82,9 +84,9 @@ package Fname is
    function Is_Internal_File_Name
      (Fname              : File_Name_Type;
       Renamings_Included : Boolean := True) return Boolean;
-   --  Similar to Is_Predefined_File_Name. The internal file set is a
-   --  superset of the predefined file set including children of GNAT,
-   --  and also children of DEC for the VMS case.
+   --  Similar to Is_Predefined_File_Name. The internal file set is a superset
+   --  of the predefined file set including children of GNAT, and also children
+   --  of DEC for the VMS case.
 
    procedure Tree_Read;
    --  Dummy procedure (reads dummy table values from tree file)

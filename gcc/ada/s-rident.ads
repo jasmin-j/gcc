@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -45,6 +45,7 @@
 
 generic
 package System.Rident is
+   pragma Preelaborate;
 
    --  The following enumeration type defines the set of restriction
    --  identifiers that are implemented in GNAT.
@@ -55,7 +56,9 @@ package System.Rident is
 
    type Restriction_Id is
 
-      --  The following cases are checked for consistency in the binder
+      --  The following cases are checked for consistency in the binder. The
+      --  binder will check that every unit either has the restriction set, or
+      --  does not violate the restriction.
 
      (Simple_Barriers,                         -- GNAT (Ravenscar)
       No_Abort_Statements,                     -- (RM D.7(5), H.4(3))
@@ -66,12 +69,14 @@ package System.Rident is
       No_Delay,                                -- (RM H.4(21))
       No_Direct_Boolean_Operators,             -- GNAT
       No_Dispatch,                             -- (RM H.4(19))
+      No_Dispatching_Calls,                    -- GNAT
       No_Dynamic_Attachment,                   -- GNAT
       No_Dynamic_Priorities,                   -- (RM D.9(9))
       No_Enumeration_Maps,                     -- GNAT
       No_Entry_Calls_In_Elaboration_Code,      -- GNAT
       No_Entry_Queue,                          -- GNAT (Ravenscar)
       No_Exception_Handlers,                   -- GNAT
+      No_Exception_Propagation,                -- GNAT
       No_Exception_Registration,               -- GNAT
       No_Exceptions,                           -- (RM H.4(12))
       No_Finalization,                         -- GNAT
@@ -84,6 +89,7 @@ package System.Rident is
       No_Implicit_Loops,                       -- GNAT
       No_Initialize_Scalars,                   -- GNAT
       No_Local_Allocators,                     -- (RM H.4(8))
+      No_Local_Timing_Events,                  -- (RM D.7(10.2/2))
       No_Local_Protected_Objects,              -- GNAT
       No_Nested_Finalization,                  -- (RM D.7(4))
       No_Protected_Type_Allocators,            -- GNAT
@@ -94,6 +100,7 @@ package System.Rident is
       No_Requeue_Statements,                   -- GNAT
       No_Secondary_Stack,                      -- GNAT
       No_Select_Statements,                    -- GNAT (Ravenscar)
+      No_Specific_Termination_Handlers,        -- (RM D.7(10.7/2))
       No_Standard_Storage_Pools,               -- GNAT
       No_Streams,                              -- GNAT
       No_Task_Allocators,                      -- (RM D.7(7))
@@ -105,44 +112,48 @@ package System.Rident is
       No_Unchecked_Access,                     -- (RM H.4(18))
       No_Unchecked_Conversion,                 -- (RM H.4(16))
       No_Unchecked_Deallocation,               -- (RM H.4(9))
-      No_Wide_Characters,                      -- GNAT
       Static_Priorities,                       -- GNAT
       Static_Storage_Size,                     -- GNAT
 
-      --  The following cases do not require partition-wide checks
+      --  The following require consistency checking with special rules. See
+      --  individual routines in unit Bcheck for details of what is required.
+
+      No_Default_Initialization,               -- GNAT
+
+      --  The following cases do not require consistency checking
 
       Immediate_Reclamation,                   -- (RM H.4(10))
-      No_Implementation_Attributes,            -- GNAT
-      No_Implementation_Pragmas,               -- GNAT
+      No_Implementation_Attributes,            -- Ada 2005 AI-257
+      No_Implementation_Pragmas,               -- Ada 2005 AI-257
       No_Implementation_Restrictions,          -- GNAT
       No_Elaboration_Code,                     -- GNAT
       No_Obsolescent_Features,                 -- Ada 2005 AI-368
+      No_Wide_Characters,                      -- GNAT
 
       --  The following cases require a parameter value
 
-      --  The following entries are fully checked at compile/bind time,
-      --  which means that the compiler can in general tell the minimum
-      --  value which could be used with a restrictions pragma. The binder
-      --  can deduce the appropriate minimum value for the partition by
-      --  taking the maximum value required by any unit.
+      --  The following entries are fully checked at compile/bind time, which
+      --  means that the compiler can in general tell the minimum value which
+      --  could be used with a restrictions pragma. The binder can deduce the
+      --  appropriate minimum value for the partition by taking the maximum
+      --  value required by any unit.
 
       Max_Protected_Entries,                   -- (RM D.7(14))
       Max_Select_Alternatives,                 -- (RM D.7(12))
       Max_Task_Entries,                        -- (RM D.7(13), H.4(3))
 
-      --  The following entries are also fully checked at compile/bind
-      --  time, and the compiler can also at least in some cases tell
-      --  the minimum value which could be used with a restriction pragma.
-      --  The difference is that the contributions are additive, so the
-      --  binder deduces this value by adding the unit contributions.
+      --  The following entries are also fully checked at compile/bind time,
+      --  and the compiler can also at least in some cases tell the minimum
+      --  value which could be used with a restriction pragma. The difference
+      --  is that the contributions are additive, so the binder deduces this
+      --  value by adding the unit contributions.
 
       Max_Tasks,                               -- (RM D.7(19), H.4(3))
 
-      --  The following entries are checked at compile time only for
-      --  zero/nonzero entries. This means that the compiler can tell
-      --  at compile time if a restriction value of zero is (would be)
-      --  violated, but that is all. The compiler cannot distinguish
-      --  between different non-zero values.
+      --  The following entries are checked at compile time only for zero/
+      --  nonzero entries. This means that the compiler can tell at compile
+      --  time if a restriction value of zero is (would be) violated, but that
+      --  the compiler cannot distinguish between different non-zero values.
 
       Max_Asynchronous_Select_Nesting,         -- (RM D.7(18), H.4(3))
       Max_Entry_Queue_Length,                  -- GNAT
@@ -167,7 +178,7 @@ package System.Rident is
    --  All restrictions (excluding only Not_A_Restriction_Id)
 
    subtype All_Boolean_Restrictions is Restriction_Id range
-     Simple_Barriers .. No_Obsolescent_Features;
+     Simple_Barriers .. No_Wide_Characters;
    --  All restrictions which do not take a parameter
 
    subtype Partition_Boolean_Restrictions is All_Boolean_Restrictions range
@@ -178,11 +189,11 @@ package System.Rident is
    --  case of Boolean restrictions.
 
    subtype Cunit_Boolean_Restrictions is All_Boolean_Restrictions range
-     Immediate_Reclamation .. No_Obsolescent_Features;
+     Immediate_Reclamation .. No_Wide_Characters;
    --  Boolean restrictions that are not checked for partition consistency
    --  and that thus apply only to the current unit. Note that for these
    --  restrictions, the compiler does not apply restrictions found in
-   --  with'ed units, parent specs etc to the main unit.
+   --  with'ed units, parent specs etc. to the main unit.
 
    subtype All_Parameter_Restrictions is
      Restriction_Id range
@@ -234,21 +245,20 @@ package System.Rident is
    -- Restriction Status Declarations --
    -------------------------------------
 
-   --  The following declarations are used to record the current status
-   --  or restrictions (for the current unit, or related units, at compile
-   --  time, and for all units in a partition at bind time or run time).
+   --  The following declarations are used to record the current status or
+   --  restrictions (for the current unit, or related units, at compile time,
+   --  and for all units in a partition at bind time or run time).
 
    type Restriction_Flags  is array (All_Restrictions)           of Boolean;
    type Restriction_Values is array (All_Parameter_Restrictions) of Natural;
    type Parameter_Flags    is array (All_Parameter_Restrictions) of Boolean;
 
    type Restrictions_Info is record
-      Set : Restriction_Flags := (others => False);
-      --  An entry is True in the Set array if a restrictions pragma has
-      --  been encountered for the given restriction. If the value is
-      --  True for a parameter restriction, then the corresponding entry
-      --  in the Value array gives the minimum value encountered for any
-      --  such restriction.
+      Set : Restriction_Flags;
+      --  An entry is True in the Set array if a restrictions pragma has been
+      --  encountered for the given restriction. If the value is True for a
+      --  parameter restriction, then the corresponding entry in the Value
+      --  array gives the minimum value encountered for any such restriction.
 
       Value : Restriction_Values;
       --  If the entry for a parameter restriction in Set is True (i.e. a
@@ -257,22 +267,22 @@ package System.Rident is
       --  specified by any such restrictions pragma. Note that a restrictions
       --  pragma specifying a value greater than Int'Last is simply ignored.
 
-      Violated : Restriction_Flags := (others => False);
-      --  An entry is True in the violations array if the compiler has
-      --  detected a violation of the restriction. For a parameter
-      --  restriction, the Count and Unknown arrays have additional
-      --  information.
+      Violated : Restriction_Flags;
+      --  An entry is True in the violations array if the compiler has detected
+      --  a violation of the restriction. For a parameter restriction, the
+      --  Count and Unknown arrays have additional information.
 
-      Count : Restriction_Values := (others => 0);
-      --  If an entry for a parameter restriction is True in Violated,
-      --  the corresponding entry in the Count array may record additional
+      Count : Restriction_Values;
+      --  If an entry for a parameter restriction is True in Violated, the
+      --  corresponding entry in the Count array may record additional
       --  information. If the actual minimum count is known (by taking
       --  maximums, or sums, depending on the restriction), it will be
       --  recorded in this array. If not, then the value will remain zero.
+      --  The value is also zero for a non-violated restriction.
 
-      Unknown : Parameter_Flags := (others => False);
-      --  If an entry for a parameter restriction is True in Violated,
-      --  the corresponding entry in the Unknown array may record additional
+      Unknown : Parameter_Flags;
+      --  If an entry for a parameter restriction is True in Violated, the
+      --  corresponding entry in the Unknown array may record additional
       --  information. If the actual count is not known by the compiler (but
       --  is known to be non-zero), then the entry in Unknown will be True.
       --  This indicates that the value in Count is not known to be exact,
@@ -284,12 +294,20 @@ package System.Rident is
       --  that the actual violation count is at least 3 but might be higher.
    end record;
 
+   No_Restrictions : constant Restrictions_Info :=
+     (Set      => (others => False),
+      Value    => (others => 0),
+      Violated => (others => False),
+      Count    => (others => 0),
+      Unknown  => (others => False));
+   --  Used to initialize Restrictions_Info variables
+
    ----------------------------------
    -- Profile Definitions and Data --
    ----------------------------------
 
    type Profile_Name is (Ravenscar, Restricted);
-   --  Names of recognized pfofiles
+   --  Names of recognized profiles
 
    type Profile_Data is record
       Set : Restriction_Flags;

@@ -1,13 +1,13 @@
 /* Definitions of target machine for GNU compiler,
    for Motorola M*CORE Processor.
-   Copyright (C) 1993, 1999, 2000, 2001, 2002, 2003, 2004
+   Copyright (C) 1993, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
    Free Software Foundation, Inc.
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -16,9 +16,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the
-   Free Software Foundation, 59 Temple Place - Suite 330,
-   Boston, MA 02111-1307, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_MCORE_H
 #define GCC_MCORE_H
@@ -452,17 +451,17 @@ extern const enum reg_class reg_class_from_letter[];
         U: constant 0
         xxxS: 1 cleared bit out of 32 (complement of power of 2). for bclri
         xxxT: 2 cleared bits out of 32. for pairs of bclris.  */
-#define CONST_OK_FOR_I(VALUE) (((int)(VALUE)) >= 0 && ((int)(VALUE)) <= 0x7f)
-#define CONST_OK_FOR_J(VALUE) (((int)(VALUE)) >  0 && ((int)(VALUE)) <= 32)
-#define CONST_OK_FOR_L(VALUE) (((int)(VALUE)) <  0 && ((int)(VALUE)) >= -32)
-#define CONST_OK_FOR_K(VALUE) (((int)(VALUE)) >= 0 && ((int)(VALUE)) <= 31)
-#define CONST_OK_FOR_M(VALUE) (exact_log2 (VALUE) >= 0)
-#define CONST_OK_FOR_N(VALUE) (((int)(VALUE)) == -1 || exact_log2 ((VALUE) + 1) >= 0)
+#define CONST_OK_FOR_I(VALUE) (((HOST_WIDE_INT)(VALUE)) >= 0 && ((HOST_WIDE_INT)(VALUE)) <= 0x7f)
+#define CONST_OK_FOR_J(VALUE) (((HOST_WIDE_INT)(VALUE)) >  0 && ((HOST_WIDE_INT)(VALUE)) <= 32)
+#define CONST_OK_FOR_L(VALUE) (((HOST_WIDE_INT)(VALUE)) <  0 && ((HOST_WIDE_INT)(VALUE)) >= -32)
+#define CONST_OK_FOR_K(VALUE) (((HOST_WIDE_INT)(VALUE)) >= 0 && ((HOST_WIDE_INT)(VALUE)) <= 31)
+#define CONST_OK_FOR_M(VALUE) (exact_log2 (VALUE) >= 0 && exact_log2 (VALUE) <= 30)
+#define CONST_OK_FOR_N(VALUE) (((HOST_WIDE_INT)(VALUE)) == -1 || (exact_log2 ((VALUE) + 1) >= 0 && exact_log2 ((VALUE) + 1) <= 30))
 #define CONST_OK_FOR_O(VALUE) (CONST_OK_FOR_I(VALUE) || \
                                CONST_OK_FOR_M(VALUE) || \
                                CONST_OK_FOR_N(VALUE) || \
-                               CONST_OK_FOR_M((int)(VALUE) - 1) || \
-                               CONST_OK_FOR_N((int)(VALUE) + 1))
+                               CONST_OK_FOR_M((HOST_WIDE_INT)(VALUE) - 1) || \
+                               CONST_OK_FOR_N((HOST_WIDE_INT)(VALUE) + 1))
 
 #define CONST_OK_FOR_P(VALUE) (mcore_const_ok_for_inline (VALUE)) 
 
@@ -539,7 +538,7 @@ extern const enum reg_class reg_class_from_letter[];
 
 /* If defined, the maximum amount of space required for outgoing arguments
    will be computed and placed into the variable
-   `current_function_outgoing_args_size'.  No space will be pushed
+   `crtl->outgoing_args_size'.  No space will be pushed
    onto the stack for each call; instead, the function prologue should
    increase the stack frame size by this amount.  */
 #define ACCUMULATE_OUTGOING_ARGS 1
@@ -698,7 +697,8 @@ extern const enum reg_class reg_class_from_letter[];
    It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.
 
    On the MCore, allow anything but a double.  */
-#define LEGITIMATE_CONSTANT_P(X) (GET_CODE(X) != CONST_DOUBLE)
+#define LEGITIMATE_CONSTANT_P(X) (GET_CODE(X) != CONST_DOUBLE \
+				  && CONSTANT_P (X))
 
 /* The macros REG_OK_FOR..._P assume that the arg is a REG rtx
    and check its validity for a certain class.
@@ -755,15 +755,15 @@ extern const enum reg_class reg_class_from_letter[];
       if (GET_CODE (OP) == CONST_INT) 					\
         {								\
 	  if (GET_MODE_SIZE (MODE) >= 4					\
-	      && (((unsigned)INTVAL (OP)) % 4) == 0			\
-	      &&  ((unsigned)INTVAL (OP)) <= 64 - GET_MODE_SIZE (MODE))	\
+	      && (((unsigned HOST_WIDE_INT) INTVAL (OP)) % 4) == 0	\
+	      &&  ((unsigned HOST_WIDE_INT) INTVAL (OP)) <= 64 - GET_MODE_SIZE (MODE))	\
 	    goto LABEL;							\
 	  if (GET_MODE_SIZE (MODE) == 2 				\
-	      && (((unsigned)INTVAL (OP)) % 2) == 0			\
-	      &&  ((unsigned)INTVAL (OP)) <= 30)			\
+	      && (((unsigned HOST_WIDE_INT) INTVAL (OP)) % 2) == 0	\
+	      &&  ((unsigned HOST_WIDE_INT) INTVAL (OP)) <= 30)		\
 	    goto LABEL;							\
 	  if (GET_MODE_SIZE (MODE) == 1 				\
-	      && ((unsigned)INTVAL (OP)) <= 15)				\
+	      && ((unsigned HOST_WIDE_INT) INTVAL (OP)) <= 15)		\
 	    goto LABEL;							\
         }								\
     }									\
@@ -786,12 +786,7 @@ extern const enum reg_class reg_class_from_letter[];
 								   
 /* Go to LABEL if ADDR (a legitimate address expression)
    has an effect that depends on the machine mode it is used for.  */
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)  \
-{									\
-  if (   GET_CODE (ADDR) == PRE_DEC || GET_CODE (ADDR) == POST_DEC	\
-      || GET_CODE (ADDR) == PRE_INC || GET_CODE (ADDR) == POST_INC)	\
-    goto LABEL;								\
-}
+#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)
 
 /* Specify the machine mode that this machine uses
    for the index in the tablejump instruction.  */
@@ -820,12 +815,10 @@ extern const enum reg_class reg_class_from_letter[];
 /* Nonzero if access to memory by bytes is slow and undesirable.  */
 #define SLOW_BYTE_ACCESS TARGET_SLOW_BYTES
 
-/* Immediate shift counts are truncated by the output routines (or was it
-   the assembler?).  Shift counts in a register are truncated by ARM.  Note
-   that the native compiler puts too large (> 32) immediate shift counts
-   into a register and shifts by the register, letting the ARM decide what
-   to do instead of doing that itself.  */
-#define SHIFT_COUNT_TRUNCATED 1
+/* Shift counts are truncated to 6-bits (0 to 63) instead of the expected
+   5-bits, so we can not define SHIFT_COUNT_TRUNCATED to true for this
+   target.  */
+#define SHIFT_COUNT_TRUNCATED 0
 
 /* All integers have the same format so truncation is easy.  */
 #define TRULY_NOOP_TRUNCATION(OUTPREC,INPREC)  1
@@ -859,38 +852,8 @@ extern const enum reg_class reg_class_from_letter[];
 #define TEXT_SECTION_ASM_OP  "\t.text"
 #define DATA_SECTION_ASM_OP  "\t.data"
 
-#undef  EXTRA_SECTIONS
-#define EXTRA_SECTIONS SUBTARGET_EXTRA_SECTIONS
-
-#undef  EXTRA_SECTION_FUNCTIONS
-#define EXTRA_SECTION_FUNCTIONS			\
-  SUBTARGET_EXTRA_SECTION_FUNCTIONS		\
-  SWITCH_SECTION_FUNCTION
-
-/* Switch to SECTION (an `enum in_section').
-
-   ??? This facility should be provided by GCC proper.
-   The problem is that we want to temporarily switch sections in
-   ASM_DECLARE_OBJECT_NAME and then switch back to the original section
-   afterwards.  */
-#define SWITCH_SECTION_FUNCTION					\
-static void switch_to_section (enum in_section, tree);		\
-static void							\
-switch_to_section (enum in_section section, tree decl)		\
-{								\
-  switch (section)						\
-    {								\
-      case in_text: text_section (); break;			\
-      case in_unlikely_executed_text: unlikely_text_section (); break;   \
-      case in_data: data_section (); break;			\
-      case in_named: named_section (decl, NULL, 0); break;	\
-      SUBTARGET_SWITCH_SECTIONS      				\
-      default: abort (); break;					\
-    }								\
-}
-
 /* Switch into a generic section.  */
-#undef TARGET_ASM_NAMED_SECTION
+#undef  TARGET_ASM_NAMED_SECTION
 #define TARGET_ASM_NAMED_SECTION  mcore_asm_named_section
 
 /* This is how to output an insn to push a register on the stack.

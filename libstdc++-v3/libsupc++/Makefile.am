@@ -1,6 +1,7 @@
 ## Makefile for the GNU C++ Support library.
 ##
-## Copyright (C) 2000, 2001, 2002, 2003, 2004 Free Software Foundation, Inc.
+## Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+## Free Software Foundation, Inc.
 ##
 ## Process this file with automake to produce Makefile.in.
 ##
@@ -18,8 +19,8 @@
 ##
 ## You should have received a copy of the GNU General Public License
 ## along with GCC; see the file COPYING.  If not, write to
-## the Free Software Foundation, 59 Temple Place - Suite 330,
-## Boston, MA 02111-1307, USA.
+## the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+## Boston, MA 02110-1301, USA.
 
 include $(top_srcdir)/fragment.am
 
@@ -32,7 +33,8 @@ noinst_LTLIBRARIES = libsupc++convenience.la
 
 
 headers = \
-	exception new typeinfo cxxabi.h exception_defines.h
+	exception new typeinfo cxxabi.h cxxabi-forced.h exception_defines.h \
+	initializer_list
 
 if GLIBCXX_HOSTED
   c_sources = \
@@ -40,12 +42,20 @@ if GLIBCXX_HOSTED
 endif
 
 sources = \
+	array_type_info.cc \
+	atexit_arm.cc \
+	bad_cast.cc \
+	bad_typeid.cc \
+	class_type_info.cc \
 	del_op.cc \
 	del_opnt.cc \
 	del_opv.cc \
 	del_opvnt.cc \
+	dyncast.cc \
 	eh_alloc.cc \
+	eh_arm.cc \
 	eh_aux_runtime.cc \
+	eh_call.cc \
 	eh_catch.cc \
 	eh_exception.cc \
 	eh_globals.cc \
@@ -55,16 +65,24 @@ sources = \
 	eh_throw.cc \
 	eh_type.cc \
 	eh_unex_handler.cc \
+	enum_type_info.cc \
+	function_type_info.cc \
+	fundamental_type_info.cc \
 	guard.cc \
 	new_handler.cc \
 	new_op.cc \
 	new_opnt.cc \
 	new_opv.cc \
 	new_opvnt.cc \
+	pbase_type_info.cc \
+	pmem_type_info.cc \
+	pointer_type_info.cc \
 	pure.cc \
+	si_class_type_info.cc \
 	tinfo.cc \
 	tinfo2.cc \
 	vec.cc \
+	vmi_class_type_info.cc \
 	vterminate.cc
 
 libsupc___la_SOURCES = $(sources) $(c_sources)
@@ -134,7 +152,9 @@ cp-demangle.o: cp-demangle.c
 # CXX undo the affect of disable-shared.
 LTCXXCOMPILE = $(LIBTOOL) --tag CXX --tag disable-shared \
 	       --mode=compile $(CXX) $(TOPLEVEL_INCLUDES) \
-	       $(AM_CPPFLAGS) $(CPPFLAGS) $(CXXFLAGS) $(AM_CXXFLAGS)
+	       $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) 
+
+LTLDFLAGS = $(shell $(SHELL) $(top_srcdir)/../libtool-ldflags $(LDFLAGS))
 
 # 3) We'd have a problem when building the shared libstdc++ object if
 # the rules automake generates would be used.  We cannot allow g++ to
@@ -144,7 +164,7 @@ LTCXXCOMPILE = $(LIBTOOL) --tag CXX --tag disable-shared \
 # compilation driver.
 CXXLINK = $(LIBTOOL) --tag CXX --tag disable-shared \
 	  --mode=link $(CXX) \
-	  $(OPT_LDFLAGS) $(SECTION_LDFLAGS) $(AM_CXXFLAGS) $(LDFLAGS) -o $@
+	  $(OPT_LDFLAGS) $(SECTION_LDFLAGS) $(AM_CXXFLAGS) $(LTLDFLAGS) -o $@
 
 # We have to have rules modified from the default to counteract SUN make
 # prepending each of $(glibcxxinstall_HEADERS) with VPATH below.

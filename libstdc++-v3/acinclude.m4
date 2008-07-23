@@ -49,7 +49,7 @@ AC_DEFUN([GLIBCXX_CONFIGURE], [
   # Keep these sync'd with the list in Makefile.am.  The first provides an
   # expandable list at autoconf time; the second provides an expandable list
   # (i.e., shell variable) at configure time.
-  m4_define([glibcxx_SUBDIRS],[include libmath libsupc++ src po testsuite])
+  m4_define([glibcxx_SUBDIRS],[include libmath libsupc++ src doc po testsuite])
   SUBDIRS='glibcxx_SUBDIRS'
 
   # These need to be absolute paths, yet at the same time need to
@@ -125,6 +125,15 @@ AC_DEFUN([GLIBCXX_CONFIGURE], [
   ## other macros from doing the same.  This should be automated.)  -pme
   need_libmath=no
 
+  # Check for uClibc since Linux platforms use different configuration
+  # directories depending on the C library in use.
+  AC_EGREP_CPP([_using_uclibc], [
+  #include <stdio.h>
+  #if __UCLIBC__
+    _using_uclibc
+  #endif
+  ], uclibc=yes, uclibc=no)
+
   # Find platform-specific directories containing configuration info.
   # Also possibly modify flags used elsewhere, as needed by the platform.
   GLIBCXX_CHECK_HOST
@@ -161,8 +170,8 @@ AC_DEFUN([GLIBCXX_CHECK_COMPILER_FEATURES], [
 
   # Check for -ffunction-sections -fdata-sections
   AC_MSG_CHECKING([for g++ that supports -ffunction-sections -fdata-sections])
-  CXXFLAGS='-Werror -ffunction-sections -fdata-sections'
-  AC_TRY_COMPILE(, [int foo;], [ac_fdsections=yes], [ac_fdsections=no])
+  CXXFLAGS='-g -Werror -ffunction-sections -fdata-sections'
+  AC_TRY_COMPILE([int foo; void bar() { };],, [ac_fdsections=yes], [ac_fdsections=no])
   if test "$ac_test_CXXFLAGS" = set; then
     CXXFLAGS="$ac_save_CXXFLAGS"
   else
@@ -187,10 +196,11 @@ dnl safe (like an empty string).
 dnl
 dnl Defines:
 dnl  SECTION_LDFLAGS='-Wl,--gc-sections' if possible
-dnl  OPT_LDFLAGS='-Wl,-O1' if possible
+dnl  OPT_LDFLAGS='-Wl,-O1' and '-z,relro' if possible
 dnl  LD (as a side effect of testing)
 dnl Sets:
 dnl  with_gnu_ld
+dnl  glibcxx_ld_is_gold (set to "no" or "yes")
 dnl  glibcxx_gnu_ld_version (possibly)
 dnl
 dnl The last will be a single integer, e.g., version 1.23.45.0.67.89 will
@@ -222,49 +232,83 @@ AC_DEFUN([GLIBCXX_CHECK_LINKER_FEATURES], [
 
   # Start by getting the version number.  I think the libtool test already
   # does some of this, but throws away the result.
-  changequote(,)
-  ldver=`$LD --version 2>/dev/null | head -1 | \
-         sed -e 's/GNU ld version \([0-9.][0-9.]*\).*/\1/'`
-  changequote([,])
-  glibcxx_gnu_ld_version=`echo $ldver | \
-         $AWK -F. '{ if (NF<3) [$]3=0; print ([$]1*100+[$]2)*100+[$]3 }'`
+  glibcxx_ld_is_gold=no
+  if test x"$with_gnu_ld" = x"yes"; then
+    AC_MSG_CHECKING([for ld version])
+    changequote(,)
+    if $LD --version 2>/dev/null | grep 'GNU gold' >/dev/null 2>&1; then
+      glibcxx_ld_is_gold=yes
+    fi
+    ldver=`$LD --version 2>/dev/null | head -1 | \
+           sed -e 's/GNU \(go\)\{0,1\}ld \(version \)\{0,1\}\(([^)]*) \)\{0,1\}\([0-9.][0-9.]*\).*/\4/'`
+    changequote([,])
+    glibcxx_gnu_ld_version=`echo $ldver | \
+           $AWK -F. '{ if (NF<3) [$]3=0; print ([$]1*100+[$]2)*100+[$]3 }'`
+    AC_MSG_RESULT($glibcxx_gnu_ld_version)
+  fi
 
   # Set --gc-sections.
-  if test "$with_gnu_ld" = "notbroken"; then
-    # GNU ld it is!  Joy and bunny rabbits!
+  glibcxx_have_gc_sections=no
+  if test "$glibcxx_ld_is_gold" = "yes"; then
+    if $LD --help 2>/dev/null | grep gc-sections >/dev/null 2>&1; then
+      glibcxx_have_gc_sections=yes
+    fi
+  else
+    glibcxx_gcsections_min_ld=21602
+    if test x"$with_gnu_ld" = x"yes" && 
+	test $glibcxx_gnu_ld_version -gt $glibcxx_gcsections_min_ld ; then
+      glibcxx_have_gc_sections=yes
+    fi
+  fi
+  if test "$glibcxx_have_gc_sections" = "yes"; then
+    # Sufficiently young GNU ld it is!  Joy and bunny rabbits!
+    # NB: This flag only works reliably after 2.16.1. Configure tests
+    # for this are difficult, so hard wire a value that should work.
 
-    # All these tests are for C++; save the language and the compiler flags.
-    # Need to do this so that g++ won't try to link in libstdc++
     ac_test_CFLAGS="${CFLAGS+set}"
     ac_save_CFLAGS="$CFLAGS"
-    CFLAGS='-x c++  -Wl,--gc-sections'
+    CFLAGS='-Wl,--gc-sections'
 
     # Check for -Wl,--gc-sections
-    # XXX This test is broken at the moment, as symbols required for linking
-    # are now in libsupc++ (not built yet).  In addition, this test has
-    # cored on solaris in the past.  In addition, --gc-sections doesn't
-    # really work at the moment (keeps on discarding used sections, first
-    # .eh_frame and now some of the glibc sections for iconv).
-    # Bzzzzt.  Thanks for playing, maybe next time.
     AC_MSG_CHECKING([for ld that supports -Wl,--gc-sections])
-    AC_TRY_RUN([
-     int main(void)
-     {
-       try { throw 1; }
-       catch (...) { };
-       return 0;
-     }
-    ], [ac_sectionLDflags=yes],[ac_sectionLDflags=no], [ac_sectionLDflags=yes])
+    AC_TRY_LINK([ int one(void) { return 1; }
+     int two(void) { return 2; }
+	], [ two(); ] , [ac_gcsections=yes], [ac_gcsections=no])
+    if test "$ac_gcsections" = "yes"; then
+      rm -f conftest.c
+      touch conftest.c
+      if $CC -c conftest.c; then
+	if $LD --gc-sections -o conftest conftest.o 2>&1 | \
+	   grep "Warning: gc-sections option ignored" > /dev/null; then
+	  ac_gcsections=no
+	fi
+      fi
+      rm -f conftest.c conftest.o conftest
+    fi
+    if test "$ac_gcsections" = "yes"; then
+      SECTION_LDFLAGS="-Wl,--gc-sections $SECTION_LDFLAGS"
+    fi
+    AC_MSG_RESULT($ac_gcsections)
+
     if test "$ac_test_CFLAGS" = set; then
       CFLAGS="$ac_save_CFLAGS"
     else
       # this is the suspicious part
       CFLAGS=''
     fi
-    if test "$ac_sectionLDflags" = "yes"; then
-      SECTION_LDFLAGS="-Wl,--gc-sections $SECTION_LDFLAGS"
+  fi
+
+  # Set -z,relro.
+  # Note this is only for shared objects.
+  ac_ld_relro=no
+  if test x"$with_gnu_ld" = x"yes"; then
+    AC_MSG_CHECKING([for ld that supports -Wl,-z,relro])
+    cxx_z_relo=`$LD -v --help 2>/dev/null | grep "z relro"`
+    if test -n "$cxx_z_relo"; then
+      OPT_LDFLAGS="-Wl,-z,relro"
+      ac_ld_relro=yes
     fi
-    AC_MSG_RESULT($ac_sectionLDflags)
+    AC_MSG_RESULT($ac_ld_relro)
   fi
 
   # Set linker optimization flags.
@@ -278,53 +322,6 @@ AC_DEFUN([GLIBCXX_CHECK_LINKER_FEATURES], [
 
 
 dnl
-dnl Check to see if this target can enable the iconv specializations.
-dnl If --disable-c-mbchar was given, no wchar_t specialization is enabled.  
-dnl (This must have been previously checked, along with the rest of C99 
-dnl support.) By default, iconv support is disabled.
-dnl
-dnl Defines:
-dnl  _GLIBCXX_USE_ICONV if all the bits are found.
-dnl Substs:
-dnl  LIBICONV to a -l string containing the iconv library, if needed.
-dnl
-AC_DEFUN([GLIBCXX_CHECK_ICONV_SUPPORT], [
-
-  enable_iconv=no
-  # Only continue checking if the ISO C99 headers exist and support is on.
-  if test x"$enable_wchar_t" = xyes; then
-
-    # Use iconv for wchar_t to char conversions. As such, check for
-    # X/Open Portability Guide, version 2 features (XPG2).
-    AC_CHECK_HEADER(iconv.h, ac_has_iconv_h=yes, ac_has_iconv_h=no)
-    AC_CHECK_HEADER(langinfo.h, ac_has_langinfo_h=yes, ac_has_langinfo_h=no)
-
-    # Check for existence of libiconv.a providing XPG2 wchar_t support.
-    AC_CHECK_LIB(iconv, iconv, LIBICONV="-liconv")
-    ac_save_LIBS="$LIBS"
-    LIBS="$LIBS $LIBICONV"
-    AC_SUBST(LIBICONV)
-
-    AC_CHECK_FUNCS([iconv_open iconv_close iconv nl_langinfo],
-    [ac_XPG2funcs=yes], [ac_XPG2funcs=no])
-
-    LIBS="$ac_save_LIBS"
-
-    if test x"$ac_has_iconv_h" = xyes &&
-       test x"$ac_has_langinfo_h" = xyes &&
-       test x"$ac_XPG2funcs" = xyes;
-    then
-      AC_DEFINE([_GLIBCXX_USE_ICONV],1,
-	        [Define if iconv and related functions exist and are usable.])
-      enable_iconv=yes
-    fi
-  fi
-  AC_MSG_CHECKING([for enabled iconv specializations])
-  AC_MSG_RESULT($enable_iconv)
-])
-
-
-dnl
 dnl Check for headers for, and arguments to, the setrlimit() function.
 dnl Used only in testsuite_hooks.h.  Called from GLIBCXX_CONFIGURE_TESTSUITE.
 dnl
@@ -333,6 +330,7 @@ dnl  _GLIBCXX_RES_LIMITS if we can set artificial resource limits
 dnl  various HAVE_LIMIT_* for individual limit names
 dnl
 AC_DEFUN([GLIBCXX_CHECK_SETRLIMIT_ancilliary], [
+  AC_MSG_CHECKING([for RLIMIT_$1])
   AC_TRY_COMPILE(
     [#include <unistd.h>
      #include <sys/time.h>
@@ -342,6 +340,8 @@ AC_DEFUN([GLIBCXX_CHECK_SETRLIMIT_ancilliary], [
     [glibcxx_mresult=1], [glibcxx_mresult=0])
   AC_DEFINE_UNQUOTED(HAVE_LIMIT_$1, $glibcxx_mresult,
                      [Only used in build directory testsuite_hooks.h.])
+  if test $glibcxx_mresult = 1 ; then res=yes ; else res=no ; fi
+  AC_MSG_RESULT($res)
 ])
 
 AC_DEFUN([GLIBCXX_CHECK_SETRLIMIT], [
@@ -360,7 +360,7 @@ AC_DEFUN([GLIBCXX_CHECK_SETRLIMIT], [
     GLIBCXX_CHECK_SETRLIMIT_ancilliary(FSIZE)
 
     # Check for rlimit, setrlimit.
-    AC_CACHE_VAL(ac_setrlimit, [
+    AC_CACHE_VAL(glibcxx_cv_setrlimit, [
       AC_TRY_COMPILE(
         [#include <unistd.h>
          #include <sys/time.h>
@@ -368,12 +368,12 @@ AC_DEFUN([GLIBCXX_CHECK_SETRLIMIT], [
         ],
         [struct rlimit r;
          setrlimit(0, &r);],
-        [ac_setrlimit=yes], [ac_setrlimit=no])
+        [glibcxx_cv_setrlimit=yes], [glibcxx_cv_setrlimit=no])
     ])
   fi
 
   AC_MSG_CHECKING([for testsuite resource limits support])
-  if test $setrlimit_have_headers = yes && test $ac_setrlimit = yes; then
+  if test $setrlimit_have_headers = yes && test $glibcxx_cv_setrlimit = yes; then
     ac_res_limits=yes
     AC_DEFINE(_GLIBCXX_RES_LIMITS, 1,
               [Define if using setrlimit to set resource limits during
@@ -390,6 +390,7 @@ dnl Check whether S_ISREG (Posix) or S_IFREG is available in <sys/stat.h>.
 dnl Define HAVE_S_ISREG / HAVE_S_IFREG appropriately.
 dnl
 AC_DEFUN([GLIBCXX_CHECK_S_ISREG_OR_S_IFREG], [
+  AC_MSG_CHECKING([for S_ISREG or S_IFREG])
   AC_CACHE_VAL(glibcxx_cv_S_ISREG, [
     AC_TRY_LINK(
       [#include <sys/stat.h>],
@@ -408,13 +409,17 @@ AC_DEFUN([GLIBCXX_CHECK_S_ISREG_OR_S_IFREG], [
       [glibcxx_cv_S_IFREG=yes],
       [glibcxx_cv_S_IFREG=no])
   ])
+  res=no
   if test $glibcxx_cv_S_ISREG = yes; then
     AC_DEFINE(HAVE_S_ISREG, 1, 
               [Define if S_IFREG is available in <sys/stat.h>.])
+    res=S_ISREG
   elif test $glibcxx_cv_S_IFREG = yes; then
     AC_DEFINE(HAVE_S_IFREG, 1,
               [Define if S_IFREG is available in <sys/stat.h>.])
+    res=S_IFREG
   fi
+  AC_MSG_RESULT($res)
 ])
 
 
@@ -422,6 +427,7 @@ dnl
 dnl Check whether poll is available in <poll.h>, and define HAVE_POLL.
 dnl
 AC_DEFUN([GLIBCXX_CHECK_POLL], [
+  AC_MSG_CHECKING([for poll])
   AC_CACHE_VAL(glibcxx_cv_POLL, [
     AC_TRY_LINK(
       [#include <poll.h>],
@@ -434,6 +440,7 @@ AC_DEFUN([GLIBCXX_CHECK_POLL], [
   if test $glibcxx_cv_POLL = yes; then
     AC_DEFINE(HAVE_POLL, 1, [Define if poll is available in <poll.h>.])
   fi
+  AC_MSG_RESULT($glibcxx_cv_POLL)
 ])
 
 
@@ -441,6 +448,7 @@ dnl
 dnl Check whether writev is available in <sys/uio.h>, and define HAVE_WRITEV.
 dnl
 AC_DEFUN([GLIBCXX_CHECK_WRITEV], [
+  AC_MSG_CHECKING([for writev])
   AC_CACHE_VAL(glibcxx_cv_WRITEV, [
     AC_TRY_LINK(
       [#include <sys/uio.h>],
@@ -452,6 +460,7 @@ AC_DEFUN([GLIBCXX_CHECK_WRITEV], [
   if test $glibcxx_cv_WRITEV = yes; then
     AC_DEFINE(HAVE_WRITEV, 1, [Define if writev is available in <sys/uio.h>.])
   fi
+  AC_MSG_RESULT($glibcxx_cv_WRITEV)
 ])
 
 
@@ -459,6 +468,7 @@ dnl
 dnl Check whether int64_t is available in <stdint.h>, and define HAVE_INT64_T.
 dnl
 AC_DEFUN([GLIBCXX_CHECK_INT64_T], [
+  AC_MSG_CHECKING([for int64_t])
   AC_CACHE_VAL(glibcxx_cv_INT64_T, [
     AC_TRY_COMPILE(
       [#include <stdint.h>],
@@ -469,6 +479,7 @@ AC_DEFUN([GLIBCXX_CHECK_INT64_T], [
   if test $glibcxx_cv_INT64_T = yes; then
     AC_DEFINE(HAVE_INT64_T, 1, [Define if int64_t is available in <stdint.h>.])
   fi
+  AC_MSG_RESULT($glibcxx_cv_INT64_T)
 ])
 
 
@@ -480,6 +491,7 @@ AC_DEFUN([GLIBCXX_CHECK_LFS], [
   AC_LANG_CPLUSPLUS
   ac_save_CXXFLAGS="$CXXFLAGS"
   CXXFLAGS="$CXXFLAGS -fno-exceptions"	
+  AC_MSG_CHECKING([for LFS support])
   AC_CACHE_VAL(glibcxx_cv_LFS, [
     AC_TRY_LINK(
       [#include <unistd.h>
@@ -499,6 +511,7 @@ AC_DEFUN([GLIBCXX_CHECK_LFS], [
   if test $glibcxx_cv_LFS = yes; then
     AC_DEFINE(_GLIBCXX_USE_LFS, 1, [Define if LFS support is available.])
   fi
+  AC_MSG_RESULT($glibcxx_cv_LFS)
   CXXFLAGS="$ac_save_CXXFLAGS"
   AC_LANG_RESTORE
 ])
@@ -531,43 +544,38 @@ dnl
 dnl GLIBCXX_ENABLE_SYMVERS and GLIBCXX_IS_NATIVE must be done before this.
 dnl
 dnl Sets:
-dnl  enable_abi_check / GLIBCXX_TEST_ABI
+dnl  enable_abi_check 
 dnl  GLIBCXX_TEST_WCHAR_T
 dnl  GLIBCXX_TEST_THREAD
 dnl Substs:
 dnl  baseline_dir
 dnl
 AC_DEFUN([GLIBCXX_CONFIGURE_TESTSUITE], [
-  if $GLIBCXX_IS_NATIVE && test $is_hosted = yes; then
+  if $GLIBCXX_IS_NATIVE ; then
     # Do checks for resource limit functions.
     GLIBCXX_CHECK_SETRLIMIT
 
     # Look for setenv, so that extended locale tests can be performed.
     GLIBCXX_CHECK_STDLIB_DECL_AND_LINKAGE_3(setenv)
+  fi
 
-    if test $enable_symvers = no; then
-      enable_abi_check=no
-    else
-      case "$host" in
-        *-*-cygwin*)
-          enable_abi_check=no ;;
-        *)
-          enable_abi_check=yes ;;
-      esac
-    fi
+  if $GLIBCXX_IS_NATIVE && test $is_hosted = yes &&
+     test $enable_symvers != no; then
+    case "$host" in
+      *-*-cygwin*)
+        enable_abi_check=no ;;
+      *)
+        enable_abi_check=yes ;;
+    esac
   else
     # Only build this as native, since automake does not understand
     # CXX_FOR_BUILD.
     enable_abi_check=no
   fi
-
+  
   # Export file names for ABI checking.
-  baseline_dir="$glibcxx_srcdir/config/abi/${abi_baseline_pair}\$(MULTISUBDIR)"
+  baseline_dir="$glibcxx_srcdir/config/abi/post/${abi_baseline_pair}\$(MULTISUBDIR)"
   AC_SUBST(baseline_dir)
-
-  GLIBCXX_CONDITIONAL(GLIBCXX_TEST_WCHAR_T, test $enable_wchar_t = yes)
-  GLIBCXX_CONDITIONAL(GLIBCXX_TEST_THREAD, test $enable_thread = yes)
-  GLIBCXX_CONDITIONAL(GLIBCXX_TEST_ABI, test $enable_abi_check = yes)
 ])
 
 
@@ -612,8 +620,8 @@ dnl
 AC_DEFUN([GLIBCXX_EXPORT_FLAGS], [
   # Optimization flags that are probably a good idea for thrill-seekers. Just
   # uncomment the lines below and make, everything else is ready to go...
+  # Alternatively OPTIMIZE_CXXFLAGS can be set in configure.host.
   # OPTIMIZE_CXXFLAGS = -O3 -fstrict-aliasing -fvtable-gc
-  OPTIMIZE_CXXFLAGS=
   AC_SUBST(OPTIMIZE_CXXFLAGS)
 
   WARN_FLAGS='-Wall -Wextra -Wwrite-strings -Wcast-qual'
@@ -633,6 +641,8 @@ dnl
 dnl Assumes cross_compiling bits already done, and with_cross_host in
 dnl particular.
 dnl
+dnl This logic must match gcc/configure.ac's setting of gcc_gxx_include_dir.
+dnl config/gxx-include-dir.m4 must be kept consistant with this as well.
 AC_DEFUN([GLIBCXX_EXPORT_INSTALL_INFO], [
   glibcxx_toolexecdir=no
   glibcxx_toolexeclibdir=no
@@ -664,7 +674,13 @@ AC_DEFUN([GLIBCXX_EXPORT_INSTALL_INFO], [
 
   # Default case for install directory for include files.
   if test $version_specific_libs = no && test $gxx_include_dir = no; then
-    gxx_include_dir='${prefix}/include/c++/${gcc_version}'
+    gxx_include_dir='include/c++/${gcc_version}'
+    if test -n "$with_cross_host" && 
+       test x"$with_cross_host" != x"no"; then	
+      gxx_include_dir='${prefix}/${target_alias}/'"$gxx_include_dir"
+    else
+      gxx_include_dir='${prefix}/'"$gxx_include_dir"
+    fi
   fi
 
   # Version-specific runtime libs processing.
@@ -756,103 +772,125 @@ dnl
 AC_DEFUN([GLIBCXX_ENABLE_C99], [
   GLIBCXX_ENABLE(c99,$1,,[turns on ISO/IEC 9899:1999 support])
 
-  # Test wchar.h for mbstate_t, which is needed for char_traits and fpos
-  # even if C99 support is turned off.
-  AC_CHECK_HEADERS(wchar.h, ac_has_wchar_h=yes, ac_has_wchar_h=no)
-  AC_MSG_CHECKING([for mbstate_t])
-  AC_TRY_COMPILE([#include <wchar.h>],
-  [mbstate_t teststate;],
-  have_mbstate_t=yes, have_mbstate_t=no)
-  AC_MSG_RESULT($have_mbstate_t)
-  if test x"$have_mbstate_t" = xyes; then
-    AC_DEFINE(HAVE_MBSTATE_T,1,[Define if mbstate_t exists in wchar.h.])
-  fi
-
   if test x"$enable_c99" = x"yes"; then
 
   AC_LANG_SAVE
   AC_LANG_CPLUSPLUS
 
+  # Use -std=c++98 because the default (-std=gnu++98) leaves __STRICT_ANSI__
+  # undefined and fake C99 facilities - like pre-standard snprintf - may be
+  # spuriously enabled.
+  # Long term, -std=c++0x could be even better, could manage to explicitely
+  # request C99 facilities to the underlying C headers.
+  ac_save_CXXFLAGS="$CXXFLAGS"
+  CXXFLAGS="$CXXFLAGS -std=c++98"
+  ac_save_LIBS="$LIBS"
+  ac_save_gcc_no_link="$gcc_no_link"
+
+  if test x$gcc_no_link != xyes; then
+    # Use -fno-exceptions to that the C driver can link these tests without
+    # hitting undefined references to personality routines.
+    CXXFLAGS="$CXXFLAGS -fno-exceptions"
+    AC_CHECK_LIB(m, sin, [
+      LIBS="$LIBS -lm"
+    ], [
+      # Use the default compile-only tests in GCC_TRY_COMPILE_OR_LINK
+      gcc_no_link=yes
+    ])
+  fi
+
   # Check for the existence of <math.h> functions used if C99 is enabled.
   AC_MSG_CHECKING([for ISO C99 support in <math.h>])
-  AC_CACHE_VAL(ac_c99_math, [
-  AC_TRY_COMPILE([#include <math.h>],
-	         [fpclassify(0.0);
-	          isfinite(0.0); 
-		  isinf(0.0);
-	          isnan(0.0);
-		  isnormal(0.0);
-	  	  signbit(0.0);
-	 	  isgreater(0.0,0.0);
-		  isgreaterequal(0.0,0.0);
-		  isless(0.0,0.0);
-		  islessequal(0.0,0.0);
-		  islessgreater(0.0,0.0);
-		  islessgreater(0.0,0.0);
-		  isunordered(0.0,0.0);
-		 ],[ac_c99_math=yes], [ac_c99_math=no])
+  AC_CACHE_VAL(glibcxx_cv_c99_math, [
+  GCC_TRY_COMPILE_OR_LINK(
+     [#include <math.h>
+      volatile double d1, d2;
+      volatile int i;],
+     [i = fpclassify(d1);
+      i = isfinite(d1);
+      i = isinf(d1);
+      i = isnan(d1);
+      i = isnormal(d1);
+      i = signbit(d1);
+      i = isgreater(d1, d2);
+      i = isgreaterequal(d1, d2);
+      i = isless(d1, d2);
+      i = islessequal(d1, d2);
+      i = islessgreater(d1, d2);
+      i = islessgreater(d1, d2);
+      i = isunordered(d1, d2);
+     ],[glibcxx_cv_c99_math=yes], [glibcxx_cv_c99_math=no])
   ])
-  AC_MSG_RESULT($ac_c99_math)
-  if test x"$ac_c99_math" = x"yes"; then
+  AC_MSG_RESULT($glibcxx_cv_c99_math)
+  if test x"$glibcxx_cv_c99_math" = x"yes"; then
     AC_DEFINE(_GLIBCXX_USE_C99_MATH, 1,
               [Define if C99 functions or macros in <math.h> should be imported
               in <cmath> in namespace std.])
   fi
 
-  # Check for the existence of <complex.h> complex functions.
+  # Check for the existence of <complex.h> complex math functions.
   # This is necessary even though libstdc++ uses the builtin versions
   # of these functions, because if the builtin cannot be used, a reference
   # to the library function is emitted.
-  # In addition, need to explicitly specify "C" compilation for this
-  # one, or else the backwards C++ <complex.h> include will be selected.
-  save_CXXFLAGS="$CXXFLAGS"
-  CXXFLAGS="$CXXFLAGS -x c"
+  AC_CHECK_HEADERS(tgmath.h, ac_has_tgmath_h=yes, ac_has_tgmath_h=no)
   AC_CHECK_HEADERS(complex.h, ac_has_complex_h=yes, ac_has_complex_h=no)
-  ac_c99_complex=no;
+  glibcxx_cv_c99_complex=no;
   if test x"$ac_has_complex_h" = x"yes"; then
     AC_MSG_CHECKING([for ISO C99 support in <complex.h>])
-    AC_TRY_COMPILE([#include <complex.h>],
-	           [typedef __complex__ float float_type; float_type tmpf;
-	            cabsf(tmpf);
-		    cargf(tmpf);
-		    ccosf(tmpf);
-  		    ccoshf(tmpf);
-		    cexpf(tmpf);
-		    csinf(tmpf);
-		    csinhf(tmpf);
-		    csqrtf(tmpf);
-		    ctanf(tmpf);
-		    ctanhf(tmpf);
-		    cpowf(tmpf, tmpf);
-		    typedef __complex__ double double_type; double_type tmpd;
-	            cabs(tmpd);
-		    carg(tmpd);
-		    ccos(tmpd);
-  		    ccosh(tmpd);
-		    cexp(tmpd);
-		    csin(tmpd);
-		    csinh(tmpd);
-		    csqrt(tmpd);
-		    ctan(tmpd);
-		    ctanh(tmpd);
-		    cpow(tmpd, tmpd);
-		    typedef __complex__ long double ld_type; ld_type tmpld;
-	            cabsl(tmpld);
-		    cargl(tmpld);
-		    ccosl(tmpld);
-  		    ccoshl(tmpld);
-		    cexpl(tmpld);
-		    csinl(tmpld);
-		    csinhl(tmpld);
-		    csqrtl(tmpld);
-		    ctanl(tmpld);
-		    ctanhl(tmpld);
-		    cpowl(tmpld, tmpld);
-		   ],[ac_c99_complex=yes], [ac_c99_complex=no])
+    GCC_TRY_COMPILE_OR_LINK(
+       [#include <complex.h>
+	typedef __complex__ float float_type;
+	typedef __complex__ double double_type;
+	typedef __complex__ long double ld_type;
+	volatile float_type tmpf;
+	volatile double_type tmpd;
+	volatile ld_type tmpld;
+	volatile float f;
+	volatile double d;
+	volatile long double ld;],
+       [f = cabsf(tmpf);
+	f = cargf(tmpf);
+	tmpf = ccosf(tmpf);
+	tmpf = ccoshf(tmpf);
+	tmpf = cexpf(tmpf);
+	tmpf = clogf(tmpf);
+	tmpf = csinf(tmpf);
+	tmpf = csinhf(tmpf);
+	tmpf = csqrtf(tmpf);
+	tmpf = ctanf(tmpf);
+	tmpf = ctanhf(tmpf);
+	tmpf = cpowf(tmpf, tmpf);
+	tmpf = cprojf(tmpf);
+	d = cabs(tmpd);
+	d = carg(tmpd);
+	tmpd = ccos(tmpd);
+	tmpd = ccosh(tmpd);
+	tmpd = cexp(tmpd);
+	tmpd = clog(tmpd);
+	tmpd = csin(tmpd);
+	tmpd = csinh(tmpd);
+	tmpd = csqrt(tmpd);
+	tmpd = ctan(tmpd);
+	tmpd = ctanh(tmpd);
+	tmpd = cpow(tmpd, tmpd);
+	tmpd = cproj(tmpd);
+	ld = cabsl(tmpld);
+	ld = cargl(tmpld);
+	tmpld = ccosl(tmpld);
+	tmpld = ccoshl(tmpld);
+	tmpld = cexpl(tmpld);
+	tmpld = clogl(tmpld);
+	tmpld = csinl(tmpld);
+	tmpld = csinhl(tmpld);
+	tmpld = csqrtl(tmpld);
+	tmpld = ctanl(tmpld);
+	tmpld = ctanhl(tmpld);
+	tmpld = cpowl(tmpld, tmpld);
+	tmpld = cprojl(tmpld);
+       ],[glibcxx_cv_c99_complex=yes], [glibcxx_cv_c99_complex=no])
   fi
-  CXXFLAGS="$save_CXXFLAGS"
-  AC_MSG_RESULT($ac_c99_complex)
-  if test x"$ac_c99_complex" = x"yes"; then
+  AC_MSG_RESULT($glibcxx_cv_c99_complex)
+  if test x"$glibcxx_cv_c99_complex" = x"yes"; then
     AC_DEFINE(_GLIBCXX_USE_C99_COMPLEX, 1,
               [Define if C99 functions in <complex.h> should be used in
               <complex>. Using compiler builtins for these functions requires
@@ -861,107 +899,60 @@ AC_DEFUN([GLIBCXX_ENABLE_C99], [
 
   # Check for the existence in <stdio.h> of vscanf, et. al.
   AC_MSG_CHECKING([for ISO C99 support in <stdio.h>])
-  AC_CACHE_VAL(ac_c99_stdio, [
-  AC_TRY_COMPILE([#include <stdio.h>
-		  #include <stdarg.h>
-                  void foo(char* fmt, ...)
-                  {
-	            va_list args; va_start(args, fmt);
-                    vfscanf(stderr, "%i", args); 
-		    vscanf("%i", args);
-                    vsnprintf(fmt, 0, "%i", args);
-                    vsscanf(fmt, "%i", args);
-		  }],
-                 [snprintf("12", 0, "%i");],
-		 [ac_c99_stdio=yes], [ac_c99_stdio=no])
+  AC_CACHE_VAL(glibcxx_cv_c99_stdio, [
+  GCC_TRY_COMPILE_OR_LINK(
+     [#include <stdio.h>
+      #include <stdarg.h>
+      void foo(char* fmt, ...)
+      {
+	va_list args; va_start(args, fmt);
+	vfscanf(stderr, "%i", args); 
+	vscanf("%i", args);
+	vsnprintf(fmt, 0, "%i", args);
+	vsscanf(fmt, "%i", args);
+      }],
+     [snprintf("12", 0, "%i");],
+     [glibcxx_cv_c99_stdio=yes], [glibcxx_cv_c99_stdio=no])
   ])
-  AC_MSG_RESULT($ac_c99_stdio)
+  AC_MSG_RESULT($glibcxx_cv_c99_stdio)
 
   # Check for the existence in <stdlib.h> of lldiv_t, et. al.
   AC_MSG_CHECKING([for ISO C99 support in <stdlib.h>])
-  AC_CACHE_VAL(ac_c99_stdlib, [
-  AC_TRY_COMPILE([#include <stdlib.h>],
-                 [char* tmp; 
-	    	  strtof("gnu", &tmp); 
-		  strtold("gnu", &tmp);
-                  llabs(10); 
-		  lldiv(10,1); 
-		  atoll("10"); 
-		  _Exit(0);
-		  lldiv_t mydivt;],[ac_c99_stdlib=yes], [ac_c99_stdlib=no])
+  AC_CACHE_VAL(glibcxx_cv_c99_stdlib, [
+  GCC_TRY_COMPILE_OR_LINK(
+     [#include <stdlib.h>
+      volatile float f;
+      volatile long double ld;
+      volatile unsigned long long ll;
+      lldiv_t mydivt;],
+     [char* tmp;
+      f = strtof("gnu", &tmp);
+      ld = strtold("gnu", &tmp);
+      ll = strtoll("gnu", &tmp, 10);
+      ll = strtoull("gnu", &tmp, 10);
+      ll = llabs(10);
+      mydivt = lldiv(10,1);
+      ll = mydivt.quot;
+      ll = mydivt.rem;
+      ll = atoll("10");
+      _Exit(0);
+      ],[glibcxx_cv_c99_stdlib=yes], [glibcxx_cv_c99_stdlib=no])
   ])
-  AC_MSG_RESULT($ac_c99_stdlib)
+  AC_MSG_RESULT($glibcxx_cv_c99_stdlib)
 
-  # Check for the existence in <wchar.h> of wcstoull, WEOF, etc.
-  AC_CHECK_HEADERS(wctype.h, ac_has_wctype_h=yes, ac_has_wctype_h=no)
-  ac_c99_wchar=no;
+  # Check for the existence in <wchar.h> of wcstold, etc.
+  glibcxx_cv_c99_wchar=no;
   if test x"$ac_has_wchar_h" = xyes &&
      test x"$ac_has_wctype_h" = xyes; then
+    AC_MSG_CHECKING([for ISO C99 support in <wchar.h>])	
     AC_TRY_COMPILE([#include <wchar.h>
-                    #include <stddef.h>
-                    wint_t i;
-		    long l = WEOF;
-		    long j = WCHAR_MIN;
-		    long k = WCHAR_MAX;
                     namespace test
                     {
-		      using ::btowc;
-		      using ::fgetwc;
-		      using ::fgetws;
-		      using ::fputwc;
-		      using ::fputws;
-		      using ::fwide;
-		      using ::fwprintf; 
-		      using ::fwscanf;
-		      using ::getwc;
-		      using ::getwchar;
-		      using ::mbrlen; 
-		      using ::mbrtowc; 
-		      using ::mbsinit; 
-		      using ::mbsrtowcs; 
-		      using ::putwc;
-		      using ::putwchar;
-		      using ::swprintf; 
-		      using ::swscanf; 
-		      using ::ungetwc;
-		      using ::vfwprintf; 
-		      using ::vswprintf; 
-		      using ::vwprintf; 
-		      using ::wcrtomb; 
-		      using ::wcscat; 
-		      using ::wcschr; 
-		      using ::wcscmp; 
-		      using ::wcscoll; 
-		      using ::wcscpy; 
-		      using ::wcscspn; 
-		      using ::wcsftime; 
-		      using ::wcslen;
-		      using ::wcsncat; 
-		      using ::wcsncmp; 
-		      using ::wcsncpy; 
-		      using ::wcspbrk;
-		      using ::wcsrchr; 
-		      using ::wcsrtombs; 
-		      using ::wcsspn; 
-		      using ::wcsstr;
-		      using ::wcstod; 
-		      using ::wcstok; 
-		      using ::wcstol;
 		      using ::wcstold;
 		      using ::wcstoll;
-		      using ::wcstoul; 
 		      using ::wcstoull;
-		      using ::wcsxfrm; 
-		      using ::wctob; 
-		      using ::wmemchr;
-		      using ::wmemcmp;
-		      using ::wmemcpy;
-		      using ::wmemmove;
-		      using ::wmemset;
-		      using ::wprintf; 
-		      using ::wscanf; 
 		    }
-		   ],[],[ac_c99_wchar=yes], [ac_c99_wchar=no])
+		   ],[],[glibcxx_cv_c99_wchar=yes], [glibcxx_cv_c99_wchar=no])
 
     # Checks for wide character functions that may not be present.
     # Injection of these is wrapped with guard macros.
@@ -990,16 +981,15 @@ AC_DEFUN([GLIBCXX_ENABLE_C99], [
  	    	   [AC_DEFINE(HAVE_ISWBLANK,1,
 			[Defined if iswblank exists.])],[])
 
-    AC_MSG_CHECKING([for ISO C99 support in <wchar.h>])
-    AC_MSG_RESULT($ac_c99_wchar)
+    AC_MSG_RESULT($glibcxx_cv_c99_wchar)
   fi
 
   # Option parsed, now set things appropriately.
-  if test x"$ac_c99_math" = x"no" ||
-     test x"$ac_c99_complex" = x"no" ||
-     test x"$ac_c99_stdio" = x"no" ||
-     test x"$ac_c99_stdlib" = x"no" ||
-     test x"$ac_c99_wchar" = x"no"; then
+  if test x"$glibcxx_cv_c99_math" = x"no" ||
+     test x"$glibcxx_cv_c99_complex" = x"no" ||
+     test x"$glibcxx_cv_c99_stdio" = x"no" ||
+     test x"$glibcxx_cv_c99_stdlib" = x"no" ||
+     test x"$glibcxx_cv_c99_wchar" = x"no"; then
     enable_c99=no;
   else
     AC_DEFINE(_GLIBCXX_USE_C99, 1,
@@ -1007,6 +997,9 @@ AC_DEFUN([GLIBCXX_ENABLE_C99], [
     <complex.h>, <stdio.h>, and <stdlib.h> can be used or exposed.])
   fi
 
+  gcc_no_link="$ac_save_gcc_no_link"
+  LIBS="$ac_save_LIBS"
+  CXXFLAGS="$ac_save_CXXFLAGS"
   AC_LANG_RESTORE
   fi	
 
@@ -1016,24 +1009,505 @@ AC_DEFUN([GLIBCXX_ENABLE_C99], [
 
 
 dnl
+dnl Check for IEEE Std 1003.1-2001 clock_gettime required for 
+dnl 20.8.5 [time.clock] in the current C++0X working draft.
+dnl
+AC_DEFUN([GLIBCXX_CHECK_CLOCK_GETTIME], [
+
+  AC_LANG_SAVE
+  AC_LANG_CPLUSPLUS
+  ac_save_CXXFLAGS="$CXXFLAGS"
+  CXXFLAGS="$CXXFLAGS -fno-exceptions"
+  
+  AC_CHECK_HEADERS(unistd.h, ac_has_unistd_h=yes, ac_has_unistd_h=no)
+  
+  ac_has_clock_monotonic=no;  
+  ac_has_clock_realtime=no;  
+  if test x"$ac_has_unistd_h" = x"yes"; then    
+    AC_MSG_CHECKING([for monotonic clock])
+    AC_TRY_LINK(
+      [#include <unistd.h>
+       #include <time.h>
+      ],
+      [#if _POSIX_TIMERS > 0 && defined(_POSIX_MONOTONIC_CLOCK)
+        timespec tp;     
+       #endif
+        clock_gettime(CLOCK_MONOTONIC, &tp);
+      ], [ac_has_clock_monotonic=yes], [ac_has_clock_monotonic=no])
+    
+    AC_MSG_RESULT($ac_has_clock_monotonic)   
+    
+    AC_MSG_CHECKING([for realtime clock])
+    AC_TRY_LINK(
+      [#include <unistd.h>
+       #include <time.h>
+      ],
+      [#if _POSIX_TIMERS > 0
+        timespec tp;      
+       #endif
+        clock_gettime(CLOCK_REALTIME, &tp);
+      ], [ac_has_clock_realtime=yes], [ac_has_clock_realtime=no])
+    
+    AC_MSG_RESULT($ac_has_clock_realtime)
+  fi 
+  
+  if test x"$ac_has_clock_monotonic" = x"yes"; then
+    AC_DEFINE(_GLIBCXX_USE_CLOCK_MONOTONIC, 1,
+      [ Defined if clock_gettime has monotonic clock support. ])
+  fi
+  
+  if test x"$ac_has_clock_realtime" = x"yes"; then
+    AC_DEFINE(_GLIBCXX_USE_CLOCK_REALTIME, 1,
+      [ Defined if clock_gettime has realtime clock support. ])
+  fi
+  
+  CXXFLAGS="$ac_save_CXXFLAGS"
+  AC_LANG_RESTORE
+])
+
+dnl
+dnl Check for IEEE Std 1003.1-2001 gettimeofday required for 
+dnl 20.8.5 [time.clock] in the current C++0X working draft.
+dnl
+AC_DEFUN([GLIBCXX_CHECK_GETTIMEOFDAY], [
+  
+  AC_LANG_SAVE
+  AC_LANG_CPLUSPLUS
+  ac_save_CXXFLAGS="$CXXFLAGS"
+  CXXFLAGS="$CXXFLAGS -fno-exceptions"
+  
+  ac_has_gettimeofday=no;
+  AC_CHECK_HEADERS(sys/time.h, ac_has_sys_time_h=yes, ac_has_sys_time_h=no)
+  if test x"$ac_has_sys_time_h" = x"yes"; then
+    AC_MSG_CHECKING([for gettimeofday])
+    AC_TRY_LINK([#include <sys/time.h>],
+      [timeval tv; gettimeofday(&tv, 0);],
+      [ac_has_gettimeofday=yes], [ac_has_gettimeofday=no])
+    
+    AC_MSG_RESULT($ac_has_gettimeofday)
+  fi
+  
+  if test x"$ac_has_gettimeofday" = x"yes"; then
+    AC_DEFINE(_GLIBCXX_USE_GETTIMEOFDAY, 1,
+      [ Defined if gettimeofday is available. ])
+  fi
+  
+  CXXFLAGS="$ac_save_CXXFLAGS"
+  AC_LANG_RESTORE
+])
+
+dnl
+dnl Check for ISO/IEC 9899:1999 "C99" support to ISO/IEC DTR 19768 "TR1"
+dnl facilities in Chapter 8, "C compatibility".
+dnl
+AC_DEFUN([GLIBCXX_CHECK_C99_TR1], [
+
+  AC_LANG_SAVE
+  AC_LANG_CPLUSPLUS
+
+  # Use -std=c++98 because the default (-std=gnu++98) leaves __STRICT_ANSI__
+  # undefined and fake C99 facilities may be spuriously enabled.
+  ac_save_CXXFLAGS="$CXXFLAGS"
+  CXXFLAGS="$CXXFLAGS -std=c++98"
+
+  # Check for the existence of <complex.h> complex math functions used
+  # by tr1/complex.
+  AC_CHECK_HEADERS(complex.h, ac_has_complex_h=yes, ac_has_complex_h=no)
+  ac_c99_complex_tr1=no;
+  if test x"$ac_has_complex_h" = x"yes"; then
+    AC_MSG_CHECKING([for ISO C99 support to TR1 in <complex.h>])
+    AC_TRY_COMPILE([#include <complex.h>],
+	           [typedef __complex__ float float_type; float_type tmpf;
+	            cacosf(tmpf);
+	            casinf(tmpf);
+	            catanf(tmpf);
+	            cacoshf(tmpf);
+	            casinhf(tmpf);
+	            catanhf(tmpf);
+		    typedef __complex__ double double_type; double_type tmpd;
+	            cacos(tmpd);
+	            casin(tmpd);
+	            catan(tmpd);
+	            cacosh(tmpd);
+	            casinh(tmpd);
+	            catanh(tmpd);
+		    typedef __complex__ long double ld_type; ld_type tmpld;
+	            cacosl(tmpld);
+	            casinl(tmpld);
+	            catanl(tmpld);
+	            cacoshl(tmpld);
+	            casinhl(tmpld);
+	            catanhl(tmpld);
+		   ],[ac_c99_complex_tr1=yes], [ac_c99_complex_tr1=no])
+  fi
+  AC_MSG_RESULT($ac_c99_complex_tr1)
+  if test x"$ac_c99_complex_tr1" = x"yes"; then
+    AC_DEFINE(_GLIBCXX_USE_C99_COMPLEX_TR1, 1,
+              [Define if C99 functions in <complex.h> should be used in
+              <tr1/complex>. Using compiler builtins for these functions
+	      requires corresponding C99 library functions to be present.])
+  fi
+
+  # Check for the existence of <ctype.h> functions.
+  AC_MSG_CHECKING([for ISO C99 support to TR1 in <ctype.h>])
+  AC_CACHE_VAL(glibcxx_cv_c99_ctype_tr1, [
+  AC_TRY_COMPILE([#include <ctype.h>],
+	         [int ch;
+	          int ret;
+	          ret = isblank(ch);
+		 ],[glibcxx_cv_c99_ctype_tr1=yes], [glibcxx_cv_c99_ctype_tr1=no])
+  ])
+  AC_MSG_RESULT($glibcxx_cv_c99_ctype_tr1)
+  if test x"$glibcxx_cv_c99_ctype_tr1" = x"yes"; then
+    AC_DEFINE(_GLIBCXX_USE_C99_CTYPE_TR1, 1,
+              [Define if C99 functions in <ctype.h> should be imported in
+	      <tr1/cctype> in namespace std::tr1.])
+  fi
+
+  # Check for the existence of <fenv.h> functions.
+  AC_CHECK_HEADERS(fenv.h, ac_has_fenv_h=yes, ac_has_fenv_h=no)
+  ac_c99_fenv_tr1=no;
+  if test x"$ac_has_fenv_h" = x"yes"; then
+    AC_MSG_CHECKING([for ISO C99 support to TR1 in <fenv.h>])
+    AC_TRY_COMPILE([#include <fenv.h>],
+	           [int except, mode;
+	            fexcept_t* pflag;
+                    fenv_t* penv;
+	            int ret;
+	            ret = feclearexcept(except);
+	            ret = fegetexceptflag(pflag, except);
+	            ret = feraiseexcept(except);
+	            ret = fesetexceptflag(pflag, except);
+	            ret = fetestexcept(except);
+	            ret = fegetround();
+	            ret = fesetround(mode);
+	            ret = fegetenv(penv);
+	            ret = feholdexcept(penv);
+	            ret = fesetenv(penv);
+	            ret = feupdateenv(penv);
+		   ],[ac_c99_fenv_tr1=yes], [ac_c99_fenv_tr1=no])
+  fi
+  AC_MSG_RESULT($ac_c99_fenv_tr1)
+  if test x"$ac_c99_fenv_tr1" = x"yes"; then
+    AC_DEFINE(_GLIBCXX_USE_C99_FENV_TR1, 1,
+              [Define if C99 functions in <fenv.h> should be imported in
+	      <tr1/cfenv> in namespace std::tr1.])
+  fi
+
+  # Check for the existence of <stdint.h> types.
+  AC_MSG_CHECKING([for ISO C99 support to TR1 in <stdint.h>])
+  AC_CACHE_VAL(glibcxx_cv_c99_stdint_tr1, [
+  AC_TRY_COMPILE([#include <stdint.h>],
+	         [typedef int8_t          my_int8_t;
+	          typedef int16_t         my_int16_t;
+	          typedef int32_t         my_int32_t;
+	          typedef int64_t         my_int64_t;
+	          typedef int_fast8_t     my_int_fast8_t;
+	          typedef int_fast16_t    my_int_fast16_t;
+	          typedef int_fast32_t    my_int_fast32_t;
+	          typedef int_fast64_t    my_int_fast64_t;	
+	          typedef int_least8_t    my_int_least8_t;
+	          typedef int_least16_t   my_int_least16_t;
+	          typedef int_least32_t   my_int_least32_t;
+	          typedef int_least64_t   my_int_least64_t;
+		  typedef intmax_t        my_intmax_t;
+		  typedef intptr_t        my_intptr_t;
+	          typedef uint8_t         my_uint8_t;
+	          typedef uint16_t        my_uint16_t;
+	          typedef uint32_t        my_uint32_t;
+	          typedef uint64_t        my_uint64_t;
+	          typedef uint_fast8_t    my_uint_fast8_t;
+	          typedef uint_fast16_t   my_uint_fast16_t;
+	          typedef uint_fast32_t   my_uint_fast32_t;
+	          typedef uint_fast64_t   my_uint_fast64_t;	
+	          typedef uint_least8_t   my_uint_least8_t;
+	          typedef uint_least16_t  my_uint_least16_t;
+	          typedef uint_least32_t  my_uint_least32_t;
+	          typedef uint_least64_t  my_uint_least64_t;
+		  typedef uintmax_t       my_uintmax_t;
+		  typedef uintptr_t       my_uintptr_t;
+		 ],[glibcxx_cv_c99_stdint_tr1=yes], [glibcxx_cv_c99_stdint_tr1=no])
+  ])
+  AC_MSG_RESULT($glibcxx_cv_c99_stdint_tr1)
+  if test x"$glibcxx_cv_c99_stdint_tr1" = x"yes"; then
+    AC_DEFINE(_GLIBCXX_USE_C99_STDINT_TR1, 1,
+              [Define if C99 types in <stdint.h> should be imported in
+	      <tr1/cstdint> in namespace std::tr1.])
+  fi
+
+  # Check for the existence of <math.h> functions.
+  AC_MSG_CHECKING([for ISO C99 support to TR1 in <math.h>])
+  AC_CACHE_VAL(glibcxx_cv_c99_math_tr1, [
+  AC_TRY_COMPILE([#include <math.h>],
+	         [typedef double_t  my_double_t;
+	          typedef float_t   my_float_t;
+	          acosh(0.0);
+	          acoshf(0.0f);
+	          acoshl(0.0l);
+	          asinh(0.0);
+	          asinhf(0.0f);
+	          asinhl(0.0l);
+	          atanh(0.0);
+	          atanhf(0.0f);
+	          atanhl(0.0l);
+	          cbrt(0.0);
+	          cbrtf(0.0f);
+	          cbrtl(0.0l);
+	          copysign(0.0, 0.0);
+	          copysignf(0.0f, 0.0f);
+	          copysignl(0.0l, 0.0l);
+	          erf(0.0);
+	          erff(0.0f);
+	          erfl(0.0l);
+	          erfc(0.0);
+	          erfcf(0.0f);
+	          erfcl(0.0l);
+	          exp2(0.0);
+	          exp2f(0.0f);
+	          exp2l(0.0l);
+	          expm1(0.0);
+	          expm1f(0.0f);
+	          expm1l(0.0l);
+	          fdim(0.0, 0.0);
+	          fdimf(0.0f, 0.0f);
+	          fdiml(0.0l, 0.0l);
+	          fma(0.0, 0.0, 0.0);
+	          fmaf(0.0f, 0.0f, 0.0f);
+	          fmal(0.0l, 0.0l, 0.0l);
+	          fmax(0.0, 0.0);
+	          fmaxf(0.0f, 0.0f);
+	          fmaxl(0.0l, 0.0l);
+	          fmin(0.0, 0.0);
+	          fminf(0.0f, 0.0f);
+	          fminl(0.0l, 0.0l);
+	          hypot(0.0, 0.0);
+	          hypotf(0.0f, 0.0f);
+	          hypotl(0.0l, 0.0l);
+	          ilogb(0.0);
+	          ilogbf(0.0f);
+	          ilogbl(0.0l);
+	          lgamma(0.0);
+	          lgammaf(0.0f);
+	          lgammal(0.0l);
+	          llrint(0.0);
+	          llrintf(0.0f);
+	          llrintl(0.0l);
+	          llround(0.0);
+	          llroundf(0.0f);
+	          llroundl(0.0l);
+	          log1p(0.0);
+	          log1pf(0.0f);
+	          log1pl(0.0l);
+	          log2(0.0);
+	          log2f(0.0f);
+	          log2l(0.0l);
+	          logb(0.0);
+	          logbf(0.0f);
+	          logbl(0.0l);
+	          lrint(0.0);
+	          lrintf(0.0f);
+	          lrintl(0.0l);
+	          lround(0.0);
+	          lroundf(0.0f);
+	          lroundl(0.0l);
+	          nan(0);
+	          nanf(0);
+	          nanl(0);
+	          nearbyint(0.0);
+	          nearbyintf(0.0f);
+	          nearbyintl(0.0l);
+	          nextafter(0.0, 0.0);
+	          nextafterf(0.0f, 0.0f);
+	          nextafterl(0.0l, 0.0l);
+	          nexttoward(0.0, 0.0);
+	          nexttowardf(0.0f, 0.0f);
+	          nexttowardl(0.0l, 0.0l);
+	          remainder(0.0, 0.0);
+	          remainderf(0.0f, 0.0f);
+	          remainderl(0.0l, 0.0l);
+	          remquo(0.0, 0.0, 0);
+	          remquo(0.0f, 0.0f, 0);
+	          remquo(0.0l, 0.0l, 0);
+	          rint(0.0);
+	          rintf(0.0f);
+	          rintl(0.0l);
+	          round(0.0);
+	          roundf(0.0f);
+	          roundl(0.0l);
+	          scalbln(0.0, 0l);
+	          scalblnf(0.0f, 0l);
+	          scalblnl(0.0l, 0l);
+	          scalbn(0.0, 0);
+	          scalbnf(0.0f, 0);
+	          scalbnl(0.0l, 0);
+	          tgamma(0.0);
+	          tgammaf(0.0f);
+	          tgammal(0.0l);
+	          trunc(0.0);
+	          truncf(0.0f);
+	          truncl(0.0l);
+		 ],[glibcxx_cv_c99_math_tr1=yes], [glibcxx_cv_c99_math_tr1=no])
+  ])
+  AC_MSG_RESULT($glibcxx_cv_c99_math_tr1)
+  if test x"$glibcxx_cv_c99_math_tr1" = x"yes"; then
+    AC_DEFINE(_GLIBCXX_USE_C99_MATH_TR1, 1,
+              [Define if C99 functions or macros in <math.h> should be imported
+              in <tr1/cmath> in namespace std::tr1.])
+  fi
+
+  # Check for the existence of <inttypes.h> functions (NB: doesn't make
+  # sense if the previous check fails, per C99, 7.8/1).
+  ac_c99_inttypes_tr1=no;
+  if test x"$glibcxx_cv_c99_stdint_tr1" = x"yes"; then
+    AC_MSG_CHECKING([for ISO C99 support to TR1 in <inttypes.h>])
+    AC_TRY_COMPILE([#include <inttypes.h>],
+	           [intmax_t i, numer, denom, base;
+	            const char* s;
+	            char** endptr;
+	            intmax_t ret = imaxabs(i);
+	            imaxdiv_t dret = imaxdiv(numer, denom);
+	            ret = strtoimax(s, endptr, base);
+	            uintmax_t uret = strtoumax(s, endptr, base);
+        	   ],[ac_c99_inttypes_tr1=yes], [ac_c99_inttypes_tr1=no])
+  fi
+  AC_MSG_RESULT($ac_c99_inttypes_tr1)
+  if test x"$ac_c99_inttypes_tr1" = x"yes"; then
+    AC_DEFINE(_GLIBCXX_USE_C99_INTTYPES_TR1, 1,
+              [Define if C99 functions in <inttypes.h> should be imported in
+              <tr1/cinttypes> in namespace std::tr1.])
+  fi
+
+  # Check for the existence of the <stdbool.h> header.	
+  AC_CHECK_HEADERS(stdbool.h)
+
+  CXXFLAGS="$ac_save_CXXFLAGS"
+  AC_LANG_RESTORE
+])
+
+dnl
+dnl Check whether "dev/random" and "dev/urandom" are available for the
+dnl random_device of "TR1" (Chapter 5.1, "Random number generation").
+dnl
+AC_DEFUN([GLIBCXX_CHECK_RANDOM_TR1], [
+
+  AC_MSG_CHECKING([for "dev/random" and "dev/urandom" for TR1 random_device])
+  AC_CACHE_VAL(glibcxx_cv_random_tr1, [
+  AC_TRY_RUN([#include <stdio.h>
+	      int main()
+	      {
+                return !(fopen("/dev/random", "r")
+                         && fopen("/dev/urandom", "r"));
+	      }	      
+	     ],
+             [glibcxx_cv_random_tr1=yes], [glibcxx_cv_random_tr1=no],
+	     [glibcxx_cv_random_tr1=no])
+  ])
+  AC_MSG_RESULT($glibcxx_cv_random_tr1)
+  if test x"$glibcxx_cv_random_tr1" = x"yes"; then
+    AC_DEFINE(_GLIBCXX_USE_RANDOM_TR1, 1,
+              [Define if dev/random and dev/urandom are available for
+	       the random_device of TR1 (Chapter 5.1).])
+  fi
+
+])
+
+dnl
+dnl Check whether macros, etc are present for <system_error>
+dnl
+AC_DEFUN([GLIBCXX_CHECK_SYSTEM_ERROR], [
+
+m4_pushdef([n_syserr], [1])dnl
+m4_foreach([syserr], [EOWNERDEAD, ENOTRECOVERABLE, ENOLINK, EPROTO, ENODATA,
+		      ENOSR, ENOSTR, ETIME, EBADMSG, ECANCELED,
+		      EOVERFLOW, ENOTSUP, EIDRM, ETXTBSY],
+[m4_pushdef([SYSERR], m4_toupper(syserr))dnl
+AC_MSG_CHECKING([for syserr])
+AC_CACHE_VAL([glibcxx_cv_system_error[]n_syserr], [
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <errno.h>]],
+				   [int i = syserr;])],
+		  [glibcxx_cv_system_error[]n_syserr=yes],
+		  [glibcxx_cv_system_error[]n_syserr=no])
+])
+AC_MSG_RESULT([$glibcxx_cv_system_error[]n_syserr])
+if test x"$glibcxx_cv_system_error[]n_syserr" = x"yes"; then
+  AC_DEFINE([HAVE_]SYSERR, 1, [Define if ]syserr[ exists.])
+fi
+m4_define([n_syserr], m4_incr(n_syserr))dnl
+m4_popdef([SYSERR])dnl
+])
+m4_popdef([n_syserr])dnl
+])
+
+dnl
+dnl Check whether C++200x's standard layout types are supported. 
+dnl
+AC_DEFUN([GLIBCXX_CHECK_STANDARD_LAYOUT], [
+
+  AC_MSG_CHECKING([for ISO C++200x standard layout type support])
+  AC_CACHE_VAL(ac_standard_layout, [
+  AC_LANG_SAVE
+  AC_LANG_CPLUSPLUS
+  ac_test_CXXFLAGS="${CXXFLAGS+set}"
+  ac_save_CXXFLAGS="$CXXFLAGS"
+  CXXFLAGS='-std=gnu++0x'
+
+  AC_TRY_COMPILE([struct b
+                  {
+  		    bool t;
+
+		    // Need standard layout relaxation from POD
+		    private:	    
+  		    b& operator=(const b&);
+  		    b(const b&);
+		    };
+
+		    int main()
+		    {
+		      b tst1 = { false };
+		       return 0;
+		    }],,
+             [ac_standard_layout=yes], [ac_standard_layout=no])
+
+  CXXFLAGS="$ac_save_CXXFLAGS"
+  AC_LANG_RESTORE
+  ])
+  AC_MSG_RESULT($ac_standard_layout)
+  if test x"$ac_standard_layout" = x"yes"; then
+    AC_DEFINE(_GLIBCXX_USE_STANDARD_LAYOUT, 1,
+              [Define if standard layout types are supported in C++200x.])
+  fi
+])
+
+dnl
 dnl Check for what type of C headers to use.
 dnl
 dnl --enable-cheaders= [does stuff].
 dnl --disable-cheaders [does not do anything, really].
 dnl  +  Usage:  GLIBCXX_ENABLE_CHEADERS[(DEFAULT)]
-dnl       Where DEFAULT is either `c' or `c_std'.
+dnl       Where DEFAULT is either 'c' or 'c_std' or 'c_global'.
 dnl
 AC_DEFUN([GLIBCXX_ENABLE_CHEADERS], [
   GLIBCXX_ENABLE(cheaders,$1,[=KIND],
-    [construct "C" headers for g++], [permit c|c_std])
+    [construct "C" headers for g++], [permit c|c_std|c_global])
   AC_MSG_NOTICE("C" header strategy set to $enable_cheaders)
 
   C_INCLUDE_DIR='${glibcxx_srcdir}/include/'$enable_cheaders
 
+  # Allow overrides to configure.host here.
+  if test $enable_cheaders = c_global; then
+     c_compatibility=yes
+  fi
+
+  if test $enable_cheaders = c_global || test $enable_cheaders = c_std; then
+     c_extra=yes
+  fi
+
   AC_SUBST(C_INCLUDE_DIR)
   GLIBCXX_CONDITIONAL(GLIBCXX_C_HEADERS_C, test $enable_cheaders = c)
   GLIBCXX_CONDITIONAL(GLIBCXX_C_HEADERS_C_STD, test $enable_cheaders = c_std)
+  GLIBCXX_CONDITIONAL(GLIBCXX_C_HEADERS_C_GLOBAL, test $enable_cheaders = c_global)
   GLIBCXX_CONDITIONAL(GLIBCXX_C_HEADERS_COMPATIBILITY, test $c_compatibility = yes)
+  GLIBCXX_CONDITIONAL(GLIBCXX_C_HEADERS_EXTRA, test $c_extra = yes)
 ])
 
 
@@ -1044,64 +1518,31 @@ dnl
 dnl Default is generic.
 dnl
 AC_DEFUN([GLIBCXX_ENABLE_CLOCALE], [
-  AC_MSG_CHECKING([for C locale to use])
   GLIBCXX_ENABLE(clocale,auto,[@<:@=MODEL@:>@],
     [use MODEL for target locale package],
     [permit generic|gnu|ieee_1003.1-2001|yes|no|auto])
+
+  # Deal with gettext issues.  Default to not using it (=no) until we detect
+  # support for it later.  Let the user turn it off via --e/d, but let that
+  # default to on for easier handling.
+  USE_NLS=no
+  AC_ARG_ENABLE(nls,
+    AC_HELP_STRING([--enable-nls],[use Native Language Support (default)]),
+    [],
+    [enable_nls=yes])
   
-  # If they didn't use this option switch, or if they specified --enable
-  # with no specific model, we'll have to look for one.  If they
-  # specified --disable (???), do likewise.
+  # Either a known packaage, or "auto"
   if test $enable_clocale = no || test $enable_clocale = yes; then
      enable_clocale=auto
   fi
-
-  # Either a known package, or "auto"
   enable_clocale_flag=$enable_clocale
 
-  # Probe for locale support if no specific model is specified.
+  # Probe for locale model to use if none specified.
   # Default to "generic".
   if test $enable_clocale_flag = auto; then
     case ${target_os} in
       linux* | gnu* | kfreebsd*-gnu | knetbsd*-gnu)
-        AC_EGREP_CPP([_GLIBCXX_ok], [
-        #include <features.h>
-        #if __GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 2)
-          _GLIBCXX_ok
-        #endif
-        ], enable_clocale_flag=gnu, enable_clocale_flag=generic)
-
-        # Test for bugs early in glibc-2.2.x series
-          if test $enable_clocale_flag = gnu; then
-          AC_TRY_RUN([
-          #define _GNU_SOURCE 1
-          #include <locale.h>
-          #include <string.h>
-          #if __GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ > 2)
-          extern __typeof(newlocale) __newlocale;
-          extern __typeof(duplocale) __duplocale;
-          extern __typeof(strcoll_l) __strcoll_l;
-          #endif
-          int main()
-          {
-              const char __one[] = "Äuglein Augmen";
-              const char __two[] = "Äuglein";
-              int i;
-              int j;
-              __locale_t        loc;
-               __locale_t        loc_dup;
-              loc = __newlocale(1 << LC_ALL, "de_DE", 0);
-              loc_dup = __duplocale(loc);
-              i = __strcoll_l(__one, __two, loc);
-              j = __strcoll_l(__one, __two, loc_dup);
-              return 0;
-          }
-          ],
-          [enable_clocale_flag=gnu],[enable_clocale_flag=generic],
-          [enable_clocale_flag=generic])
-          fi
-
-        # ... at some point put __strxfrm_l tests in as well.
+        enable_clocale_flag=gnu	
         ;;
       darwin* | freebsd*)
         enable_clocale_flag=darwin
@@ -1112,16 +1553,81 @@ AC_DEFUN([GLIBCXX_ENABLE_CLOCALE], [
     esac
   fi
 
-  # Deal with gettext issues.  Default to not using it (=no) until we detect
-  # support for it later.  Let the user turn it off via --e/d, but let that
-  # default to on for easier handling.
-  USE_NLS=no
-  AC_ARG_ENABLE(nls,
-    AC_HELP_STRING([--enable-nls],[use Native Language Support (default)]),
-    [],
-    [enable_nls=yes])
+  # Sanity check model, and test for special functionality.
+  if test $enable_clocale_flag = gnu; then
+    AC_EGREP_CPP([_GLIBCXX_ok], [
+    #include <features.h>
+    #if __GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 2)
+      _GLIBCXX_ok
+    #endif
+    ], enable_clocale_flag=gnu, enable_clocale_flag=generic)
+
+    if test $enable_clocale = auto; then
+      # Test for bugs early in glibc-2.2.x series
+      AC_TRY_RUN([
+      #define _GNU_SOURCE 1
+      #include <locale.h>
+      #include <string.h>
+      #if __GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ > 2)
+      extern __typeof(newlocale) __newlocale;
+      extern __typeof(duplocale) __duplocale;
+      extern __typeof(strcoll_l) __strcoll_l;
+      #endif
+      int main()
+      {
+	const char __one[] = "Äuglein Augmen";
+        const char __two[] = "Äuglein";
+       	int i;
+        int j;
+        __locale_t        loc;
+        __locale_t        loc_dup;
+        loc = __newlocale(1 << LC_ALL, "de_DE", 0);
+        loc_dup = __duplocale(loc);
+        i = __strcoll_l(__one, __two, loc);
+        j = __strcoll_l(__one, __two, loc_dup);
+        return 0;
+      }
+      ],
+      [enable_clocale_flag=gnu],[enable_clocale_flag=generic],
+      [enable_clocale_flag=generic])
+    fi
+
+    # Set it to scream when it hurts.
+    ac_save_CFLAGS="$CFLAGS"	
+    CFLAGS="-Wimplicit-function-declaration -Werror"
+
+    # Use strxfrm_l if available.
+    AC_TRY_COMPILE([#define _GNU_SOURCE 1
+     		    #include <string.h>
+		    #include <locale.h>],
+	            [char s[128]; __locale_t loc; strxfrm_l(s, "C", 5, loc);], 
+                    AC_DEFINE(HAVE_STRXFRM_L, 1, 
+                    [Define if strxfrm_l is available in <string.h>.]),)
+    
+    # Use strerror_l if available.
+    AC_TRY_COMPILE([#define _GNU_SOURCE 1
+		    #include <string.h>
+		    #include <locale.h>],
+	            [__locale_t loc; strerror_l(5, loc);], 
+                    AC_DEFINE(HAVE_STRERROR_L, 1, 
+                    [Define if strerror_l is available in <string.h>.]),)
+
+    CFLAGS="$ac_save_CFLAGS"
+  fi
+
+  # Perhaps use strerror_r if available, and strerror_l isn't.
+  ac_save_CFLAGS="$CFLAGS"	
+  CFLAGS="-Wimplicit-function-declaration -Werror"
+  AC_TRY_COMPILE([#define _GNU_SOURCE 1
+	     	  #include <string.h>
+		  #include <locale.h>],
+	          [char s[128]; strerror_r(5, s, 128);], 
+                  AC_DEFINE(HAVE_STRERROR_R, 1, 
+                  [Define if strerror_r is available in <string.h>.]),)
+  CFLAGS="$ac_save_CFLAGS"
 
   # Set configure bits for specified locale package
+  AC_MSG_CHECKING([for C locale to use])
   case ${enable_clocale_flag} in
     generic)
       AC_MSG_RESULT(generic)
@@ -1269,7 +1775,7 @@ AC_DEFUN([GLIBCXX_ENABLE_ALLOCATOR], [
   if test $enable_libstdcxx_allocator_flag = auto; then
     case ${target_os} in
       linux* | gnu* | kfreebsd*-gnu | knetbsd*-gnu)
-        enable_libstdcxx_allocator_flag=mt
+        enable_libstdcxx_allocator_flag=new
         ;;
       *)
         enable_libstdcxx_allocator_flag=new
@@ -1322,6 +1828,28 @@ AC_DEFUN([GLIBCXX_ENABLE_CONCEPT_CHECKS], [
     AC_DEFINE(_GLIBCXX_CONCEPT_CHECKS, 1,
               [Define to use concept checking code from the boost libraries.])
   fi
+])
+
+dnl
+dnl Check for parallel mode pre-requisites, including OpenMP support.
+dnl
+dnl  +  Usage:  GLIBCXX_ENABLE_PARALLEL
+dnl
+AC_DEFUN([GLIBCXX_ENABLE_PARALLEL], [
+
+  enable_parallel=no;
+
+  # See if configured libgomp/omp.h exists. (libgomp may be in
+  # noconfigdirs but not explicitly disabled.)
+  if test -f $glibcxx_builddir/../libgomp/omp.h; then
+    enable_parallel=yes;
+  else
+    AC_MSG_NOTICE([$glibcxx_builddir/../libgomp/omp.h not found])
+  fi
+
+  AC_MSG_CHECKING([for parallel mode support])
+  AC_MSG_RESULT([$enable_parallel])
+  GLIBCXX_CONDITIONAL(ENABLE_PARALLEL, test $enable_parallel = yes)
 ])
 
 
@@ -1519,14 +2047,107 @@ dnl --disable-wchar_t leaves _GLIBCXX_USE_WCHAR_T undefined
 dnl  +  Usage:  GLIBCXX_ENABLE_WCHAR_T[(DEFAULT)]
 dnl       Where DEFAULT is either `yes' or `no'.
 dnl
-dnl Necessary support (probed along with C99 support) must also be present.
+dnl Necessary support must also be present.
 dnl
 AC_DEFUN([GLIBCXX_ENABLE_WCHAR_T], [
   GLIBCXX_ENABLE(wchar_t,$1,,[enable template specializations for 'wchar_t'])
-  if test x"$ac_c99_wchar" = x"yes" && test x"$enable_wchar_t" = x"yes"; then
+
+  # Test wchar.h for mbstate_t, which is needed for char_traits and fpos.
+  AC_CHECK_HEADERS(wchar.h, ac_has_wchar_h=yes, ac_has_wchar_h=no)
+  AC_MSG_CHECKING([for mbstate_t])
+  AC_TRY_COMPILE([#include <wchar.h>],
+  [mbstate_t teststate;],
+  have_mbstate_t=yes, have_mbstate_t=no)
+  AC_MSG_RESULT($have_mbstate_t)
+  if test x"$have_mbstate_t" = xyes; then
+    AC_DEFINE(HAVE_MBSTATE_T,1,[Define if mbstate_t exists in wchar.h.])
+  fi
+
+  # Test it always, for use in GLIBCXX_ENABLE_C99, together with
+  # ac_has_wchar_h.
+  AC_CHECK_HEADERS(wctype.h, ac_has_wctype_h=yes, ac_has_wctype_h=no)
+  
+  if test x"$enable_wchar_t" = x"yes"; then
+
+    AC_LANG_SAVE
+    AC_LANG_CPLUSPLUS
+    
+    if test x"$ac_has_wchar_h" = xyes &&
+       test x"$ac_has_wctype_h" = xyes; then
+      AC_TRY_COMPILE([#include <wchar.h>
+                      #include <stddef.h>
+                      wint_t i;
+		      long l = WEOF;
+		      long j = WCHAR_MIN;
+		      long k = WCHAR_MAX;
+                      namespace test
+                      {
+			using ::btowc;
+			using ::fgetwc;
+			using ::fgetws;
+			using ::fputwc;
+			using ::fputws;
+			using ::fwide;
+			using ::fwprintf; 
+			using ::fwscanf;
+			using ::getwc;
+			using ::getwchar;
+ 			using ::mbrlen; 
+			using ::mbrtowc; 
+			using ::mbsinit; 
+			using ::mbsrtowcs; 
+			using ::putwc;
+			using ::putwchar;
+			using ::swprintf; 
+			using ::swscanf; 
+			using ::ungetwc;
+			using ::vfwprintf; 
+			using ::vswprintf; 
+			using ::vwprintf; 
+			using ::wcrtomb; 
+			using ::wcscat; 
+			using ::wcschr; 
+			using ::wcscmp; 
+			using ::wcscoll; 
+			using ::wcscpy; 
+			using ::wcscspn; 
+			using ::wcsftime; 
+			using ::wcslen;
+			using ::wcsncat; 
+			using ::wcsncmp; 
+			using ::wcsncpy; 
+			using ::wcspbrk;
+			using ::wcsrchr; 
+			using ::wcsrtombs; 
+			using ::wcsspn; 
+			using ::wcsstr;
+			using ::wcstod; 
+			using ::wcstok; 
+			using ::wcstol;
+			using ::wcstoul; 
+			using ::wcsxfrm; 
+			using ::wctob; 
+			using ::wmemchr;
+			using ::wmemcmp;
+			using ::wmemcpy;
+			using ::wmemmove;
+			using ::wmemset;
+			using ::wprintf; 
+			using ::wscanf; 
+		      }
+		     ],[],[], [enable_wchar_t=no])
+    else
+      enable_wchar_t=no
+    fi
+
+    AC_LANG_RESTORE
+  fi
+
+  if test x"$enable_wchar_t" = x"yes"; then
     AC_DEFINE(_GLIBCXX_USE_WCHAR_T, 1,
               [Define if code specialized for wchar_t should be used.])
   fi
+
   AC_MSG_CHECKING([for enabled wchar_t specializations])
   AC_MSG_RESULT([$enable_wchar_t])
 ])
@@ -1547,10 +2168,7 @@ dnl Substs:
 dnl  glibcxx_PCHFLAGS
 dnl
 AC_DEFUN([GLIBCXX_ENABLE_PCH], [
-  AC_MSG_CHECKING([for enabled PCH])
   GLIBCXX_ENABLE(libstdcxx-pch,$1,,[build pre-compiled libstdc++ headers])
-  AC_MSG_RESULT([$enable_libstdcxx_pch])
-
   if test $enable_libstdcxx_pch = yes; then
     AC_CACHE_CHECK([for compiler with PCH support],
       [glibcxx_cv_prog_CXX_pch],
@@ -1576,6 +2194,9 @@ AC_DEFUN([GLIBCXX_ENABLE_PCH], [
     enable_libstdcxx_pch=$glibcxx_cv_prog_CXX_pch
   fi
 
+  AC_MSG_CHECKING([for enabled PCH])
+  AC_MSG_RESULT([$enable_libstdcxx_pch])
+
   GLIBCXX_CONDITIONAL(GLIBCXX_BUILD_PCH, test $enable_libstdcxx_pch = yes)
   if test $enable_libstdcxx_pch = yes; then
     glibcxx_PCHFLAGS="-include bits/stdc++.h"
@@ -1583,6 +2204,120 @@ AC_DEFUN([GLIBCXX_ENABLE_PCH], [
     glibcxx_PCHFLAGS=""
   fi
   AC_SUBST(glibcxx_PCHFLAGS)
+])
+
+
+dnl
+dnl Check for atomic builtins.
+dnl See:
+dnl http://gcc.gnu.org/onlinedocs/gcc/Atomic-Builtins.html#Atomic-Builtins
+dnl
+dnl This checks to see if the host supports the compiler-generated
+dnl builtins for atomic operations for various integral sizes. Note, this 
+dnl is intended to be an all-or-nothing switch, so all the atomic operations
+dnl that are used should be checked.
+dnl
+dnl Note:
+dnl libgomp and libgfortran do this with a link test, instead of an asm test.
+dnl see: CHECK_SYNC_FETCH_AND_ADD
+dnl
+dnl Defines:
+dnl  _GLIBCXX_ATOMIC_BUILTINS_1 
+dnl  _GLIBCXX_ATOMIC_BUILTINS_4
+dnl
+AC_DEFUN([GLIBCXX_ENABLE_ATOMIC_BUILTINS], [
+  AC_LANG_SAVE
+  AC_LANG_CPLUSPLUS
+  old_CXXFLAGS="$CXXFLAGS"
+  
+  # Compile unoptimized.
+  CXXFLAGS='-O0 -S'
+
+  # Fake what AC_TRY_COMPILE does, without linking as this is
+  # unnecessary for a builtins test.
+
+    cat > conftest.$ac_ext << EOF
+[#]line __oline__ "configure"
+int main()
+{
+  // NB: _Atomic_word not necessarily int. 
+  typedef int atomic_type;
+  atomic_type c1;
+  atomic_type c2;
+  const atomic_type c3(0);
+  __sync_fetch_and_add(&c1, c2);
+  __sync_val_compare_and_swap(&c1, c3, c2);
+  __sync_lock_test_and_set(&c1, c3);
+  __sync_lock_release(&c1);
+  __sync_synchronize();
+  return 0;
+}
+EOF
+
+    AC_MSG_CHECKING([for atomic builtins for int])
+    if AC_TRY_EVAL(ac_compile); then
+      if grep __sync_ conftest.s >/dev/null 2>&1 ; then
+        enable_atomic_builtinsi=no
+      else
+      AC_DEFINE(_GLIBCXX_ATOMIC_BUILTINS_4, 1,
+        [Define if builtin atomic operations for int are supported on this host.])
+        enable_atomic_builtinsi=yes
+      fi
+    fi
+    AC_MSG_RESULT($enable_atomic_builtinsi)
+    rm -f conftest*
+
+    cat > conftest.$ac_ext << EOF
+[#]line __oline__ "configure"
+int main()
+{
+  typedef bool atomic_type;
+  atomic_type c1;
+  atomic_type c2;
+  const atomic_type c3(0);
+  __sync_fetch_and_add(&c1, c2);
+  __sync_val_compare_and_swap(&c1, c3, c2);
+  __sync_lock_test_and_set(&c1, c3);
+  __sync_lock_release(&c1);
+  __sync_synchronize();
+  return 0;
+}
+EOF
+
+    AC_MSG_CHECKING([for atomic builtins for bool])
+    if AC_TRY_EVAL(ac_compile); then
+      if grep __sync_ conftest.s >/dev/null 2>&1 ; then
+        enable_atomic_builtinsb=no
+      else
+      AC_DEFINE(_GLIBCXX_ATOMIC_BUILTINS_1, 1,
+      [Define if builtin atomic operations for bool are supported on this host.])
+        enable_atomic_builtinsb=yes
+      fi
+    fi
+    AC_MSG_RESULT($enable_atomic_builtinsb)
+    rm -f conftest*
+
+  CXXFLAGS="$old_CXXFLAGS"
+  AC_LANG_RESTORE
+
+  # Set atomicity_dir to builtins if either of above tests pass.
+  if test $enable_atomic_builtinsi = yes || test $enable_atomic_builtinsb = yes ; then
+    atomicity_dir=cpu/generic/atomicity_builtins
+  fi
+
+  # If still generic, set to mutex.
+  if test $atomicity_dir = "cpu/generic" ; then
+    atomicity_dir=cpu/generic/atomicity_mutex
+    AC_MSG_WARN([No native atomic operations are provided for this platform.])
+      if test $target_thread_file = single; then
+        AC_MSG_WARN([They cannot be faked when thread support is disabled.])
+        AC_MSG_WARN([Thread-safety of certain classes is not guaranteed.])
+      else
+        AC_MSG_WARN([They will be faked using a mutex.])
+        AC_MSG_WARN([Performance of certain classes will degrade as a result.])
+      fi
+  fi
+
 ])
 
 
@@ -1629,14 +2364,16 @@ EOF
         enable_sjlj_exceptions=yes
       elif grep _Unwind_Resume conftest.s >/dev/null 2>&1 ; then
         enable_sjlj_exceptions=no
+      elif grep __cxa_end_cleanup conftest.s >/dev/null 2>&1 ; then
+        enable_sjlj_exceptions=no
       fi
     fi
     CXXFLAGS="$old_CXXFLAGS"
     rm -f conftest*
   fi
 
-  # This is a tad weird, for hysterical raisins.  We have to map enable/disable 
-  # to two different models.
+  # This is a tad weird, for hysterical raisins.  We have to map
+  # enable/disable to two different models.
   case $enable_sjlj_exceptions in
     yes)
       AC_DEFINE(_GLIBCXX_SJLJ_EXCEPTIONS, 1,
@@ -1652,6 +2389,38 @@ EOF
   esac
  AC_LANG_RESTORE
  AC_MSG_RESULT($ac_exception_model_name)
+])
+
+
+dnl
+dnl Allow visibility attributes to be used on namespaces, objects, etc.
+dnl
+dnl --enable-visibility enables attempt to use visibility attributes.
+dnl --disable-visibility turns off all use of visibility attributes.
+dnl  +  Usage:  GLIBCXX_ENABLE_VISIBILITY[(DEFAULT)]
+dnl       Where DEFAULT is 'yes'.
+dnl
+AC_DEFUN([GLIBCXX_ENABLE_VISIBILITY], [
+GLIBCXX_ENABLE(visibility,$1,,[enables visibility safe usage])
+
+if test x$enable_visibility = xyes ; then
+  dnl all hail libgfortran
+  dnl Check whether the target supports hidden visibility.
+  AC_CACHE_CHECK([whether the target supports hidden visibility],
+		 glibcxx_cv_have_attribute_visibility, [
+  save_CFLAGS="$CFLAGS"
+  CFLAGS="$CFLAGS -Werror"
+  AC_TRY_COMPILE([void __attribute__((visibility("hidden"))) foo(void) { }],
+		 [], glibcxx_cv_have_attribute_visibility=yes,
+		 glibcxx_cv_have_attribute_visibility=no)
+  CFLAGS="$save_CFLAGS"])
+  if test $glibcxx_cv_have_attribute_visibility = no; then
+    enable_visibility=no
+  fi
+fi
+
+GLIBCXX_CONDITIONAL(ENABLE_VISIBILITY, test $enable_visibility = yes)
+AC_MSG_NOTICE([visibility supported: $enable_visibility])
 ])
 
 
@@ -1672,20 +2441,38 @@ AC_DEFUN([GLIBCXX_ENABLE_SYMVERS], [
 
 GLIBCXX_ENABLE(symvers,$1,[=STYLE],
   [enables symbol versioning of the shared library],
-  [permit yes|no|gnu])
+  [permit yes|no|gnu|gnu-versioned-namespace|darwin|darwin-export])
 
 # If we never went through the GLIBCXX_CHECK_LINKER_FEATURES macro, then we
 # don't know enough about $LD to do tricks...
 AC_REQUIRE([GLIBCXX_CHECK_LINKER_FEATURES])
-# FIXME  The following test is too strict, in theory.
-if test $enable_shared = no ||
-        test "x$LD" = x ||
-        test x$glibcxx_gnu_ld_version = x; then
-  enable_symvers=no
+
+# Turn a 'yes' into a suitable default.
+if test x$enable_symvers = xyes ; then
+  if test $enable_shared = no || test "x$LD" = x || test x$gcc_no_link = xyes; then
+    enable_symvers=no
+  else
+    if test $with_gnu_ld = yes ; then
+      enable_symvers=gnu
+    else
+      case ${target_os} in
+        darwin*)
+	  enable_symvers=darwin ;;
+        *)
+          enable_symvers=no ;;
+      esac
+    fi
+  fi
 fi
 
-# Check to see if libgcc_s exists, indicating that shared libgcc is possible.
-if test $enable_symvers != no; then
+# Check to see if 'darwin' or 'darwin-export' can win.
+if test x$enable_symvers = xdarwin-export ; then
+    enable_symvers=darwin
+fi
+
+# Check to see if 'gnu' can win.
+if test $enable_symvers = gnu || test $enable_symvers = gnu-versioned-namespace; then
+  # Check to see if libgcc_s exists, indicating that shared libgcc is possible.
   AC_MSG_CHECKING([for shared libgcc])
   ac_save_CFLAGS="$CFLAGS"
   CFLAGS=' -lgcc_s'
@@ -1709,44 +2496,31 @@ changequote([,])dnl
     fi
   fi
   AC_MSG_RESULT($glibcxx_shared_libgcc)
-fi
 
-# For GNU ld, we need at least this version.  The format is described in
-# GLIBCXX_CHECK_LINKER_FEATURES above.
-glibcxx_min_gnu_ld_version=21400
-# XXXXXXXXXXX glibcxx_gnu_ld_version=21390
+  # For GNU ld, we need at least this version.  The format is described in
+  # GLIBCXX_CHECK_LINKER_FEATURES above.
+  glibcxx_min_gnu_ld_version=21400
 
-# Check to see if unspecified "yes" value can win, given results above.
-# Change "yes" into either "no" or a style name.
-if test $enable_symvers = yes; then
-  if test $with_gnu_ld = yes &&
-     test $glibcxx_shared_libgcc = yes;
-  then
-    if test $glibcxx_gnu_ld_version -ge $glibcxx_min_gnu_ld_version ; then
-      enable_symvers=gnu
-    else
-      # The right tools, the right setup, but too old.  Fallbacks?
-      AC_MSG_WARN(=== Linker version $glibcxx_gnu_ld_version is too old for)
-      AC_MSG_WARN(=== full symbol versioning support in this release of GCC.)
-      AC_MSG_WARN(=== You would need to upgrade your binutils to version)
-      AC_MSG_WARN(=== $glibcxx_min_gnu_ld_version or later and rebuild GCC.)
-      if test $glibcxx_gnu_ld_version -ge 21200 ; then
-        # Globbing fix is present, proper block support is not.
-        dnl AC_MSG_WARN([=== Dude, you are soooo close.  Maybe we can fake it.])
-        dnl enable_symvers=???
-        AC_MSG_WARN([=== Symbol versioning will be disabled.])
-        enable_symvers=no
-      else
-        # 2.11 or older.
-        AC_MSG_WARN([=== Symbol versioning will be disabled.])
-        enable_symvers=no
-      fi
-    fi
-  else
+  # If no shared libgcc, can't win.
+  if test $glibcxx_shared_libgcc != yes; then
+      AC_MSG_WARN([=== You have requested GNU symbol versioning, but])
+      AC_MSG_WARN([=== you are not building a shared libgcc_s.])
+      AC_MSG_WARN([=== Symbol versioning will be disabled.])
+      enable_symvers=no
+  elif test $with_gnu_ld != yes ; then
     # just fail for now
-    AC_MSG_WARN([=== You have requested some kind of symbol versioning, but])
-    AC_MSG_WARN([=== either you are not using a supported linker, or you are])
-    AC_MSG_WARN([=== not building a shared libgcc_s (which is required).])
+    AC_MSG_WARN([=== You have requested GNU symbol versioning, but])
+    AC_MSG_WARN([=== you are not using the GNU linker.])
+    AC_MSG_WARN([=== Symbol versioning will be disabled.])
+    enable_symvers=no
+  elif test $glibcxx_ld_is_gold = yes ; then
+    : All versions of gold support symbol versioning.
+  elif test $glibcxx_gnu_ld_version -lt $glibcxx_min_gnu_ld_version ; then
+    # The right tools, the right setup, but too old.  Fallbacks?
+    AC_MSG_WARN(=== Linker version $glibcxx_gnu_ld_version is too old for)
+    AC_MSG_WARN(=== full symbol versioning support in this release of GCC.)
+    AC_MSG_WARN(=== You would need to upgrade your binutils to version)
+    AC_MSG_WARN(=== $glibcxx_min_gnu_ld_version or later and rebuild GCC.)
     AC_MSG_WARN([=== Symbol versioning will be disabled.])
     enable_symvers=no
   fi
@@ -1755,33 +2529,63 @@ fi
 # Everything parsed; figure out what file to use.
 case $enable_symvers in
   no)
-    SYMVER_MAP=config/linker-map.dummy
+    SYMVER_FILE=config/abi/pre/none.ver
     ;;
   gnu)
-    SYMVER_MAP=config/linker-map.gnu
-    AC_DEFINE(_GLIBCXX_SYMVER, 1, 
-              [Define to use symbol versioning in the shared library.])
+    SYMVER_FILE=config/abi/pre/gnu.ver
+    AC_DEFINE(_GLIBCXX_SYMVER_GNU, 1, 
+              [Define to use GNU versioning in the shared library.])
+    ;;
+  gnu-versioned-namespace)
+    SYMVER_FILE=config/abi/pre/gnu-versioned-namespace.ver
+    AC_DEFINE(_GLIBCXX_SYMVER_GNU_NAMESPACE, 1, 
+              [Define to use GNU namespace versioning in the shared library.])
+    ;;
+  darwin)
+    SYMVER_FILE=config/abi/pre/gnu.ver
+    AC_DEFINE(_GLIBCXX_SYMVER_DARWIN, 1, 
+              [Define to use darwin versioning in the shared library.])
     ;;
 esac
 
-AH_VERBATIM([_GLIBCXX_SYMVERextra],
-[/* Define symbol versioning in assember directives. If symbol
-   versioning is being used, and the assembler supports this kind of
-   thing, then use it.
-   
-   NB: _GLIBCXX_AT_AT is a hack to work around quoting issues in m4. */
+if test x$enable_symvers != xno ; then
+  AC_DEFINE(_GLIBCXX_SYMVER, 1,
+	 [Define to use symbol versioning in the shared library.])
+fi
 
-#if _GLIBCXX_SYMVER
-  #define _GLIBCXX_ASM_SYMVER(cur, old, version) \
-   asm (".symver " #cur "," #old _GLIBCXX_AT_AT #version);
-#else
-  #define _GLIBCXX_ASM_SYMVER(cur, old, version)
-#endif])
-
-AC_SUBST(SYMVER_MAP)
+AC_SUBST(SYMVER_FILE)
 AC_SUBST(port_specific_symbol_files)
-GLIBCXX_CONDITIONAL(GLIBCXX_BUILD_VERSIONED_SHLIB, test $enable_symvers != no)
+GLIBCXX_CONDITIONAL(ENABLE_SYMVERS, test $enable_symvers != no)
+GLIBCXX_CONDITIONAL(ENABLE_SYMVERS_GNU, test $enable_symvers = gnu)
+GLIBCXX_CONDITIONAL(ENABLE_SYMVERS_GNU_NAMESPACE, test $enable_symvers = gnu-versioned-namespace)
+GLIBCXX_CONDITIONAL(ENABLE_SYMVERS_DARWIN, test $enable_symvers = darwin)
 AC_MSG_NOTICE(versioning on shared library symbols is $enable_symvers)
+
+# Now, set up compatibility support, if any.
+# In addition, need this to deal with std::size_t mangling in
+# src/compatibility.cc.  In a perfect world, could use
+# typeid(std::size_t).name()[0] to do direct substitution.
+AC_MSG_CHECKING([for size_t as unsigned int])
+ac_save_CFLAGS="$CFLAGS"
+CFLAGS="-Werror"
+AC_TRY_COMPILE(, [__SIZE_TYPE__* stp; unsigned int* uip; stp = uip;], 
+	         [glibcxx_size_t_is_i=yes], [glibcxx_size_t_is_i=no])
+CFLAGS=$ac_save_CFLAGS
+if test "$glibcxx_size_t_is_i" = yes; then
+  AC_DEFINE(_GLIBCXX_SIZE_T_IS_UINT, 1, [Define if size_t is unsigned int.])
+fi
+AC_MSG_RESULT([$glibcxx_size_t_is_i])
+
+AC_MSG_CHECKING([for ptrdiff_t as int])
+ac_save_CFLAGS="$CFLAGS"
+CFLAGS="-Werror"
+AC_TRY_COMPILE(, [__PTRDIFF_TYPE__* ptp; int* ip; ptp = ip;], 
+	         [glibcxx_ptrdiff_t_is_i=yes], [glibcxx_ptrdiff_t_is_i=no])
+CFLAGS=$ac_save_CFLAGS
+if test "$glibcxx_ptrdiff_t_is_i" = yes; then
+  AC_DEFINE(_GLIBCXX_PTRDIFF_T_IS_INT, 1, [Define if ptrdiff_t is int.])
+fi
+AC_MSG_RESULT([$glibcxx_ptrdiff_t_is_i])
 ])
 
 
@@ -1835,8 +2639,6 @@ AC_DEFUN([GLIBCXX_ENABLE_THREADS], [
 # be used in projects which are not available under the GNU Public License
 # but which still want to provide support for the GNU gettext functionality.
 # Please note that the actual code is *not* freely available.
-
-# serial 1
 AC_DEFUN([AC_LC_MESSAGES], [
   AC_CHECK_HEADER(locale.h, [
     AC_CACHE_CHECK([for LC_MESSAGES], ac_cv_val_LC_MESSAGES,
@@ -1849,5 +2651,6 @@ AC_DEFUN([AC_LC_MESSAGES], [
   ])
 ])
 
+# Macros from the top-level gcc directory.
+m4_include([../config/tls.m4])
 
-dnl vim:et:ts=2:sw=2

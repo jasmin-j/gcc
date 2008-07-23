@@ -16,7 +16,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software Foundation,
-   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, USA.  */
 
 #ifndef _MD5_H
 #define _MD5_H 1
@@ -26,6 +26,8 @@
 #if defined HAVE_LIMITS_H || _LIBC
 # include <limits.h>
 #endif
+
+#include "ansidecl.h"
 
 /* The following contortions are an attempt to use the C preprocessor
    to determine an unsigned integral type that is 32 bits wide.  An
@@ -37,6 +39,7 @@
 #ifdef _LIBC
 # include <sys/types.h>
 typedef u_int32_t md5_uint32;
+typedef uintptr_t md5_uintptr;
 #else
 #  define INT_MAX_32_BITS 2147483647
 
@@ -64,6 +67,13 @@ typedef u_int32_t md5_uint32;
 #   endif
 #  endif
 # endif
+/* We have to make a guess about the integer type equivalent in size
+   to pointers which should always be correct.  */
+typedef unsigned long int md5_uintptr;
+#endif
+
+#ifdef __cplusplus
+extern "C" {
 #endif
 
 /* Structure to save state of computation between the single steps.  */
@@ -76,7 +86,7 @@ struct md5_ctx
 
   md5_uint32 total[2];
   md5_uint32 buflen;
-  char buffer[128];
+  char buffer[128] ATTRIBUTE_ALIGNED_ALIGNOF(md5_uint32);
 };
 
 /*
@@ -131,5 +141,9 @@ extern int md5_stream (FILE *stream, void *resblock);
    output yields to the wanted ASCII representation of the message
    digest.  */
 extern void *md5_buffer (const char *buffer, size_t len, void *resblock);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

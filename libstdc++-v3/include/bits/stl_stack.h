@@ -1,6 +1,7 @@
 // Stack implementation -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -58,26 +59,13 @@
  *  You should not attempt to use it directly.
  */
 
-#ifndef _STACK_H
-#define _STACK_H 1
+#ifndef _STL_STACK_H
+#define _STL_STACK_H 1
 
 #include <bits/concept_check.h>
 #include <debug/debug.h>
 
-namespace std
-{
-  // Forward declarations of operators == and <, needed for friend
-  // declaration.
-  template<typename _Tp, typename _Sequence = deque<_Tp> >
-    class stack;
-
-  template<typename _Tp, typename _Seq>
-    inline bool
-    operator==(const stack<_Tp,_Seq>& __x, const stack<_Tp,_Seq>& __y);
-
-  template<typename _Tp, typename _Seq>
-    inline bool
-    operator<(const stack<_Tp,_Seq>& __x, const stack<_Tp,_Seq>& __y);
+_GLIBCXX_BEGIN_NAMESPACE(std)
 
   /**
    *  @brief  A standard container giving FILO behavior.
@@ -106,7 +94,7 @@ namespace std
    *  push, @c pop, and @c top, which are standard %stack/FILO
    *  operations.
   */
-  template<typename _Tp, typename _Sequence>
+  template<typename _Tp, typename _Sequence = deque<_Tp> >
     class stack
     {
       // concept requirements
@@ -139,9 +127,19 @@ namespace std
       /**
        *  @brief  Default constructor creates no elements.
        */
+#ifndef __GXX_EXPERIMENTAL_CXX0X__
       explicit
       stack(const _Sequence& __c = _Sequence())
-      : c(__c) {}
+      : c(__c) { }
+#else
+      explicit
+      stack(const _Sequence& __c)
+      : c(__c) { }
+
+      explicit
+      stack(_Sequence&& __c = _Sequence())
+      : c(std::move(__c)) { }
+#endif
 
       /**
        *  Returns true if the %stack is empty.
@@ -190,6 +188,17 @@ namespace std
       push(const value_type& __x)
       { c.push_back(__x); }
 
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      void
+      push(value_type&& __x)
+      { c.push_back(std::move(__x)); }
+
+      template<typename... _Args>
+        void
+        emplace(_Args&&... __args)
+	{ c.emplace_back(std::forward<_Args>(__args)...); }
+#endif
+
       /**
        *  @brief  Removes first element.
        *
@@ -207,6 +216,12 @@ namespace std
 	__glibcxx_requires_nonempty();
 	c.pop_back();
       }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      void
+      swap(stack&& __s)
+      { c.swap(__s.c); }
+#endif
     };
 
   /**
@@ -267,6 +282,24 @@ namespace std
     inline bool
     operator>=(const stack<_Tp, _Seq>& __x, const stack<_Tp, _Seq>& __y)
     { return !(__x < __y); }
-} // namespace std
 
-#endif /* _STACK_H */
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+  template<typename _Tp, typename _Seq>
+    inline void
+    swap(stack<_Tp, _Seq>& __x, stack<_Tp, _Seq>& __y)
+    { __x.swap(__y); }
+
+  template<typename _Tp, typename _Seq>
+    inline void
+    swap(stack<_Tp, _Seq>&& __x, stack<_Tp, _Seq>& __y)
+    { __x.swap(__y); }
+
+  template<typename _Tp, typename _Seq>
+    inline void
+    swap(stack<_Tp, _Seq>& __x, stack<_Tp, _Seq>&& __y)
+    { __x.swap(__y); }
+#endif
+
+_GLIBCXX_END_NAMESPACE
+
+#endif /* _STL_STACK_H */

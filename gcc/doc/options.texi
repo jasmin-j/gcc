@@ -1,11 +1,11 @@
-@c Copyright (C) 2003, 2004, 2005 Free Software Foundation, Inc.
+@c Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
 @c This is part of the GCC manual.
 @c For copying conditions, see the file gcc.texi.
 
 @node Options
 @chapter Option specification files
 @cindex option specification files
-@cindex @samp{opts.sh}
+@cindex @samp{optc-gen.awk}
 
 Most GCC command-line options are described by special option
 definition files, the names of which conventionally end in
@@ -29,14 +29,17 @@ The files can contain the following types of record:
 
 @itemize @bullet
 @item
-A language definition record.  These records have two fields: the
-string @samp{Language} and the name of the language.  Once a language
+A language definition record.  These records have two fields: the
+string @samp{Language} and the name of the language.  Once a language
 has been declared in this way, it can be used as an option property.
 @xref{Option properties}.
 
 @item
-An option definition record.  These records have the following fields:
+A target specific save record to save additional information. These
+records have two fields: the string @samp{TargetSave}, and a
+declaration type to go in the @code{cl_target_option} structure.
 
+@item
 @enumerate
 @item
 the name of the option, with the leading ``-'' removed
@@ -62,11 +65,11 @@ tab forms the help text.  This allows you to elaborate on what type
 of argument the option takes.
 
 @item
-A target mask record.  These records have one field of the form
-@samp{Mask(@var{x})}.  The options-processing script will automatically
+A target mask record.  These records have one field of the form
+@samp{Mask(@var{x})}.  The options-processing script will automatically
 allocate a bit in @code{target_flags} (@pxref{Run-time Target}) for
 each mask name @var{x} and set the macro @code{MASK_@var{x}} to the
-appropriate bitmask.  It will also declare a @code{TARGET_@var{x}}
+appropriate bitmask.  It will also declare a @code{TARGET_@var{x}}
 macro that has the value 1 when bit @code{MASK_@var{x}} is set and
 0 otherwise.
 
@@ -100,6 +103,12 @@ The option does not have a ``no-'' form.  All options beginning with
 ``f'', ``W'' or ``m'' are assumed to have a ``no-'' form unless this
 property is used.
 
+@item Negative(@var{othername})
+The option will turn off another option @var{othername}, which is the
+the option name with the leading ``-'' removed.  This chain action will
+propagate through the @code{Negative} property of the option to be
+turned off.
+
 @item Joined
 @itemx Separate
 The option takes a mandatory argument.  @code{Joined} indicates
@@ -118,15 +127,35 @@ This property cannot be used alongside @code{Joined} or @code{Separate}.
 @item UInteger
 The option's argument is a non-negative integer.  The option parser
 will check and convert the argument before passing it to the relevant
-option handler.
+option handler.  @code{UInteger} should also be used on options like
+@code{-falign-loops} where both @code{-falign-loops} and
+@code{-falign-loops}=@var{n} are supported to make sure the saved
+options are given a full integer.
 
 @item Var(@var{var})
-The option controls an integer variable @var{var}.  If the option has
-the @code{UInteger} property, the option parser will set @var{var} to
-the value of the user-specified argument.  Otherwise the option is
-assumed to be an on/off switch that is active when @var{var} is nonzero.
-In this case, the option parser will set @var{var} to 1 when the positive
-form of the option is used and 0 when the ``no-'' form is used.
+The state of this option should be stored in variable @var{var}.
+The way that the state is stored depends on the type of option:
+
+@itemize @bullet
+@item
+If the option uses the @code{Mask} or @code{InverseMask} properties,
+@var{var} is the integer variable that contains the mask.
+
+@item
+If the option is a normal on/off switch, @var{var} is an integer
+variable that is nonzero when the option is enabled.  The options
+parser will set the variable to 1 when the positive form of the
+option is used and 0 when the ``no-'' form is used.
+
+@item
+If the option takes an argument and has the @code{UInteger} property,
+@var{var} is an integer variable that stores the value of the argument.
+
+@item
+Otherwise, if the option takes an argument, @var{var} is a pointer to
+the argument string.  The pointer will be null if the argument is optional
+and wasn't given.
+@end itemize
 
 The option-processing script will usually declare @var{var} in
 @file{options.c} and leave it to be zero-initialized at start-up time.
@@ -146,22 +175,28 @@ The variable specified by the @code{Var} property already exists.
 No definition should be added to @file{options.c} in response to
 this option record.
 
-You should use this property if an earlier option has already declared
-the variable or if the variable is declared outside @file{options.c}.
+You should use this property only if the variable is declared outside
+@file{options.c}.
 
 @item Init(@var{value})
 The variable specified by the @code{Var} property should be statically
 initialized to @var{value}.
 
 @item Mask(@var{name})
-The option is associated with a bit in the @code{target_flags} variable
-(@pxref{Run-time Target}) and is active when that bit is set.
+The option is associated with a bit in the @code{target_flags}
+variable (@pxref{Run-time Target}) and is active when that bit is set.
+You may also specify @code{Var} to select a variable other than
+@code{target_flags}.
 
-The options-processing script will automatically allocate a unique
-bit for the option and set the macro @code{MASK_@var{name}} to the
-appropriate bitmask.  It will also declare a @code{TARGET_@var{name}}
-macro that has the value 1 when the option is active and 0 otherwise.
-You can disable this behavior using @code{MaskExists}.
+The options-processing script will automatically allocate a unique bit
+for the option.  If the option is attached to @samp{target_flags},
+the script will set the macro @code{MASK_@var{name}} to the appropriate
+bitmask.  It will also declare a @code{TARGET_@var{name}} macro that has
+the value 1 when the option is active and 0 otherwise.  If you use @code{Var}
+to attach the option to a different variable, the associated macros are
+called @code{OPTION_MASK_@var{name}} and @code{OPTION_@var{name}} respectively.
+
+You can disable automatic bit allocation using @code{MaskExists}.
 
 @item InverseMask(@var{othername})
 @itemx InverseMask(@var{othername}, @var{thisname})
@@ -185,4 +220,16 @@ The state of the option should be printed by @option{-fverbose-asm}.
 @item Undocumented
 The option is deliberately missing documentation and should not
 be included in the @option{--help} output.
+
+@item Condition(@var{cond})
+The option should only be accepted if preprocessor condition
+@var{cond} is true.  Note that any C declarations associated with the
+option will be present even if @var{cond} is false; @var{cond} simply
+controls whether the option is accepted and whether it is printed in
+the @option{--help} output.
+
+@item Save
+Build the @code{cl_target_option} structure to hold a copy of the
+option, add the functions @code{cl_target_option_save} and
+@code{cl_target_option_restore} to save and restore the options.
 @end table

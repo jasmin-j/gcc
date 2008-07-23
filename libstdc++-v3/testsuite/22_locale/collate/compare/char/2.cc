@@ -1,6 +1,9 @@
+// { dg-require-namedlocale "" }
+
 // 2001-08-15 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007 
+// Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +18,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.4.1.1 collate members
@@ -33,9 +36,9 @@ void test02()
 
   // basic construction
   locale loc_c = locale::classic();
-  locale loc_us = __gnu_test::try_named_locale("en_US");
-  locale loc_fr = __gnu_test::try_named_locale("fr_FR");
-  locale loc_de = __gnu_test::try_named_locale("de_DE");
+  locale loc_us = locale("en_US");
+  locale loc_fr = locale("fr_FR");
+  locale loc_de = locale("de_DE");
   VERIFY( loc_c != loc_de );
   VERIFY( loc_us != loc_fr );
   VERIFY( loc_us != loc_de );
@@ -46,19 +49,17 @@ void test02()
 
   // int compare(const charT*, const charT*, const charT*, const charT*) const
 
-  const char* strlit1 = "monkey picked tikuanyin oolong";
   const char* strlit3 = "Äuglein Augment"; // "C" == "Augment Äuglein"
   const char* strlit4 = "Base baß Baß Bast"; // "C" == "Base baß Baß Bast"
 
   int i1;
   int i2;
-  int size1 = char_traits<char>::length(strlit1) - 1;
   int size3 = char_traits<char>::length(strlit3) - 1;
   int size4 = char_traits<char>::length(strlit4) - 1;
 
   i1 = coll_de.compare(strlit3, strlit3 + size3, strlit3, strlit3 + 7);
   VERIFY ( i1 == 1 );
-  i1 = coll_de.compare(strlit3, strlit3 + 7, strlit3, strlit3 + size1);
+  i1 = coll_de.compare(strlit3, strlit3 + 7, strlit3, strlit3 + size3);
   VERIFY ( i1 == -1 );
   i1 = coll_de.compare(strlit3, strlit3 + 7, strlit3, strlit3 + 7);
   VERIFY ( i1 == 0 );

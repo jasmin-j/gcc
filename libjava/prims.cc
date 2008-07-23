@@ -1,6 +1,6 @@
 // prims.cc - Code for core of runtime environment.
 
-/* Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005  Free Software Foundation
+/* Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007  Free Software Foundation
 
    This file is part of libgcj.
 
@@ -32,6 +32,11 @@ details.  */
 #include <java/lang/ThreadGroup.h>
 #endif
 
+#ifdef INTERPRETER
+#include <jvmti.h>
+#include "jvmti-int.h"
+#endif
+
 #ifndef DISABLE_GETENV_PROPERTIES
 #include <ctype.h>
 #include <java-props.h>
@@ -49,12 +54,13 @@ details.  */
 #include <java/lang/ArrayIndexOutOfBoundsException.h>
 #include <java/lang/ArithmeticException.h>
 #include <java/lang/ClassFormatError.h>
+#include <java/lang/ClassNotFoundException.h>
 #include <java/lang/InternalError.h>
 #include <java/lang/NegativeArraySizeException.h>
+#include <java/lang/NoClassDefFoundError.h>
 #include <java/lang/NullPointerException.h>
 #include <java/lang/OutOfMemoryError.h>
 #include <java/lang/System.h>
-#include <java/lang/VMThrowable.h>
 #include <java/lang/VMClassLoader.h>
 #include <java/lang/reflect/Modifier.h>
 #include <java/io/PrintStream.h>
@@ -63,6 +69,12 @@ details.  */
 #include <gnu/gcj/runtime/ExtensionClassLoader.h>
 #include <gnu/gcj/runtime/FinalizerThread.h>
 #include <execution.h>
+
+#ifdef INTERPRETER
+#include <gnu/classpath/jdwp/Jdwp.h>
+#include <gnu/classpath/jdwp/VMVirtualMachine.h>
+#endif // INTERPRETER
+
 #include <gnu/java/lang/MainThread.h>
 
 #ifdef USE_LTDL
@@ -72,6 +84,9 @@ details.  */
 // Execution engine for compiled code.
 _Jv_CompiledEngine _Jv_soleCompiledEngine;
 
+// Execution engine for code compiled with -findirect-classes
+_Jv_IndirectCompiledEngine _Jv_soleIndirectCompiledEngine;
+
 // We allocate a single OutOfMemoryError exception which we keep
 // around for use if we run out of memory.
 static java::lang::OutOfMemoryError *no_memory;
@@ -79,7 +94,7 @@ static java::lang::OutOfMemoryError *no_memory;
 // Number of bytes in largest array object we create.  This could be
 // increased to the largest size_t value, so long as the appropriate
 // functions are changed to take a size_t argument instead of jint.
-#define MAX_OBJECT_SIZE ((1<<31) - 1)
+#define MAX_OBJECT_SIZE (((size_t)1<<31) - 1)
 
 // Properties set at compile time.
 const char **_Jv_Compiler_Properties = NULL;
@@ -93,6 +108,23 @@ property_pair *_Jv_Environment_Properties;
 // Stash the argv pointer to benefit native libraries that need it.
 const char **_Jv_argv;
 int _Jv_argc;
+
+// Debugging options
+static bool remoteDebug = false;
+#ifdef INTERPRETER
+static char defaultJdwpOptions[] = "";
+static char *jdwpOptions = defaultJdwpOptions;
+
+// Typedefs for JVMTI agent functions.
+typedef jint jvmti_agent_onload_func (JavaVM *vm, char *options,
+                                      void *reserved);
+typedef jint jvmti_agent_onunload_func (JavaVM *vm);
+
+// JVMTI agent function pointers.
+static jvmti_agent_onload_func *jvmti_agentonload = NULL;
+static jvmti_agent_onunload_func *jvmti_agentonunload = NULL;
+static char *jvmti_agent_opts;
+#endif // INTERPRETER
 
 // Argument support.
 int
@@ -168,7 +200,6 @@ SIGNAL_HANDLER (catch_fpe)
 }
 #endif
 
-
 
 jboolean
 _Jv_equalUtf8Consts (const Utf8Const* a, const Utf8Const *b)
@@ -236,9 +267,123 @@ _Jv_equaln (Utf8Const *a, jstring str, jint n)
   return true;
 }
 
+// Determines whether the given Utf8Const object contains
+// a type which is primitive or some derived form of it, eg.
+// an array or multi-dimensional array variant.
+jboolean
+_Jv_isPrimitiveOrDerived(const Utf8Const *a)
+{
+  unsigned char *aptr = (unsigned char *) a->data;
+  unsigned char *alimit = aptr + a->length;
+  int ac = UTF8_GET(aptr, alimit);
+
+  // Skips any leading array marks.
+  while (ac == '[')
+    ac = UTF8_GET(aptr, alimit);
+
+  // There should not be another character. This implies that
+  // the type name is only one character long.
+  if (UTF8_GET(aptr, alimit) == -1)
+    switch ( ac )
+      {
+        case 'Z':
+        case 'B':
+        case 'C':
+        case 'S':
+        case 'I':
+        case 'J':
+        case 'F':
+        case 'D':
+          return true;
+        default:
+          break;
+       }
+
+   return false;
+}
+
+// Find out whether two _Jv_Utf8Const candidates contain the same
+// classname.
+// The method is written to handle the different formats of classnames.
+// Eg. "Ljava/lang/Class;", "Ljava.lang.Class;", "java/lang/Class" and
+// "java.lang.Class" will be seen as equal.
+// Warning: This function is not smart enough to declare "Z" and "boolean"
+// and similar cases as equal (and is not meant to be used this way)!
+jboolean
+_Jv_equalUtf8Classnames (const Utf8Const *a, const Utf8Const *b)
+{
+  // If the class name's length differs by two characters
+  // it is possible that we have candidates which are given
+  // in the two different formats ("Lp1/p2/cn;" vs. "p1/p2/cn")
+  switch (a->length - b->length)
+    {
+      case -2:
+      case 0:
+      case 2:
+        break;
+      default:
+        return false;
+    }
+
+  unsigned char *aptr = (unsigned char *) a->data;
+  unsigned char *alimit = aptr + a->length;
+  unsigned char *bptr = (unsigned char *) b->data;
+  unsigned char *blimit = bptr + b->length;
+
+  if (alimit[-1] == ';')
+    alimit--;
+
+  if (blimit[-1] == ';')
+    blimit--;
+
+  int ac = UTF8_GET(aptr, alimit);
+  int bc = UTF8_GET(bptr, blimit);
+
+  // Checks whether both strings have the same amount of leading [ characters.
+  while (ac == '[')
+    {
+      if (bc == '[')
+        {
+          ac = UTF8_GET(aptr, alimit);
+          bc = UTF8_GET(bptr, blimit);
+          continue;
+        }
+
+      return false;
+    }
+
+  // Skips leading L character.
+  if (ac == 'L')
+    ac = UTF8_GET(aptr, alimit);
+        
+  if (bc == 'L')
+    bc = UTF8_GET(bptr, blimit);
+
+  // Compares the remaining characters.
+  while (ac != -1 && bc != -1)
+    {
+      // Replaces package separating dots with slashes.
+      if (ac == '.')
+        ac = '/';
+
+      if (bc == '.')
+        bc = '/';
+      
+      // Now classnames differ if there is at least one non-matching
+      // character.
+      if (ac != bc)
+        return false;
+
+      ac = UTF8_GET(aptr, alimit);
+      bc = UTF8_GET(bptr, blimit);
+    }
+
+  return (ac == bc);
+}
+
 /* Count the number of Unicode chars encoded in a given Ut8 string. */
 int
-_Jv_strLengthUtf8(char* str, int len)
+_Jv_strLengthUtf8(const char* str, int len)
 {
   unsigned char* ptr;
   unsigned char* limit;
@@ -259,7 +404,7 @@ _Jv_strLengthUtf8(char* str, int len)
  * This returns the same hash value as specified or java.lang.String.hashCode.
  */
 jint
-_Jv_hashUtf8String (char* str, int len)
+_Jv_hashUtf8String (const char* str, int len)
 {
   unsigned char* ptr = (unsigned char*) str;
   unsigned char* limit = ptr + len;
@@ -276,7 +421,7 @@ _Jv_hashUtf8String (char* str, int len)
 }
 
 void
-_Jv_Utf8Const::init(char *s, int len)
+_Jv_Utf8Const::init(const char *s, int len)
 {
   ::memcpy (data, s, len);
   data[len] = 0;
@@ -285,7 +430,7 @@ _Jv_Utf8Const::init(char *s, int len)
 }
 
 _Jv_Utf8Const *
-_Jv_makeUtf8Const (char* s, int len)
+_Jv_makeUtf8Const (const char* s, int len)
 {
   if (len < 0)
     len = strlen (s);
@@ -331,6 +476,7 @@ _Jv_Abort (const char *, const char *, int, const char *message)
 #else
   fprintf (stderr, "libgcj failure: %s\n", message);
 #endif
+  fflush (stderr);
   abort ();
 }
 
@@ -358,6 +504,22 @@ _Jv_ThrowNullPointerException ()
 {
   throw new java::lang::NullPointerException;
 }
+
+// Resolve an entry in the constant pool and return the target
+// address.
+void *
+_Jv_ResolvePoolEntry (jclass this_class, jint index)
+{
+  _Jv_Constants *pool = &this_class->constants;
+
+  if ((pool->tags[index] & JV_CONSTANT_ResolvedFlag) != 0)
+    return pool->data[index].field->u.addr;
+
+  JvSynchronize sync (this_class);
+  return (_Jv_Linker::resolve_pool_entry (this_class, index))
+    .field->u.addr;
+}
+
 
 // Explicitly throw a no memory exception.
 // The collector calls this when it encounters an out-of-memory condition.
@@ -418,6 +580,9 @@ _Jv_AllocObjectNoInitNoFinalizer (jclass klass)
 jobject
 _Jv_AllocObjectNoFinalizer (jclass klass)
 {
+  if (_Jv_IsPhantomClass(klass) )
+    throw new java::lang::NoClassDefFoundError(klass->getName());
+
   _Jv_InitClass (klass);
   jint size = klass->size ();
   jobject obj = (jobject) _Jv_AllocObj (size, klass);
@@ -496,6 +661,11 @@ _Jv_AllocPtrFreeObject (jclass klass)
 jobjectArray
 _Jv_NewObjectArray (jsize count, jclass elementClass, jobject init)
 {
+  // Creating an array of an unresolved type is impossible. So we throw
+  // the NoClassDefFoundError.
+  if ( _Jv_IsPhantomClass(elementClass) )
+    throw new java::lang::NoClassDefFoundError(elementClass->getName());
+
   if (__builtin_expect (count < 0, false))
     throw new java::lang::NegativeArraySizeException;
 
@@ -623,6 +793,11 @@ _Jv_NewMultiArray (jclass type, jint dimensions, jint *sizes)
 jobject
 _Jv_NewMultiArray (jclass array_type, jint dimensions, ...)
 {
+  // Creating an array of an unresolved type is impossible. So we throw
+  // the NoClassDefFoundError.
+  if (_Jv_IsPhantomClass(array_type))
+    throw new java::lang::NoClassDefFoundError(array_type->getName());
+
   va_list args;
   jint sizes[dimensions];
   va_start (args, dimensions);
@@ -655,7 +830,7 @@ DECLARE_PRIM_TYPE(double)
 DECLARE_PRIM_TYPE(void)
 
 void
-_Jv_InitPrimClass (jclass cl, char *cname, char sig, int len)
+_Jv_InitPrimClass (jclass cl, const char *cname, char sig, int len)
 {    
   using namespace java::lang::reflect;
 
@@ -750,7 +925,28 @@ _Jv_FindClassFromSignature (char *sig, java::lang::ClassLoader *loader,
   return result;
 }
 
-
+
+jclass
+_Jv_FindClassFromSignatureNoException (char *sig, java::lang::ClassLoader *loader,
+                                       char **endp)
+{
+  jclass klass;
+
+  try
+    {
+      klass = _Jv_FindClassFromSignature(sig, loader, endp);
+    }
+  catch (java::lang::NoClassDefFoundError *ncdfe)
+    {
+      return NULL;
+    }
+  catch (java::lang::ClassNotFoundException *cnfe)
+    {
+      return NULL;
+    }
+
+  return klass;
+}
 
 JArray<jstring> *
 JvConvertArgv (int argc, const char **argv)
@@ -841,10 +1037,6 @@ next_property_value (char *s, size_t *length)
   while (isspace (*s))
     s++;
 
-  // If we've reached the end, return NULL.
-  if (*s == 0)
-    return NULL;
-
   // Determine the length of the property value.
   while (s[l] != 0
 	 && ! isspace (s[l])
@@ -867,12 +1059,17 @@ static void
 process_gcj_properties ()
 {
   char *props = getenv("GCJ_PROPERTIES");
-  char *p = props;
-  size_t length;
-  size_t property_count = 0;
 
   if (NULL == props)
     return;
+
+  // Later on we will write \0s into this string.  It is simplest to
+  // just duplicate it here.
+  props = strdup (props);
+
+  char *p = props;
+  size_t length;
+  size_t property_count = 0;
 
   // Whip through props quickly in order to count the number of
   // property values.
@@ -937,6 +1134,27 @@ namespace gcj
   _Jv_Utf8Const *finit_name;
   
   bool runtimeInitialized = false;
+  
+  // When true, print debugging information about class loading.
+  bool verbose_class_flag;
+  
+  // When true, enable the bytecode verifier and BC-ABI type verification. 
+  bool verifyClasses = true;
+
+  // Thread stack size specified by the -Xss runtime argument.
+  size_t stack_size = 0;
+
+  // Start time of the VM
+  jlong startTime = 0;
+
+  // Arguments passed to the VM
+  JArray<jstring>* vmArgs;
+
+  // Currently loaded classes
+  jint loadedClasses = 0;
+
+  // Unloaded classes
+  jlong unloadedClasses = 0;
 }
 
 // We accept all non-standard options accepted by Sun's java command,
@@ -961,8 +1179,21 @@ parse_x_arg (char* option_string)
     }
   else if (! strcmp (option_string, "debug"))
     {
-      // FIXME: add JDWP/JVMDI support
+      remoteDebug = true;
     }
+#ifdef INTERPRETER
+  else if (! strncmp (option_string, "runjdwp:", 8))
+    {
+      if (strlen (option_string) > 8)
+	  jdwpOptions = &option_string[8];
+      else
+	{
+	  fprintf (stderr,
+		   "libgcj: argument required for JDWP options");
+	  return -1;
+	}
+    }
+#endif // INTERPRETER
   else if (! strncmp (option_string, "bootclasspath:", 14))
     {
       // FIXME: add a parse_bootclasspath_arg function
@@ -1023,7 +1254,7 @@ parse_x_arg (char* option_string)
     }
   else if (! strncmp (option_string, "ss", 2))
     {
-      // FIXME: set thread stack size
+      _Jv_SetStackSize (option_string + 2);
     }
   else if (! strcmp (option_string, "X:+UseAltSigs"))
     {
@@ -1041,7 +1272,11 @@ parse_x_arg (char* option_string)
     {
       // FIXME: fail if impossible to share class data
     }
-
+  else
+    {
+      // Unrecognized.
+      return -1;
+    }
   return 0;
 }
 
@@ -1147,6 +1382,64 @@ parse_verbose_args (char* option_string,
   return 0;
 }
 
+#ifdef INTERPRETER
+// This function loads the agent functions for JVMTI from the library indicated
+// by name.  It returns a negative value on failure, the value of which
+// indicates where ltdl failed, it also prints an error message.
+static jint
+load_jvmti_agent (const char *name)
+{
+#ifdef USE_LTDL
+  if (lt_dlinit ())
+    {
+      fprintf (stderr, 
+              "libgcj: Error in ltdl init while loading agent library.\n");
+      return -1;
+    }
+ 
+  lt_dlhandle lib = lt_dlopenext (name);
+  if (!lib)
+    {
+      fprintf (stderr, 
+               "libgcj: Error opening agent library.\n");
+      return -2;
+    }
+
+  if (lib)
+    {
+      jvmti_agentonload 
+        = (jvmti_agent_onload_func *) lt_dlsym (lib, "Agent_OnLoad");
+ 
+      if (!jvmti_agentonload)
+        {
+          fprintf (stderr, 
+                   "libgcj: Error finding agent function in library %s.\n",
+                   name);
+          lt_dlclose (lib);
+          lib = NULL;
+          return -4;
+        }
+      else
+        {
+          jvmti_agentonunload
+            = (jvmti_agent_onunload_func *) lt_dlsym (lib, "Agent_OnUnload");
+	   
+          return 0;
+        }
+    }
+  else
+    {
+      fprintf (stderr, "libgcj: Library %s not found in library path.\n", name);
+      return -3;
+    }
+
+#endif /* USE_LTDL */
+
+  // If LTDL cannot be used, return an error code indicating this.
+  return -99;
+}
+#endif // INTERPRETER
+
 static jint
 parse_init_args (JvVMInitArgs* vm_args)
 {
@@ -1172,6 +1465,7 @@ parse_init_args (JvVMInitArgs* vm_args)
   for (int i = 0; i < vm_args->nOptions; ++i)
     {
       char* option_string = vm_args->options[i].optionString;
+      
       if (! strcmp (option_string, "vfprintf")
 	  || ! strcmp (option_string, "exit")
 	  || ! strcmp (option_string, "abort"))
@@ -1199,21 +1493,116 @@ parse_init_args (JvVMInitArgs* vm_args)
 
 	  continue;
 	}
-      else if (vm_args->ignoreUnrecognized)
-        {
-          if (option_string[0] == '_')
-            parse_x_arg (option_string + 1);
-          else if (! strncmp (option_string, "-X", 2))
-            parse_x_arg (option_string + 2);
+#ifdef INTERPRETER
+      else if (! strncmp (option_string, "-agentlib", sizeof ("-agentlib") - 1))
+	{
+          char *strPtr;
+	                                              
+          if (strlen(option_string) > (sizeof ("-agentlib:") - 1))
+            strPtr = &option_string[sizeof ("-agentlib:") - 1];
           else
             {
-            unknown_option:
+              fprintf (stderr,
+                "libgcj: Malformed agentlib argument %s: expected lib name\n",
+                option_string);
+              return -1;
+            }
+
+          // These are optional arguments to pass to the agent library.
+          jvmti_agent_opts = strchr (strPtr, '=');
+   
+          if (! strncmp (strPtr, "jdwp", 4))
+            {    	
+              // We want to run JDWP here so set the correct variables.
+              remoteDebug = true;
+              jdwpOptions = ++jvmti_agent_opts;
+            }
+          else
+            {
+              jint nameLength;
+   
+              if (jvmti_agent_opts == NULL)
+                nameLength = strlen (strPtr);
+              else
+                {
+                  nameLength = jvmti_agent_opts - strPtr;
+                  jvmti_agent_opts++;
+                }
+               
+              char lib_name[nameLength + 3 + 1];
+              strcpy (lib_name, "lib");
+              strncat (lib_name, strPtr, nameLength);
+      
+              jint result = load_jvmti_agent (lib_name);
+      
+              if (result < 0)
+	        {
+	          return -1;
+	        }
+
+	      // Mark JVMTI active
+	      JVMTI::enabled = true;
+            }
+    
+          continue;
+	}
+      else if (! strncmp (option_string, "-agentpath:", 
+                          sizeof ("-agentpath:") - 1))
+	{
+          char *strPtr;
+	                                              
+          if (strlen(option_string) > 10)
+            strPtr = &option_string[10];
+          else
+            {
+              fprintf (stderr,
+                "libgcj: Malformed agentlib argument %s: expected lib path\n",
+                option_string);
+              return -1;
+            }
+		
+          // These are optional arguments to pass to the agent library.
+          jvmti_agent_opts = strchr (strPtr, '=');
+    
+          jint nameLength;
+   
+          if (jvmti_agent_opts == NULL)
+            nameLength = strlen (strPtr);
+          else
+            {
+              nameLength = jvmti_agent_opts - strPtr;
+              jvmti_agent_opts++;
+            }
+    
+          char lib_name[nameLength + 3 + 1];
+          strcpy (lib_name, "lib");
+          strncat (lib_name, strPtr, nameLength);
+          jint result = load_jvmti_agent (strPtr);
+
+          if (result < 0)
+            {
+              return -1;
+            }
+	
+	  // Mark JVMTI active
+	  JVMTI::enabled = true;
+          continue;
+	}
+#endif // INTERPRETER
+      else
+        {
+	  int r = -1;
+          if (option_string[0] == '_')
+	    r = parse_x_arg (option_string + 1);
+	  else if (! strncmp (option_string, "-X", 2))
+	    r = parse_x_arg (option_string + 2);
+
+	  if (r == -1 && ! vm_args->ignoreUnrecognized)
+            {
               fprintf (stderr, "libgcj: unknown option: %s\n", option_string);
               return -1;
             }
 	}
-      else
-        goto unknown_option;
     }
   return 0;
 }
@@ -1227,6 +1616,7 @@ _Jv_CreateJavaVM (JvVMInitArgs* vm_args)
     return -1;
 
   runtimeInitialized = true;
+  startTime = _Jv_platform_gettimeofday();
 
   jint result = parse_init_args (vm_args);
   if (result < 0)
@@ -1269,10 +1659,6 @@ _Jv_CreateJavaVM (JvVMInitArgs* vm_args)
   _Jv_InitPrimClass (&_Jv_doubleClass,  "double",  'D', 8);
   _Jv_InitPrimClass (&_Jv_voidClass,    "void",    'V', 0);
 
-  // Turn stack trace generation off while creating exception objects.
-  _Jv_InitClass (&java::lang::VMThrowable::class$);
-  java::lang::VMThrowable::trace_enabled = 0;
-  
   // We have to initialize this fairly early, to avoid circular class
   // initialization.  In particular we want to start the
   // initialization of ClassLoader before we start the initialization
@@ -1287,8 +1673,6 @@ _Jv_CreateJavaVM (JvVMInitArgs* vm_args)
 
   no_memory = new java::lang::OutOfMemoryError;
 
-  java::lang::VMThrowable::trace_enabled = 1;
-
 #ifdef USE_LTDL
   LTDL_SET_PRELOADED_SYMBOLS ();
 #endif
@@ -1296,6 +1680,10 @@ _Jv_CreateJavaVM (JvVMInitArgs* vm_args)
   _Jv_platform_initialize ();
 
   _Jv_JNI_Init ();
+
+#ifdef INTERPRETER
+  _Jv_JVMTI_Init ();
+#endif
 
   _Jv_GCInitializeFinalizers (&::gnu::gcj::runtime::FinalizerThread::finalizerReady);
 
@@ -1310,6 +1698,8 @@ _Jv_CreateJavaVM (JvVMInitArgs* vm_args)
   catch (java::lang::VirtualMachineError *ignore)
     {
     }
+
+  runtimeInitialized = true;
 
   return 0;
 }
@@ -1331,6 +1721,18 @@ _Jv_RunMain (JvVMInitArgs *vm_args, jclass klass, const char *name, int argc,
 	  fprintf (stderr, "libgcj: couldn't create virtual machine\n");
 	  exit (1);
 	}
+      
+      if (vm_args == NULL)
+	gcj::vmArgs = JvConvertArgv(0, NULL);
+      else
+	{
+	  const char* vmArgs[vm_args->nOptions];
+	  const char** vmPtr = vmArgs;
+	  struct _Jv_VMOption* optionPtr = vm_args->options;
+	  for (int i = 0; i < vm_args->nOptions; ++i)
+	    *vmPtr++ = (*optionPtr++).optionString;
+	  gcj::vmArgs = JvConvertArgv(vm_args->nOptions, vmArgs);
+	}
 
       // Get the Runtime here.  We want to initialize it before searching
       // for `main'; that way it will be set up if `main' is a JNI method.
@@ -1346,8 +1748,32 @@ _Jv_RunMain (JvVMInitArgs *vm_args, jclass klass, const char *name, int argc,
       if (klass)
 	main_thread = new MainThread (klass, arg_vec);
       else
-	main_thread = new MainThread (JvNewStringLatin1 (name),
+	main_thread = new MainThread (JvNewStringUTF (name),
 				      arg_vec, is_jar);
+      _Jv_AttachCurrentThread (main_thread);
+
+#ifdef INTERPRETER
+      // Start JVMTI if an agent function has been found.
+      if (jvmti_agentonload)
+        (*jvmti_agentonload) (_Jv_GetJavaVM (), jvmti_agent_opts, NULL);
+
+      // Start JDWP
+      if (remoteDebug)
+	{
+	  using namespace gnu::classpath::jdwp;
+	  VMVirtualMachine::initialize ();
+	  Jdwp *jdwp = new Jdwp ();
+	  jdwp->setDaemon (true);	  
+	  jdwp->configure (JvNewStringLatin1 (jdwpOptions));
+	  jdwp->start ();
+
+	  // Wait for JDWP to initialize and start
+	  jdwp->join ();
+	}
+      // Send VMInit
+      if (JVMTI_REQUESTED_EVENT (VMInit))
+	_Jv_JVMTI_PostEvent (JVMTI_EVENT_VM_INIT, main_thread);
+#endif // INTERPRETER
     }
   catch (java::lang::Throwable *t)
     {
@@ -1355,17 +1781,30 @@ _Jv_RunMain (JvVMInitArgs *vm_args, jclass klass, const char *name, int argc,
         ("Exception during runtime initialization"));
       t->printStackTrace();
       if (runtime)
-	runtime->exit (1);
+	java::lang::Runtime::exitNoChecksAccessor (1);
       // In case the runtime creation failed.
       ::exit (1);
     }
 
-  _Jv_AttachCurrentThread (main_thread);
   _Jv_ThreadRun (main_thread);
-  _Jv_ThreadWait ();
 
-  int status = (int) java::lang::ThreadGroup::had_uncaught_exception;
-  runtime->exit (status);
+#ifdef INTERPRETER
+  // Send VMDeath
+  if (JVMTI_REQUESTED_EVENT (VMDeath))
+    {
+      java::lang::Thread *thread = java::lang::Thread::currentThread ();
+      JNIEnv *jni_env = _Jv_GetCurrentJNIEnv ();
+      _Jv_JVMTI_PostEvent (JVMTI_EVENT_VM_DEATH, thread, jni_env);
+    }
+
+  // Run JVMTI AgentOnUnload if it exists and an agent is loaded.
+  if (jvmti_agentonunload)
+    (*jvmti_agentonunload) (_Jv_GetJavaVM ());
+#endif // INTERPRETER
+
+  // If we got here then something went wrong, as MainThread is not
+  // supposed to terminate.
+  ::exit (1);
 }
 
 void
@@ -1381,11 +1820,17 @@ JvRunMain (jclass klass, int argc, const char **argv)
   _Jv_RunMain (klass, NULL, argc, argv, false);
 }
 
+void
+JvRunMainName (const char *name, int argc, const char **argv)
+{
+  _Jv_RunMain (NULL, name, argc, argv, false);
+}
+
 
 
 // Parse a string and return a heap size.
 static size_t
-parse_heap_size (const char *spec)
+parse_memory_size (const char *spec)
 {
   char *end;
   unsigned long val = strtoul (spec, &end, 10);
@@ -1401,7 +1846,7 @@ parse_heap_size (const char *spec)
 void
 _Jv_SetInitialHeapSize (const char *arg)
 {
-  size_t size = parse_heap_size (arg);
+  size_t size = parse_memory_size (arg);
   _Jv_GCSetInitialHeapSize (size);
 }
 
@@ -1410,11 +1855,16 @@ _Jv_SetInitialHeapSize (const char *arg)
 void
 _Jv_SetMaximumHeapSize (const char *arg)
 {
-  size_t size = parse_heap_size (arg);
+  size_t size = parse_memory_size (arg);
   _Jv_GCSetMaximumHeapSize (size);
 }
 
-
+void
+_Jv_SetStackSize (const char *arg)
+{
+  size_t size = parse_memory_size (arg);
+  gcj::stack_size = size;
+}
 
 void *
 _Jv_Malloc (jsize size)
@@ -1535,8 +1985,53 @@ _Jv_CheckAccess (jclass self_klass, jclass other_klass, jint flags)
   return ((self_klass == other_klass)
 	  || ((flags & Modifier::PUBLIC) != 0)
 	  || (((flags & Modifier::PROTECTED) != 0)
-	      && _Jv_IsAssignableFromSlow (other_klass, self_klass))
+	      && _Jv_IsAssignableFromSlow (self_klass, other_klass))
 	  || (((flags & Modifier::PRIVATE) == 0)
 	      && _Jv_ClassNameSamePackage (self_klass->name,
 					   other_klass->name)));
+}
+
+// Prepend GCJ_VERSIONED_LIBDIR to a module search path stored in a C
+// char array, if the path is not already prefixed by
+// GCJ_VERSIONED_LIBDIR.  Return a newly JvMalloc'd char buffer.  The
+// result should be freed using JvFree.
+char*
+_Jv_PrependVersionedLibdir (char* libpath)
+{
+  char* retval = 0;
+
+  if (libpath && libpath[0] != '\0')
+    {
+      if (! strncmp (libpath,
+                     GCJ_VERSIONED_LIBDIR,
+                     sizeof (GCJ_VERSIONED_LIBDIR) - 1))
+        {
+          // LD_LIBRARY_PATH is already prefixed with
+          // GCJ_VERSIONED_LIBDIR.
+          retval = (char*) _Jv_Malloc (strlen (libpath) + 1);
+          strcpy (retval, libpath);
+        }
+      else
+        {
+          // LD_LIBRARY_PATH is not prefixed with
+          // GCJ_VERSIONED_LIBDIR.
+	  char path_sep[2];
+	  path_sep[0] = (char) _Jv_platform_path_separator;
+	  path_sep[1] = '\0';
+          jsize total = ((sizeof (GCJ_VERSIONED_LIBDIR) - 1)
+			 + 1 /* path separator */ + strlen (libpath) + 1);
+          retval = (char*) _Jv_Malloc (total);
+          strcpy (retval, GCJ_VERSIONED_LIBDIR);
+          strcat (retval, path_sep);
+          strcat (retval, libpath);
+        }
+    }
+  else
+    {
+      // LD_LIBRARY_PATH was not specified or is empty.
+      retval = (char*) _Jv_Malloc (sizeof (GCJ_VERSIONED_LIBDIR));
+      strcpy (retval, GCJ_VERSIONED_LIBDIR);
+    }
+
+  return retval;
 }

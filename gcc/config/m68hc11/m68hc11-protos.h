@@ -1,5 +1,5 @@
 /* Prototypes for exported functions defined in m68hc11.c
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005
+   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
    Free Software Foundation, Inc.
    Contributed by Stephane Carrez (stcarrez@nerim.fr)
 
@@ -7,7 +7,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 extern int m68hc11_override_options (void);
@@ -98,6 +97,7 @@ extern int memory_indexed_operand (rtx, enum machine_mode);
 extern void m68hc11_split_logical (enum machine_mode, int, rtx*);
 
 extern int m68hc11_register_indirect_p (rtx, enum machine_mode);
+extern int m68hc11_valid_addressing_p (rtx, enum machine_mode, int);
 
 extern int symbolic_memory_operand (rtx, enum machine_mode);
 
@@ -111,7 +111,7 @@ extern void m68hc11_init_cumulative_args (CUMULATIVE_ARGS*, tree, rtx);
 extern rtx m68hc11_function_arg (const CUMULATIVE_ARGS* ,
                                  enum machine_mode,
                                  tree, int);
-extern int m68hc11_function_arg_padding (enum machine_mode, tree);
+extern int m68hc11_function_arg_padding (enum machine_mode, const_tree);
 
 extern void m68hc11_function_epilogue (FILE*,int);
 
@@ -123,6 +123,7 @@ extern int m68hc11_page0_symbol_p (rtx x);
 
 extern HOST_WIDE_INT m68hc11_min_offset;
 extern HOST_WIDE_INT m68hc11_max_offset;
+extern int m68hc11_addr_mode;
 
 #endif /* HAVE_MACHINE_MODES */
 #endif /* RTX_CODE */

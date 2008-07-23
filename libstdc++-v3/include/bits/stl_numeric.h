@@ -1,6 +1,7 @@
 // Numeric functions implementation -*- C++ -*-
 
-// Copyright (C) 2001, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -61,10 +62,47 @@
 #ifndef _STL_NUMERIC_H
 #define _STL_NUMERIC_H 1
 
+#include <bits/concept_check.h>
 #include <debug/debug.h>
 
-namespace std
-{
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
+  /**
+   *  @brief  Create a range of sequentially increasing values.
+   *
+   *  For each element in the range @p [first,last) assigns @p value and
+   *  increments @p value as if by @p ++value.
+   *
+   *  @param  first  Start of range.
+   *  @param  last  End of range.
+   *  @param  value  Starting value.
+   *  @return  Nothing.
+   */
+  template<typename _ForwardIterator, typename _Tp>
+    void
+    iota(_ForwardIterator __first, _ForwardIterator __last, _Tp __value)
+    {
+      // concept requirements
+      __glibcxx_function_requires(_Mutable_ForwardIteratorConcept<
+				  _ForwardIterator>)
+      __glibcxx_function_requires(_ConvertibleConcept<_Tp,
+	    typename iterator_traits<_ForwardIterator>::value_type>)
+      __glibcxx_requires_valid_range(__first, __last);
+
+      for (; __first != __last; ++__first)
+	{
+	  *__first = __value;
+	  ++__value;
+	}
+    }
+
+_GLIBCXX_END_NAMESPACE
+
+#endif
+
+_GLIBCXX_BEGIN_NESTED_NAMESPACE(std, _GLIBCXX_STD_P)
 
   /**
    *  @brief  Accumulate values in a range.
@@ -78,7 +116,7 @@ namespace std
    *  @return  The final sum.
    */
   template<typename _InputIterator, typename _Tp>
-    _Tp
+    inline _Tp
     accumulate(_InputIterator __first, _InputIterator __last, _Tp __init)
     {
       // concept requirements
@@ -104,7 +142,7 @@ namespace std
    *  @return  The final sum.
    */
   template<typename _InputIterator, typename _Tp, typename _BinaryOperation>
-    _Tp
+    inline _Tp
     accumulate(_InputIterator __first, _InputIterator __last, _Tp __init,
 	       _BinaryOperation __binary_op)
     {
@@ -132,7 +170,7 @@ namespace std
    *  @return  The final inner product.
    */
   template<typename _InputIterator1, typename _InputIterator2, typename _Tp>
-    _Tp
+    inline _Tp
     inner_product(_InputIterator1 __first1, _InputIterator1 __last1,
 		  _InputIterator2 __first2, _Tp __init)
     {
@@ -163,8 +201,8 @@ namespace std
    *  @return  The final inner product.
    */
   template<typename _InputIterator1, typename _InputIterator2, typename _Tp,
-	    typename _BinaryOperation1, typename _BinaryOperation2>
-    _Tp
+	   typename _BinaryOperation1, typename _BinaryOperation2>
+    inline _Tp
     inner_product(_InputIterator1 __first1, _InputIterator1 __last1,
 		  _InputIterator2 __first2, _Tp __init,
 		  _BinaryOperation1 __binary_op1,
@@ -335,6 +373,6 @@ namespace std
       return ++__result;
     }
 
-} // namespace std
+_GLIBCXX_END_NESTED_NAMESPACE
 
 #endif /* _STL_NUMERIC_H */

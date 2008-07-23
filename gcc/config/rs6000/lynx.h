@@ -1,5 +1,5 @@
 /* Definitions for Rs6000 running LynxOS.
-   Copyright (C) 1995, 1996, 2000, 2002, 2003, 2004
+   Copyright (C) 1995, 1996, 2000, 2002, 2003, 2004, 2005, 2007
    Free Software Foundation, Inc.
    Contributed by David Henkel-Wallace, Cygnus Support (gumby@cygnus.com)
    Rewritten by Adam Nemet, LynuxWorks Inc.
@@ -8,7 +8,7 @@
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -17,9 +17,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the
-   Free Software Foundation, 59 Temple Place - Suite 330, Boston,
-   MA 02111-1307, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 /* Override the definition in sysv4.h.  */
 
@@ -49,13 +48,12 @@
 #define CC1_SPEC \
 "%{G*} %{mno-sdata:-msdata=none} \
  %{maltivec:-mabi=altivec} \
- -mno-svr4-struct-return"
+ -maix-struct-return"
 
 #undef ASM_SPEC
 #define ASM_SPEC \
 "%(asm_cpu) \
- %{.s: %{mregnames} %{mno-regnames}} \
- %{.S: %{mregnames} %{mno-regnames}}"
+ %{,assembler|,assembler-with-cpp: %{mregnames} %{mno-regnames}}"
 
 #undef STARTFILE_SPEC
 #undef ENDFILE_SPEC
@@ -106,3 +104,20 @@
 
 #undef HAVE_AS_TLS
 #define HAVE_AS_TLS 0
+
+#ifdef CRT_BEGIN
+/* This function is part of crtbegin*.o which is at the beginning of
+   the link and is called from .fini which is usually toward the end
+   of the executable.  Make it longcall so that we don't limit the
+   text size of the executables to 32M.  */
+
+static void __do_global_dtors_aux (void) __attribute__ ((longcall));
+#endif	/* CRT_BEGIN */
+
+#ifdef CRT_END
+/* Similarly here.  This function resides in crtend*.o which is toward
+   to end of the link and is called from .init which is at the
+   beginning.  */
+
+static void __do_global_ctors_aux (void) __attribute__ ((longcall));
+#endif	/* CRT_END */

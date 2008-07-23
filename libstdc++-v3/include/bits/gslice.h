@@ -1,6 +1,6 @@
 // The template and inlines for the -*- C++ -*- gslice class.
 
-// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2004
+// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2004, 2005, 2006
 // Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
@@ -16,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -28,20 +28,20 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
-// Written by Gabriel Dos Reis <Gabriel.Dos-Reis@DPTMaths.ENS-Cachan.Fr>
-
 /** @file gslice.h
  *  This is an internal header file, included by other library headers.
  *  You should not attempt to use it directly.
  */
+
+// Written by Gabriel Dos Reis <Gabriel.Dos-Reis@DPTMaths.ENS-Cachan.Fr>
 
 #ifndef _GSLICE_H
 #define _GSLICE_H 1
 
 #pragma GCC system_header
 
-namespace std
-{
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
   /**
    *  @brief  Class defining multi-dimensional subset of an array.
    *
@@ -64,7 +64,7 @@ namespace std
   {
   public:
     ///  Construct an empty slice.
-    gslice ();
+    gslice();
 
     /**
      *  @brief  Construct a slice.
@@ -79,7 +79,7 @@ namespace std
     gslice(size_t, const valarray<size_t>&, const valarray<size_t>&);
 
     // XXX: the IS says the copy-ctor and copy-assignment operators are
-    //      synthetized by the compiler but they are just unsuitable
+    //      synthesized by the compiler but they are just unsuitable
     //      for a ref-counted semantic
     ///  Copy constructor.
     gslice(const gslice&);
@@ -108,8 +108,13 @@ namespace std
       valarray<size_t> _M_size;
       valarray<size_t> _M_stride;
       valarray<size_t> _M_index; // Linear array of referenced indices
+
+      _Indexer()
+      : _M_count(1), _M_start(0), _M_size(), _M_stride(), _M_index() {}
+
       _Indexer(size_t, const valarray<size_t>&,
 	       const valarray<size_t>&);
+
       void
       _M_increment_use()
       { ++_M_count; }
@@ -125,18 +130,22 @@ namespace std
   };
 
   inline size_t
-  gslice::start () const
+  gslice::start() const
   { return _M_index ? _M_index->_M_start : 0; }
 
   inline valarray<size_t>
-  gslice::size () const
+  gslice::size() const
   { return _M_index ? _M_index->_M_size : valarray<size_t>(); }
 
   inline valarray<size_t>
-  gslice::stride () const
+  gslice::stride() const
   { return _M_index ? _M_index->_M_stride : valarray<size_t>(); }
 
-  inline gslice::gslice () : _M_index(0) {}
+  // _GLIBCXX_RESOLVE_LIB_DEFECTS
+  // 543. valarray slice default constructor
+  inline
+  gslice::gslice()
+  : _M_index(new gslice::_Indexer()) {}
 
   inline
   gslice::gslice(size_t __o, const valarray<size_t>& __l,
@@ -144,7 +153,8 @@ namespace std
   : _M_index(new gslice::_Indexer(__o, __l, __s)) {}
 
   inline
-  gslice::gslice(const gslice& __g) : _M_index(__g._M_index)
+  gslice::gslice(const gslice& __g)
+  : _M_index(__g._M_index)
   { if (_M_index) _M_index->_M_increment_use(); }
 
   inline
@@ -155,7 +165,7 @@ namespace std
   }
 
   inline gslice&
-  gslice::operator= (const gslice& __g)
+  gslice::operator=(const gslice& __g)
   {
     if (__g._M_index)
       __g._M_index->_M_increment_use();
@@ -165,10 +175,6 @@ namespace std
     return *this;
   }
 
-} // std::
+_GLIBCXX_END_NAMESPACE
 
 #endif /* _GSLICE_H */
-
-// Local Variables:
-// mode:c++
-// End:

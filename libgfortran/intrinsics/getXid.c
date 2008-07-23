@@ -1,5 +1,5 @@
 /* Wrapper for the unix get{g,p,u}id functions.
-   Copyright (C) 2004 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2007 Free Software Foundation, Inc.
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
 
@@ -24,19 +24,19 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
+#include "libgfortran.h"
 
-#if HAVE_SYS_TYPES_H
-#include <sys/types.h>
-#endif
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
-#include "libgfortran.h"
+#ifdef __MINGW32__
+#define HAVE_GETPID 1
+#include <process.h>
+#endif
 
 #ifdef HAVE_GETGID
 extern GFC_INTEGER_4 PREFIX(getgid) (void);

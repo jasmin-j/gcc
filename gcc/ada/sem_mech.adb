@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1996-2003 Free Software Foundation, Inc.          --
+--          Copyright (C) 1996-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -27,13 +26,14 @@
 with Atree;    use Atree;
 with Einfo;    use Einfo;
 with Errout;   use Errout;
-with Targparm; use Targparm;
+with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Sem;      use Sem;
 with Sem_Util; use Sem_Util;
 with Sinfo;    use Sinfo;
 with Snames;   use Snames;
 with Stand;    use Stand;
+with Targparm; use Targparm;
 
 package body Sem_Mech is
 
@@ -183,7 +183,7 @@ package body Sem_Mech is
    is
    begin
       --  Right now we only do some checks for functions returning arguments
-      --  by desctiptor. Probably mode checks need to be added here ???
+      --  by descriptor. Probably mode checks need to be added here ???
 
       if Mech in Descriptor_Codes and then not Is_Formal (Ent) then
          if Is_Record_Type (Etype (Ent)) then
@@ -207,7 +207,7 @@ package body Sem_Mech is
 
    begin
       --  Skip this processing if inside a generic template. Not only is
-      --  it uneccessary (since neither extra formals nor mechanisms are
+      --  it unnecessary (since neither extra formals nor mechanisms are
       --  relevant for the template itself), but at least at the moment,
       --  procedures get frozen early inside a template so attempting to
       --  look at the formal types does not work too well if they are
@@ -241,7 +241,7 @@ package body Sem_Mech is
                ---------
 
                --  Note: all RM defined conventions are treated the same
-               --  from the point of view of parameter passing mechanims
+               --  from the point of view of parameter passing mechanism
 
                when Convention_Ada       |
                     Convention_Intrinsic |
@@ -274,6 +274,7 @@ package body Sem_Mech is
 
                when Convention_Assembler |
                     Convention_C         |
+                    Convention_CIL       |
                     Convention_CPP       |
                     Convention_Java      |
                     Convention_Stdcall   =>

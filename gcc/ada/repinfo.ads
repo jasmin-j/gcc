@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1999-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1999-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,7 +35,7 @@
 --  tree to fill in representation information, and also the routine used
 --  by -gnatR to print this information. This unit is used both in the
 --  compiler and in ASIS (it is used in ASIS as part of the implementation
---  of the data decomposition annex.
+--  of the data decomposition annex).
 
 with Types; use Types;
 with Uintp; use Uintp;
@@ -55,7 +55,7 @@ package Repinfo is
    --  For composite types, there are three cases:
 
    --    1. In some cases the front end knows the values statically,
-   --       for example in the ase where representation clauses or
+   --       for example in the case where representation clauses or
    --       pragmas specify the values.
 
    --    2. If Backend_Layout is True, then the backend is responsible
@@ -88,7 +88,7 @@ package Repinfo is
    --    which contains the Size (more accurately the Object_SIze) value
    --    for the type or subtype.
 
-   --    For E_Component and E_Distriminant entities, the Esize (size
+   --    For E_Component and E_Discriminant entities, the Esize (size
    --    of component) and Component_Bit_Offset fields. Note that gigi
    --    does not (yet ???) back annotate Normalized_Position/First_Bit.
 
@@ -128,7 +128,7 @@ package Repinfo is
    --  Subtype used for values that can either be a Node_Ref (negative)
    --  or a value (non-negative)
 
-   type TCode is range 0 .. 27;
+   type TCode is range 0 .. 28;
    --  Type used on Ada side to represent DEFTREECODE values defined in
    --  tree.def. Only a subset of these tree codes can actually appear.
    --  The names are the names from tree.def in Ada casing.
@@ -156,12 +156,13 @@ package Repinfo is
    Truth_Or_Expr    : constant TCode := 19; -- Boolean or               2
    Truth_Xor_Expr   : constant TCode := 20; -- Boolean xor              2
    Truth_Not_Expr   : constant TCode := 21; -- Boolean not              1
-   Lt_Expr          : constant TCode := 22; -- comparision <            2
-   Le_Expr          : constant TCode := 23; -- comparision <=           2
-   Gt_Expr          : constant TCode := 24; -- comparision >            2
-   Ge_Expr          : constant TCode := 25; -- comparision >=           2
-   Eq_Expr          : constant TCode := 26; -- comparision =            2
-   Ne_Expr          : constant TCode := 27; -- comparision /=           2
+   Lt_Expr          : constant TCode := 22; -- comparison <             2
+   Le_Expr          : constant TCode := 23; -- comparison <=            2
+   Gt_Expr          : constant TCode := 24; -- comparison >             2
+   Ge_Expr          : constant TCode := 25; -- comparison >=            2
+   Eq_Expr          : constant TCode := 26; -- comparison =             2
+   Ne_Expr          : constant TCode := 27; -- comparison /=            2
+   Bit_And_Expr     : constant TCode := 28; -- Binary and               2
 
    --  The following entry is used to represent a discriminant value in
    --  the tree. It has a special tree code that does not correspond
@@ -181,13 +182,13 @@ package Repinfo is
       Op1  : Node_Ref_Or_Val;
       Op2  : Node_Ref_Or_Val := No_Uint;
       Op3  : Node_Ref_Or_Val := No_Uint) return Node_Ref;
-   --  Creates a node with using the tree code defined by Expr and from
-   --  1-3 operands as required (unused operands set as shown to No_Uint)
-   --  Note that this call can be used to create a discriminant reference
-   --  by using (Expr => Discrim_Val, Op1 => discriminant_number).
+   --  Creates a node using the tree code defined by Expr and from one to three
+   --  operands as required (unused operands set as shown to No_Uint) Note that
+   --  this call can be used to create a discriminant reference by using (Expr
+   --  => Discrim_Val, Op1 => discriminant_number).
 
    function Create_Discrim_Ref (Discr : Entity_Id) return Node_Ref;
-   --  Creates a refrerence to the discriminant whose entity is Discr
+   --  Creates a reference to the discriminant whose entity is Discr
 
    --------------------------------------------------------
    -- Front-End Interface for Dynamic Size/Offset Values --
@@ -222,7 +223,7 @@ package Repinfo is
 
    --  In the case of components, if the location of the component is static,
    --  then all four fields (Component_Bit_Offset, Normalized_Position, Esize,
-   --  and Normalized_First_Bit) are set to appropraite values. In the case of
+   --  and Normalized_First_Bit) are set to appropriate values. In the case of
    --  a non-static component location, Component_Bit_Offset is not used and
    --  is left set to Unknown. Normalized_Position and Normalized_First_Bit
    --  are set appropriately.
@@ -257,7 +258,7 @@ package Repinfo is
    --  Create_Dynamic_SO_Ref. The approach is that the front end makes
    --  the necessary Create_Dynamic_SO_Ref calls to associate the node
    --  and entity id values and the back end makes Get_Dynamic_SO_Ref
-   --  calls to retrive them.
+   --  calls to retrieve them.
 
    --------------------
    -- ASIS_Interface --

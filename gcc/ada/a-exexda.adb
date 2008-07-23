@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -152,7 +152,6 @@ package body Exception_Data is
       Info : in out String;
       Ptr  : in out Natural);
 
-
    --  The "functional" interface to the exception information not involving
    --  a traceback decorator uses preallocated intermediate buffers to avoid
    --  the use of secondary stack. Preallocation requires preliminary length
@@ -187,7 +186,7 @@ package body Exception_Data is
    function Basic_Exception_Traceback
      (X : Exception_Occurrence) return String;
    --  Returns an image of the complete call chain associated with an
-   --  exception occurence in its most basic form, that is as a raw sequence
+   --  exception occurrence in its most basic form, that is as a raw sequence
    --  of hexadecimal binary addresses.
 
    function Tailored_Exception_Traceback
@@ -328,7 +327,7 @@ package body Exception_Data is
       Ptr  : in out Natural)
    is
       Name : String (1 .. Exception_Name_Length (X));
-      --  Bufer in which to fetch the exception name, in order to check
+      --  Buffer in which to fetch the exception name, in order to check
       --  whether this is an internal _ABORT_SIGNAL or a regular occurrence.
 
       Name_Ptr : Natural := Name'First - 1;
@@ -387,7 +386,7 @@ package body Exception_Data is
       Ptr  : in out Natural)
    is
    begin
-      if X.Num_Tracebacks <= 0 then
+      if X.Num_Tracebacks = 0 then
          return;
       end if;
 
@@ -408,10 +407,13 @@ package body Exception_Data is
    -----------------------------------------
 
    function Basic_Exception_Tback_Maxlength
-     (X : Exception_Occurrence) return Natural is
+     (X : Exception_Occurrence) return Natural
+   is
+      Space_Per_Traceback : constant := 2 + 16 + 1;
+      --  Space for "0x" + HHHHHHHHHHHHHHHH + " "
    begin
-      return BETB_Header'Length + 1 + X.Num_Tracebacks * 19 + 1;
-      --  19 =  2 + 16 + 1 for each address ("0x" + HHHH + " ")
+      return BETB_Header'Length + 1 +
+               X.Num_Tracebacks * Space_Per_Traceback + 1;
    end Basic_Exception_Tback_Maxlength;
 
    ---------------------------------------
@@ -477,7 +479,7 @@ package body Exception_Data is
 
       declare
          Len  : constant Natural := Exception_Name_Length (Id);
-         Name : constant String (1 .. Len) := Id.Full_Name (1 .. Len);
+         Name : constant String (1 .. Len) := To_Ptr (Id.Full_Name) (1 .. Len);
       begin
          Append_Info_String (Name, Info, Ptr);
       end;
@@ -557,9 +559,9 @@ package body Exception_Data is
 
    procedure Set_Exception_C_Msg
      (Id   : Exception_Id;
-      Msg1 : Big_String_Ptr;
+      Msg1 : System.Address;
       Line : Integer        := 0;
-      Msg2 : Big_String_Ptr := null)
+      Msg2 : System.Address := System.Null_Address)
    is
       Excep  : constant EOA := Get_Current_Excep.all;
       Val    : Integer := Line;
@@ -576,11 +578,11 @@ package body Exception_Data is
       Excep.Msg_Length       := 0;
       Excep.Cleanup_Flag     := False;
 
-      while Msg1 (Excep.Msg_Length + 1) /= ASCII.NUL
+      while To_Ptr (Msg1) (Excep.Msg_Length + 1) /= ASCII.NUL
         and then Excep.Msg_Length < Exception_Msg_Max_Length
       loop
          Excep.Msg_Length := Excep.Msg_Length + 1;
-         Excep.Msg (Excep.Msg_Length) := Msg1 (Excep.Msg_Length);
+         Excep.Msg (Excep.Msg_Length) := To_Ptr (Msg1) (Excep.Msg_Length);
       end loop;
 
       --  Append line number if present
@@ -614,18 +616,18 @@ package body Exception_Data is
 
       --  Append second message if present
 
-      if Msg2 /= null
+      if Msg2 /= System.Null_Address
         and then Excep.Msg_Length + 1 < Exception_Msg_Max_Length
       then
          Excep.Msg_Length := Excep.Msg_Length + 1;
          Excep.Msg (Excep.Msg_Length) := ' ';
 
          Ptr := 1;
-         while Msg2 (Ptr) /= ASCII.NUL
+         while To_Ptr (Msg2) (Ptr) /= ASCII.NUL
            and then Excep.Msg_Length < Exception_Msg_Max_Length
          loop
             Excep.Msg_Length := Excep.Msg_Length + 1;
-            Excep.Msg (Excep.Msg_Length) := Msg2 (Ptr);
+            Excep.Msg (Excep.Msg_Length) := To_Ptr (Msg2) (Ptr);
             Ptr := Ptr + 1;
          end loop;
       end if;

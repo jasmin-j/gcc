@@ -1,23 +1,22 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --               A D A . S T R I N G S . W I D E _ F I X E D                --
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
--- This specification is adapted from the Ada Reference Manual for use with --
+-- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT.  In accordance with the copyright of that document, you can freely --
 -- copy and modify this specification,  provided that if you redistribute a --
 -- modified version,  any changes that you have made are clearly indicated. --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-
 with Ada.Strings.Wide_Maps;
 
 package Ada.Strings.Wide_Fixed is
-pragma Preelaborate (Wide_Fixed);
+   pragma Preelaborate;
 
    -------------------------------------------------------------------
    -- Copy Procedure for Wide_Strings of Possibly Different Lengths --
@@ -226,10 +225,10 @@ pragma Preelaborate (Wide_Fixed);
       Pad    : Wide_Character := Ada.Strings.Wide_Space) return Wide_String;
 
    procedure Tail
-     (Source : in out Wide_String;
-      Count  : Natural;
+     (Source  : in out Wide_String;
+      Count   : Natural;
       Justify : Alignment := Left;
-      Pad    : Wide_Character := Ada.Strings.Wide_Space);
+      Pad     : Wide_Character := Ada.Strings.Wide_Space);
 
    ---------------------------------------
    -- Wide_String Constructor Functions --

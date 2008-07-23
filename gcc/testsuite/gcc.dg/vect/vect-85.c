@@ -5,8 +5,7 @@
 
 #define N 16
 
-typedef int aint __attribute__ ((__aligned__(16)));
-
+__attribute__ ((noinline))
 int main1 (int *a)
 {
   int i, j, k;
@@ -36,7 +35,7 @@ int main1 (int *a)
 
 int main (void)
 { 
-  aint a[N];
+  int a[N] __attribute__ ((__aligned__(16)));
 
   check_vect ();
 

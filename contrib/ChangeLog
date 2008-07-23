@@ -1,3 +1,288 @@
+2008-07-14  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* check_makefile_deps.sh: New file.
+
+2008-05-08  Sebastian Pop  <sebastian.pop@amd.com>
+
+	* patch_tester.sh (report): Do not print "Checker: ".
+
+2008-04-23  Sebastian Pop  <sebastian.pop@amd.com>
+
+	* patch_tester.sh (report): Do not print the time.
+
+2008-04-01  Joseph Myers  <joseph@codesourcery.com>
+
+	* texi2pod.pl: Handle @samp and @url inside verbatim blocks.
+	Handle @heading.  Handle enumerated lists with starting numbers
+	and extra headings.
+
+2008-03-10  Janis Johnson  <janis187@us.ibm.com>
+
+	* patch_tester.sh (initialization): Initialize svnpatch and stop.
+	(usage): Add -svnpath and -stop.	
+	(makedir): New.
+	(argument handling): Process -stop and -svnpath.
+	(setup code): Use makedir, error out if initial svn checkout fails.
+	(update): Use svnpath.  Invoke contrib/gcc_update.
+	(apply_patch): Require that patch was created at top level.  Use eval
+	with option variables.  Don't use bootstrap target for make.  Verify
+	that some tests were run.
+	(bootntest_patched): Use snvpath.
+	(main loop): For -stop, exit when there are no more patches to test.
+
+2008-03-09  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* check_warning_flags.sh: Instead of invoke.texi, take the path
+	to the doc directory as argument.  Check that warnings listed in
+	'gcc --help' are accepted by the compiler, and listed in the
+	manuals.
+
+2008-03-06  Tom Tromey  <tromey@redhat.com>
+
+	* patch_tester.sh (usage): Watermark is not lexicographic.
+	Load $STATE/defaults if it exists.
+	(selfexec): Use $0.
+	(apply_patch): Handle deletions.
+	(bootntest): Handle default settings.
+
+2008-03-05  Jakub Jelinek  <jakub@redhat.com>
+
+	* gennews (files): Reference GCC 4.3 web pages.
+
+2008-02-15  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* check_warning_flags.sh: New file.
+
+2008-01-25  Joseph Myers  <joseph@codesourcery.com>
+
+	* paranoia.cc (main): Remove handling of c4x_single and
+	c4x_extended formats.
+
+2007-12-26  Sebastian Pop  <sebastian.pop@amd.com>
+
+	* compareSumTests3: Changed to GPLv3.
+	* prepare_patch.sh: Same.
+	* uninclude: Same.
+	* dglib.pm: Same.
+	* gennews: Same.
+	* texi2pod.pl: Same.
+	* analyze_brprob: Same.
+	* gcc_build: Same.
+
+2007-12-26  Sebastian Pop  <sebastian.pop@amd.com>
+
+	* patch_tester.sh: Changed to GPLv3.
+
+2007-12-15  Sebastian Pop  <sebastian.pop@amd.com>
+
+	* patch_tester.sh: Don't save the script anymore.
+
+2007-12-15  Sebastian Pop  <sebastian.pop@amd.com>
+
+	* patch_tester.sh: New.
+	* prepare_patch.sh: New.
+
+2007-11-26  Alexandre Oliva  <aoliva@redhat.com>
+
+	* compare-debug: Introduce -p flag to preserve .stripped files.
+
+2007-10-08  Manuel Lopez-Ibanez  <manu@gcc.gnu.org>
+
+	* texi2pod.pl: Handle @asis.
+	(postprocess): Move @gccoptlist{} after all formatting commands.
+	
+2007-10-01  Alexandre Oliva  <aoliva@redhat.com>
+
+	* compare-debug: Avoid spurious errors when .stripped files
+	exist.
+
+2007-09-22  Hans-Peter Nilsson  <hp@axis.com>
+
+	* warn_summary (srcdirFilter): Add fixincludes, sim,
+	newlib and mpfr.
+
+2007-08-23  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* gcc_update: Handle different URL paths and tags.
+
+2007-08-16  Alexandre Oliva  <aoliva@redhat.com>
+
+	* compare-debug: New.
+
+2007-08-16  H.J. Lu  <hongjiu.lu@intel.com>
+	    Andreas Schwab <schwab@suse.de>
+
+	* gcc_update: Use "svn info" for revision number.  Create
+	gcc/REVISION with branch name and revision number.
+
+2007-08-10  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.doxy: Rename from tree-ssa.doxy.
+
+2007-08-10  Diego Novillo  <dnovillo@google.com>
+
+	* tree-ssa.doxy: Update for doxygen 1.5.
+	Include all the files in the middle and back ends.
+
+2007-06-30  Hans-Peter Nilsson  <hp@axis.com>
+
+	* gcc_update (files_and_dependencies): Handle
+	gcc/testsuite/gcc.dg/cpp/direct2s.c.
+
+2007-05-13  Mark Mitchell  <mark@codesourcery.com>
+
+	* gennews (files): Reference GCC 4.2 web pages.
+
+2007-04-04  Zack Weinberg  <zack@mrtock.ucsd.edu>
+
+	* texi2pod.pl: Correct handling of @itemize with no argument.
+
+2007-03-17  Hans-Peter Nilsson  <hp@axis.com>
+
+	* uninclude: New utility, from Alexandre Oliva.
+
+2007-02-26  Dominique Dhumieres  <dominiq@lps.ens.fr>
+
+	* test_installed: Adjust to the move from g77 to gfortran.
+
+2007-02-16  Matthias Klose  <doko@debian.org>
+
+	* texi2pod.pl: Handle @subsubsection, ignore @anchor.
+
+2007-02-10  Hans-Peter Nilsson  <hp@axis.com>
+
+	* test_summary (configflags): Adjust for changes in the
+	config.status format due to update to autoconf 2.59.
+
+2007-02-09  Daniel Jacobowitz  <dan@codesourcery.com>
+
+	* gcc_update: Update for configure.in -> configure.ac.
+
+2007-02-06  Richard Sandiford  <richard@codesourcery.com>
+
+	* texi2pod.pl: Handle @multitable.
+
+2007-01-15  Tom Tromey  <tromey@redhat.com>
+
+	* download_ecj: New file.
+
+2006-09-27  Matthew Sachs  <msachs@apple.com>
+
+	* compareSumTests3: POD syntax fix.
+
+2006-09-27  Matthew Sachs  <msachs@apple.com>
+
+	* dglib.pm: Initial commit.
+	* compareSumTests3: Initial commit.
+
+2006-09-18  Bernhard Fischer  <aldot@gcc.gnu.org>
+
+	* dg-cmp-results.sh (compare-$$.awk): Print name[old]
+	and not non-existing nm[old].
+
+2006-07-06  Paul Eggert  <eggert@cs.ucla.edu>
+
+	Port to hosts whose 'sort' and 'tail' implementations
+	treat operands with leading '+' as file names, as POSIX
+	has required since 2001.  However, make sure the code still
+	works on pre-POSIX hosts.
+	* compare_tests: Don't assume "sort +2" is equivalent to
+	"sort -k 3", since POSIX 1003.1-2001 no longer requires this.
+
+2006-06-05  James Lemke  <jwlemke@wasabisystems.com>
+
+	* dg-cmp-results.sh: New script for comparing DejaGNU logs.
+
+2006-06-02  Richard Earnshaw  <rearnsha@arm.com>
+	    Mike Stump  <mrs@apple.com>
+
+	* compare_tests: Handle multilibs better.
+
+2006-05-31  Daniel Jacobowitz  <dan@codesourcery.com>
+
+	* texi2pod.pl: Correct handling of absolute @include.
+
+2006-05-02  Daniel Jacobowitz  <dan@codesourcery.com>
+
+	* texi2pod.pl: Handle -I.
+
+2006-02-28  Mark Mitchell  <mark@codesourcery.com>
+
+	* gennews (files): Update for GCC 4.1.
+
+2006-01-24  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc_update (files_and_dependencies): Handle
+	libgomp/testsuite/Makefile.in.
+
+2006-01-18  Richard Henderson  <rth@redhat.com>
+	    Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc_update (files_and_dependencies): Add libgomp files.
+
+2005-12-06  Ben Elliston  <bje@au.ibm.com>
+
+	* newcvsroot: Remove.
+
+2005-11-03  Steven Bosscher  <stevenb@suse.de>
+
+	* gcc_build: Fix my previous checking.
+
+2005-11-01  Joseph S. Myers  <joseph@codesourcery.com>
+
+	* gcc_update: Include revision number in LAST_UPDATED.
+
+2005-10-30  Steven Bosscher  <stevenb@suse.de>
+
+	* gcc_build: Use gcc.gnu.org as the default server.  Set up
+	SVN_REPOSITORY correctly.  Add support for checking out branches.
+
+2005-10-28  Andrew Pinski  <pinskia@gcc.gnu.org>
+
+	* gcc_update: When svn update is called and
+	--silent is used, pass -q.
+
+2005-10-28  Andrew Pinski  <pinskia@gcc.gnu.org>
+
+	* gcc_update: Remove the -q from svn invocation.
+
+2005-10-28  Andrew Pinski  <pinskia@gcc.gnu.org>
+
+	* gcc_build: Remove -d from the call to gcc_update.
+
+2005-10-28  Daniel Berlin  <dberlin@dberlin.org>
+	    Ben Elliston <bje@au1.ibm.com>
+	
+	* gcc_update: Update for svn.
+	* newcvsroot: Ditto.
+	* gcc_build: Ditto.
+
+2005-10-21  Mark Mitchell  <mark@codesourcery.com>
+
+	* texi2pod.pl: Substitue for @value even when part of @include. 
+
+2005-10-21  Bob Wilson  <bob.wilson@acm.org>
+
+	* texi2pod.pl: Convert two single quotes or two backquotes to
+	double quotes.
+
+2005-08-23  Ben Elliston  <bje@au.ibm.com>
+
+	* gcc_update: Update dependencies for libjava/aclocal.m4.
+
+2005-08-14  Kelley Cook  <kcook@gcc.gnu.org>
+
+	* All files: Update with new FSF address.
+
+2005-07-14  Ben Elliston  <bje@au.ibm.com>
+
+	* filter_params.pl: Typo fix.
+	* filter_knr2ansi.pl: Likewise.
+
+2005-06-05  Gerald Pfeifer  <gerald@pfeifer.com>
+
+	* gennews (files): Update for egcs-1.0 release pages consolidation.
+
 2005-04-17  Joseph S. Myers  <joseph@codesourcery.com>
 
 	* gennews (files): Update for GCC 4.0.

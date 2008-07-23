@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---            Copyright (C) 1997-2003 Ada Core Technologies, Inc.           --
+--                     Copyright (C) 1997-2007, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -27,7 +26,6 @@
 with GNAT.Table;
 with GNAT.HTable; use GNAT.HTable;
 with Ada.Text_IO; use Ada.Text_IO;
-with System.Storage_Elements; use System.Storage_Elements;
 
 package body Memroot is
 
@@ -88,7 +86,7 @@ package body Memroot is
    --  Returns an image for F containing the file name, the Line number,
    --  and if 'Short' is not true, the subprogram name. When possible, spaces
    --  are inserted between the line number and the subprogram name in order
-   --  to align images of the same frame. Alignement is cimputed with Max_Fil
+   --  to align images of the same frame. Alignment is computed with Max_Fil
    --  & Max_Lin representing the max number of character in a filename or
    --  length in a given frame.
 
@@ -425,6 +423,7 @@ package body Memroot is
       pragma Warnings (Off, Line);
 
       procedure Find_File;
+      pragma Inline (Find_File);
       --  Position Curs1 and Curs2 so that Line (Curs1 .. Curs2) contains
       --  the file name. The file name may not be on the current line since
       --  a frame may be printed on more than one line when there is a lot
@@ -432,20 +431,20 @@ package body Memroot is
       --  lines of input.
 
       procedure Find_Line;
+      pragma Inline (Find_Line);
       --  Position Curs1 and Curs2 so that Line (Curs1 .. Curs2) contains
       --  the line number.
 
       procedure Find_Name;
+      pragma Inline (Find_Name);
       --  Position Curs1 and Curs2 so that Line (Curs1 .. Curs2) contains
       --  the subprogram name.
 
       function Skip_To_Space (Pos : Integer) return Integer;
+      pragma Inline (Skip_To_Space);
       --  Scans Line starting with position Pos, returning the position
       --  immediately before the first space, or the value of Last if no
       --  spaces were found
-
-
-      pragma Inline (Find_File, Find_Line, Find_Name, Skip_To_Space);
 
       ---------------
       -- Find_File --

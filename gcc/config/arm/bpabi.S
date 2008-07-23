@@ -1,6 +1,6 @@
 /* Miscellaneous BPABI functions.
 
-   Copyright (C) 2003, 2004  Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2007  Free Software Foundation, Inc.
    Contributed by CodeSourcery, LLC.
 
    This file is free software; you can redistribute it and/or modify it
@@ -24,28 +24,24 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; see the file COPYING.  If not, write to
-   the Free Software Foundation, 59 Temple Place - Suite 330,
-   Boston, MA 02111-1307, USA.  */
+   the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+   Boston, MA 02110-1301, USA.  */
 
-#ifdef __ARMEB__
-#define xxh r0
-#define xxl r1
-#define yyh r2
-#define yyl r3
-#else
-#define xxh r1
-#define xxl r0
-#define yyh r3
-#define yyl r2
-#endif	
-	
 #ifdef L_aeabi_lcmp
 
 ARM_FUNC_START aeabi_lcmp
-	subs	ip, xxl, yyl
-	sbcs	ip, xxh, yyh
-	subeqs  ip, xxl, yyl
-	mov	r0, ip
+	cmp	xxh, yyh
+	do_it	lt
+	movlt	r0, #-1
+	do_it	gt
+	movgt	r0, #1
+	do_it	ne
+	RETc(ne)
+	subs	r0, xxl, yyl
+	do_it	lo
+	movlo	r0, #-1
+	do_it	hi
+	movhi	r0, #1
 	RET
 	FUNC_END aeabi_lcmp
 
@@ -55,12 +51,18 @@ ARM_FUNC_START aeabi_lcmp
 
 ARM_FUNC_START aeabi_ulcmp
 	cmp	xxh, yyh
+	do_it	lo
 	movlo	r0, #-1
+	do_it	hi
 	movhi	r0, #1
+	do_it	ne
 	RETc(ne)
 	cmp	xxl, yyl
+	do_it	lo
 	movlo	r0, #-1
+	do_it	hi
 	movhi	r0, #1
+	do_it	eq
 	moveq	r0, #0
 	RET
 	FUNC_END aeabi_ulcmp
@@ -71,11 +73,16 @@ ARM_FUNC_START aeabi_ulcmp
 
 ARM_FUNC_START aeabi_ldivmod
 	sub sp, sp, #8
-	stmfd sp!, {sp, lr}
+#if defined(__thumb2__)
+	mov ip, sp
+	push {ip, lr}
+#else
+	do_push {sp, lr}
+#endif
 	bl SYM(__gnu_ldivmod_helper) __PLT__
 	ldr lr, [sp, #4]
 	add sp, sp, #8
-	ldmfd sp!, {r2, r3}
+	do_pop {r2, r3}
 	RET
 	
 #endif /* L_aeabi_ldivmod */
@@ -84,11 +91,16 @@ ARM_FUNC_START aeabi_ldivmod
 
 ARM_FUNC_START aeabi_uldivmod
 	sub sp, sp, #8
-	stmfd sp!, {sp, lr}
+#if defined(__thumb2__)
+	mov ip, sp
+	push {ip, lr}
+#else
+	do_push {sp, lr}
+#endif
 	bl SYM(__gnu_uldivmod_helper) __PLT__
 	ldr lr, [sp, #4]
 	add sp, sp, #8
-	ldmfd sp!, {r2, r3}
+	do_pop {r2, r3}
 	RET
 	
 #endif /* L_aeabi_divmod */

@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --    A D A . W I D E _ W I D E _ T E X T _ I O . D E C I M A L _ A U X     --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -103,7 +103,7 @@ package body Ada.Wide_Wide_Text_IO.Decimal_Aux is
 
    function Gets_Dec
      (From  : String;
-      Last  : access Positive;
+      Last  : not null access Positive;
       Scale : Integer) return Integer
    is
       Pos  : aliased Integer;
@@ -128,7 +128,7 @@ package body Ada.Wide_Wide_Text_IO.Decimal_Aux is
 
    function Gets_LLD
      (From  : String;
-      Last  : access Positive;
+      Last  : not null access Positive;
       Scale : Integer) return Long_Long_Integer
    is
       Pos  : aliased Integer;
@@ -203,15 +203,23 @@ package body Ada.Wide_Wide_Text_IO.Decimal_Aux is
       Ptr  : Natural := 0;
 
    begin
-      if Exp = 0 then
-         Fore := To'Length - 1 - Aft;
-      else
-         Fore := To'Length - 2 - Aft - Exp;
+      --  Compute Fore, allowing for Aft digits and the decimal dot
+
+      Fore := To'Length - Field'Max (1, Aft) - 1;
+
+      --  Allow for Exp and two more for E+ or E- if exponent present
+
+      if Exp /= 0 then
+         Fore := Fore - 2 - Exp;
       end if;
+
+      --  Make sure we have enough room
 
       if Fore < 1 then
          raise Layout_Error;
       end if;
+
+      --  Do the conversion and check length of result
 
       Set_Image_Decimal (Item, Buf, Ptr, Scale, Fore, Aft, Exp);
 

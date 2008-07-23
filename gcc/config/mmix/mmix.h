@@ -1,12 +1,12 @@
 /* Definitions of target machine for GNU compiler, for MMIX.
-   Copyright (C) 2000, 2001, 2002, 2004 Free Software Foundation, Inc.
+   Copyright (C) 2000, 2001, 2002, 2004, 2005, 2007 Free Software Foundation, Inc.
    Contributed by Hans-Peter Nilsson (hp@bitrange.com)
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_MMIX_H
 #define GCC_MMIX_H
@@ -124,15 +123,6 @@ struct machine_function GTY(())
      %{!r:--defsym __.MMIX.start..text=0x100}}}\
   %{!melf:%{!r:-m mmo}}%{melf|r:-m elf64mmix}"
 
-/* Put unused option values here.  */
-extern const char *mmix_cc1_ignored_option;
-
-#define TARGET_OPTIONS					\
-   {{"set-program-start=", &mmix_cc1_ignored_option,	\
-  N_("Set start-address of the program"), 0},		\
-    {"set-data-start=", &mmix_cc1_ignored_option,	\
-  N_("Set start-address of data"), 0} }
-
 /* FIXME: There's no provision for profiling here.  */
 #define STARTFILE_SPEC  \
   "crti%O%s crtbegin%O%s"
@@ -156,80 +146,8 @@ extern const char *mmix_cc1_ignored_option;
 
 extern int target_flags;
 
-#define TARGET_MASK_LIBFUNCS 1
-#define TARGET_MASK_ABI_GNU 2
-#define TARGET_MASK_FCMP_EPSILON 4
-#define TARGET_MASK_ZERO_EXTEND 8
-#define TARGET_MASK_KNUTH_DIVISION 16
-#define TARGET_MASK_TOPLEVEL_SYMBOLS 32
-#define TARGET_MASK_BRANCH_PREDICT 64
-#define TARGET_MASK_USE_RETURN_INSN 128
-
-/* We use the term "base address" since that's what Knuth uses.  The base
-   address goes in a global register.  When addressing, it's more like
-   "base address plus offset", with the offset being 0..255 from the base,
-   which itself can be a symbol plus an offset.  The effect is like having
-   a constant pool in global registers, code offsetting from those
-   registers (automatically causing a request for a suitable constant base
-   address register) without having to know the specific register or the
-   specific offset.  The setback is that there's a limited number of
-   registers, and you'll not find out until link time whether you
-   should have compiled with -mno-base-addresses.  */
-#define TARGET_MASK_BASE_ADDRESSES 128
-
-/* FIXME: Get rid of this one.  */
-#define TARGET_LIBFUNC (target_flags & TARGET_MASK_LIBFUNCS)
-#define TARGET_ABI_GNU (target_flags & TARGET_MASK_ABI_GNU)
-#define TARGET_FCMP_EPSILON (target_flags & TARGET_MASK_FCMP_EPSILON)
-#define TARGET_ZERO_EXTEND (target_flags & TARGET_MASK_ZERO_EXTEND)
-#define TARGET_KNUTH_DIVISION (target_flags & TARGET_MASK_KNUTH_DIVISION)
-#define TARGET_TOPLEVEL_SYMBOLS (target_flags & TARGET_MASK_TOPLEVEL_SYMBOLS)
-#define TARGET_BRANCH_PREDICT (target_flags & TARGET_MASK_BRANCH_PREDICT)
-#define TARGET_BASE_ADDRESSES (target_flags & TARGET_MASK_BASE_ADDRESSES)
-#define TARGET_USE_RETURN_INSN (target_flags & TARGET_MASK_USE_RETURN_INSN)
-
 #define TARGET_DEFAULT \
- (TARGET_MASK_BRANCH_PREDICT | TARGET_MASK_BASE_ADDRESSES \
-  | TARGET_MASK_USE_RETURN_INSN)
-
-/* FIXME: Provide a way to *load* the epsilon register.  */
-#define TARGET_SWITCHES							\
- {{"libfuncs",		TARGET_MASK_LIBFUNCS,				\
-   N_("For intrinsics library: pass all parameters in registers")},	\
-  {"no-libfuncs",	-TARGET_MASK_LIBFUNCS, ""},			\
-  {"abi=mmixware",	-TARGET_MASK_ABI_GNU,				\
-   N_("Use register stack for parameters and return value")},		\
-  {"abi=gnu",		TARGET_MASK_ABI_GNU,				\
-   N_("Use call-clobbered registers for parameters and return value")},	\
-  {"epsilon",		TARGET_MASK_FCMP_EPSILON,			\
-   N_("Use epsilon-respecting floating point compare instructions")},	\
-  {"no-epsilon",	-TARGET_MASK_FCMP_EPSILON, ""},			\
-  {"zero-extend",	TARGET_MASK_ZERO_EXTEND,			\
-   N_("Use zero-extending memory loads, not sign-extending ones")},	\
-  {"no-zero-extend",	-TARGET_MASK_ZERO_EXTEND,  ""},			\
-  {"knuthdiv",		TARGET_MASK_KNUTH_DIVISION,			\
-   N_("Generate divide results with reminder having the same sign as the\
- divisor (not the dividend)")},						\
-  {"no-knuthdiv",	-TARGET_MASK_KNUTH_DIVISION, ""},		\
-  {"toplevel-symbols",	TARGET_MASK_TOPLEVEL_SYMBOLS,			\
-   N_("Prepend global symbols with \":\" (for use with PREFIX)")},	\
-  {"no-toplevel-symbols", -TARGET_MASK_TOPLEVEL_SYMBOLS,		\
-   N_("Do not provide a default start-address 0x100 of the program")},	\
-  {"elf", 0,								\
-   N_("Link to emit program in ELF format (rather than mmo)")},		\
-  {"branch-predict",	TARGET_MASK_BRANCH_PREDICT,			\
-   N_("Use P-mnemonics for branches statically predicted as taken")},	\
-  {"no-branch-predict",	-TARGET_MASK_BRANCH_PREDICT,			\
-   N_("Don't use P-mnemonics for branches")},				\
-  {"base-addresses",	TARGET_MASK_BASE_ADDRESSES,			\
-   N_("Use addresses that allocate global registers")},			\
-  {"no-base-addresses",	-TARGET_MASK_BASE_ADDRESSES,			\
-   N_("Do not use addresses that allocate global registers")},		\
-  {"single-exit",	-TARGET_MASK_USE_RETURN_INSN,			\
-   N_("Generate a single exit point for each function")},		\
-  {"no-single-exit",	TARGET_MASK_USE_RETURN_INSN,			\
-   N_("Do not generate a single exit point for each function")},	\
-  {"",			TARGET_DEFAULT, ""}}
+ (MASK_BRANCH_PREDICT | MASK_BASE_ADDRESSES | MASK_USE_RETURN_INSN)
 
 /* Unfortunately, this must not reference anything in "mmix.c".  */
 #define TARGET_VERSION \
@@ -246,7 +164,6 @@ extern int target_flags;
       if (SIZE || LEVEL > 1)			\
 	{					\
 	  flag_omit_frame_pointer = TRUE;	\
-	  flag_strength_reduce = FALSE;		\
 	}					\
     }						\
   while (0)
@@ -402,13 +319,9 @@ extern int target_flags;
 
 #define CONDITIONAL_REGISTER_USAGE mmix_conditional_register_usage ()
 
-/* No INCOMING_REGNO or OUTGOING_REGNO, since those macros are not usable
-   for MMIX: it doesn't have a fixed register window size.  FIXME: Perhaps
-   we should say something about $0..$15 may sometimes be the incoming
-   $16..$31.  Those macros need better documentation; it looks like
-   they're just bogus and that FUNCTION_INCOMING_ARG_REGNO_P and
-   FUNCTION_OUTGOING_VALUE should be used where they're used.  For the
-   moment, do nothing; things seem to work anyway.  */
+#define INCOMING_REGNO(OUT) mmix_opposite_regno (OUT, 0)
+
+#define OUTGOING_REGNO(IN) mmix_opposite_regno (IN, 1)
 
 /* Defining LOCAL_REGNO is necessary in presence of prologue/epilogue,
    else GCC will be confused that those registers aren't saved and
@@ -615,7 +528,7 @@ enum reg_class
 /* Node: Frame Layout */
 
 #define STACK_GROWS_DOWNWARD
-#define FRAME_GROWS_DOWNWARD
+#define FRAME_GROWS_DOWNWARD 1
 
 #define STARTING_FRAME_OFFSET \
   mmix_starting_frame_offset ()
@@ -678,7 +591,7 @@ enum reg_class
 /* Node: Elimination */
 /* FIXME: Is this requirement built-in?  Anyway, we should try to get rid
    of it; we can deduce the value.  */
-#define FRAME_POINTER_REQUIRED  current_function_has_nonlocal_label
+#define FRAME_POINTER_REQUIRED  cfun->has_nonlocal_label
 
 /* The frame-pointer is stored in a location that either counts to the
    offset of incoming parameters, or that counts to the offset of the
@@ -726,9 +639,6 @@ typedef struct { int regs; int lib; } CUMULATIVE_ARGS;
 
 #define FUNCTION_ARG_REGNO_P(REGNO)		\
  mmix_function_arg_regno_p (REGNO, 0)
-
-#define FUNCTION_INCOMING_ARG_REGNO_P(REGNO)		\
- mmix_function_arg_regno_p (REGNO, 1)
 
 
 /* Node: Register Arguments */
@@ -1044,27 +954,6 @@ typedef struct { int regs; int lib; } CUMULATIVE_ARGS;
 #define DWARF2_ASM_LINE_DEBUG_INFO 1
 
 /* Node: Misc */
-
-#define PREDICATE_CODES				\
- {"mmix_reg_cc_operand", {SUBREG, REG}},	\
- {"mmix_foldable_comparison_operator",		\
-  {NE, EQ, GE, GT, LE, LT}},			\
- /* All '<', actually.  */			\
- {"mmix_comparison_operator",			\
-  {NE, EQ, GE, GT, LE, LT, GEU, GTU, LEU,	\
-   LTU, UNORDERED, ORDERED, UNEQ, UNGE, UNLE,	\
-   UNLT, LTGT}},				\
- {"mmix_symbolic_or_address_operand",		\
-  {SYMBOL_REF, LABEL_REF, CONST,		\
-   SUBREG, REG, PLUS}},				\
- {"mmix_reg_or_constant_operand",		\
-  {CONST_INT, CONST_DOUBLE, SUBREG, REG}},	\
- {"mmix_reg_or_8bit_operand",			\
-  {CONST_INT, CONST_DOUBLE, SUBREG, REG}},	\
- {"mmix_reg_or_0_operand",			\
-  {CONST_INT, CONST_DOUBLE, SUBREG, REG}},
-
-#define SPECIAL_MODE_PREDICATES "mmix_symbolic_or_address_operand",
 
 /* There's no way to get a PC-relative offset into tables for SImode, so
    for the moment we have absolute entries in DImode.

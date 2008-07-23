@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---              Copyright (C) 2001-2004 Ada Core Technologies, Inc.         --
+--                     Copyright (C) 2001-2008, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -31,17 +31,18 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  Temporary version for Alpha/VMS.
+--  Temporary version for Alpha/VMS
 
 with GNAT.OS_Lib; use GNAT.OS_Lib;
+with GNAT.Sockets.Constants;
 with GNAT.Task_Lock;
 
 with Interfaces.C; use Interfaces.C;
 
 package body GNAT.Sockets.Thin is
 
-   Non_Blocking_Sockets : constant Fd_Set_Access
-     := New_Socket_Set (No_Socket_Set);
+   Non_Blocking_Sockets : constant Fd_Set_Access :=
+                            New_Socket_Set (No_Fd_Set_Access);
    --  When this package is initialized with Process_Blocking_IO set
    --  to True, sockets are set in non-blocking mode to avoid blocking
    --  the whole process when a thread wants to perform a blocking IO
@@ -52,19 +53,17 @@ package body GNAT.Sockets.Thin is
    --  been set in non-blocking mode by the user.
 
    Quantum : constant Duration := 0.2;
-   --  When Thread_Blocking_IO is False, we set sockets in
+   --  When Constants.Thread_Blocking_IO is False, we set sockets in
    --  non-blocking mode and we spend a period of time Quantum between
    --  two attempts on a blocking operation.
 
-   Thread_Blocking_IO : Boolean := True;
-
    Unknown_System_Error : constant C.Strings.chars_ptr :=
-     C.Strings.New_String ("Unknown system error");
+                            C.Strings.New_String ("Unknown system error");
 
    function Syscall_Accept
      (S       : C.int;
       Addr    : System.Address;
-      Addrlen : access C.int) return C.int;
+      Addrlen : not null access C.int) return C.int;
    pragma Import (C, Syscall_Accept, "accept");
 
    function Syscall_Connect
@@ -92,15 +91,14 @@ package body GNAT.Sockets.Thin is
       Len     : C.int;
       Flags   : C.int;
       From    : Sockaddr_In_Access;
-      Fromlen : access C.int) return C.int;
+      Fromlen : not null access C.int) return C.int;
    pragma Import (C, Syscall_Recvfrom, "recvfrom");
 
    function Syscall_Send
      (S     : C.int;
       Msg   : System.Address;
       Len   : C.int;
-      Flags : C.int)
-      return  C.int;
+      Flags : C.int) return C.int;
    pragma Import (C, Syscall_Send, "send");
 
    function Syscall_Sendto
@@ -109,8 +107,7 @@ package body GNAT.Sockets.Thin is
       Len   : C.int;
       Flags : C.int;
       To    : Sockaddr_In_Access;
-      Tolen : C.int)
-      return  C.int;
+      Tolen : C.int) return C.int;
    pragma Import (C, Syscall_Sendto, "sendto");
 
    function Syscall_Socket
@@ -127,7 +124,7 @@ package body GNAT.Sockets.Thin is
    function C_Accept
      (S       : C.int;
       Addr    : System.Address;
-      Addrlen : access C.int) return C.int
+      Addrlen : not null access C.int) return C.int
    is
       R   : C.int;
       Val : aliased C.int := 1;
@@ -138,17 +135,17 @@ package body GNAT.Sockets.Thin is
    begin
       loop
          R := Syscall_Accept (S, Addr, Addrlen);
-         exit when Thread_Blocking_IO
+         exit when Constants.Thread_Blocking_IO
            or else R /= Failure
            or else Non_Blocking_Socket (S)
            or else Errno /= Constants.EWOULDBLOCK;
          delay Quantum;
       end loop;
 
-      if not Thread_Blocking_IO
+      if not Constants.Thread_Blocking_IO
         and then R /= Failure
       then
-         --  A socket inherits the properties ot its server especially
+         --  A socket inherits the properties of its server, especially
          --  the FIONBIO flag. Do not use C_Ioctl as this subprogram
          --  tracks sockets set in non-blocking mode by user.
 
@@ -173,7 +170,7 @@ package body GNAT.Sockets.Thin is
    begin
       Res := Syscall_Connect (S, Name, Namelen);
 
-      if Thread_Blocking_IO
+      if Constants.Thread_Blocking_IO
         or else Res /= Failure
         or else Non_Blocking_Socket (S)
         or else Errno /= Constants.EINPROGRESS
@@ -186,15 +183,15 @@ package body GNAT.Sockets.Thin is
          Now  : aliased Timeval;
 
       begin
-         WSet := New_Socket_Set (No_Socket_Set);
+         WSet := New_Socket_Set (No_Fd_Set_Access);
          loop
             Insert_Socket_In_Set (WSet, S);
             Now := Immediat;
             Res := C_Select
               (S + 1,
-               No_Fd_Set,
+               No_Fd_Set_Access,
                WSet,
-               No_Fd_Set,
+               No_Fd_Set_Access,
                Now'Unchecked_Access);
 
             exit when Res > 0;
@@ -212,10 +209,9 @@ package body GNAT.Sockets.Thin is
 
       Res := Syscall_Connect (S, Name, Namelen);
 
-      if Res = Failure
-        and then Errno = Constants.EISCONN
-      then
-         return Thin.Success;
+      if Res = Failure and then Errno = Constants.EISCONN then
+         return Thin_Common.Success;
+
       else
          return Res;
       end if;
@@ -231,7 +227,7 @@ package body GNAT.Sockets.Thin is
       Arg : Int_Access) return C.int
    is
    begin
-      if not Thread_Blocking_IO
+      if not Constants.Thread_Blocking_IO
         and then Req = Constants.FIONBIO
       then
          if Arg.all /= 0 then
@@ -257,7 +253,7 @@ package body GNAT.Sockets.Thin is
    begin
       loop
          Res := Syscall_Recv (S, Msg, Len, Flags);
-         exit when Thread_Blocking_IO
+         exit when Constants.Thread_Blocking_IO
            or else Res /= Failure
            or else Non_Blocking_Socket (S)
            or else Errno /= Constants.EWOULDBLOCK;
@@ -277,14 +273,14 @@ package body GNAT.Sockets.Thin is
       Len     : C.int;
       Flags   : C.int;
       From    : Sockaddr_In_Access;
-      Fromlen : access C.int) return C.int
+      Fromlen : not null access C.int) return C.int
    is
       Res : C.int;
 
    begin
       loop
          Res := Syscall_Recvfrom (S, Msg, Len, Flags, From, Fromlen);
-         exit when Thread_Blocking_IO
+         exit when Constants.Thread_Blocking_IO
            or else Res /= Failure
            or else Non_Blocking_Socket (S)
            or else Errno /= Constants.EWOULDBLOCK;
@@ -309,7 +305,7 @@ package body GNAT.Sockets.Thin is
    begin
       loop
          Res := Syscall_Send (S, Msg, Len, Flags);
-         exit when Thread_Blocking_IO
+         exit when Constants.Thread_Blocking_IO
            or else Res /= Failure
            or else Non_Blocking_Socket (S)
            or else Errno /= Constants.EWOULDBLOCK;
@@ -336,7 +332,7 @@ package body GNAT.Sockets.Thin is
    begin
       loop
          Res := Syscall_Sendto (S, Msg, Len, Flags, To, Tolen);
-         exit when Thread_Blocking_IO
+         exit when Constants.Thread_Blocking_IO
            or else Res /= Failure
            or else Non_Blocking_Socket (S)
            or else Errno /= Constants.EWOULDBLOCK;
@@ -364,7 +360,7 @@ package body GNAT.Sockets.Thin is
    begin
       R := Syscall_Socket (Domain, Typ, Protocol);
 
-      if not Thread_Blocking_IO
+      if not Constants.Thread_Blocking_IO
         and then R /= Failure
       then
          --  Do not use C_Ioctl as this subprogram tracks sockets set
@@ -386,13 +382,19 @@ package body GNAT.Sockets.Thin is
       null;
    end Finalize;
 
+   -------------------------
+   -- Host_Error_Messages --
+   -------------------------
+
+   package body Host_Error_Messages is separate;
+
    ----------------
    -- Initialize --
    ----------------
 
-   procedure Initialize (Process_Blocking_IO : Boolean) is
+   procedure Initialize is
    begin
-      Thread_Blocking_IO := not Process_Blocking_IO;
+      null;
    end Initialize;
 
    -------------------------
@@ -407,35 +409,6 @@ package body GNAT.Sockets.Thin is
       Task_Lock.Unlock;
       return R;
    end Non_Blocking_Socket;
-
-   -----------------
-   -- Set_Address --
-   -----------------
-
-   procedure Set_Address (Sin : Sockaddr_In_Access; Address : In_Addr) is
-   begin
-      Sin.Sin_Addr   := Address;
-   end Set_Address;
-
-   ----------------
-   -- Set_Family --
-   ----------------
-
-   procedure Set_Family (Sin : Sockaddr_In_Access; Family : C.int) is
-   begin
-      Sin.Sin_Family := C.unsigned_short (Family);
-   end Set_Family;
-
-   ----------------
-   -- Set_Length --
-   ----------------
-
-   procedure Set_Length (Sin : Sockaddr_In_Access; Len : C.int) is
-      pragma Unreferenced (Sin);
-      pragma Unreferenced (Len);
-   begin
-      null;
-   end Set_Length;
 
    -----------------------------
    -- Set_Non_Blocking_Socket --
@@ -454,14 +427,11 @@ package body GNAT.Sockets.Thin is
       Task_Lock.Unlock;
    end Set_Non_Blocking_Socket;
 
-   --------------
-   -- Set_Port --
-   --------------
+   --------------------
+   -- Signalling_Fds --
+   --------------------
 
-   procedure Set_Port (Sin : Sockaddr_In_Access; Port : C.unsigned_short) is
-   begin
-      Sin.Sin_Port   := Port;
-   end Set_Port;
+   package body Signalling_Fds is separate;
 
    --------------------------
    -- Socket_Error_Message --

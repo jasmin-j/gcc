@@ -1,14 +1,14 @@
 /* Generate from machine description:
    - some flags HAVE_... saying which simple standard instructions are
    available for this machine.
-   Copyright (C) 1987, 1991, 1995, 1998,
-   1999, 2000, 2003, 2004 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1991, 1995, 1998, 1999, 2000, 2003, 2004, 2007
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -17,9 +17,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 #include "bconfig.h"
@@ -267,7 +266,7 @@ main (int argc, char **argv)
   /* Print out the prototypes now.  */
   dummy = (rtx) 0;
   obstack_grow (&obstack, &dummy, sizeof (rtx));
-  insns = (rtx *) obstack_finish (&obstack);
+  insns = XOBFINISH (&obstack, rtx *);
 
   for (insn_ptr = insns; *insn_ptr; insn_ptr++)
     gen_proto (*insn_ptr);
@@ -278,11 +277,4 @@ main (int argc, char **argv)
     return FATAL_EXIT_CODE;
 
   return SUCCESS_EXIT_CODE;
-}
-
-/* Define this so we can link with print-rtl.o to get debug_rtx function.  */
-const char *
-get_insn_name (int ARG_UNUSED (code))
-{
-  return NULL;
 }

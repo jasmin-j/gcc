@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -28,7 +27,6 @@ pragma Style_Checks (All_Checks);
 --  Turn off subprogram body ordering check. Subprograms are in order
 --  by RM section rather than alphabetical
 
-with Fname;    use Fname;
 with Fname.UF; use Fname.UF;
 with Uname;    use Uname;
 
@@ -49,7 +47,7 @@ package body Ch10 is
      (Cunit      : Node_Id;
       Loc        : Source_Ptr;
       SR_Present : Boolean);
-   --  This procedure is used to generate a line of output for the a unit in
+   --  This procedure is used to generate a line of output for a unit in
    --  the source program. Cunit is the node for the compilation unit, and
    --  Loc is the source location for the start of the unit in the source
    --  file (which is not necessarily the Sloc of the Cunit node). This
@@ -120,7 +118,7 @@ package body Ch10 is
       Cunit_Error_Flag   : Boolean := False;
       --  This flag is set True if we have to scan for a compilation unit
       --  token. It is used to ensure clean termination in such cases by
-      --  not insisting on being at the end of file, and, in the sytax only
+      --  not insisting on being at the end of file, and, in the syntax only
       --  case by not scanning for additional compilation units.
 
       Cunit_Location : Source_Ptr;
@@ -152,7 +150,7 @@ package body Ch10 is
          Item := P_Pragma;
 
          if Item = Error
-           or else Chars (Item) /= Name_Source_Reference
+           or else Pragma_Name (Item) /= Name_Source_Reference
          then
             Restore_Scan_State (Scan_State);
 
@@ -182,7 +180,8 @@ package body Ch10 is
          Item := P_Pragma;
 
          if Item = Error
-           or else Chars (Item) > Last_Configuration_Pragma_Name
+           or else not
+             Is_Configuration_Pragma_Name (Pragma_Name (Item))
          then
             Restore_Scan_State (Scan_State);
             exit;
@@ -223,9 +222,9 @@ package body Ch10 is
             else
                Item := First (Config_Pragmas);
                Error_Msg_N
-                 ("cannot compile configuration pragmas with gcc", Item);
+                 ("cannot compile configuration pragmas with gcc!", Item);
                Error_Msg_N
-                 ("use gnatchop -c to process configuration pragmas!", Item);
+                 ("\use gnatchop -c to process configuration pragmas!", Item);
                raise Unrecoverable_Error;
             end if;
 
@@ -245,7 +244,9 @@ package body Ch10 is
       if Token = Tok_Private then
          Private_Sloc := Token_Ptr;
          Set_Keyword_Casing (Current_Source_File, Determine_Token_Casing);
-         if Style_Check then Style.Check_Indentation; end if;
+         if Style_Check then
+            Style.Check_Indentation;
+         end if;
 
          Save_Scan_State (Scan_State); -- at PRIVATE
          Scan; -- past PRIVATE
@@ -321,7 +322,9 @@ package body Ch10 is
       --  it hasn't already been done on seeing a WITH or PRIVATE.
 
       Set_Keyword_Casing (Current_Source_File, Determine_Token_Casing);
-      if Style_Check then Style.Check_Indentation; end if;
+      if Style_Check then
+         Style.Check_Indentation;
+      end if;
 
       --  Remaining processing depends on particular type of compilation unit
 
@@ -354,8 +357,10 @@ package body Ch10 is
       elsif Token = Tok_Separate then
          Set_Unit (Comp_Unit_Node, P_Subunit);
 
-      elsif Token = Tok_Procedure
-        or else Token = Tok_Function
+      elsif Token = Tok_Function
+        or else Token = Tok_Not
+        or else Token = Tok_Overriding
+        or else Token = Tok_Procedure
       then
          Set_Unit (Comp_Unit_Node, P_Subprogram (Pf_Decl_Gins_Pbod_Rnam));
 
@@ -404,9 +409,7 @@ package body Ch10 is
 
          elsif Private_Sloc /= No_Location
            and then
-             Nkind (Unit (Comp_Unit_Node)) /= N_Function_Instantiation
-           and then
-             Nkind (Unit (Comp_Unit_Node)) /= N_Procedure_Instantiation
+             Nkind (Unit (Comp_Unit_Node)) not in N_Subprogram_Instantiation
            and then
              Nkind (Unit (Comp_Unit_Node)) /= N_Subprogram_Renaming_Declaration
          then
@@ -528,8 +531,25 @@ package body Ch10 is
            or else Nkind (Unit_Node) = N_Single_Protected_Declaration
          then
             Name_Node := Defining_Identifier (Unit_Node);
-         else
+
+         elsif Nkind (Unit_Node) = N_Function_Instantiation
+           or else Nkind (Unit_Node) = N_Function_Specification
+           or else Nkind (Unit_Node) = N_Generic_Function_Renaming_Declaration
+           or else Nkind (Unit_Node) = N_Generic_Package_Renaming_Declaration
+           or else Nkind (Unit_Node) = N_Generic_Procedure_Renaming_Declaration
+           or else Nkind (Unit_Node) = N_Package_Body
+           or else Nkind (Unit_Node) = N_Package_Instantiation
+           or else Nkind (Unit_Node) = N_Package_Renaming_Declaration
+           or else Nkind (Unit_Node) = N_Package_Specification
+           or else Nkind (Unit_Node) = N_Procedure_Instantiation
+           or else Nkind (Unit_Node) = N_Procedure_Specification
+         then
             Name_Node := Defining_Unit_Name (Unit_Node);
+
+         --  Anything else is a serious error, abandon scan
+
+         else
+            raise Error_Resync;
          end if;
 
          Set_Sloc (Comp_Unit_Node, Sloc (Name_Node));
@@ -568,19 +588,17 @@ package body Ch10 is
       while Token = Tok_Pragma loop
          Save_Scan_State (Scan_State);
 
-         --  If we are in syntax scan mode allowing multiple units, then
-         --  start the next unit if we encounter a configuration pragma,
-         --  or a source reference pragma. We take care not to actually
-         --  scan the pragma in this case since we don't want it to take
-         --  effect for the current unit.
+         --  If we are in syntax scan mode allowing multiple units, then start
+         --  the next unit if we encounter a configuration pragma, or a source
+         --  reference pragma. We take care not to actually scan the pragma in
+         --  this case (we don't want it to take effect for the current unit).
 
          if Operating_Mode = Check_Syntax then
             Scan;  -- past Pragma
 
             if Token = Tok_Identifier
               and then
-                (Token_Name in
-                         First_Pragma_Name .. Last_Configuration_Pragma_Name
+                (Is_Configuration_Pragma_Name (Token_Name)
                    or else Token_Name = Name_Source_Reference)
             then
                Restore_Scan_State (Scan_State); -- to Pragma
@@ -647,7 +665,7 @@ package body Ch10 is
       if Token /= Tok_EOF then
 
          --  If we already had to scan for a compilation unit, then don't
-         --  give any further error message, since it just sems to make
+         --  give any further error message, since it just seems to make
          --  things worse, and we already gave a serious error message.
 
          if Cunit_Error_Flag then
@@ -791,7 +809,9 @@ package body Ch10 is
       --  Loop through context items
 
       loop
-         if Style_Check then Style.Check_Indentation; end if;
+         if Style_Check then
+            Style.Check_Indentation;
+         end if;
 
          --  Gather any pragmas appearing in the context clause
 
@@ -838,7 +858,7 @@ package body Ch10 is
                return Item_List;
 
             elsif Ada_Version < Ada_05 then
-               Error_Msg_SP ("PRIVATE WITH is an Ada 2005 extension");
+               Error_Msg_SP ("`PRIVATE WITH` is an Ada 2005 extension");
                Error_Msg_SP
                  ("\unit must be compiled with -gnat05 switch");
             end if;
@@ -853,22 +873,17 @@ package body Ch10 is
 
             if Token = Tok_Type then
 
-               --  WITH TYPE is an GNAT specific extension
+               --  WITH TYPE is an obsolete GNAT specific extension
 
-               if not Extensions_Allowed then
-                  Error_Msg_SP ("`WITH TYPE` is a 'G'N'A'T extension");
-                  Error_Msg_SP ("\unit must be compiled with -gnatX switch");
-               end if;
+               Error_Msg_SP
+                 ("`WITH TYPE` is an obsolete 'G'N'A'T extension");
+               Error_Msg_SP ("\use Ada 2005 `LIMITED WITH` clause instead");
 
                Scan;  -- past TYPE
-               With_Node := New_Node (N_With_Type_Clause, Token_Ptr);
-               Append (With_Node, Item_List);
-               Set_Name (With_Node, P_Qualified_Simple_Name);
 
                T_Is;
 
                if Token = Tok_Tagged then
-                  Set_Tagged_Present (With_Node);
                   Scan;
 
                elsif Token = Tok_Access then
@@ -884,7 +899,7 @@ package body Ch10 is
                First_Flag := True;
 
                --  Loop through names in one with clause, generating a separate
-               --  N_With_Clause node for each nam encountered.
+               --  N_With_Clause node for each name encountered.
 
                loop
                   With_Node := New_Node (N_With_Clause, Token_Ptr);
@@ -1006,14 +1021,11 @@ package body Ch10 is
       Body_Node := Error; -- in case no good body found
       Scan; -- past SEPARATE;
 
-      T_Left_Paren;
+      U_Left_Paren;
       Set_Name (Subunit_Node, P_Qualified_Simple_Name);
-      T_Right_Paren;
+      U_Right_Paren;
 
-      if Token = Tok_Semicolon then
-         Error_Msg_SC ("unexpected semicolon ignored");
-         Scan;
-      end if;
+      Ignore (Tok_Semicolon);
 
       if Token = Tok_Function or else Token = Tok_Procedure then
          Body_Node := P_Subprogram (Pf_Pbod);

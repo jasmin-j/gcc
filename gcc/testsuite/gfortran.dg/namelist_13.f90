@@ -1,4 +1,4 @@
-!{ dg-do run }
+!{ dg-do run { target fd_truncate } }
 ! Tests simple derived types.
 ! Provided by Paul Thomas - pault@gcc.gnu.org
 
@@ -25,7 +25,7 @@ program namelist_13
   zeros = 0
   zeros(5) = 1
 
-  open(10,status="scratch")
+  open(10,status="scratch", delim="apostrophe")
   write (10, nml=mynml, iostat=ier)
   if (ier.ne.0) call abort
 

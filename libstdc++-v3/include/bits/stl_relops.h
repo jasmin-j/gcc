@@ -1,6 +1,6 @@
 // std::rel_ops implementation -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2004, 2005, 2008 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -57,7 +57,6 @@
  *  This is an internal header file, included by other library headers.
  *  You should not attempt to use it directly.
  *
- *  @if maint
  *  Inclusion of this file has been removed from
  *  all of the other STL headers for safety reasons, except std_utility.h.
  *  For more information, see the thread of about twenty messages starting
@@ -65,14 +64,13 @@
  *  FAQ at http://gcc.gnu.org/onlinedocs/libstdc++/faq/index.html#4_4 .
  *
  *  Short summary:  the rel_ops operators should be avoided for the present.
- *  @endif
  */
 
 #ifndef _STL_RELOPS_H
 #define _STL_RELOPS_H 1
 
-namespace std
-{
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
   namespace rel_ops
   {
     /** @namespace std::rel_ops
@@ -132,6 +130,7 @@ namespace std
       { return !(__x < __y); }
 
   } // namespace rel_ops
-} // namespace std
+
+_GLIBCXX_END_NAMESPACE
 
 #endif /* _STL_RELOPS_H */

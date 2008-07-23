@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1998-2003 Free Software Foundation, Inc.          --
+--          Copyright (C) 1998-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -31,7 +31,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This package manages the shared/persistant storage required for
+--  This package manages the shared/persistent storage required for
 --  full implementation of variables in Shared_Passive packages, more
 --  precisely variables whose enclosing dynamic scope is a shared
 --  passive package. This implementation is specific to GNAT and GLADE
@@ -79,47 +79,17 @@
 
 --  The approach is as follows:
 
---    For each shared variable, var, an access routine varR is created whose
---    body has the following form (this example is for Pkg.Var):
-
---      procedure varR is
---         S : Ada.Streams.Stream_IO.Stream_Access;
---      begin
---         S := Shared_Var_ROpen ("pkg.var");
---         if S /= null then
---            typ'Read (S);
---            Shared_Var_Close (S);
---         end if;
---      end varR;
+--    For each shared variable, var, an instantiation of the below generic
+--    package is created which provides Read and Write supporting procedures.
 
 --    The routine Shared_Var_ROpen in package System.Shared_Storage
 --    either returns null if the storage does not exist, or otherwise a
 --    Stream_Access value that references the corresponding shared
 --    storage, ready to read the current value.
 
---    Each reference to the shared variable, var, is preceded by a
---    call to the corresponding varR procedure, which either leaves the
---    initial value unchanged if the storage does not exist, or reads
---    the current value from the shared storage.
-
---    In addition, for each shared variable, var, an assignment routine
---    is created whose body has the following form (again for Pkg.Var)
-
---      procedure VarA is
---         S : Ada.Streams.Stream_IO.Stream_Access;
---      begin
---         S := Shared_Var_WOpen ("pkg.var");
---         typ'Write (S, var);
---         Shared_Var_Close (S);
---      end VarA;
-
 --    The routine Shared_Var_WOpen in package System.Shared_Storage
 --    returns a Stream_Access value that references the corresponding
 --    shared storage, ready to write the new value.
-
---    Each assignment to the shared variable, var, is followed by a call
---    to the corresponding varA procedure, which writes the new value to
---    the shared storage.
 
 --    Note that there is no general synchronization for these storage
 --    read and write operations, since it is assumed that a correctly
@@ -134,7 +104,7 @@
 --    the same stream is used simultaneously, both operations can
 --    terminate abruptly by raising exception Mode_Error because the
 --    stream has been opened in read mode and then in write mode and at
---    least used by the read opartion. To avoid this unexpected
+--    least used by the read operation. To avoid this unexpected
 --    behaviour, we introduce a synchronization at the partition level.
 
 --  Note: a special circuit allows the use of stream attributes Read and
@@ -198,7 +168,7 @@ package System.Shared_Storage is
    --  value. The storage is created by this call if it does not
    --  already exist.
 
-   procedure Shared_Var_Close (Var : in SIO.Stream_Access);
+   procedure Shared_Var_Close (Var : SIO.Stream_Access);
    --  This routine signals the end of a read/assign operation. It can
    --  be useful to embrace a read/write operation between a call to
    --  open and a call to close which protect the whole operation.
@@ -214,9 +184,40 @@ package System.Shared_Storage is
    --  the lock is busy.
 
    procedure Shared_Var_Unlock (Var : String);
-   --  This procedure releases the shared storage lock obtaind by a
+   --  This procedure releases the shared storage lock obtained by a
    --  prior call to the Shared_Mem_Lock procedure, and is to be
    --  generated as the last operation in the body of a protected
    --  subprogram.
+
+   --  This generic package is instantiated for each shared passive
+   --  variable. It provides supporting procedures called upon each
+   --  read or write access by the expanded code.
+
+   generic
+
+      type Typ is limited private;
+      --  Shared passive variable type
+
+      V : in out Typ;
+      --  Shared passive variable
+
+      Full_Name : String;
+      --  Shared passive variable storage name
+
+   package Shared_Var_Procs is
+
+      procedure Read;
+      --  Shared passive variable access routine. Each reference to the
+      --  shared variable, V, is preceded by a call to the corresponding
+      --  Read procedure, which either leaves the initial value unchanged
+      --  if the storage does not exist, or reads the current value from
+      --  the shared storage.
+
+      procedure Write;
+      --  Shared passive variable assignment routine. Each assignment to
+      --  the shared variable, V, is followed by a call to the corresponding
+      --  Write procedure, which writes the new value to the shared storage.
+
+   end Shared_Var_Procs;
 
 end System.Shared_Storage;

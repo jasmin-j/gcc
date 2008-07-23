@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -54,16 +54,11 @@ package Stand is
       S_Standard,
       S_ASCII,
 
-      --  Types defined in package Standard
+      --  Types and subtypes defined in package Standard (in the order in which
+      --  they appear in the RM, so that the declarations are in the right
+      --  order for the purposes of ASIS traversals
 
       S_Boolean,
-      S_Character,
-      S_Wide_Character,
-      S_Wide_Wide_Character,
-      S_String,
-      S_Wide_String,
-      S_Wide_Wide_String,
-      S_Duration,
 
       S_Short_Short_Integer,
       S_Short_Integer,
@@ -71,20 +66,28 @@ package Stand is
       S_Long_Integer,
       S_Long_Long_Integer,
 
+      S_Natural,
+      S_Positive,
+
       S_Short_Float,
       S_Float,
       S_Long_Float,
       S_Long_Long_Float,
 
+      S_Character,
+      S_Wide_Character,
+      S_Wide_Wide_Character,
+
+      S_String,
+      S_Wide_String,
+      S_Wide_Wide_String,
+
+      S_Duration,
+
       --  Enumeration literals for type Boolean
 
       S_False,
       S_True,
-
-      --  Subtypes declared in package Standard
-
-      S_Natural,
-      S_Positive,
 
       --  Exceptions declared in package Standard
 
@@ -218,7 +221,7 @@ package Stand is
       S_DEL);           -- 16#7F#
 
    subtype S_Types is
-     Standard_Entity_Type range S_Boolean .. S_Long_Long_Float;
+     Standard_Entity_Type range S_Boolean .. S_Duration;
 
    subtype S_Exceptions is
      Standard_Entity_Type range S_Constraint_Error .. S_Tasking_Error;
@@ -335,7 +338,7 @@ package Stand is
    --  This is a type used to represent the return type of procedures
 
    Standard_Exception_Type  : Entity_Id;
-   --  This is a type used to represent the Etype of exceptions.
+   --  This is a type used to represent the Etype of exceptions
 
    Standard_A_String   : Entity_Id;
    --  An access to String type used for building elements of tables
@@ -345,6 +348,10 @@ package Stand is
    --  Access to character, used as a component of the exception type to
    --  denote a thin pointer component.
 
+   Standard_Debug_Renaming_Type : Entity_Id;
+   --  A zero-size subtype of Integer, used as the type of variables used
+   --  to provide the debugger with name encodings for renaming declarations.
+
    --  The entities labeled Any_xxx are used in situations where the full
    --  characteristics of an entity are not yet known, e.g. Any_Character
    --  is used to label a character literal before resolution is complete.
@@ -352,23 +359,23 @@ package Stand is
    --  error messages ("expecting an integer type").
 
    Any_Id : Entity_Id;
-   --  Used to represent some unknown identifier. Used to lable undefined
+   --  Used to represent some unknown identifier. Used to label undefined
    --  identifier references to prevent cascaded errors.
 
    Any_Type : Entity_Id;
    --  Used to represent some unknown type. Plays an important role in
-   --  avoiding cascaded errors, since any node that remains labaled with
+   --  avoiding cascaded errors, since any node that remains labeled with
    --  this type corresponds to an already issued error message. Any_Type
    --  is propagated to avoid cascaded errors from a single type error.
 
    Any_Access : Entity_Id;
-   --  Used to resolve the overloaded literal NULL.
+   --  Used to resolve the overloaded literal NULL
 
    Any_Array : Entity_Id;
    --  Used to represent some unknown array type
 
    Any_Boolean : Entity_Id;
-   --  The context type of conditions in IF and WHILE statements.
+   --  The context type of conditions in IF and WHILE statements
 
    Any_Character : Entity_Id;
    --  Any_Character is used to label character literals, which in general
@@ -386,7 +393,7 @@ package Stand is
    --  Used to represent some unknown fixed-point type
 
    Any_Integer : Entity_Id;
-   --  Used to represent some unknown integer type.
+   --  Used to represent some unknown integer type
 
    Any_Modular : Entity_Id;
    --  Used to represent the result type of a boolean operation on an
@@ -394,10 +401,10 @@ package Stand is
    --  only legal in a modular context.
 
    Any_Numeric : Entity_Id;
-   --  Used to represent some unknown numeric type.
+   --  Used to represent some unknown numeric type
 
    Any_Real : Entity_Id;
-   --  Used to represent some unknown real type.
+   --  Used to represent some unknown real type
 
    Any_Scalar : Entity_Id;
    --  Used to represent some unknown scalar type
@@ -416,7 +423,9 @@ package Stand is
    Universal_Real : Entity_Id;
    --  Entity for universal real type. The bounds of this type correspond to
    --  to the largest supported real type (i.e. Long_Long_Real). It is the
-   --  type used for runtime calculations in type universal real.
+   --  type used for runtime calculations in type universal real. Note that
+   --  this type is always IEEE format, even if Long_Long_Real is Vax_Float
+   --  (and in that case the bounds don't correspond exactly).
 
    Universal_Fixed : Entity_Id;
    --  Entity for universal fixed type. This is a type with  arbitrary

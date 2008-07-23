@@ -1,5 +1,5 @@
 /* Backward compatibility unwind routines.
-   Copyright (C) 2004
+   Copyright (C) 2004, 2005, 2006
    Free Software Foundation, Inc.
 
    This file is part of GCC.
@@ -25,10 +25,12 @@
 
    You should have received a copy of the GNU General Public License
    along with GCC; see the file COPYING.  If not, write to the Free
-   Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-   02111-1307, USA.  */
+   Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+   02110-1301, USA.  */
 
 #if defined (USE_GAS_SYMVER) && defined (USE_LIBUNWIND_EXCEPTIONS)
+#include "tconfig.h"
+#include "tsystem.h"
 #include "unwind.h"
 #include "unwind-dw2-fde.h"
 #include "unwind-compat.h"
@@ -36,7 +38,7 @@
 extern _Unwind_Reason_Code __libunwind_Unwind_Backtrace
   (_Unwind_Trace_Fn, void *);
 
-_Unwind_Reason_Code
+_Unwind_Reason_Code LIBGCC2_UNWIND_ATTRIBUTE
 _Unwind_Backtrace (_Unwind_Trace_Fn trace, void *trace_argument)
 {
   return __libunwind_Unwind_Backtrace (trace, trace_argument);
@@ -65,7 +67,7 @@ symver (_Unwind_FindEnclosingFunction, GCC_3.3);
 extern _Unwind_Reason_Code __libunwind_Unwind_ForcedUnwind
   (struct _Unwind_Exception *, _Unwind_Stop_Fn, void *);
 
-_Unwind_Reason_Code
+_Unwind_Reason_Code LIBGCC2_UNWIND_ATTRIBUTE
 _Unwind_ForcedUnwind (struct _Unwind_Exception *exc,
 		      _Unwind_Stop_Fn stop, void * stop_argument)
 {
@@ -134,6 +136,13 @@ _Unwind_GetIP (struct _Unwind_Context *context)
 }
 symver (_Unwind_GetIP, GCC_3.0);
 
+_Unwind_Ptr
+_Unwind_GetIPInfo (struct _Unwind_Context *context, int *ip_before_insn)
+{
+  *ip_before_insn = 0;
+  return __libunwind_Unwind_GetIP (context);
+}
+
 extern void *__libunwind_Unwind_GetLanguageSpecificData
   (struct _Unwind_Context *);
 
@@ -157,7 +166,7 @@ symver (_Unwind_GetRegionStart, GCC_3.0);
 extern _Unwind_Reason_Code __libunwind_Unwind_RaiseException
   (struct _Unwind_Exception *);
 
-_Unwind_Reason_Code
+_Unwind_Reason_Code LIBGCC2_UNWIND_ATTRIBUTE
 _Unwind_RaiseException(struct _Unwind_Exception *exc)
 {
   return __libunwind_Unwind_RaiseException (exc);
@@ -166,7 +175,7 @@ symver (_Unwind_RaiseException, GCC_3.0);
 
 extern void __libunwind_Unwind_Resume (struct _Unwind_Exception *);
 
-void
+void LIBGCC2_UNWIND_ATTRIBUTE
 _Unwind_Resume (struct _Unwind_Exception *exc)
 {
   __libunwind_Unwind_Resume (exc);
@@ -176,7 +185,7 @@ symver (_Unwind_Resume, GCC_3.0);
 extern _Unwind_Reason_Code __libunwind_Unwind_Resume_or_Rethrow
    (struct _Unwind_Exception *);
 
-_Unwind_Reason_Code
+_Unwind_Reason_Code LIBGCC2_UNWIND_ATTRIBUTE
 _Unwind_Resume_or_Rethrow (struct _Unwind_Exception *exc)
 {
   return __libunwind_Unwind_Resume_or_Rethrow (exc);

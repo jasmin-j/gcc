@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2000-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 2000-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -40,7 +40,7 @@ package body SFN_Scan is
 
    EOF : constant Character := ASCII.SUB;
    --  The character SUB (16#1A#) is used in DOS and other systems derived
-   --  from DOS (OS/2, NT etc) to signal the end of a text file. If this
+   --  from DOS (OS/2, NT etc.) to signal the end of a text file. If this
    --  character appears as the last character of a file scanned by a call
    --  to Scan_SFN_Pragmas, then it is ignored, otherwise it is treated as
    --  an illegal character.
@@ -601,7 +601,7 @@ package body SFN_Scan is
                end if;
             end loop Skip_Loop;
 
-            --  We successfuly skipped to semicolon, so skip past it
+            --  We successfully skipped to semicolon, so skip past it
 
             P := P + 1;
          end if;

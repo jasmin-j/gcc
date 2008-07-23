@@ -14,7 +14,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, USA.  */
 
 /* This package implements basic hash table functionality.  It is possible
    to search for an entry, create an entry and destroy an entry.
@@ -80,6 +80,15 @@ typedef void (*htab_free) (void *);
    argument.  */
 typedef void *(*htab_alloc_with_arg) (void *, size_t, size_t);
 typedef void (*htab_free_with_arg) (void *, void *);
+
+/* This macro defines reserved value for empty table entry.  */
+
+#define HTAB_EMPTY_ENTRY    ((PTR) 0)
+
+/* This macro defines reserved value for table entry which contained
+   a deleted element. */
+
+#define HTAB_DELETED_ENTRY  ((PTR) 1)
 
 /* Hash tables are of the following type.  The structure
    (implementation) of this type is not needed for using the hash

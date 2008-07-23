@@ -1,5 +1,6 @@
 /* Mudflap: narrow-pointer bounds-checking by tree rewriting.
-   Copyright (C) 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Free Software Foundation, Inc.
    Contributed by Frank Ch. Eigler <fche@redhat.com>
    and Graydon Hoare <graydon@redhat.com>
 
@@ -7,7 +8,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -16,13 +17,11 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 #include "config.h"
-#include "errors.h"
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
@@ -45,8 +44,13 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 #include "langhooks.h"
 #include "ggc.h"
 #include "cgraph.h"
+#include "toplev.h"
 
 /* Internal function decls */
+
+
+/* Options.  */
+#define flag_mudflap_threads (flag_mudflap == 2)
 
 /* Helpers.  */
 static tree mf_build_string (const char *string);
@@ -57,13 +61,13 @@ static tree mf_file_function_line_tree (location_t);
 static void mf_decl_cache_locals (void);
 static void mf_decl_clear_locals (void);
 static void mf_xform_derefs (void);
-static void execute_mudflap_function_ops (void);
+static unsigned int execute_mudflap_function_ops (void);
 
 /* Addressable variables instrumentation.  */
 static void mf_xform_decls (tree, tree);
 static tree mx_xfn_xform_decls (tree *, int *, void *);
 static void mx_register_decls (tree, tree *);
-static void execute_mudflap_function_decls (void);
+static unsigned int execute_mudflap_function_decls (void);
 
 
 /* ------------------------------------------------------------------------ */
@@ -79,7 +83,6 @@ mf_build_string (const char *string)
   TREE_TYPE (result) = build_array_type
     (char_type_node, build_index_type (build_int_cst (NULL_TREE, len)));
   TREE_CONSTANT (result) = 1;
-  TREE_INVARIANT (result) = 1;
   TREE_READONLY (result) = 1;
   TREE_STATIC (result) = 1;
 
@@ -117,9 +120,7 @@ mf_varname_tree (tree decl)
     const char *sourcefile;
     unsigned sourceline = xloc.line;
     unsigned sourcecolumn = 0;
-#ifdef USE_MAPPED_LOCATION
     sourcecolumn = xloc.column;
-#endif
     sourcefile = xloc.file;
     if (sourcefile == NULL && current_function_decl != NULL_TREE)
       sourcefile = DECL_SOURCE_FILE (current_function_decl);
@@ -210,11 +211,9 @@ mf_file_function_line_tree (location_t location)
 
   if (xloc.line > 0)
     {
-#ifdef USE_MAPPED_LOCATION
       if (xloc.column > 0)
         sprintf (linecolbuf, "%d:%d", xloc.line, xloc.column);
       else
-#endif
         sprintf (linecolbuf, "%d", xloc.line);
       colon = ":";
       line = linecolbuf;
@@ -297,6 +296,10 @@ mf_make_builtin (enum tree_code category, const char *name, tree type)
   TREE_PUBLIC (decl) = 1;
   DECL_EXTERNAL (decl) = 1;
   lang_hooks.decls.pushdecl (decl);
+  /* The decl was declared by the compiler.  */
+  DECL_ARTIFICIAL (decl) = 1;
+  /* And we don't want debug info for it.  */
+  DECL_IGNORED_P (decl) = 1;
   return decl;
 }
 
@@ -323,17 +326,23 @@ mf_make_mf_cache_struct_type (tree field_type)
   return struct_type;
 }
 
-#define build_function_type_0(rtype)            \
+#define build_function_type_0(rtype)           				\
   build_function_type (rtype, void_list_node)
-#define build_function_type_1(rtype, arg1)                 \
+#define build_function_type_1(rtype, arg1)                		\
   build_function_type (rtype, tree_cons (0, arg1, void_list_node))
 #define build_function_type_3(rtype, arg1, arg2, arg3)                  \
-  build_function_type (rtype, tree_cons (0, arg1, tree_cons (0, arg2,   \
-                                                             tree_cons (0, arg3, void_list_node))))
+  build_function_type (rtype,						\
+		       tree_cons (0, arg1, 				\
+				  tree_cons (0, arg2,  			\
+                                              tree_cons (0, arg3, 	\
+							 void_list_node))))
 #define build_function_type_4(rtype, arg1, arg2, arg3, arg4)            \
-  build_function_type (rtype, tree_cons (0, arg1, tree_cons (0, arg2,   \
-                                                             tree_cons (0, arg3, tree_cons (0, arg4, \
-                                                                                            void_list_node)))))
+  build_function_type (rtype, 						\
+		       tree_cons (0, arg1,				\
+				  tree_cons (0, arg2,   		\
+                                             tree_cons (0, arg3,	\
+							tree_cons (0, arg4, \
+                                                		   void_list_node)))))
 
 /* Initialize the global tree nodes that correspond to mf-runtime.h
    declarations.  */
@@ -409,16 +418,18 @@ mudflap_init (void)
    tree optimizations have been performed, but we have to preserve the CFG
    for expansion from trees to RTL.  */
 
-static void
+static unsigned int
 execute_mudflap_function_ops (void)
 {
+  struct gimplify_ctx gctx;
+
   /* Don't instrument functions such as the synthetic constructor
      built during mudflap_finish_file.  */
   if (mf_marked_p (current_function_decl) ||
       DECL_ARTIFICIAL (current_function_decl))
-    return;
+    return 0;
 
-  push_gimplify_context ();
+  push_gimplify_context (&gctx);
 
   /* In multithreaded mode, don't cache the lookup cache parameters.  */
   if (! flag_mudflap_threads)
@@ -430,6 +441,7 @@ execute_mudflap_function_ops (void)
     mf_decl_clear_locals ();
 
   pop_gimplify_context (NULL);
+  return 0;
 }
 
 /* Create and initialize local shadow variables for the lookup cache
@@ -453,14 +465,12 @@ mf_decl_cache_locals (void)
 
   /* Build initialization nodes for the cache vars.  We just load the
      globals into the cache variables.  */
-  t = build (MODIFY_EXPR, TREE_TYPE (mf_cache_shift_decl_l),
-             mf_cache_shift_decl_l, mf_cache_shift_decl);
+  t = build_gimple_modify_stmt (mf_cache_shift_decl_l, mf_cache_shift_decl);
   SET_EXPR_LOCATION (t, DECL_SOURCE_LOCATION (current_function_decl));
   gimplify_to_stmt_list (&t);
   shift_init_stmts = t;
 
-  t = build (MODIFY_EXPR, TREE_TYPE (mf_cache_mask_decl_l),
-             mf_cache_mask_decl_l, mf_cache_mask_decl);
+  t = build_gimple_modify_stmt (mf_cache_mask_decl_l, mf_cache_mask_decl);
   SET_EXPR_LOCATION (t, DECL_SOURCE_LOCATION (current_function_decl));
   gimplify_to_stmt_list (&t);
   mask_init_stmts = t;
@@ -528,14 +538,11 @@ mf_build_check_statement_for (tree base, tree limit,
   make_edge (cond_bb, then_bb, EDGE_TRUE_VALUE);
   make_single_succ_edge (then_bb, join_bb, EDGE_FALLTHRU);
 
-  /* We expect that the conditional jump we will construct will not
-     be taken very often as it basically is an exception condition.  */
-  predict_edge_def (single_pred_edge (then_bb), PRED_MUDFLAP, NOT_TAKEN);
-
   /* Mark the pseudo-fallthrough edge from cond_bb to join_bb.  */
   e = find_edge (cond_bb, join_bb);
   e->flags = EDGE_FALSE_VALUE;
-  predict_edge_def (e, PRED_MUDFLAP, TAKEN);
+  e->count = cond_bb->count;
+  e->probability = REG_BR_PROB_BASE;
 
   /* Update dominance info.  Note that bb_join's data was
      updated by split_block.  */
@@ -551,31 +558,35 @@ mf_build_check_statement_for (tree base, tree limit,
   mf_limit = create_tmp_var (mf_uintptr_type, "__mf_limit");
 
   /* Build: __mf_base = (uintptr_t) <base address expression>.  */
-  t = build (MODIFY_EXPR, void_type_node, mf_base,
-             convert (mf_uintptr_type, unshare_expr (base)));
+  t = build_gimple_modify_stmt (mf_base,
+				fold_convert (mf_uintptr_type,
+					      unshare_expr (base)));
   SET_EXPR_LOCUS (t, locus);
   gimplify_to_stmt_list (&t);
   head = tsi_start (t);
   tsi = tsi_last (t);
 
   /* Build: __mf_limit = (uintptr_t) <limit address expression>.  */
-  t = build (MODIFY_EXPR, void_type_node, mf_limit,
-             convert (mf_uintptr_type, unshare_expr (limit)));
+  t = build_gimple_modify_stmt (mf_limit,
+				fold_convert (mf_uintptr_type,
+					      unshare_expr (limit)));
   SET_EXPR_LOCUS (t, locus);
   gimplify_to_stmt_list (&t);
   tsi_link_after (&tsi, t, TSI_CONTINUE_LINKING);
 
   /* Build: __mf_elem = &__mf_lookup_cache [(__mf_base >> __mf_shift)
                                             & __mf_mask].  */
-  t = build (RSHIFT_EXPR, mf_uintptr_type, mf_base,
-             (flag_mudflap_threads ? mf_cache_shift_decl : mf_cache_shift_decl_l));
-  t = build (BIT_AND_EXPR, mf_uintptr_type, t,
-             (flag_mudflap_threads ? mf_cache_mask_decl : mf_cache_mask_decl_l));
-  t = build (ARRAY_REF,
-             TREE_TYPE (TREE_TYPE (mf_cache_array_decl)),
-             mf_cache_array_decl, t, NULL_TREE, NULL_TREE);
+  t = build2 (RSHIFT_EXPR, mf_uintptr_type, mf_base,
+              flag_mudflap_threads ? mf_cache_shift_decl
+	       : mf_cache_shift_decl_l);
+  t = build2 (BIT_AND_EXPR, mf_uintptr_type, t,
+              flag_mudflap_threads ? mf_cache_mask_decl
+	       : mf_cache_mask_decl_l);
+  t = build4 (ARRAY_REF,
+              TREE_TYPE (TREE_TYPE (mf_cache_array_decl)),
+              mf_cache_array_decl, t, NULL_TREE, NULL_TREE);
   t = build1 (ADDR_EXPR, mf_cache_structptr_type, t);
-  t = build (MODIFY_EXPR, void_type_node, mf_elem, t);
+  t = build_gimple_modify_stmt (mf_elem, t);
   SET_EXPR_LOCUS (t, locus);
   gimplify_to_stmt_list (&t);
   tsi_link_after (&tsi, t, TSI_CONTINUE_LINKING);
@@ -595,10 +606,10 @@ mf_build_check_statement_for (tree base, tree limit,
      the edge to the THEN clause of the conditional jump as unlikely.  */
 
   /* Construct t <-- '__mf_elem->low  > __mf_base'.  */
-  t = build (COMPONENT_REF, mf_uintptr_type,
-             build1 (INDIRECT_REF, mf_cache_struct_type, mf_elem),
-             TYPE_FIELDS (mf_cache_struct_type), NULL_TREE);
-  t = build (GT_EXPR, boolean_type_node, t, mf_base);
+  t = build3 (COMPONENT_REF, mf_uintptr_type,
+              build1 (INDIRECT_REF, mf_cache_struct_type, mf_elem),
+              TYPE_FIELDS (mf_cache_struct_type), NULL_TREE);
+  t = build2 (GT_EXPR, boolean_type_node, t, mf_base);
 
   /* Construct '__mf_elem->high < __mf_limit'.
 
@@ -608,28 +619,26 @@ mf_build_check_statement_for (tree base, tree limit,
 
      Then build 'u <-- (u < v).  */
 
-  u = build (COMPONENT_REF, mf_uintptr_type,
-             build1 (INDIRECT_REF, mf_cache_struct_type, mf_elem),
-             TREE_CHAIN (TYPE_FIELDS (mf_cache_struct_type)), NULL_TREE);
+  u = build3 (COMPONENT_REF, mf_uintptr_type,
+              build1 (INDIRECT_REF, mf_cache_struct_type, mf_elem),
+              TREE_CHAIN (TYPE_FIELDS (mf_cache_struct_type)), NULL_TREE);
 
   v = mf_limit;
 
-  u = build (LT_EXPR, boolean_type_node, u, v);
+  u = build2 (LT_EXPR, boolean_type_node, u, v);
 
   /* Build the composed conditional: t <-- 't || u'.  Then store the
      result of the evaluation of 't' in a temporary variable which we
      can use as the condition for the conditional jump.  */
-  t = build (TRUTH_OR_EXPR, boolean_type_node, t, u);
+  t = build2 (TRUTH_OR_EXPR, boolean_type_node, t, u);
   cond = create_tmp_var (boolean_type_node, "__mf_unlikely_cond");
-  t = build (MODIFY_EXPR, boolean_type_node, cond, t);
+  t = build_gimple_modify_stmt (cond, t);
   gimplify_to_stmt_list (&t);
   tsi_link_after (&tsi, t, TSI_CONTINUE_LINKING);
 
   /* Build the conditional jump.  'cond' is just a temporary so we can
      simply build a void COND_EXPR.  We do need labels in both arms though.  */
-  t = build (COND_EXPR, void_type_node, cond,
-             build (GOTO_EXPR, void_type_node, tree_block_label (then_bb)),
-             build (GOTO_EXPR, void_type_node, tree_block_label (join_bb)));
+  t = build3 (COND_EXPR, void_type_node, cond, NULL_TREE, NULL_TREE);
   SET_EXPR_LOCUS (t, locus);
   tsi_link_after (&tsi, t, TSI_CONTINUE_LINKING);
 
@@ -654,32 +663,25 @@ mf_build_check_statement_for (tree base, tree limit,
      refresh *_l vars.
 
      This is the body of the conditional.  */
-  
-  u = tree_cons (NULL_TREE,
-                 mf_file_function_line_tree (locus == NULL ? UNKNOWN_LOCATION
-                                             : *locus),
-                 NULL_TREE);
-  u = tree_cons (NULL_TREE, dirflag, u);
+
+  u = mf_file_function_line_tree (locus == NULL ? UNKNOWN_LOCATION : *locus);
   /* NB: we pass the overall [base..limit] range to mf_check.  */
-  u = tree_cons (NULL_TREE, 
-                 fold (build (PLUS_EXPR, integer_type_node,
-                              fold (build (MINUS_EXPR, mf_uintptr_type, mf_limit, mf_base)),
-                              integer_one_node)),
-                 u);
-  u = tree_cons (NULL_TREE, mf_base, u);
-  t = build_function_call_expr (mf_check_fndecl, u);
+  v = fold_build2 (PLUS_EXPR, integer_type_node,
+		   fold_build2 (MINUS_EXPR, mf_uintptr_type, mf_limit, mf_base),
+		   integer_one_node);
+  t = build_call_expr (mf_check_fndecl, 4, mf_base, v, dirflag, u);
   gimplify_to_stmt_list (&t);
   head = tsi_start (t);
   tsi = tsi_last (t);
 
   if (! flag_mudflap_threads)
     {
-      t = build (MODIFY_EXPR, void_type_node,
-                 mf_cache_shift_decl_l, mf_cache_shift_decl);
+      t = build_gimple_modify_stmt (mf_cache_shift_decl_l,
+				    mf_cache_shift_decl);
       tsi_link_after (&tsi, t, TSI_CONTINUE_LINKING);
 
-      t = build (MODIFY_EXPR, void_type_node,
-                 mf_cache_mask_decl_l, mf_cache_mask_decl);
+      t = build_gimple_modify_stmt (mf_cache_mask_decl_l,
+				    mf_cache_mask_decl);
       tsi_link_after (&tsi, t, TSI_CONTINUE_LINKING);
     }
 
@@ -689,7 +691,6 @@ mf_build_check_statement_for (tree base, tree limit,
     bsi_insert_after (&bsi, tsi_stmt (tsi), BSI_CONTINUE_LINKING);
 
   *instr_bsi = bsi_start (join_bb);
-  bsi_next (instr_bsi);
 }
 
 
@@ -706,11 +707,12 @@ mf_decl_eligible_p (tree decl)
           /* The decl must have its address taken.  In the case of
              arrays, this flag is also set if the indexes are not
              compile-time known valid constants.  */
-          && TREE_ADDRESSABLE (decl)    /* XXX: not sufficient: return-by-value structs! */
+	  /* XXX: not sufficient: return-by-value structs! */
+          && TREE_ADDRESSABLE (decl)
           /* The type of the variable must be complete.  */
           && COMPLETE_OR_VOID_TYPE_P (TREE_TYPE (decl))
 	  /* The decl hasn't been decomposed somehow.  */
-	  && DECL_VALUE_EXPR (decl) == NULL);
+	  && !DECL_HAS_VALUE_EXPR_P (decl));
 }
 
 
@@ -730,6 +732,10 @@ mf_xform_derefs_1 (block_stmt_iterator *iter, tree *tp,
 
   t = *tp;
   type = TREE_TYPE (t);
+
+  if (type == error_mark_node)
+    return;
+
   size = TYPE_SIZE_UNIT (type);
 
   switch (TREE_CODE (t))
@@ -761,7 +767,8 @@ mf_xform_derefs_1 (block_stmt_iterator *iter, tree *tp,
         while (1)
           {
 	    if (bitfield_ref_p && elt == NULL_TREE
-		&& (TREE_CODE (var) == ARRAY_REF || TREE_CODE (var) == COMPONENT_REF))
+		&& (TREE_CODE (var) == ARRAY_REF
+		    || TREE_CODE (var) == COMPONENT_REF))
 	      elt = var;
 	
             if (TREE_CODE (var) == ARRAY_REF)
@@ -790,7 +797,8 @@ mf_xform_derefs_1 (block_stmt_iterator *iter, tree *tp,
                   return;
                 else
 		  {
-		    base = build1 (ADDR_EXPR, build_pointer_type (TREE_TYPE (var)), var);
+		    base = build1 (ADDR_EXPR,
+				   build_pointer_type (TREE_TYPE (var)), var);
 		    break;
 		  }
               }
@@ -813,33 +821,45 @@ mf_xform_derefs_1 (block_stmt_iterator *iter, tree *tp,
               size = DECL_SIZE_UNIT (field);
             
 	    if (elt)
-	      elt = build1 (ADDR_EXPR, build_pointer_type TREE_TYPE (elt), elt);
+	      elt = build1 (ADDR_EXPR, build_pointer_type (TREE_TYPE (elt)),
+			    elt);
             addr = fold_convert (ptr_type_node, elt ? elt : base);
-            addr = fold (build (PLUS_EXPR, ptr_type_node,
-                                addr, fold_convert (ptr_type_node,
-                                                    byte_position (field))));           
+            addr = fold_build2 (POINTER_PLUS_EXPR, ptr_type_node,
+				addr, fold_convert (sizetype,
+						    byte_position (field)));
           }
         else
           addr = build1 (ADDR_EXPR, build_pointer_type (type), t);
 
-        limit = fold (build (MINUS_EXPR, mf_uintptr_type,
-                             fold (build2 (PLUS_EXPR, mf_uintptr_type, 
-                                           convert (mf_uintptr_type, addr), 
-                                           size)),
-                             integer_one_node));
+        limit = fold_build2 (MINUS_EXPR, mf_uintptr_type,
+                             fold_build2 (PLUS_EXPR, mf_uintptr_type,
+					  convert (mf_uintptr_type, addr),
+					  size),
+                             integer_one_node);
       }
       break;
 
     case INDIRECT_REF:
       addr = TREE_OPERAND (t, 0);
       base = addr;
-      limit = fold (build (MINUS_EXPR, ptr_type_node,
-                           fold (build (PLUS_EXPR, ptr_type_node, base, size)),
-                           integer_one_node));
+      limit = fold_build2 (POINTER_PLUS_EXPR, ptr_type_node,
+			   fold_build2 (POINTER_PLUS_EXPR, ptr_type_node, base,
+					size),
+			   size_int (-1));
+      break;
+
+    case TARGET_MEM_REF:
+      addr = tree_mem_ref_addr (ptr_type_node, t);
+      base = addr;
+      limit = fold_build2 (POINTER_PLUS_EXPR, ptr_type_node,
+			   fold_build2 (POINTER_PLUS_EXPR, ptr_type_node, base,
+					size),
+			   size_int (-1));
       break;
 
     case ARRAY_RANGE_REF:
-      warning ("mudflap checking not yet implemented for ARRAY_RANGE_REF");
+      warning (OPT_Wmudflap,
+	       "mudflap checking not yet implemented for ARRAY_RANGE_REF");
       return;
 
     case BIT_FIELD_REF:
@@ -855,7 +875,7 @@ mf_xform_derefs_1 (block_stmt_iterator *iter, tree *tp,
         bpu = bitsize_int (BITS_PER_UNIT);
         ofs = convert (bitsizetype, TREE_OPERAND (t, 2));
         rem = size_binop (TRUNC_MOD_EXPR, ofs, bpu);
-        ofs = size_binop (TRUNC_DIV_EXPR, ofs, bpu);
+        ofs = fold_convert (sizetype, size_binop (TRUNC_DIV_EXPR, ofs, bpu));
 
         size = convert (bitsizetype, TREE_OPERAND (t, 1));
         size = size_binop (PLUS_EXPR, size, rem);
@@ -864,12 +884,13 @@ mf_xform_derefs_1 (block_stmt_iterator *iter, tree *tp,
 
         addr = TREE_OPERAND (TREE_OPERAND (t, 0), 0);
         addr = convert (ptr_type_node, addr);
-        addr = fold (build (PLUS_EXPR, ptr_type_node, addr, ofs));
+        addr = fold_build2 (POINTER_PLUS_EXPR, ptr_type_node, addr, ofs);
 
         base = addr;
-        limit = fold (build (MINUS_EXPR, ptr_type_node,
-                             fold (build (PLUS_EXPR, ptr_type_node, base, size)),
-                             integer_one_node));
+        limit = fold_build2 (POINTER_PLUS_EXPR, ptr_type_node,
+                             fold_build2 (POINTER_PLUS_EXPR, ptr_type_node,
+					   base, size),
+                             size_int (-1));
       }
       break;
 
@@ -898,18 +919,19 @@ mf_xform_derefs (void)
           /* Only a few GIMPLE statements can reference memory.  */
           switch (TREE_CODE (s))
             {
-            case MODIFY_EXPR:
-              mf_xform_derefs_1 (&i, &TREE_OPERAND (s, 0), EXPR_LOCUS (s),
-                                 integer_one_node);
-              mf_xform_derefs_1 (&i, &TREE_OPERAND (s, 1), EXPR_LOCUS (s),
-                                 integer_zero_node);
+            case GIMPLE_MODIFY_STMT:
+              mf_xform_derefs_1 (&i, &GIMPLE_STMT_OPERAND (s, 0),
+		  		 EXPR_LOCUS (s), integer_one_node);
+              mf_xform_derefs_1 (&i, &GIMPLE_STMT_OPERAND (s, 1),
+		  		 EXPR_LOCUS (s), integer_zero_node);
               break;
 
             case RETURN_EXPR:
               if (TREE_OPERAND (s, 0) != NULL_TREE)
                 {
-                  if (TREE_CODE (TREE_OPERAND (s, 0)) == MODIFY_EXPR)
-                    mf_xform_derefs_1 (&i, &TREE_OPERAND (TREE_OPERAND (s, 0), 1),
+                  if (TREE_CODE (TREE_OPERAND (s, 0)) == GIMPLE_MODIFY_STMT)
+                    mf_xform_derefs_1 (&i, &GIMPLE_STMT_OPERAND
+					     (TREE_OPERAND (s, 0), 1),
                                        EXPR_LOCUS (s), integer_zero_node);
                   else
                     mf_xform_derefs_1 (&i, &TREE_OPERAND (s, 0), EXPR_LOCUS (s),
@@ -935,21 +957,24 @@ mf_xform_derefs (void)
    of their BIND_EXPR binding context, and we lose liveness information
    for the declarations we wish to instrument.  */
 
-static void
+static unsigned int
 execute_mudflap_function_decls (void)
 {
+  struct gimplify_ctx gctx;
+
   /* Don't instrument functions such as the synthetic constructor
      built during mudflap_finish_file.  */
   if (mf_marked_p (current_function_decl) ||
       DECL_ARTIFICIAL (current_function_decl))
-    return;
+    return 0;
 
-  push_gimplify_context ();
+  push_gimplify_context (&gctx);
 
   mf_xform_decls (DECL_SAVED_TREE (current_function_decl),
                   DECL_ARGUMENTS (current_function_decl));
 
   pop_gimplify_context (NULL);
+  return 0;
 }
 
 /* This struct is passed between mf_xform_decls to store state needed
@@ -980,48 +1005,38 @@ mx_register_decls (tree decl, tree *stmt_list)
           && ! TREE_STATIC (decl))
         {
           tree size = NULL_TREE, variable_name;
-          tree unregister_fncall, unregister_fncall_params;
-          tree register_fncall, register_fncall_params;
+          tree unregister_fncall, unregister_fncall_param;
+          tree register_fncall, register_fncall_param;
 
 	  size = convert (size_type_node, TYPE_SIZE_UNIT (TREE_TYPE (decl)));
 
-          /* (& VARIABLE, sizeof (VARIABLE), __MF_TYPE_STACK) */
-          unregister_fncall_params =
-            tree_cons (NULL_TREE,
-                       convert (ptr_type_node,
-                                mf_mark (build1 (ADDR_EXPR,
-                                                 build_pointer_type (TREE_TYPE (decl)),
-                                                 decl))),
-                       tree_cons (NULL_TREE, 
-                                  size,
-                                  tree_cons (NULL_TREE,
-					     /* __MF_TYPE_STACK */
-                                             build_int_cst (NULL_TREE, 3),
-                                             NULL_TREE)));
-          /* __mf_unregister (...) */
-          unregister_fncall = build_function_call_expr (mf_unregister_fndecl,
-                                                        unregister_fncall_params);
 
-          /* (& VARIABLE, sizeof (VARIABLE), __MF_TYPE_STACK, "name") */
+          unregister_fncall_param =
+	    convert (ptr_type_node,
+		     mf_mark (build1 (ADDR_EXPR,
+				      build_pointer_type (TREE_TYPE (decl)),
+				      decl)));
+          /* __mf_unregister (&VARIABLE, sizeof (VARIABLE), __MF_TYPE_STACK) */
+          unregister_fncall = build_call_expr (mf_unregister_fndecl, 3,
+					       unregister_fncall_param,
+					       size,
+					       build_int_cst (NULL_TREE, 3));
+
+
           variable_name = mf_varname_tree (decl);
-          register_fncall_params =
-            tree_cons (NULL_TREE,
-                   convert (ptr_type_node,
-                            mf_mark (build1 (ADDR_EXPR,
-                                             build_pointer_type (TREE_TYPE (decl)),
-                                             decl))),
-                       tree_cons (NULL_TREE,
-                                  size,
-                                  tree_cons (NULL_TREE,
-					     /* __MF_TYPE_STACK */
-                                             build_int_cst (NULL_TREE, 3),
-                                             tree_cons (NULL_TREE,
-                                                        variable_name,
-                                                        NULL_TREE))));
+          register_fncall_param =
+	    convert (ptr_type_node,
+		     mf_mark (build1 (ADDR_EXPR,
+				      build_pointer_type (TREE_TYPE (decl)),
+				      decl)));
+          /* __mf_register (&VARIABLE, sizeof (VARIABLE), __MF_TYPE_STACK,
+	                    "name") */
+	  register_fncall = build_call_expr (mf_register_fndecl, 4,
+					     register_fncall_param,
+					     size,
+					     build_int_cst (NULL_TREE, 3),
+					     variable_name);
 
-          /* __mf_register (...) */
-          register_fncall = build_function_call_expr (mf_register_fndecl,
-                                                      register_fncall_params);
 
           /* Accumulate the two calls.  */
           /* ??? Set EXPR_LOCATION.  */
@@ -1030,11 +1045,16 @@ mx_register_decls (tree decl, tree *stmt_list)
 
           /* Add the __mf_register call at the current appending point.  */
           if (tsi_end_p (initially_stmts))
-	    warning ("mudflap cannot track %qs in stub function",
-		     IDENTIFIER_POINTER (DECL_NAME (decl)));
+	    {
+	      if (!DECL_ARTIFICIAL (decl))
+		warning (OPT_Wmudflap,
+			 "mudflap cannot track %qs in stub function",
+			 IDENTIFIER_POINTER (DECL_NAME (decl)));
+	    }
 	  else
 	    {
-	      tsi_link_before (&initially_stmts, register_fncall, TSI_SAME_STMT);
+	      tsi_link_before (&initially_stmts, register_fncall,
+			       TSI_SAME_STMT);
 
 	      /* Accumulate the FINALLY piece.  */
 	      append_to_statement_list (unregister_fncall, &finally_stmts);
@@ -1048,8 +1068,8 @@ mx_register_decls (tree decl, tree *stmt_list)
   /* Actually, (initially_stmts!=NULL) <=> (finally_stmts!=NULL) */
   if (finally_stmts != NULL_TREE)
     {
-      tree t = build (TRY_FINALLY_EXPR, void_type_node,
-                      *stmt_list, finally_stmts);
+      tree t = build2 (TRY_FINALLY_EXPR, void_type_node,
+                       *stmt_list, finally_stmts);
       *stmt_list = NULL;
       append_to_statement_list (t, stmt_list);
     }
@@ -1120,7 +1140,8 @@ mf_mark (tree t)
   void **slot;
 
   if (marked_trees == NULL)
-    marked_trees = htab_create_ggc (31, htab_hash_pointer, htab_eq_pointer, NULL);
+    marked_trees = htab_create_ggc (31, htab_hash_pointer, htab_eq_pointer,
+				    NULL);
 
   slot = htab_find_slot (marked_trees, t, INSERT);
   *slot = t;
@@ -1148,7 +1169,7 @@ mf_marked_p (tree t)
    delayed until program finish time.  If they're still incomplete by
    then, warnings are emitted.  */
 
-static GTY (()) varray_type deferred_static_decls;
+static GTY (()) VEC(tree,gc) *deferred_static_decls;
 
 /* A list of statements for calling __mf_register() at startup time.  */
 static GTY (()) tree enqueued_call_stmt_chain;
@@ -1156,21 +1177,17 @@ static GTY (()) tree enqueued_call_stmt_chain;
 static void
 mudflap_register_call (tree obj, tree object_size, tree varname)
 {
-  tree arg, args, call_stmt;
-
-  args = tree_cons (NULL_TREE, varname, NULL_TREE);
-
-  arg = build_int_cst (NULL_TREE, 4); /* __MF_TYPE_STATIC */
-  args = tree_cons (NULL_TREE, arg, args);
-
-  arg = convert (size_type_node, object_size);
-  args = tree_cons (NULL_TREE, arg, args);
+  tree arg, call_stmt;
 
   arg = build1 (ADDR_EXPR, build_pointer_type (TREE_TYPE (obj)), obj);
   arg = convert (ptr_type_node, arg);
-  args = tree_cons (NULL_TREE, arg, args);
 
-  call_stmt = build_function_call_expr (mf_register_fndecl, args);
+  call_stmt = build_call_expr (mf_register_fndecl, 4,
+			       arg,
+			       convert (size_type_node, object_size),
+			       /* __MF_TYPE_STATIC */
+			       build_int_cst (NULL_TREE, 4), 
+			       varname);
 
   append_to_statement_list (call_stmt, &enqueued_call_stmt_chain);
 }
@@ -1189,10 +1206,7 @@ mudflap_enqueue_decl (tree obj)
   if (DECL_P (obj) && DECL_EXTERNAL (obj) && DECL_ARTIFICIAL (obj))
     return;
 
-  if (! deferred_static_decls)
-    VARRAY_TREE_INIT (deferred_static_decls, 10, "deferred static list");
-
-  VARRAY_PUSH_TREE (deferred_static_decls, obj);
+  VEC_safe_push (tree, gc, deferred_static_decls, obj);
 }
 
 
@@ -1224,18 +1238,21 @@ mudflap_finish_file (void)
 {
   tree ctor_statements = NULL_TREE;
 
+  /* No need to continue when there were errors.  */
+  if (errorcount != 0 || sorrycount != 0)
+    return;
+
   /* Insert a call to __mf_init.  */
   {
-    tree call2_stmt = build_function_call_expr (mf_init_fndecl, NULL_TREE);
+    tree call2_stmt = build_call_expr (mf_init_fndecl, 0);
     append_to_statement_list (call2_stmt, &ctor_statements);
   }
   
   /* If appropriate, call __mf_set_options to pass along read-ignore mode.  */
   if (flag_mudflap_ignore_reads)
     {
-      tree arg = tree_cons (NULL_TREE, 
-                            mf_build_string ("-ignore-reads"), NULL_TREE);
-      tree call_stmt = build_function_call_expr (mf_set_options_fndecl, arg);
+      tree arg = mf_build_string ("-ignore-reads");
+      tree call_stmt = build_call_expr (mf_set_options_fndecl, 1, arg);
       append_to_statement_list (call_stmt, &ctor_statements);
     }
 
@@ -1243,10 +1260,9 @@ mudflap_finish_file (void)
   if (deferred_static_decls)
     {
       size_t i;
-      for (i = 0; i < VARRAY_ACTIVE_SIZE (deferred_static_decls); i++)
+      tree obj;
+      for (i = 0; VEC_iterate (tree, deferred_static_decls, i, obj); i++)
         {
-          tree obj = VARRAY_TREE (deferred_static_decls, i);
-
           gcc_assert (DECL_P (obj));
 
           if (mf_marked_p (obj))
@@ -1256,12 +1272,13 @@ mudflap_finish_file (void)
              Perform registration for non-static objects regardless of
              TREE_USED or TREE_ADDRESSABLE, because they may be used
              from other compilation units.  */
-          if (TREE_STATIC (obj) && ! TREE_ADDRESSABLE (obj))
+          if (! TREE_PUBLIC (obj) && ! TREE_ADDRESSABLE (obj))
             continue;
 
           if (! COMPLETE_TYPE_P (TREE_TYPE (obj)))
             {
-              warning ("mudflap cannot track unknown size extern %qs",
+              warning (OPT_Wmudflap,
+		       "mudflap cannot track unknown size extern %qs",
                        IDENTIFIER_POINTER (DECL_NAME (obj)));
               continue;
             }
@@ -1271,7 +1288,7 @@ mudflap_finish_file (void)
                                  mf_varname_tree (obj));
         }
 
-      VARRAY_CLEAR (deferred_static_decls);
+      VEC_truncate (tree, deferred_static_decls, 0);
     }
 
   /* Append all the enqueued registration calls.  */
@@ -1292,8 +1309,10 @@ gate_mudflap (void)
   return flag_mudflap != 0;
 }
 
-struct tree_opt_pass pass_mudflap_1 = 
+struct gimple_opt_pass pass_mudflap_1 = 
 {
+ {
+  GIMPLE_PASS,
   "mudflap1",                           /* name */
   gate_mudflap,                         /* gate */
   execute_mudflap_function_decls,       /* execute */
@@ -1305,12 +1324,14 @@ struct tree_opt_pass pass_mudflap_1 =
   0,                                    /* properties_provided */
   0,                                    /* properties_destroyed */
   0,                                    /* todo_flags_start */
-  TODO_dump_func,                       /* todo_flags_finish */
-  0					/* letter */
+  TODO_dump_func                        /* todo_flags_finish */
+ }
 };
 
-struct tree_opt_pass pass_mudflap_2 = 
+struct gimple_opt_pass pass_mudflap_2 = 
 {
+ {
+  GIMPLE_PASS,
   "mudflap2",                           /* name */
   gate_mudflap,                         /* gate */
   execute_mudflap_function_ops,         /* execute */
@@ -1323,8 +1344,8 @@ struct tree_opt_pass pass_mudflap_2 =
   0,                                    /* properties_destroyed */
   0,                                    /* todo_flags_start */
   TODO_verify_flow | TODO_verify_stmts
-  | TODO_dump_func,                     /* todo_flags_finish */
-  0					/* letter */
+  | TODO_dump_func                      /* todo_flags_finish */
+ }
 };
 
 #include "gt-tree-mudflap.h"

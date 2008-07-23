@@ -1,12 +1,12 @@
 /* Generic dominator tree walker
-   Copyright (C) 2003, 2004 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,12 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
+
+typedef void *void_p;
+DEF_VEC_P(void_p);
+DEF_VEC_ALLOC_P(void_p,heap);
 
 /* This is the main data structure for the dominator walker.  It provides
    the callback hooks as well as a convenient place to hang block local
@@ -94,7 +97,7 @@ struct dom_walk_data
   /* Stack of any data we need to keep on a per-block basis.
 
      If you have no local data, then BLOCK_DATA_STACK will be NULL.  */
-  varray_type block_data_stack;
+  VEC(void_p,heap) *block_data_stack;
 
   /* Size of the block local data.   If this is zero, then it is assumed
      you have no local data and thus no BLOCK_DATA_STACK as well.  */
@@ -104,7 +107,7 @@ struct dom_walk_data
      information/data outside domwalk.c.  */
 
   /* Stack of available block local structures.  */
-  varray_type free_block_data;
+  VEC(void_p,heap) *free_block_data;
 
   /* Interesting blocks to process.  If this field is not NULL, this
      set is used to determine which blocks to walk.  If we encounter

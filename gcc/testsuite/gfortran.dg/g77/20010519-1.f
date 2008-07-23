@@ -237,7 +237,7 @@ C..##ENDIF
 C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C:::##INCLUDE '~/charmm_fcm/number.fcm'
-      REAL*8     ZERO, ONE, TWO, THREE, FOUR, FIVE, SIX,
+      REAL(KIND=8)     ZERO, ONE, TWO, THREE, FOUR, FIVE, SIX,
      &           SEVEN, EIGHT, NINE, TEN, ELEVEN, TWELVE, THIRTN,
      &           FIFTN, NINETN, TWENTY, THIRTY
 C..##IF SINGLE
@@ -249,7 +249,7 @@ C..##ELSE
      &           TWELVE = 12.D0, THIRTN = 13.D0, FIFTN  = 15.D0,
      &           NINETN = 19.D0, TWENTY = 20.D0, THIRTY = 30.D0)
 C..##ENDIF
-      REAL*8     FIFTY, SIXTY, SVNTY2, EIGHTY, NINETY, HUNDRD,
+      REAL(KIND=8)     FIFTY, SIXTY, SVNTY2, EIGHTY, NINETY, HUNDRD,
      &           ONE2TY, ONE8TY, THRHUN, THR6TY, NINE99, FIFHUN, THOSND,
      &           FTHSND,MEGA
 C..##IF SINGLE
@@ -260,9 +260,9 @@ C..##ELSE
      &           THR6TY=360.D0,   NINE99 = 999.D0,  FIFHUN = 1500.D0,
      &           THOSND = 1000.D0,FTHSND = 5000.D0, MEGA   =   1.0D6)
 C..##ENDIF
-      REAL*8     MINONE, MINTWO, MINSIX
+      REAL(KIND=8)     MINONE, MINTWO, MINSIX
       PARAMETER (MINONE = -1.D0,  MINTWO = -2.D0,  MINSIX = -6.D0)
-      REAL*8     TENM20,TENM14,TENM8,TENM5,PT0001,PT0005,PT001,PT005,
+      REAL(KIND=8) TENM20,TENM14,TENM8,TENM5,PT0001,PT0005,PT001,PT005,
      &           PT01, PT02, PT05, PTONE, PT125, PT25, SIXTH, THIRD,
      &           PTFOUR, PTSIX, HALF, PT75, PT9999, ONEPT5, TWOPT4
 C..##IF SINGLE
@@ -276,14 +276,14 @@ C..##ELSE
      &           PTSIX  = 0.6D0,    PT75   = 0.75D0, PT9999 = 0.9999D0,
      &           ONEPT5 = 1.5D0,    TWOPT4 = 2.4D0)
 C..##ENDIF
-      REAL*8 ANUM,FMARK
-      REAL*8 RSMALL,RBIG
+      REAL(KIND=8) ANUM,FMARK
+      REAL(KIND=8) RSMALL,RBIG
 C..##IF SINGLE
 C..##ELSE
       PARAMETER (ANUM=9999.0D0, FMARK=-999.0D0)
       PARAMETER (RSMALL=1.0D-10,RBIG=1.0D20)
 C..##ENDIF
-      REAL*8 RPRECI,RBIGST
+      REAL(KIND=8) RPRECI,RBIGST
 C..##IF VAX DEC
 C..##ELIF IBM
 C..##ELIF CRAY
@@ -297,41 +297,41 @@ C..##ENDIF
 C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C:::##INCLUDE '~/charmm_fcm/consta.fcm'
-      REAL*8 PI,RADDEG,DEGRAD,TWOPI
+      REAL(KIND=8) PI,RADDEG,DEGRAD,TWOPI
       PARAMETER(PI=3.141592653589793D0,TWOPI=2.0D0*PI)
       PARAMETER (RADDEG=180.0D0/PI)
       PARAMETER (DEGRAD=PI/180.0D0)
-      REAL*8 COSMAX
+      REAL(KIND=8) COSMAX
       PARAMETER (COSMAX=0.9999999999D0)
-      REAL*8 TIMFAC
+      REAL(KIND=8) TIMFAC
       PARAMETER (TIMFAC=4.88882129D-02)
-      REAL*8 KBOLTZ
+      REAL(KIND=8) KBOLTZ
       PARAMETER (KBOLTZ=1.987191D-03)
-      REAL*8 CCELEC
+      REAL(KIND=8) CCELEC
 C..##IF AMBER
 C..##ELIF DISCOVER
 C..##ELSE
       PARAMETER (CCELEC=332.0716D0)
 C..##ENDIF
-      REAL*8 CNVFRQ
+      REAL(KIND=8) CNVFRQ
       PARAMETER (CNVFRQ=2045.5D0/(2.99793D0*6.28319D0))
-      REAL*8 SPEEDL
+      REAL(KIND=8) SPEEDL
       PARAMETER (SPEEDL=2.99793D-02)
-      REAL*8 ATMOSP
+      REAL(KIND=8) ATMOSP
       PARAMETER (ATMOSP=1.4584007D-05)
-      REAL*8 PATMOS
+      REAL(KIND=8) PATMOS
       PARAMETER (PATMOS = 1.D0 / ATMOSP )
-      REAL*8 BOHRR
+      REAL(KIND=8) BOHRR
       PARAMETER (BOHRR = 0.529177249D0 )
-      REAL*8 TOKCAL
+      REAL(KIND=8) TOKCAL
       PARAMETER (TOKCAL = 627.5095D0 )
 C..##IF MMFF
-      real*8 MDAKCAL
+      REAL(KIND=8) MDAKCAL
       parameter(MDAKCAL=143.9325D0)
 C..##ENDIF
-      REAL*8 DEBYEC
+      REAL(KIND=8) DEBYEC
       PARAMETER ( DEBYEC = 2.541766D0 / BOHRR )
-      REAL*8 ZEROC
+      REAL(KIND=8) ZEROC
       PARAMETER ( ZEROC = 298.15D0 )
 C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
@@ -357,7 +357,7 @@ C..##ENDIF
       LOGICAL     CHKPTR, EQST, EQSTA, EQSTWC, EQWDWC, DOTRIM, CHECQUE,
      *            HYDROG, INITIA, LONE, LTSTEQ, ORDER, ORDER5,
      *            ORDERR, USEDDT, QTOKDEL, QDIGIT, QALPHA
-      REAL*8      DECODF, DOTVEC, GTRMF, LENVEC, NEXTF, RANDOM, GTRR8,
+      REAL(KIND=8)      DECODF, DOTVEC, GTRMF, LENVEC, NEXTF, RANDOM, GTRR8,
      *            RANUMB, R8VAL, RETVAL8, SUMVEC
 C..##IF ADUMB
      *           ,UMFI
@@ -403,7 +403,7 @@ C..##IF MMFF
       external LEQUIV, LPATH
       external nbndx, nbnd2, nbnd3, NTERMA
       external find_loc
-      real*8   vangle, OOPNGL, TORNGL, ElementMass
+      REAL(KIND=8)   vangle, OOPNGL, TORNGL, ElementMass
       external vangle, OOPNGL, TORNGL, ElementMass
 C..##ENDIF
 C-----------------------------------------------------------------------
@@ -468,7 +468,7 @@ C..##ENDIF
 C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C:::##INCLUDE '~/charmm_fcm/deriv.fcm'
-      REAL*8 DX,DY,DZ
+      REAL(KIND=8) DX,DY,DZ
       COMMON /DERIVR/ DX(MAXAIM),DY(MAXAIM),DZ(MAXAIM)
 C..##IF SAVEFCM
 C..##ENDIF
@@ -580,11 +580,11 @@ C..##ENDIF
       COMMON /ANER/ CEPROP(LENENP), CETERM(LENENT), CEPRSS(LENENV)
       LOGICAL  QEPROP, QETERM, QEPRSS
       COMMON /QENER/ QEPROP(LENENP), QETERM(LENENT), QEPRSS(LENENV)
-      REAL*8   EPROP, ETERM, EPRESS
+      REAL(KIND=8)   EPROP, ETERM, EPRESS
       COMMON /ENER/ EPROP(LENENP), ETERM(LENENT), EPRESS(LENENV)
 C..##IF SAVEFCM
 C..##ENDIF
-      REAL*8   EPRPA, EPRP2A, EPRPP, EPRP2P,
+      REAL(KIND=8)   EPRPA, EPRP2A, EPRPP, EPRP2P,
      &         ETRMA, ETRM2A, ETRMP, ETRM2P,
      &         EPRSA, EPRS2A, EPRSP, EPRS2P
       COMMON /ENACCM/ EPRPA(LENENP), ETRMA(LENENT), EPRSA(LENENV),
@@ -595,7 +595,7 @@ C..##IF SAVEFCM
 C..##ENDIF
       INTEGER  ECALLS, TOT1ST, TOT2ND
       COMMON /EMISCI/ ECALLS, TOT1ST, TOT2ND
-      REAL*8   EOLD, FITA, DRIFTA, EAT0A, CORRA, FITP, DRIFTP,
+      REAL(KIND=8)   EOLD, FITA, DRIFTA, EAT0A, CORRA, FITP, DRIFTP,
      &         EAT0P, CORRP
       COMMON /EMISCR/ EOLD, FITA, DRIFTA, EAT0A, CORRA,
      &                     FITP, DRIFTP, EAT0P, CORRP
@@ -612,12 +612,12 @@ C..##ENDIF
 C..##IF FLUCQ
 C..##ENDIF
 C..##IF TSM
-      REAL*8 TSMTRM(LENENT),TSMTMP(LENENT)
+      REAL(KIND=8) TSMTRM(LENENT),TSMTMP(LENENT)
       COMMON /TSMENG/ TSMTRM,TSMTMP
 C...##IF SAVEFCM
 C...##ENDIF
 C..##ENDIF
-      REAL*8 EHQBM
+      REAL(KIND=8) EHQBM
       LOGICAL HQBM
       COMMON /HQBMVAR/HQBM
 C..##IF SAVEFCM
@@ -666,12 +666,12 @@ C Passed variables
       INTEGER INBCMP(*),JNBCMP(*),PARDIM
       INTEGER ITMX,IUNMOD,IUNRMD,SAVF
       INTEGER NBOND,IB(*),JB(*)
-      REAL*8 X(*),Y(*),Z(*),AMASS(*),DDSCR(*)
-      REAL*8 DDV(NAT3,*),PARDDV(PARDIM,*),DDM(*),DDS(*)
-      REAL*8 DDF(*),PARDDF(*),DDEV(*),PARDDE(*)
-      REAL*8 DD1BLK(*),DD1BLL(*),DD1CMP(*)
-      REAL*8 TOLDIM,DDVALM
-      REAL*8 PARFRQ,CUTF1
+      REAL(KIND=8) X(*),Y(*),Z(*),AMASS(*),DDSCR(*)
+      REAL(KIND=8) DDV(NAT3,*),PARDDV(PARDIM,*),DDM(*),DDS(*)
+      REAL(KIND=8) DDF(*),PARDDF(*),DDEV(*),PARDDE(*)
+      REAL(KIND=8) DD1BLK(*),DD1BLL(*),DD1CMP(*)
+      REAL(KIND=8) TOLDIM,DDVALM
+      REAL(KIND=8) PARFRQ,CUTF1
       LOGICAL LNOMA,LRAISE,LSCI,LBIG
 C Local variables
       INTEGER NATOM,NATP,NDIM,I,J,II,OLDFAS,OLDPRN,IUPD
@@ -687,7 +687,7 @@ C Local variables
       INTEGER SCIFV1,SCIFV2,SCIFV3,SCIFV4,SCIFV6
       INTEGER DRATQ,ERATQ,E2RATQ,BDRATQ,INRATQ
       INTEGER I620,I640,I660,I700,I720,I760,I800,I840,I880,I920
-      REAL*8 CVGMX,TOLER
+      REAL(KIND=8) CVGMX,TOLER
       LOGICAL LCARD,LAPPE,LPURG,LWDINI,QCALC,QMASWT,QMIX,QDIAG
 C Begin
       QCALC=.TRUE.
@@ -711,19 +711,19 @@ C Begin
      1     'NFREG IS LARGER THAN PARDIM*3')
 C
 C ALLOCATE-SPACE-FOR-TRANSROT-VECTORS
-      ASSIGN 801 TO I800 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+      ASSIGN 801 TO I800 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
       GOTO 800
  801  CONTINUE
 C ALLOCATE-SPACE-FOR-DIAGONALIZATION
-      ASSIGN 721 TO I720 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+      ASSIGN 721 TO I720 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
       GOTO 720
  721  CONTINUE
 C ALLOCATE-SPACE-FOR-REDUCED-BASIS
-      ASSIGN 761 TO I760 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+      ASSIGN 761 TO I760 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
       GOTO 760
  761  CONTINUE
 C ALLOCATE-SPACE-FOR-OTHER-ARRAYS
-      ASSIGN 921 TO I920 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+      ASSIGN 921 TO I920 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
       GOTO 920
  921  CONTINUE
 C
@@ -731,12 +731,12 @@ C Space allocation for working arrays of EISPACK
 C diagonalization subroutines
       IF(LSCI) THEN
 C ALLOCATE-SPACE-FOR-LSCI
-         ASSIGN 841 TO I840 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+         ASSIGN 841 TO I840 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
          GOTO 840
  841     CONTINUE
       ELSE
 C ALLOCATE-DUMMY-SPACE-FOR-LSCI
-         ASSIGN 881 TO I880 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+         ASSIGN 881 TO I880 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
          GOTO 880
  881     CONTINUE
       ENDIF
@@ -878,11 +878,11 @@ C
 C
 C DO-THE-DIAGONALISATIONS-WITH-RESIDUALS
 C
-         ASSIGN 621 TO I620 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+         ASSIGN 621 TO I620 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
          GOTO 620
  621     CONTINUE
 C SAVE-MODES
-         ASSIGN 701 TO I700 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+         ASSIGN 701 TO I700 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
          GOTO 700
  701     CONTINUE
          IF(ITER.EQ.ITMX) THEN
@@ -1025,17 +1025,17 @@ C
             CALL PARTDS(NAT3,NPARC,ATMPAR,NPARS,ATMPAS,INIDS,NPARMX,
      1                  DDF,NFREG,CUTF1,PARDIM,NFCUT1)
 C DO-THE-DIAGONALISATIONS
-            ASSIGN 641 to I640 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+            ASSIGN 641 to I640 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
             GOTO 640
  641        CONTINUE
             QDIAG=.FALSE.
 C DO-THE-DIAGONALISATIONS-WITH-RESIDUALS
-            ASSIGN 622 TO I620 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+            ASSIGN 622 TO I620 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
             GOTO 620
  622        CONTINUE
             QDIAG=.TRUE.
 C SAVE-MODES
-            ASSIGN 702 TO I700 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+            ASSIGN 702 TO I700 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
             GOTO 700
  702        CONTINUE
 C
@@ -1048,7 +1048,7 @@ C
                   ITER=ITER+1
                   IF(PRNLEV.GE.2) WRITE(OUTU,553) ITER
 C DO-THE-DWIN-DIAGONALISATIONS
-                  ASSIGN 661 TO I660 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+                  ASSIGN 661 TO I660 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
                   GOTO 660
  661              CONTINUE
                ENDIF
@@ -1056,13 +1056,13 @@ C DO-THE-DWIN-DIAGONALISATIONS
                   IRESF=0
                   QDIAG=.FALSE.
 C DO-THE-DIAGONALISATIONS-WITH-RESIDUALS
-                  ASSIGN 623 TO I620 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+                  ASSIGN 623 TO I620 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
                   GOTO 620
  623              CONTINUE
                   QDIAG=.TRUE.
                   IF((CVGMX.LE.TOLDIM).OR.(ITER.EQ.ITMX)) GOTO 600
 C SAVE-MODES
-                  ASSIGN 703 TO I700 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+                  ASSIGN 703 TO I700 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
                   GOTO 700
  703              CONTINUE
                ENDIF
@@ -1072,7 +1072,7 @@ C SAVE-MODES
  600  CONTINUE
 C
 C SAVE-MODES
-      ASSIGN 704 TO I700 ! { dg-warning "Obsolete: ASSIGN" "Obsolete: ASSIGN" }
+      ASSIGN 704 TO I700 ! { dg-warning "Deleted feature: ASSIGN" "Deleted feature: ASSIGN" }
       GOTO 700
  704  CONTINUE
       CALL CLEANHP(NAT3,NFREG,NPARD,NSUBP,PARDIM,DDV2,DDSS,DDVBAS,
@@ -1150,7 +1150,7 @@ C
      6     HEAP(BDRATQ),HEAP(INRATQ),LSCI,LBIG,IUNMOD)
          CALL SELNMD(DDF,NFRET,CUTF1,NFCUT1)
       ENDIF
-      GOTO I620 ! { dg-warning "Obsolete: Assigned" "Assigned GO TO" }
+      GOTO I620 ! { dg-warning "Deleted feature: Assigned" "Assigned GO TO" }
 C
 C-----------------------------------------------------------------------
 C TO DO-THE-DIAGONALISATIONS
@@ -1190,7 +1190,7 @@ C TO DO-THE-DIAGONALISATIONS
          NFCUT1=NFCUT
          NFRET=NFCUT
       ENDDO
-      GOTO I640 ! { dg-warning "Obsolete: Assigned" "Assigned GO TO" }
+      GOTO I640 ! { dg-warning "Deleted feature: Assigned" "Assigned GO TO" }
 C
 C-----------------------------------------------------------------------
 C TO DO-THE-DWIN-DIAGONALISATIONS
@@ -1241,7 +1241,7 @@ C
       IF(NFCUT.GT.NFRRES) NFCUT=NFRRES
       NFCUT1=NFCUT
       NFRET=NFCUT
-      GOTO I660 ! { dg-warning "Obsolete: Assigned" "Assigned GO TO" }
+      GOTO I660 ! { dg-warning "Deleted feature: Assigned" "Assigned GO TO" }
 C
 C-----------------------------------------------------------------------
 C TO SAVE-MODES
@@ -1258,7 +1258,7 @@ C TO SAVE-MODES
       CALL WRTNMD(LCARD,ISTRT,ISTOP,NAT3,DDV,DDSCR,DDEV,IUNMOD,
      1            AMASS)
       CALL SAVEIT(IUNMOD)
-      GOTO I700 ! { dg-warning "Obsolete: Assigned" "Assigned GO TO" }
+      GOTO I700 ! { dg-warning "Deleted feature: Assigned" "Assigned GO TO" }
 C
 C-----------------------------------------------------------------------
 C TO ALLOCATE-SPACE-FOR-DIAGONALIZATION
@@ -1269,7 +1269,7 @@ C TO ALLOCATE-SPACE-FOR-DIAGONALIZATION
       JSPACE=JSPACE+JSP
       DDSS=ALLHP(JSPACE)
       DD5=DDSS+JSPACE-JSP
-      GOTO I720 ! { dg-warning "Obsolete: Assigned" "Assigned GO TO" }
+      GOTO I720 ! { dg-warning "Deleted feature: Assigned" "Assigned GO TO" }
 C
 C-----------------------------------------------------------------------
 C TO ALLOCATE-SPACE-FOR-REDUCED-BASIS
@@ -1279,13 +1279,13 @@ C TO ALLOCATE-SPACE-FOR-REDUCED-BASIS
       ELSE
          DDVBAS=ALLHP(IREAL8(NFREG*NAT3))
       ENDIF
-      GOTO I760 ! { dg-warning "Obsolete: Assigned" "Assigned GO TO" }
+      GOTO I760 ! { dg-warning "Deleted feature: Assigned" "Assigned GO TO" }
 C
 C-----------------------------------------------------------------------
 C TO ALLOCATE-SPACE-FOR-TRANSROT-VECTORS
  800  CONTINUE
       TRAROT=ALLHP(IREAL8(6*NAT3))
-      GOTO I800 ! { dg-warning "Obsolete: Assigned" "Assigned GO TO" }
+      GOTO I800 ! { dg-warning "Deleted feature: Assigned" "Assigned GO TO" }
 C
 C-----------------------------------------------------------------------
 C TO ALLOCATE-SPACE-FOR-LSCI
@@ -1300,7 +1300,7 @@ C TO ALLOCATE-SPACE-FOR-LSCI
       E2RATQ=ALLHP(IREAL8(PARDIM+3))
       BDRATQ=ALLHP(IREAL8(PARDIM+3))
       INRATQ=ALLHP(INTEG4(PARDIM+3))
-      GOTO I840 ! { dg-warning "Obsolete: Assigned" "Assigned GO TO" }
+      GOTO I840 ! { dg-warning "Deleted feature: Assigned" "Assigned GO TO" }
 C
 C-----------------------------------------------------------------------
 C TO ALLOCATE-DUMMY-SPACE-FOR-LSCI
@@ -1315,13 +1315,13 @@ C TO ALLOCATE-DUMMY-SPACE-FOR-LSCI
       E2RATQ=ALLHP(IREAL8(2))
       BDRATQ=ALLHP(IREAL8(2))
       INRATQ=ALLHP(INTEG4(2))
-      GOTO I880 ! { dg-warning "Obsolete: Assigned" "Assigned GO TO" }
+      GOTO I880 ! { dg-warning "Deleted feature: Assigned" "Assigned GO TO" }
 C
 C-----------------------------------------------------------------------
 C TO ALLOCATE-SPACE-FOR-OTHER-ARRAYS
  920  CONTINUE
       IUPD=ALLHP(INTEG4(PARDIM+3))
-      GOTO I920 ! { dg-warning "Obsolete: Assigned" "Assigned GO TO" }
+      GOTO I920 ! { dg-warning "Deleted feature: Assigned" "Assigned GO TO" }
 C.##ELSE
 C.##ENDIF
       END

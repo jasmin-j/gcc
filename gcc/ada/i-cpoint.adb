@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -34,16 +34,16 @@
 with Interfaces.C.Strings; use Interfaces.C.Strings;
 with System;               use System;
 
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package body Interfaces.C.Pointers is
 
    type Addr is mod Memory_Size;
 
-   function To_Pointer is new Unchecked_Conversion (Addr,      Pointer);
-   function To_Addr    is new Unchecked_Conversion (Pointer,   Addr);
-   function To_Addr    is new Unchecked_Conversion (ptrdiff_t, Addr);
-   function To_Ptrdiff is new Unchecked_Conversion (Addr,      ptrdiff_t);
+   function To_Pointer is new Ada.Unchecked_Conversion (Addr,      Pointer);
+   function To_Addr    is new Ada.Unchecked_Conversion (Pointer,   Addr);
+   function To_Addr    is new Ada.Unchecked_Conversion (ptrdiff_t, Addr);
+   function To_Ptrdiff is new Ada.Unchecked_Conversion (Addr,      ptrdiff_t);
 
    Elmt_Size : constant ptrdiff_t :=
                  (Element_Array'Component_Size
@@ -197,7 +197,7 @@ package body Interfaces.C.Pointers is
             subtype A is Element_Array (L .. H);
 
             type PA is access A;
-            function To_PA is new Unchecked_Conversion (Pointer, PA);
+            function To_PA is new Ada.Unchecked_Conversion (Pointer, PA);
 
          begin
             return To_PA (Ref).all;
@@ -240,7 +240,7 @@ package body Interfaces.C.Pointers is
             subtype A is Element_Array (L .. H);
 
             type PA is access A;
-            function To_PA is new Unchecked_Conversion (Pointer, PA);
+            function To_PA is new Ada.Unchecked_Conversion (Pointer, PA);
 
          begin
             return To_PA (Ref).all;

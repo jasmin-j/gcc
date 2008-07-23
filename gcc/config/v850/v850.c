@@ -1,13 +1,13 @@
 /* Subroutines for insn-output.c for NEC V850 series
-   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+   2006, 2007 Free Software Foundation, Inc.
    Contributed by Jeff Law (law@cygnus.com).
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2, or (at your option)
+   the Free Software Foundation; either version 3, or (at your option)
    any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -16,9 +16,8 @@
    for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the Free
-   Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-   02111-1307, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -43,6 +42,7 @@
 #include "tm_p.h"
 #include "target.h"
 #include "target-def.h"
+#include "df.h"
 
 #ifndef streq
 #define streq(a,b) (strcmp (a, b) == 0)
@@ -62,14 +62,15 @@ const struct attribute_spec v850_attribute_table[];
 static tree v850_handle_interrupt_attribute (tree *, tree, tree, int, bool *);
 static tree v850_handle_data_area_attribute (tree *, tree, tree, int, bool *);
 static void v850_insert_attributes   (tree, tree *);
-static void v850_select_section (tree, int, unsigned HOST_WIDE_INT);
+static void v850_asm_init_sections   (void);
+static section *v850_select_section (tree, int, unsigned HOST_WIDE_INT);
 static void v850_encode_data_area    (tree, rtx);
 static void v850_encode_section_info (tree, rtx, int);
-static bool v850_return_in_memory    (tree, tree);
+static bool v850_return_in_memory    (const_tree, const_tree);
 static void v850_setup_incoming_varargs (CUMULATIVE_ARGS *, enum machine_mode,
 					 tree, int *, int);
 static bool v850_pass_by_reference (CUMULATIVE_ARGS *, enum machine_mode,
-				    tree, bool);
+				    const_tree, bool);
 static int v850_arg_partial_bytes (CUMULATIVE_ARGS *, enum machine_mode,
 				   tree, bool);
 
@@ -96,6 +97,12 @@ static int v850_interrupt_cache_p = FALSE;
 
 /* Whether current function is an interrupt handler.  */
 static int v850_interrupt_p = FALSE;
+
+static GTY(()) section *rosdata_section;
+static GTY(()) section *rozdata_section;
+static GTY(()) section *tdata_section;
+static GTY(()) section *zdata_section;
+static GTY(()) section *zbss_section;
 
 /* Initialize the GCC target structure.  */
 #undef TARGET_ASM_ALIGNED_HI_OP
@@ -109,6 +116,11 @@ static int v850_interrupt_p = FALSE;
 
 #undef  TARGET_ASM_SELECT_SECTION
 #define TARGET_ASM_SELECT_SECTION  v850_select_section
+
+/* The assembler supports switchable .bss sections, but
+   v850_select_section doesn't yet make use of them.  */
+#undef  TARGET_HAVE_SWITCHABLE_BSS_SECTIONS
+#define TARGET_HAVE_SWITCHABLE_BSS_SECTIONS false
 
 #undef TARGET_ENCODE_SECTION_INFO
 #define TARGET_ENCODE_SECTION_INFO v850_encode_section_info
@@ -131,7 +143,7 @@ static int v850_interrupt_p = FALSE;
 #define TARGET_MACHINE_DEPENDENT_REORG v850_reorg
 
 #undef TARGET_PROMOTE_PROTOTYPES
-#define TARGET_PROMOTE_PROTOTYPES hook_bool_tree_true
+#define TARGET_PROMOTE_PROTOTYPES hook_bool_const_tree_true
 
 #undef TARGET_RETURN_IN_MEMORY
 #define TARGET_RETURN_IN_MEMORY v850_return_in_memory
@@ -211,7 +223,7 @@ v850_handle_option (size_t code, const char *arg, int value ATTRIBUTE_UNUSED)
 
 static bool
 v850_pass_by_reference (CUMULATIVE_ARGS *cum ATTRIBUTE_UNUSED,
-			enum machine_mode mode, tree type,
+			enum machine_mode mode, const_tree type,
 			bool named ATTRIBUTE_UNUSED)
 {
   unsigned HOST_WIDE_INT size;
@@ -518,30 +530,40 @@ print_operand (FILE * file, rtx x, int code)
 	    fprintf (file, "l");
 	    break;
 	  default:
-	    abort ();
+	    gcc_unreachable ();
 	}
       break;
     case 'F':			/* high word of CONST_DOUBLE */
-      if (GET_CODE (x) == CONST_INT)
-	fprintf (file, "%d", (INTVAL (x) >= 0) ? 0 : -1);
-      else if (GET_CODE (x) == CONST_DOUBLE)
+      switch (GET_CODE (x))
 	{
+	case CONST_INT:
+	  fprintf (file, "%d", (INTVAL (x) >= 0) ? 0 : -1);
+	  break;
+	  
+	case CONST_DOUBLE:
 	  const_double_split (x, &high, &low);
 	  fprintf (file, "%ld", (long) high);
+	  break;
+
+	default:
+	  gcc_unreachable ();
 	}
-      else
-	abort ();
       break;
     case 'G':			/* low word of CONST_DOUBLE */
-      if (GET_CODE (x) == CONST_INT)
-	fprintf (file, "%ld", (long) INTVAL (x));
-      else if (GET_CODE (x) == CONST_DOUBLE)
+      switch (GET_CODE (x))
 	{
+	case CONST_INT:
+	  fprintf (file, "%ld", (long) INTVAL (x));
+	  break;
+	  
+	case CONST_DOUBLE:
 	  const_double_split (x, &high, &low);
 	  fprintf (file, "%ld", (long) low);
+	  break;
+
+	default:
+	  gcc_unreachable ();
 	}
-      else
-	abort ();
       break;
     case 'L':
       fprintf (file, "%d\n", (int)(INTVAL (x) & 0xffff));
@@ -550,54 +572,42 @@ print_operand (FILE * file, rtx x, int code)
       fprintf (file, "%d", exact_log2 (INTVAL (x)));
       break;
     case 'O':
-      if (special_symbolref_operand (x, VOIDmode))
-        {
-	  if (GET_CODE (x) == SYMBOL_REF)
-	    ;
-	  else if (GET_CODE (x) == CONST)
-	    x = XEXP (XEXP (x, 0), 0);
-	  else
-	    abort ();
-
-          if (SYMBOL_REF_ZDA_P (x))
-            fprintf (file, "zdaoff");
-          else if (SYMBOL_REF_SDA_P (x))
-            fprintf (file, "sdaoff");
-          else if (SYMBOL_REF_TDA_P (x))
-            fprintf (file, "tdaoff");
-          else
-            abort ();
-        }
+      gcc_assert (special_symbolref_operand (x, VOIDmode));
+      
+      if (GET_CODE (x) == CONST)
+	x = XEXP (XEXP (x, 0), 0);
       else
-        abort ();
+	gcc_assert (GET_CODE (x) == SYMBOL_REF);
+      
+      if (SYMBOL_REF_ZDA_P (x))
+	fprintf (file, "zdaoff");
+      else if (SYMBOL_REF_SDA_P (x))
+	fprintf (file, "sdaoff");
+      else if (SYMBOL_REF_TDA_P (x))
+	fprintf (file, "tdaoff");
+      else
+	gcc_unreachable ();
       break;
     case 'P':
-      if (special_symbolref_operand (x, VOIDmode))
-        output_addr_const (file, x);
-      else
-        abort ();
+      gcc_assert (special_symbolref_operand (x, VOIDmode));
+      output_addr_const (file, x);
       break;
     case 'Q':
-      if (special_symbolref_operand (x, VOIDmode))
-        {
-	  if (GET_CODE (x) == SYMBOL_REF)
-	    ;
-	  else if (GET_CODE (x) == CONST)
-	    x = XEXP (XEXP (x, 0), 0);
-	  else
-	    abort ();
-
-          if (SYMBOL_REF_ZDA_P (x))
-            fprintf (file, "r0");
-          else if (SYMBOL_REF_SDA_P (x))
-            fprintf (file, "gp");
-          else if (SYMBOL_REF_TDA_P (x))
-            fprintf (file, "ep");
-          else
-            abort ();
-        }
+      gcc_assert (special_symbolref_operand (x, VOIDmode));
+      
+      if (GET_CODE (x) == CONST)
+	x = XEXP (XEXP (x, 0), 0);
       else
-        abort ();
+	gcc_assert (GET_CODE (x) == SYMBOL_REF);
+      
+      if (SYMBOL_REF_ZDA_P (x))
+	fprintf (file, "r0");
+      else if (SYMBOL_REF_SDA_P (x))
+	fprintf (file, "gp");
+      else if (SYMBOL_REF_TDA_P (x))
+	fprintf (file, "ep");
+      else
+	gcc_unreachable ();
       break;
     case 'R':		/* 2nd word of a double.  */
       switch (GET_CODE (x))
@@ -618,7 +628,7 @@ print_operand (FILE * file, rtx x, int code)
       break;
     case 'S':
       {
-        /* if it's a reference to a TDA variable, use sst/sld vs. st/ld */
+        /* If it's a reference to a TDA variable, use sst/sld vs. st/ld.  */
         if (GET_CODE (x) == MEM && ep_memory_operand (x, GET_MODE (x), FALSE))
           fputs ("s", file);
 
@@ -636,7 +646,7 @@ print_operand (FILE * file, rtx x, int code)
       switch (GET_MODE (x))
 	{
 	default:
-	  abort ();
+	  gcc_unreachable ();
 
 	case QImode: fputs (".b", file); break;
 	case HImode: fputs (".h", file); break;
@@ -648,12 +658,13 @@ print_operand (FILE * file, rtx x, int code)
       fputs (reg_names[0], file);
       break;
     case 'z':			/* reg or zero */
-      if (x == const0_rtx)
-	fputs (reg_names[0], file);
-      else if (GET_CODE (x) == REG)
+      if (GET_CODE (x) == REG)
 	fputs (reg_names[REGNO (x)], file);
       else
-	abort ();
+	{
+	  gcc_assert (x == const0_rtx);
+	  fputs (reg_names[0], file);
+	}
       break;
     default:
       switch (GET_CODE (x))
@@ -680,7 +691,7 @@ print_operand (FILE * file, rtx x, int code)
 	  print_operand_address (file, x);
 	  break;
 	default:
-	  abort ();
+	  gcc_unreachable ();
 	}
       break;
 
@@ -779,7 +790,7 @@ print_operand_address (FILE * file, rtx addr)
               reg_name = "ep";
             }
           else
-            abort ();
+            gcc_unreachable ();
 
           fprintf (file, "%s(", off_name);
           output_addr_const (file, addr);
@@ -843,10 +854,10 @@ output_move_single (rtx * operands)
 	{
 	  HOST_WIDE_INT value = INTVAL (src);
 
-	  if (CONST_OK_FOR_J (value))		/* Signed 5 bit immediate.  */
+	  if (CONST_OK_FOR_J (value))		/* Signed 5-bit immediate.  */
 	    return "mov %1,%0";
 
-	  else if (CONST_OK_FOR_K (value))	/* Signed 16 bit immediate.  */
+	  else if (CONST_OK_FOR_K (value))	/* Signed 16-bit immediate.  */
 	    return "movea lo(%1),%.,%0";
 
 	  else if (CONST_OK_FOR_L (value))	/* Upper 16 bits were set.  */
@@ -865,10 +876,10 @@ output_move_single (rtx * operands)
 
 	  const_double_split (src, &high, &low);
 
-	  if (CONST_OK_FOR_J (high))		/* Signed 5 bit immediate.  */
+	  if (CONST_OK_FOR_J (high))		/* Signed 5-bit immediate.  */
 	    return "mov %F1,%0";
 
-	  else if (CONST_OK_FOR_K (high))	/* Signed 16 bit immediate.  */
+	  else if (CONST_OK_FOR_K (high))	/* Signed 16-bit immediate.  */
 	    return "movea lo(%F1),%.,%0";
 
 	  else if (CONST_OK_FOR_L (high))	/* Upper 16 bits were set.  */
@@ -927,84 +938,6 @@ output_move_single (rtx * operands)
 }
 
 
-/* Return appropriate code to load up an 8 byte integer or
-   floating point value */
-
-const char *
-output_move_double (rtx * operands)
-{
-  enum machine_mode mode = GET_MODE (operands[0]);
-  rtx dst = operands[0];
-  rtx src = operands[1];
-
-  if (register_operand (dst, mode)
-      && register_operand (src, mode))
-    {
-      if (REGNO (src) + 1 == REGNO (dst))
-	return "mov %R1,%R0\n\tmov %1,%0";
-      else
-	return "mov %1,%0\n\tmov %R1,%R0";
-    }
-
-  /* Storing 0 */
-  if (GET_CODE (dst) == MEM
-      && ((GET_CODE (src) == CONST_INT && INTVAL (src) == 0)
-	  || (GET_CODE (src) == CONST_DOUBLE && CONST_DOUBLE_OK_FOR_G (src))))
-    return "st.w %.,%0\n\tst.w %.,%R0";
-
-  if (GET_CODE (src) == CONST_INT || GET_CODE (src) == CONST_DOUBLE)
-    {
-      HOST_WIDE_INT high_low[2];
-      int i;
-      rtx xop[10];
-
-      if (GET_CODE (src) == CONST_DOUBLE)
-	const_double_split (src, &high_low[1], &high_low[0]);
-      else
-	{
-	  high_low[0] = INTVAL (src);
-	  high_low[1] = (INTVAL (src) >= 0) ? 0 : -1;
-	}
-
-      for (i = 0; i < 2; i++)
-	{
-	  xop[0] = gen_rtx_REG (SImode, REGNO (dst)+i);
-	  xop[1] = GEN_INT (high_low[i]);
-	  output_asm_insn (output_move_single (xop), xop);
-	}
-
-      return "";
-    }
-
-  if (GET_CODE (src) == MEM)
-    {
-      int ptrreg = -1;
-      int dreg = REGNO (dst);
-      rtx inside = XEXP (src, 0);
-
-      if (GET_CODE (inside) == REG)
- 	ptrreg = REGNO (inside);
-      else if (GET_CODE (inside) == SUBREG)
-	ptrreg = subreg_regno (inside);
-      else if (GET_CODE (inside) == PLUS)
-	ptrreg = REGNO (XEXP (inside, 0));
-      else if (GET_CODE (inside) == LO_SUM)
-	ptrreg = REGNO (XEXP (inside, 0));
-
-      if (dreg == ptrreg)
-	return "ld.w %R1,%R0\n\tld.w %1,%0";
-    }
-
-  if (GET_CODE (src) == MEM)
-    return "ld.w %1,%0\n\tld.w %R1,%R0";
-  
-  if (GET_CODE (dst) == MEM)
-    return "st.w %1,%0\n\tst.w %R1,%R0";
-
-  return "mov %1,%0\n\tmov %R1,%R0";
-}
-
-
 /* Return maximum offset supported for a short EP memory reference of mode
    MODE and signedness UNSIGNEDP.  */
 
@@ -1057,6 +990,13 @@ ep_memory_operand (rtx op, enum machine_mode mode, int unsigned_load)
   rtx addr, op0, op1;
   int max_offset;
   int mask;
+
+  /* If we are not using the EP register on a per-function basis
+     then do not allow this optimization at all.  This is to
+     prevent the use of the SLD/SST instructions which cannot be
+     guaranteed to work properly due to a hardware bug.  */
+  if (!TARGET_EP)
+    return FALSE;
 
   if (GET_CODE (op) != MEM)
     return FALSE;
@@ -1116,7 +1056,7 @@ substitute_ep_register (rtx first_insn,
 
   if (!*p_r1)
     {
-      regs_ever_live[1] = 1;
+      df_set_regs_ever_live (1, true);
       *p_r1 = gen_rtx_REG (Pmode, 1);
       *p_ep = gen_rtx_REG (Pmode, 30);
     }
@@ -1442,12 +1382,15 @@ compute_register_save_size (long * p_reg_saved)
   int size = 0;
   int i;
   int interrupt_handler = v850_interrupt_function_p (current_function_decl);
-  int call_p = regs_ever_live [LINK_POINTER_REGNUM];
+  int call_p = df_regs_ever_live_p (LINK_POINTER_REGNUM);
   long reg_saved = 0;
 
   /* Count the return pointer if we need to save it.  */
-  if (current_function_profile && !call_p)
-    regs_ever_live [LINK_POINTER_REGNUM] = call_p = 1;
+  if (crtl->profile && !call_p)
+    {
+      df_set_regs_ever_live (LINK_POINTER_REGNUM, true);
+      call_p = 1;
+    }
  
   /* Count space for the register saves.  */
   if (interrupt_handler)
@@ -1456,7 +1399,7 @@ compute_register_save_size (long * p_reg_saved)
 	switch (i)
 	  {
 	  default:
-	    if (regs_ever_live[i] || call_p)
+	    if (df_regs_ever_live_p (i) || call_p)
 	      {
 		size += 4;
 		reg_saved |= 1L << i;
@@ -1484,7 +1427,7 @@ compute_register_save_size (long * p_reg_saved)
     {
       /* Find the first register that needs to be saved.  */
       for (i = 0; i <= 31; i++)
-	if (regs_ever_live[i] && ((! call_used_regs[i])
+	if (df_regs_ever_live_p (i) && ((! call_used_regs[i])
 				  || i == LINK_POINTER_REGNUM))
 	  break;
 
@@ -1516,7 +1459,7 @@ compute_register_save_size (long * p_reg_saved)
 	      reg_saved |= 1L << i;
 	    }
 
-	  if (regs_ever_live [LINK_POINTER_REGNUM])
+	  if (df_regs_ever_live_p (LINK_POINTER_REGNUM))
 	    {
 	      size += 4;
 	      reg_saved |= 1L << LINK_POINTER_REGNUM;
@@ -1525,7 +1468,7 @@ compute_register_save_size (long * p_reg_saved)
       else
 	{
 	  for (; i <= 31; i++)
-	    if (regs_ever_live[i] && ((! call_used_regs[i])
+	    if (df_regs_ever_live_p (i) && ((! call_used_regs[i])
 				      || i == LINK_POINTER_REGNUM))
 	      {
 		size += 4;
@@ -1545,7 +1488,7 @@ compute_frame_size (int size, long * p_reg_saved)
 {
   return (size
 	  + compute_register_save_size (p_reg_saved)
-	  + current_function_outgoing_args_size);
+	  + crtl->outgoing_args_size);
 }
 
 
@@ -1582,7 +1525,7 @@ expand_prologue (void)
     }
 
   /* Save arg registers to the stack if necessary.  */
-  else if (current_function_args_info.anonymous_args)
+  else if (crtl->args.info.anonymous_args)
     {
       if (TARGET_PROLOG_FUNCTION && TARGET_V850E && !TARGET_DISABLE_CALLT)
 	emit_insn (gen_save_r6_r9_v850e ());
@@ -1724,7 +1667,7 @@ Saved %d bytes via prologue function (%d vs. %d) for function %s\n",
 	  if (init_stack_alloc)
 	    emit_insn (gen_addsi3 (stack_pointer_rtx,
 				   stack_pointer_rtx,
-				   GEN_INT (-init_stack_alloc)));
+				   GEN_INT (- (signed) init_stack_alloc)));
 	  
 	  /* Save the return pointer first.  */
 	  if (num_save > 0 && REGNO (save_regs[num_save-1]) == LINK_POINTER_REGNUM)
@@ -1778,7 +1721,7 @@ expand_epilogue (void)
   int offset;
   unsigned int size = get_frame_size ();
   long reg_saved = 0;
-  unsigned int actual_fsize = compute_frame_size (size, &reg_saved);
+  int actual_fsize = compute_frame_size (size, &reg_saved);
   unsigned int init_stack_free = 0;
   rtx restore_regs[32];
   rtx restore_all;
@@ -1822,7 +1765,7 @@ expand_epilogue (void)
   
   if (TARGET_PROLOG_FUNCTION
       && num_restore > 0
-      && actual_fsize >= default_stack
+      && actual_fsize >= (signed) default_stack
       && !interrupt_handler)
     {
       int alloc_stack = (4 * num_restore) + default_stack;
@@ -1903,7 +1846,7 @@ Saved %d bytes via epilogue function (%d vs. %d) in function %s\n",
 	}
     }
 
-  /* If no epilog save function is available, restore the registers the
+  /* If no epilogue save function is available, restore the registers the
      old fashioned way (one by one).  */
   if (!restore_all)
     {
@@ -1911,7 +1854,7 @@ Saved %d bytes via epilogue function (%d vs. %d) in function %s\n",
       if (actual_fsize && !CONST_OK_FOR_K (-actual_fsize))
 	init_stack_free = 4 * num_restore;
       else
-	init_stack_free = actual_fsize;
+	init_stack_free = (signed) actual_fsize;
 
       /* Deallocate the rest of the stack if it is > 32K.  */
       if (actual_fsize > init_stack_free)
@@ -1966,7 +1909,7 @@ Saved %d bytes via epilogue function (%d vs. %d) in function %s\n",
 					   plus_constant (stack_pointer_rtx,
 							  offset)));
 
-	      emit_insn (gen_rtx_USE (VOIDmode, restore_regs[i]));
+	      emit_use (restore_regs[i]);
 	      offset -= 4;
 	    }
 
@@ -2102,7 +2045,7 @@ v850_handle_interrupt_attribute (tree * node,
 {
   if (TREE_CODE (*node) != FUNCTION_DECL)
     {
-      warning ("%qs attribute only applies to functions",
+      warning (OPT_Wattributes, "%qs attribute only applies to functions",
 	       IDENTIFIER_POINTER (name));
       *no_add_attrs = true;
     }
@@ -2131,7 +2074,7 @@ v850_handle_data_area_attribute (tree* node,
   else if (is_attribute_p ("zda", name))
     data_area = DATA_AREA_ZDA;
   else
-    abort ();
+    gcc_unreachable ();
   
   switch (TREE_CODE (decl))
     {
@@ -2139,7 +2082,7 @@ v850_handle_data_area_attribute (tree* node,
       if (current_function_decl != NULL_TREE)
 	{
           error ("%Jdata area attributes cannot be specified for "
-                 "local variables", decl, decl);
+                 "local variables", decl);
 	  *no_add_attrs = true;
 	}
 
@@ -2149,8 +2092,8 @@ v850_handle_data_area_attribute (tree* node,
       area = v850_get_data_area (decl);
       if (area != DATA_AREA_NORMAL && data_area != area)
 	{
-	  error ("%Jdata area of '%D' conflicts with previous declaration",
-                 decl, decl);
+	  error ("data area of %q+D conflicts with previous declaration",
+                 decl);
 	  *no_add_attrs = true;
 	}
       break;
@@ -2246,7 +2189,7 @@ v850_encode_data_area (tree decl, rtx symbol)
     case DATA_AREA_ZDA: flags |= SYMBOL_FLAG_ZDA; break;
     case DATA_AREA_TDA: flags |= SYMBOL_FLAG_TDA; break;
     case DATA_AREA_SDA: flags |= SYMBOL_FLAG_SDA; break;
-    default: abort ();
+    default: gcc_unreachable ();
     }
   SYMBOL_REF_FLAGS (symbol) = flags;
 }
@@ -2279,18 +2222,15 @@ construct_restore_jr (rtx op)
   
   if (count <= 2)
     {
-      error ("bogus JR construction: %d\n", count);
+      error ("bogus JR construction: %d", count);
       return NULL;
     }
 
   /* Work out how many bytes to pop off the stack before retrieving
      registers.  */
-  if (GET_CODE (XVECEXP (op, 0, 1)) != SET)
-    abort ();
-  if (GET_CODE (SET_SRC (XVECEXP (op, 0, 1))) != PLUS)
-    abort ();
-  if (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 1)), 1)) != CONST_INT)
-    abort ();
+  gcc_assert (GET_CODE (XVECEXP (op, 0, 1)) == SET);
+  gcc_assert (GET_CODE (SET_SRC (XVECEXP (op, 0, 1))) == PLUS);
+  gcc_assert (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 1)), 1)) == CONST_INT);
     
   stack_bytes = INTVAL (XEXP (SET_SRC (XVECEXP (op, 0, 1)), 1));
 
@@ -2310,12 +2250,10 @@ construct_restore_jr (rtx op)
     {
       rtx vector_element = XVECEXP (op, 0, i);
       
-      if (GET_CODE (vector_element) != SET)
-	abort ();
-      if (GET_CODE (SET_DEST (vector_element)) != REG)
-	abort ();
-      if (! register_is_ok_for_epilogue (SET_DEST (vector_element), SImode))
-	abort ();
+      gcc_assert (GET_CODE (vector_element) == SET);
+      gcc_assert (GET_CODE (SET_DEST (vector_element)) == REG);
+      gcc_assert (register_is_ok_for_epilogue (SET_DEST (vector_element),
+					       SImode));
       
       mask |= 1 << REGNO (SET_DEST (vector_element));
     }
@@ -2327,24 +2265,19 @@ construct_restore_jr (rtx op)
 	break;
     }
 
-  if (first >= 32)
-    abort ();
+  gcc_assert (first < 32);
 
   /* Discover the last register to pop.  */
   if (mask & (1 << LINK_POINTER_REGNUM))
     {
-      if (stack_bytes != 16)
-	abort ();
+      gcc_assert (stack_bytes == 16);
       
       last = LINK_POINTER_REGNUM;
     }
   else
     {
-      if (stack_bytes != 0)
-	abort ();
-      
-      if ((mask & (1 << 29)) == 0)
-	abort ();
+      gcc_assert (!stack_bytes);
+      gcc_assert (mask & (1 << 29));
       
       last = 29;
     }
@@ -2401,14 +2334,10 @@ construct_save_jarl (rtx op)
     }
 
   /* Paranoia.  */
-  if (GET_CODE (XVECEXP (op, 0, 0)) != SET)
-    abort ();
-  if (GET_CODE (SET_SRC (XVECEXP (op, 0, 0))) != PLUS)
-    abort ();
-  if (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 0)) != REG)
-    abort ();
-  if (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1)) != CONST_INT)
-    abort ();
+  gcc_assert (GET_CODE (XVECEXP (op, 0, 0)) == SET);
+  gcc_assert (GET_CODE (SET_SRC (XVECEXP (op, 0, 0))) == PLUS);
+  gcc_assert (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 0)) == REG);
+  gcc_assert (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1)) == CONST_INT);
     
   /* Work out how many bytes to push onto the stack after storing the
      registers.  */
@@ -2430,12 +2359,10 @@ construct_save_jarl (rtx op)
     {
       rtx vector_element = XVECEXP (op, 0, i);
       
-      if (GET_CODE (vector_element) != SET)
-	abort ();
-      if (GET_CODE (SET_SRC (vector_element)) != REG)
-	abort ();
-      if (! register_is_ok_for_epilogue (SET_SRC (vector_element), SImode))
-	abort ();
+      gcc_assert (GET_CODE (vector_element) == SET);
+      gcc_assert (GET_CODE (SET_SRC (vector_element)) == REG);
+      gcc_assert (register_is_ok_for_epilogue (SET_SRC (vector_element),
+					       SImode));
       
       mask |= 1 << REGNO (SET_SRC (vector_element));
     }
@@ -2447,23 +2374,19 @@ construct_save_jarl (rtx op)
 	break;
     }
 
-  if (first >= 32)
-    abort ();
+  gcc_assert (first < 32);
 
   /* Discover the last register to push.  */
   if (mask & (1 << LINK_POINTER_REGNUM))
     {
-      if (stack_bytes != -16)
-	abort ();
+      gcc_assert (stack_bytes == -16);
       
       last = LINK_POINTER_REGNUM;
     }
   else
     {
-      if (stack_bytes != 0)
-	abort ();
-      if ((mask & (1 << 29)) == 0)
-	abort ();
+      gcc_assert (!stack_bytes);
+      gcc_assert (mask & (1 << 29));
       
       last = 29;
     }
@@ -2506,24 +2429,24 @@ void
 v850_output_aligned_bss (FILE * file,
                          tree decl,
                          const char * name,
-                         int size,
+                         unsigned HOST_WIDE_INT size,
                          int align)
 {
   switch (v850_get_data_area (decl))
     {
     case DATA_AREA_ZDA:
-      zbss_section ();
+      switch_to_section (zbss_section);
       break;
 
     case DATA_AREA_SDA:
-      sbss_section ();
+      switch_to_section (sbss_section);
       break;
 
     case DATA_AREA_TDA:
-      tdata_section ();
+      switch_to_section (tdata_section);
       
     default:
-      bss_section ();
+      switch_to_section (bss_section);
       break;
     }
   
@@ -2642,7 +2565,7 @@ v850_insert_attributes (tree decl, tree * attr_ptr ATTRIBUTE_UNUSED )
 	  switch (v850_get_data_area (decl))
 	    {
 	    default:
-	      abort ();
+	      gcc_unreachable ();
 	      
 	    case DATA_AREA_SDA:
 	      kind = ((TREE_READONLY (decl))
@@ -2705,18 +2628,15 @@ construct_dispose_instruction (rtx op)
   
   if (count <= 2)
     {
-      error ("Bogus DISPOSE construction: %d\n", count);
+      error ("bogus DISPOSE construction: %d", count);
       return NULL;
     }
 
   /* Work out how many bytes to pop off the
      stack before retrieving registers.  */
-  if (GET_CODE (XVECEXP (op, 0, 1)) != SET)
-    abort ();
-  if (GET_CODE (SET_SRC (XVECEXP (op, 0, 1))) != PLUS)
-    abort ();
-  if (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 1)), 1)) != CONST_INT)
-    abort ();
+  gcc_assert (GET_CODE (XVECEXP (op, 0, 1)) == SET);
+  gcc_assert (GET_CODE (SET_SRC (XVECEXP (op, 0, 1))) == PLUS);
+  gcc_assert (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 1)), 1)) == CONST_INT);
     
   stack_bytes = INTVAL (XEXP (SET_SRC (XVECEXP (op, 0, 1)), 1));
 
@@ -2727,7 +2647,7 @@ construct_dispose_instruction (rtx op)
      will fit into the DISPOSE instruction.  */
   if (stack_bytes > 128)
     {
-      error ("Too much stack space to dispose of: %d", stack_bytes);
+      error ("too much stack space to dispose of: %d", stack_bytes);
       return NULL;
     }
 
@@ -2738,12 +2658,10 @@ construct_dispose_instruction (rtx op)
     {
       rtx vector_element = XVECEXP (op, 0, i);
       
-      if (GET_CODE (vector_element) != SET)
-	abort ();
-      if (GET_CODE (SET_DEST (vector_element)) != REG)
-	abort ();
-      if (! register_is_ok_for_epilogue (SET_DEST (vector_element), SImode))
-	abort ();
+      gcc_assert (GET_CODE (vector_element) == SET);
+      gcc_assert (GET_CODE (SET_DEST (vector_element)) == REG);
+      gcc_assert (register_is_ok_for_epilogue (SET_DEST (vector_element),
+					       SImode));
 
       if (REGNO (SET_DEST (vector_element)) == 2)
 	use_callt = 1;
@@ -2831,18 +2749,15 @@ construct_prepare_instruction (rtx op)
   
   if (count <= 1)
     {
-      error ("Bogus PREPEARE construction: %d\n", count);
+      error ("bogus PREPEARE construction: %d", count);
       return NULL;
     }
 
   /* Work out how many bytes to push onto
      the stack after storing the registers.  */
-  if (GET_CODE (XVECEXP (op, 0, 0)) != SET)
-    abort ();
-  if (GET_CODE (SET_SRC (XVECEXP (op, 0, 0))) != PLUS)
-    abort ();
-  if (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1)) != CONST_INT)
-    abort ();
+  gcc_assert (GET_CODE (XVECEXP (op, 0, 0)) == SET);
+  gcc_assert (GET_CODE (SET_SRC (XVECEXP (op, 0, 0))) == PLUS);
+  gcc_assert (GET_CODE (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1)) == CONST_INT);
     
   stack_bytes = INTVAL (XEXP (SET_SRC (XVECEXP (op, 0, 0)), 1));
 
@@ -2853,7 +2768,7 @@ construct_prepare_instruction (rtx op)
      will fit into the DISPOSE instruction.  */
   if (stack_bytes < -128)
     {
-      error ("Too much stack space to prepare: %d", stack_bytes);
+      error ("too much stack space to prepare: %d", stack_bytes);
       return NULL;
     }
 
@@ -2863,12 +2778,10 @@ construct_prepare_instruction (rtx op)
     {
       rtx vector_element = XVECEXP (op, 0, i);
       
-      if (GET_CODE (vector_element) != SET)
-	abort ();
-      if (GET_CODE (SET_SRC (vector_element)) != REG)
-	abort ();
-      if (! register_is_ok_for_epilogue (SET_SRC (vector_element), SImode))
-	abort ();
+      gcc_assert (GET_CODE (vector_element) == SET);
+      gcc_assert (GET_CODE (SET_SRC (vector_element)) == REG);
+      gcc_assert (register_is_ok_for_epilogue (SET_SRC (vector_element),
+					       SImode));
 
       if (REGNO (SET_SRC (vector_element)) == 2)
 	use_callt = 1;
@@ -2951,7 +2864,34 @@ v850_return_addr (int count)
   return get_hard_reg_initial_val (Pmode, LINK_POINTER_REGNUM);
 }
 
+/* Implement TARGET_ASM_INIT_SECTIONS.  */
+
 static void
+v850_asm_init_sections (void)
+{
+  rosdata_section
+    = get_unnamed_section (0, output_section_asm_op,
+			   "\t.section .rosdata,\"a\"");
+
+  rozdata_section
+    = get_unnamed_section (0, output_section_asm_op,
+			   "\t.section .rozdata,\"a\"");
+
+  tdata_section
+    = get_unnamed_section (SECTION_WRITE, output_section_asm_op,
+			   "\t.section .tdata,\"aw\"");
+
+  zdata_section
+    = get_unnamed_section (SECTION_WRITE, output_section_asm_op,
+			   "\t.section .zdata,\"aw\"");
+
+  zbss_section
+    = get_unnamed_section (SECTION_WRITE | SECTION_BSS,
+			   output_section_asm_op,
+			   "\t.section .zbss,\"aw\"");
+}
+
+static section *
 v850_select_section (tree exp,
                      int reloc ATTRIBUTE_UNUSED,
                      unsigned HOST_WIDE_INT align ATTRIBUTE_UNUSED)
@@ -2971,39 +2911,25 @@ v850_select_section (tree exp,
       switch (v850_get_data_area (exp))
         {
         case DATA_AREA_ZDA:
-	  if (is_const)
-	    rozdata_section ();
-	  else
-	    zdata_section ();
-	  break;
+	  return is_const ? rozdata_section : zdata_section;
 
         case DATA_AREA_TDA:
-	  tdata_section ();
-	  break;
+	  return tdata_section;
 
         case DATA_AREA_SDA:
-	  if (is_const)
-	    rosdata_section ();
-	  else
-	    sdata_section ();
-	  break;
+	  return is_const ? rosdata_section : sdata_section;
 
         default:
-          if (is_const)
-	    readonly_data_section ();
-	  else
-	    data_section ();
-	  break;
+	  return is_const ? readonly_data_section : data_section;
         }
     }
-  else
-    readonly_data_section ();
+  return readonly_data_section;
 }
 
 /* Worker function for TARGET_RETURN_IN_MEMORY.  */
 
 static bool
-v850_return_in_memory (tree type, tree fntype ATTRIBUTE_UNUSED)
+v850_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
 {
   /* Return values > 8 bytes in length in memory.  */
   return int_size_in_bytes (type) > 8 || TYPE_MODE (type) == BLKmode;
@@ -3020,3 +2946,5 @@ v850_setup_incoming_varargs (CUMULATIVE_ARGS *ca,
 {
   ca->anonymous_args = (!TARGET_GHS ? 1 : 0);
 }
+
+#include "gt-v850.h"

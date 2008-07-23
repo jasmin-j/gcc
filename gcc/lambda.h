@@ -1,12 +1,12 @@
 /* Lambda matrix and vector interface.
-   Copyright (C) 2003, 2004 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dberlin@dberlin.org>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,9 +15,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef LAMBDA_H
 #define LAMBDA_H
@@ -29,6 +28,12 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
    and scalar multiplication.  In this vector space, an element is a list of
    integers.  */
 typedef int *lambda_vector;
+DEF_VEC_P(lambda_vector);
+DEF_VEC_ALLOC_P(lambda_vector,heap);
+
+typedef VEC(lambda_vector, heap) *lambda_vector_vec_p;
+DEF_VEC_P (lambda_vector_vec_p);
+DEF_VEC_ALLOC_P (lambda_vector_vec_p, heap);
 
 /* An integer matrix.  A matrix consists of m vectors of length n (IE
    all vectors are the same length).  */
@@ -37,7 +42,7 @@ typedef lambda_vector *lambda_matrix;
 /* A transformation matrix, which is a self-contained ROWSIZE x COLSIZE
    matrix.  Rather than use floats, we simply keep a single DENOMINATOR that
    represents the denominator for every element in the matrix.  */
-typedef struct
+typedef struct lambda_trans_matrix_s
 {
   lambda_matrix matrix;
   int rowsize;
@@ -58,7 +63,7 @@ typedef struct
    This structure is used during code generation in order to rewrite the old
    induction variable uses in a statement in terms of the newly created
    induction variables.  */
-typedef struct
+typedef struct lambda_body_vector_s
 {
   lambda_vector coefficients;
   int size;
@@ -95,7 +100,10 @@ typedef struct lambda_linear_expression_s
 #define LLE_DENOMINATOR(T) ((T)->denominator)
 #define LLE_NEXT(T) ((T)->next)
 
-lambda_linear_expression lambda_linear_expression_new (int, int);
+struct obstack;
+
+lambda_linear_expression lambda_linear_expression_new (int, int,
+                                                       struct obstack *);
 void print_lambda_linear_expression (FILE *, lambda_linear_expression, int,
 				     int, char);
 
@@ -124,7 +132,7 @@ typedef struct lambda_loop_s
    and an integer representing the number of INVARIANTS in the loop.  Both of
    these integers are used to size the associated coefficient vectors in the
    linear expression structures.  */
-typedef struct
+typedef struct lambda_loopnest_s
 {
   lambda_loop *loops;
   int depth;
@@ -135,12 +143,12 @@ typedef struct
 #define LN_DEPTH(T) ((T)->depth)
 #define LN_INVARIANTS(T) ((T)->invariants)
 
-lambda_loopnest lambda_loopnest_new (int, int);
-lambda_loopnest lambda_loopnest_transform (lambda_loopnest, lambda_trans_matrix);
+lambda_loopnest lambda_loopnest_new (int, int, struct obstack *);
+lambda_loopnest lambda_loopnest_transform (lambda_loopnest,
+                                           lambda_trans_matrix,
+                                           struct obstack *);
 struct loop;
-struct loops;
 bool perfect_nest_p (struct loop *);
-bool lambda_transform_legal_p (lambda_trans_matrix, int, varray_type);
 void print_lambda_loopnest (FILE *, lambda_loopnest, char);
 
 #define lambda_loop_new() (lambda_loop) ggc_alloc_cleared (sizeof (struct lambda_loop_s))
@@ -190,19 +198,21 @@ void lambda_matrix_vector_mult (lambda_matrix, int, int, lambda_vector,
 				lambda_vector);
 bool lambda_trans_matrix_id_p (lambda_trans_matrix);
 
-lambda_body_vector lambda_body_vector_new (int);
-lambda_body_vector lambda_body_vector_compute_new (lambda_trans_matrix, 
-						   lambda_body_vector);
+lambda_body_vector lambda_body_vector_new (int, struct obstack *);
+lambda_body_vector lambda_body_vector_compute_new (lambda_trans_matrix,
+                                                   lambda_body_vector,
+                                                   struct obstack *);
 void print_lambda_body_vector (FILE *, lambda_body_vector);
-lambda_loopnest gcc_loopnest_to_lambda_loopnest (struct loops *,
-						 struct loop *,
+lambda_loopnest gcc_loopnest_to_lambda_loopnest (struct loop *,
 						 VEC(tree,heap) **,
-						 VEC(tree,heap) **,
-						 bool);
+                                                 VEC(tree,heap) **,
+                                                 struct obstack *);
 void lambda_loopnest_to_gcc_loopnest (struct loop *,
 				      VEC(tree,heap) *, VEC(tree,heap) *,
-				      lambda_loopnest, lambda_trans_matrix);
-
+				      VEC(tree,heap) **,
+                                      lambda_loopnest, lambda_trans_matrix,
+                                      struct obstack *);
+void remove_iv (tree);
 
 static inline void lambda_vector_negate (lambda_vector, lambda_vector, int);
 static inline void lambda_vector_mult_const (lambda_vector, lambda_vector, int, int);
@@ -223,7 +233,7 @@ static inline void print_lambda_vector (FILE *, lambda_vector, int);
 static inline lambda_vector
 lambda_vector_new (int size)
 {
-  return ggc_alloc_cleared (size * sizeof(int));
+  return GGC_CNEWVEC (int, size);
 }
 
 
@@ -376,5 +386,107 @@ print_lambda_vector (FILE * outfile, lambda_vector vector, int n)
     fprintf (outfile, "%3d ", vector[i]);
   fprintf (outfile, "\n");
 }
-#endif /* LAMBDA_H  */
 
+/* Compute the greatest common divisor of two numbers using
+   Euclid's algorithm.  */
+
+static inline int 
+gcd (int a, int b)
+{
+  int x, y, z;
+
+  x = abs (a);
+  y = abs (b);
+
+  while (x > 0)
+    {
+      z = y % x;
+      y = x;
+      x = z;
+    }
+
+  return y;
+}
+
+/* Compute the greatest common divisor of a VECTOR of SIZE numbers.  */
+
+static inline int
+lambda_vector_gcd (lambda_vector vector, int size)
+{
+  int i;
+  int gcd1 = 0;
+
+  if (size > 0)
+    {
+      gcd1 = vector[0];
+      for (i = 1; i < size; i++)
+	gcd1 = gcd (gcd1, vector[i]);
+    }
+  return gcd1;
+}
+
+/* Returns true when the vector V is lexicographically positive, in
+   other words, when the first nonzero element is positive.  */
+
+static inline bool
+lambda_vector_lexico_pos (lambda_vector v, 
+			  unsigned n)
+{
+  unsigned i;
+  for (i = 0; i < n; i++)
+    {
+      if (v[i] == 0)
+	continue;
+      if (v[i] < 0)
+	return false;
+      if (v[i] > 0)
+	return true;
+    }
+  return true;
+}
+
+/* Given a vector of induction variables IVS, and a vector of
+   coefficients COEFS, build a tree that is a linear combination of
+   the induction variables.  */
+
+static inline tree
+build_linear_expr (tree type, lambda_vector coefs, VEC (tree, heap) *ivs)
+{
+  unsigned i;
+  tree iv;
+  tree expr = fold_convert (type, integer_zero_node);
+
+  for (i = 0; VEC_iterate (tree, ivs, i, iv); i++)
+    {
+      int k = coefs[i];
+
+      if (k == 1)
+	expr = fold_build2 (PLUS_EXPR, type, expr, iv);
+
+      else if (k != 0)
+	expr = fold_build2 (PLUS_EXPR, type, expr,
+			    fold_build2 (MULT_EXPR, type, iv,
+					 build_int_cst (type, k)));
+    }
+
+  return expr;
+}
+
+/* Returns the dependence level for a vector DIST of size LENGTH.
+   LEVEL = 0 means a lexicographic dependence, i.e. a dependence due
+   to the sequence of statements, not carried by any loop.  */
+
+
+static inline unsigned
+dependence_level (lambda_vector dist_vect, int length)
+{
+  int i;
+
+  for (i = 0; i < length; i++)
+    if (dist_vect[i] != 0)
+      return i + 1;
+
+  return 0;
+}
+
+#endif /* LAMBDA_H  */

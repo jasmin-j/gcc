@@ -7,7 +7,7 @@
 --                                 B o d y                                  --
 --                         (Version for IRIX/MIPS)                          --
 --                                                                          --
---          Copyright (C) 1999-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1999-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +17,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -39,14 +39,13 @@
 with System.Machine_Code; use System.Machine_Code;
 with System.Memory;
 with System.Soft_Links; use System.Soft_Links;
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package body System.Machine_State_Operations is
 
    use System.Storage_Elements;
-   use System.Exceptions;
 
-   --  The exc_unwind function in libexc operats on a Sigcontext
+   --  The exc_unwind function in libexc operates on a Sigcontext
 
    --  Type sigcontext_t is defined in /usr/include/sys/signal.h.
    --  We define an equivalent Ada type here. From the comments in
@@ -93,16 +92,19 @@ package body System.Machine_State_Operations is
    --  within the Sigcontext.
 
    function To_Sigcontext_Ptr is
-     new Unchecked_Conversion (Machine_State, Sigcontext_Ptr);
+     new Ada.Unchecked_Conversion (Machine_State, Sigcontext_Ptr);
 
    type Addr_Int is mod 2 ** Long_Integer'Size;
    --  An unsigned integer type whose size is the same as System.Address.
    --  We rely on the fact that Long_Integer'Size = System.Address'Size in
    --  all ABIs.  Type Addr_Int can be converted to Uns64.
 
-   function To_Code_Loc is new Unchecked_Conversion (Addr_Int, Code_Loc);
-   function To_Addr_Int is new Unchecked_Conversion (System.Address, Addr_Int);
-   function To_Uns32_Ptr is new Unchecked_Conversion (Addr_Int, Uns32_Ptr);
+   function To_Code_Loc is
+     new Ada.Unchecked_Conversion (Addr_Int, Code_Loc);
+   function To_Addr_Int is
+     new Ada.Unchecked_Conversion (System.Address, Addr_Int);
+   function To_Uns32_Ptr is
+     new Ada.Unchecked_Conversion (Addr_Int, Uns32_Ptr);
 
    --------------------------------
    -- ABI-Dependent Declarations --
@@ -113,7 +115,7 @@ package body System.Machine_State_Operations is
    o32n : constant Natural := Boolean'Pos (o32);
    n32n : constant Natural := Boolean'Pos (n32);
    --  Flags to indicate which ABI is in effect for this compilation. For the
-   --  purposes of this unit, the n32 and n64 ABI's are identical.
+   --  purposes of this unit, the n32 and n64 ABIs are identical.
 
    LSC : constant Character := Character'Val (o32n * Character'Pos ('w') +
                                               n32n * Character'Pos ('d'));
@@ -158,7 +160,7 @@ package body System.Machine_State_Operations is
 
       type Address_Int is mod 2 ** Standard'Address_Size;
       function To_I_Type_Ptr is new
-        Unchecked_Conversion (Address_Int, I_Type_Ptr);
+        Ada.Unchecked_Conversion (Address_Int, I_Type_Ptr);
 
       Ret_Ins : constant I_Type_Ptr := To_I_Type_Ptr (Address_Int (Scp.SC_PC));
       GP_Ptr  : Uns32_Ptr;
@@ -181,66 +183,6 @@ package body System.Machine_State_Operations is
       return Machine_State
         (Memory.Alloc (Sigcontext'Max_Size_In_Storage_Elements));
    end Allocate_Machine_State;
-
-   -------------------
-   -- Enter_Handler --
-   -------------------
-
-   procedure Enter_Handler (M : Machine_State; Handler : Handler_Loc) is
-      pragma Warnings (Off, M);
-      pragma Warnings (Off, Handler);
-
-      LOADI : constant String (1 .. 2) := 'l' & LSC;
-      --  This is "lw" in o32 mode, and "ld" in n32/n64 mode
-
-      LOADF : constant String (1 .. 4) := 'l' & LSC & "c1";
-      --  This is "lwc1" in o32 mode and "ldc1" in n32/n64 mode
-
-   begin
-      --  Restore integer registers from machine state. Note that we know
-      --  that $4 points to M, and $5 points to Handler, since this is
-      --  the standard calling sequence
-
-      Asm (LOADI & " $16,  16*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $17,  17*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $18,  18*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $19,  19*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $20,  20*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $21,  21*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $22,  22*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $23,  23*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $24,  24*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $25,  25*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $26,  26*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $27,  27*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $28,  28*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $29,  29*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $30,  30*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (LOADI & " $31,  31*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-
-      --  Restore floating-point registers from machine state
-
-      Asm (LOADF & " $f16, 16*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f17, 17*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f18, 18*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f19, 19*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f20, 20*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f21, 21*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f22, 22*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f23, 23*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f24, 24*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f25, 25*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f26, 26*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f27, 27*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f28, 28*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f29, 29*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f30, 30*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (LOADF & " $f31, 31*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-
-      --  Jump directly to the handler
-
-      Asm ("jr  $5");
-   end Enter_Handler;
 
    ----------------
    -- Fetch_Code --
@@ -284,32 +226,13 @@ package body System.Machine_State_Operations is
    -- Pop_Frame --
    ---------------
 
-   procedure Pop_Frame
-     (M    : Machine_State;
-      Info : Subprogram_Info_Type)
-   is
-      pragma Warnings (Off, Info);
-
+   procedure Pop_Frame (M : Machine_State) is
       Scp : constant Sigcontext_Ptr := To_Sigcontext_Ptr (M);
 
       procedure Exc_Unwind (Scp : Sigcontext_Ptr; Fde : Long_Integer := 0);
       pragma Import (C, Exc_Unwind, "exc_unwind");
 
-      --  ??? Calling exc_unwind in the current setup does not work and
-      --  triggers the emission of system warning messages. Why it does
-      --  not work remains to be investigated. Part of the problem is
-      --  probably a section naming issue (e.g. .eh_frame/.debug_frame).
-
-      --  Instead of letting the call take place for nothing and emit
-      --  messages we don't expect, we just arrange things to pretend it
-      --  occurred and failed.
-
-      --  ??? Until this is fixed, we shall document that the backtrace
-      --  computation facility does not work, and we inhibit the pragma below
-      --  because we arrange for the call not to be emitted and the linker
-      --  complains when a library is linked in but resolves nothing.
-
-      --  pragma Linker_Options ("-lexc");
+      pragma Linker_Options ("-lexc");
 
    begin
       --  exc_unwind is apparently not thread-safe under IRIX, so protect it
@@ -319,11 +242,7 @@ package body System.Machine_State_Operations is
 
       Lock_Task.all;
 
-      if False then
-         Exc_Unwind (Scp);
-      else
-         Scp.SC_PC := 0;
-      end if;
+      Exc_Unwind (Scp);
 
       Unlock_Task.all;
 
@@ -362,11 +281,14 @@ package body System.Machine_State_Operations is
 
    procedure Set_Machine_State (M : Machine_State) is
 
-      STOREI : constant String (1 .. 2) := 's' & LSC;
+      SI : constant String (1 .. 2) := 's' & LSC;
       --  This is "sw" in o32 mode, and "sd" in n32 mode
 
-      STOREF : constant String (1 .. 4) := 's' & LSC & "c1";
+      SF : constant String (1 .. 4) := 's' & LSC & "c1";
       --  This is "swc1" in o32 mode and "sdc1" in n32 mode
+
+      PI : String renames SC_Regs_Pos;
+      PF : String renames SC_Fpregs_Pos;
 
       Scp : Sigcontext_Ptr;
 
@@ -378,41 +300,41 @@ package body System.Machine_State_Operations is
 
       <<Past_Prolog>>
 
-      Asm (STOREI & " $16,  16*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $17,  17*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $18,  18*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $19,  19*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $20,  20*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $21,  21*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $22,  22*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $23,  23*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $24,  24*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $25,  25*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $26,  26*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $27,  27*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $28,  28*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $29,  29*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $30,  30*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
-      Asm (STOREI & " $31,  31*8+" & Roff & "+" & SC_Regs_Pos & "($4)");
+      Asm (SI & " $16,  16*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $17,  17*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $18,  18*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $19,  19*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $20,  20*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $21,  21*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $22,  22*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $23,  23*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $24,  24*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $25,  25*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $26,  26*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $27,  27*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $28,  28*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $29,  29*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $30,  30*8+" & Roff & "+" & PI & "($4)", Volatile => True);
+      Asm (SI & " $31,  31*8+" & Roff & "+" & PI & "($4)", Volatile => True);
 
       --  Restore floating-point registers from machine state
 
-      Asm (STOREF & " $f16, 16*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f17, 17*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f18, 18*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f19, 19*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f20, 20*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f21, 21*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f22, 22*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f23, 23*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f24, 24*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f25, 25*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f26, 26*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f27, 27*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f28, 28*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f29, 29*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f30, 30*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
-      Asm (STOREF & " $f31, 31*8+" & Roff & "+" & SC_Fpregs_Pos & "($4)");
+      Asm (SF & " $f16, 16*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f17, 17*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f18, 18*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f19, 19*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f20, 20*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f21, 21*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f22, 22*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f23, 23*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f24, 24*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f25, 25*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f26, 26*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f27, 27*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f28, 28*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f29, 29*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f30, 30*8+" & Roff & "+" & PF & "($4)", Volatile => True);
+      Asm (SF & " $f31, 31*8+" & Roff & "+" & PF & "($4)", Volatile => True);
 
       --  Set the PC value for the context to a location after the
       --  prolog has been executed.
@@ -425,22 +347,7 @@ package body System.Machine_State_Operations is
       --  This pop operation will properly set the PC value in the machine
       --  state, so there is no need to save PC in the above code.
 
-      Pop_Frame (M, Set_Machine_State'Address);
+      Pop_Frame (M);
    end Set_Machine_State;
-
-   ------------------------------
-   -- Set_Signal_Machine_State --
-   ------------------------------
-
-   procedure Set_Signal_Machine_State
-     (M       : Machine_State;
-      Context : System.Address)
-   is
-      pragma Warnings (Off, M);
-      pragma Warnings (Off, Context);
-
-   begin
-      null;
-   end Set_Signal_Machine_State;
 
 end System.Machine_State_Operations;

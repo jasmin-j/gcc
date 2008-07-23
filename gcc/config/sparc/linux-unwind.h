@@ -23,8 +23,8 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
 /* Do code reading to identify a signal frame, and set the frame
    state data appropriately.  See unwind-dw2.c for the structs.  */
@@ -53,9 +53,9 @@ sparc64_fallback_frame_state (struct _Unwind_Context *context,
   new_cfa = *(long *)((context->cfa) + (regs_off + (14 * 8)));
   new_cfa += 2047; /* Stack bias */
   fpu_save = *(long *)((this_cfa) + (fpu_save_off));
-  fs->cfa_how = CFA_REG_OFFSET;
-  fs->cfa_reg = 14;
-  fs->cfa_offset = new_cfa - (long) context->cfa;
+  fs->regs.cfa_how = CFA_REG_OFFSET;
+  fs->regs.cfa_reg = 14;
+  fs->regs.cfa_offset = new_cfa - (long) context->cfa;
   for (i = 1; i < 16; ++i)
     {
       fs->regs.reg[i].how = REG_SAVED_OFFSET;
@@ -122,9 +122,9 @@ sparc_fallback_frame_state (struct _Unwind_Context *context,
   this_cfa = (int) context->cfa;
   new_cfa = *(int *)((context->cfa) + (regs_off+(4*4)+(14 * 4)));
   fpu_save = *(int *)((this_cfa) + (fpu_save_off));
-  fs->cfa_how = CFA_REG_OFFSET;
-  fs->cfa_reg = 14;
-  fs->cfa_offset = new_cfa - (int) context->cfa;
+  fs->regs.cfa_how = CFA_REG_OFFSET;
+  fs->regs.cfa_reg = 14;
+  fs->regs.cfa_offset = new_cfa - (int) context->cfa;
   for (i = 1; i < 16; ++i)
     {
       if (i == 14)

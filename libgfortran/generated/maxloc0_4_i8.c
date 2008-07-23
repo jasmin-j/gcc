@@ -1,5 +1,5 @@
 /* Implementation of the MAXLOC intrinsic
-   Copyright 2002 Free Software Foundation, Inc.
+   Copyright 2002, 2007 Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -25,30 +25,32 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
+#include "libgfortran.h"
 #include <stdlib.h>
 #include <assert.h>
-#include <float.h>
 #include <limits.h>
-#include "libgfortran.h"
 
 
+#if defined (HAVE_GFC_INTEGER_8) && defined (HAVE_GFC_INTEGER_4)
 
-extern void maxloc0_4_i8 (gfc_array_i4 * retarray, gfc_array_i8 *array);
+
+extern void maxloc0_4_i8 (gfc_array_i4 * const restrict retarray, 
+	gfc_array_i8 * const restrict array);
 export_proto(maxloc0_4_i8);
 
 void
-maxloc0_4_i8 (gfc_array_i4 * retarray, gfc_array_i8 *array)
+maxloc0_4_i8 (gfc_array_i4 * const restrict retarray, 
+	gfc_array_i8 * const restrict array)
 {
   index_type count[GFC_MAX_DIMENSIONS];
   index_type extent[GFC_MAX_DIMENSIONS];
   index_type sstride[GFC_MAX_DIMENSIONS];
   index_type dstride;
-  GFC_INTEGER_8 *base;
-  GFC_INTEGER_4 *dest;
+  const GFC_INTEGER_8 *base;
+  GFC_INTEGER_4 * restrict dest;
   index_type rank;
   index_type n;
 
@@ -62,22 +64,28 @@ maxloc0_4_i8 (gfc_array_i4 * retarray, gfc_array_i8 *array)
       retarray->dim[0].ubound = rank-1;
       retarray->dim[0].stride = 1;
       retarray->dtype = (retarray->dtype & ~GFC_DTYPE_RANK_MASK) | 1;
-      retarray->base = 0;
+      retarray->offset = 0;
       retarray->data = internal_malloc_size (sizeof (GFC_INTEGER_4) * rank);
     }
   else
     {
-      if (GFC_DESCRIPTOR_RANK (retarray) != 1)
-	runtime_error ("rank of return array does not equal 1");
+      if (compile_options.bounds_check)
+	{
+	  int ret_rank;
+	  index_type ret_extent;
 
-      if (retarray->dim[0].ubound + 1 - retarray->dim[0].lbound != rank)
-        runtime_error ("dimension of return array incorrect");
+	  ret_rank = GFC_DESCRIPTOR_RANK (retarray);
+	  if (ret_rank != 1)
+	    runtime_error ("rank of return array in MAXLOC intrinsic"
+			   " should be 1, is %ld", (long int) ret_rank);
 
-      if (retarray->dim[0].stride == 0)
-	retarray->dim[0].stride = 1;
+	  ret_extent = retarray->dim[0].ubound + 1 - retarray->dim[0].lbound;
+	  if (ret_extent != rank)
+	    runtime_error ("Incorrect extent in return value of"
+			   " MAXLOC intrnisic: is %ld, should be %ld",
+			   (long int) ret_extent, (long int) rank);
+	}
     }
-  if (array->dim[0].stride == 0)
-    array->dim[0].stride = 1;
 
   dstride = retarray->dim[0].stride;
   dest = retarray->data;
@@ -99,19 +107,19 @@ maxloc0_4_i8 (gfc_array_i4 * retarray, gfc_array_i8 *array)
 
   /* Initialize the return value.  */
   for (n = 0; n < rank; n++)
-    dest[n * dstride] = 1;
+    dest[n * dstride] = 0;
   {
 
   GFC_INTEGER_8 maxval;
 
-  maxval = -GFC_INTEGER_8_HUGE;
+  maxval = (-GFC_INTEGER_8_HUGE-1);
 
   while (base)
     {
       {
         /* Implementation start.  */
 
-  if (*base > maxval)
+  if (*base > maxval || !dest[0])
     {
       maxval = *base;
       for (n = 0; n < rank; n++)
@@ -129,7 +137,7 @@ maxloc0_4_i8 (gfc_array_i4 * retarray, gfc_array_i8 *array)
              the next dimension.  */
           count[n] = 0;
           /* We could precalculate these products, but this is a less
-             frequently used path so proabably not worth it.  */
+             frequently used path so probably not worth it.  */
           base -= sstride[n] * extent[n];
           n++;
           if (n == rank)
@@ -149,12 +157,14 @@ maxloc0_4_i8 (gfc_array_i4 * retarray, gfc_array_i8 *array)
 }
 
 
-extern void mmaxloc0_4_i8 (gfc_array_i4 *, gfc_array_i8 *, gfc_array_l4 *);
+extern void mmaxloc0_4_i8 (gfc_array_i4 * const restrict, 
+	gfc_array_i8 * const restrict, gfc_array_l1 * const restrict);
 export_proto(mmaxloc0_4_i8);
 
 void
-mmaxloc0_4_i8 (gfc_array_i4 * retarray, gfc_array_i8 *array,
-				  gfc_array_l4 * mask)
+mmaxloc0_4_i8 (gfc_array_i4 * const restrict retarray, 
+	gfc_array_i8 * const restrict array,
+	gfc_array_l1 * const restrict mask)
 {
   index_type count[GFC_MAX_DIMENSIONS];
   index_type extent[GFC_MAX_DIMENSIONS];
@@ -162,10 +172,11 @@ mmaxloc0_4_i8 (gfc_array_i4 * retarray, gfc_array_i8 *array,
   index_type mstride[GFC_MAX_DIMENSIONS];
   index_type dstride;
   GFC_INTEGER_4 *dest;
-  GFC_INTEGER_8 *base;
-  GFC_LOGICAL_4 *mbase;
+  const GFC_INTEGER_8 *base;
+  GFC_LOGICAL_1 *mbase;
   int rank;
   index_type n;
+  int mask_kind;
 
   rank = GFC_DESCRIPTOR_RANK (array);
   if (rank <= 0)
@@ -177,33 +188,67 @@ mmaxloc0_4_i8 (gfc_array_i4 * retarray, gfc_array_i8 *array,
       retarray->dim[0].ubound = rank-1;
       retarray->dim[0].stride = 1;
       retarray->dtype = (retarray->dtype & ~GFC_DTYPE_RANK_MASK) | 1;
-      retarray->base = 0;
+      retarray->offset = 0;
       retarray->data = internal_malloc_size (sizeof (GFC_INTEGER_4) * rank);
     }
   else
     {
-      if (GFC_DESCRIPTOR_RANK (retarray) != 1)
-	runtime_error ("rank of return array does not equal 1");
+      if (compile_options.bounds_check)
+	{
+	  int ret_rank, mask_rank;
+	  index_type ret_extent;
+	  int n;
+	  index_type array_extent, mask_extent;
 
-      if (retarray->dim[0].ubound + 1 - retarray->dim[0].lbound != rank)
-        runtime_error ("dimension of return array incorrect");
+	  ret_rank = GFC_DESCRIPTOR_RANK (retarray);
+	  if (ret_rank != 1)
+	    runtime_error ("rank of return array in MAXLOC intrinsic"
+			   " should be 1, is %ld", (long int) ret_rank);
 
-      if (retarray->dim[0].stride == 0)
-	retarray->dim[0].stride = 1;
+	  ret_extent = retarray->dim[0].ubound + 1 - retarray->dim[0].lbound;
+	  if (ret_extent != rank)
+	    runtime_error ("Incorrect extent in return value of"
+			   " MAXLOC intrnisic: is %ld, should be %ld",
+			   (long int) ret_extent, (long int) rank);
+	
+	  mask_rank = GFC_DESCRIPTOR_RANK (mask);
+	  if (rank != mask_rank)
+	    runtime_error ("rank of MASK argument in MAXLOC intrnisic"
+	                   "should be %ld, is %ld", (long int) rank,
+			   (long int) mask_rank);
+
+	  for (n=0; n<rank; n++)
+	    {
+	      array_extent = array->dim[n].ubound + 1 - array->dim[n].lbound;
+	      mask_extent = mask->dim[n].ubound + 1 - mask->dim[n].lbound;
+	      if (array_extent != mask_extent)
+		runtime_error ("Incorrect extent in MASK argument of"
+			       " MAXLOC intrinsic in dimension %ld:"
+			       " is %ld, should be %ld", (long int) n + 1,
+			       (long int) mask_extent, (long int) array_extent);
+	    }
+	}
     }
 
-  if (array->dim[0].stride == 0)
-    array->dim[0].stride = 1;
+  mask_kind = GFC_DESCRIPTOR_SIZE (mask);
 
-  if (mask->dim[0].stride == 0)
-    mask->dim[0].stride = 1;
+  mbase = mask->data;
+
+  if (mask_kind == 1 || mask_kind == 2 || mask_kind == 4 || mask_kind == 8
+#ifdef HAVE_GFC_LOGICAL_16
+      || mask_kind == 16
+#endif
+      )
+    mbase = GFOR_POINTER_TO_L1 (mbase, mask_kind);
+  else
+    runtime_error ("Funny sized logical array");
 
   dstride = retarray->dim[0].stride;
   dest = retarray->data;
   for (n = 0; n < rank; n++)
     {
       sstride[n] = array->dim[n].stride;
-      mstride[n] = mask->dim[n].stride;
+      mstride[n] = mask->dim[n].stride * mask_kind;
       extent[n] = array->dim[n].ubound + 1 - array->dim[n].lbound;
       count[n] = 0;
       if (extent[n] <= 0)
@@ -216,33 +261,22 @@ mmaxloc0_4_i8 (gfc_array_i4 * retarray, gfc_array_i8 *array,
     }
 
   base = array->data;
-  mbase = mask->data;
-
-  if (GFC_DESCRIPTOR_SIZE (mask) != 4)
-    {
-      /* This allows the same loop to be used for all logical types.  */
-      assert (GFC_DESCRIPTOR_SIZE (mask) == 8);
-      for (n = 0; n < rank; n++)
-        mstride[n] <<= 1;
-      mbase = (GFOR_POINTER_L8_TO_L4 (mbase));
-    }
-
 
   /* Initialize the return value.  */
   for (n = 0; n < rank; n++)
-    dest[n * dstride] = 1;
+    dest[n * dstride] = 0;
   {
 
   GFC_INTEGER_8 maxval;
 
-  maxval = -GFC_INTEGER_8_HUGE;
+  maxval = (-GFC_INTEGER_8_HUGE-1);
 
   while (base)
     {
       {
         /* Implementation start.  */
 
-  if (*mbase && *base > maxval)
+  if (*mbase && (*base > maxval || !dest[0]))
     {
       maxval = *base;
       for (n = 0; n < rank; n++)
@@ -261,7 +295,7 @@ mmaxloc0_4_i8 (gfc_array_i4 * retarray, gfc_array_i8 *array,
              the next dimension.  */
           count[n] = 0;
           /* We could precalculate these products, but this is a less
-             frequently used path so proabably not worth it.  */
+             frequently used path so probably not worth it.  */
           base -= sstride[n] * extent[n];
           mbase -= mstride[n] * extent[n];
           n++;
@@ -281,3 +315,63 @@ mmaxloc0_4_i8 (gfc_array_i4 * retarray, gfc_array_i8 *array,
     }
   }
 }
+
+
+extern void smaxloc0_4_i8 (gfc_array_i4 * const restrict, 
+	gfc_array_i8 * const restrict, GFC_LOGICAL_4 *);
+export_proto(smaxloc0_4_i8);
+
+void
+smaxloc0_4_i8 (gfc_array_i4 * const restrict retarray, 
+	gfc_array_i8 * const restrict array,
+	GFC_LOGICAL_4 * mask)
+{
+  index_type rank;
+  index_type dstride;
+  index_type n;
+  GFC_INTEGER_4 *dest;
+
+  if (*mask)
+    {
+      maxloc0_4_i8 (retarray, array);
+      return;
+    }
+
+  rank = GFC_DESCRIPTOR_RANK (array);
+
+  if (rank <= 0)
+    runtime_error ("Rank of array needs to be > 0");
+
+  if (retarray->data == NULL)
+    {
+      retarray->dim[0].lbound = 0;
+      retarray->dim[0].ubound = rank-1;
+      retarray->dim[0].stride = 1;
+      retarray->dtype = (retarray->dtype & ~GFC_DTYPE_RANK_MASK) | 1;
+      retarray->offset = 0;
+      retarray->data = internal_malloc_size (sizeof (GFC_INTEGER_4) * rank);
+    }
+  else
+    {
+      if (compile_options.bounds_check)
+	{
+	  int ret_rank;
+	  index_type ret_extent;
+
+	  ret_rank = GFC_DESCRIPTOR_RANK (retarray);
+	  if (ret_rank != 1)
+	    runtime_error ("rank of return array in MAXLOC intrinsic"
+			   " should be 1, is %ld", (long int) ret_rank);
+
+	  ret_extent = retarray->dim[0].ubound + 1 - retarray->dim[0].lbound;
+	    if (ret_extent != rank)
+	      runtime_error ("dimension of return array incorrect");
+	}
+    }
+
+  dstride = retarray->dim[0].stride;
+  dest = retarray->data;
+  for (n = 0; n<rank; n++)
+    dest[n * dstride] = 0 ;
+}
+#endif

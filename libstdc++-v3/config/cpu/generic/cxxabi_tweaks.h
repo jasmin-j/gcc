@@ -1,6 +1,6 @@
 // Control various target specific ABI tweaks.  Generic version.
 
-// Copyright (C) 2004 Free Software Foundation, Inc.
+// Copyright (C) 2004, 2006, 2008 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -27,17 +27,26 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
+/** @file cxxabi_tweaks.h
+ *  The header provides an CPU-variable interface to the C++ ABI.
+ */
+
 #ifndef _CXXABI_TWEAKS_H
 #define _CXXABI_TWEAKS_H 1
 
 #ifdef __cplusplus
 namespace __cxxabiv1
 {
+  extern "C" 
+  {
 #endif
 
   // The generic ABI uses the first byte of a 64-bit guard variable.
 #define _GLIBCXX_GUARD_TEST(x) (*(char *) (x) != 0)
 #define _GLIBCXX_GUARD_SET(x) *(char *) (x) = 1
+#define _GLIBCXX_GUARD_BIT __guard_test_bit (0, 1)
+#define _GLIBCXX_GUARD_PENDING_BIT __guard_test_bit (1, 1)
+#define _GLIBCXX_GUARD_WAITING_BIT __guard_test_bit (2, 1)
   __extension__ typedef int __guard __attribute__((mode (__DI__)));
 
   // __cxa_vec_ctor has void return type.
@@ -47,7 +56,8 @@ namespace __cxxabiv1
   typedef void __cxa_cdtor_return_type;
 
 #ifdef __cplusplus
+  }
 } // namespace __cxxabiv1
 #endif
 
-#endif // __cxxabiv1
+#endif 

@@ -1,6 +1,6 @@
 /* Definitions of target machine for GNU compiler.
    Motorola 68HC11 and 68HC12.
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005
+   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
    Free Software Foundation, Inc.
    Contributed by Stephane Carrez (stcarrez@nerim.fr)
 
@@ -8,7 +8,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -17,9 +17,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.
 
 Note:
    A first 68HC11 port was made by Otto Lind (otto@coactive.com)
@@ -152,7 +151,7 @@ extern short *reg_renumber;	/* def in local_alloc.c */
    Don't use this macro to turn on various extra optimizations for
    `-O'.  That is what `OPTIMIZATION_OPTIONS' is for.  */
 
-#define OVERRIDE_OPTIONS	m68hc11_override_options ();
+#define OVERRIDE_OPTIONS	m68hc11_override_options ()
 
 
 /* Define cost parameters for a given processor variant.  */
@@ -289,7 +288,7 @@ extern const struct processor_costs *m68hc11_cost;
 /* The Z register does not really exist in the 68HC11.  This a fake register
    for GCC.  It is treated exactly as an index register (X or Y).  It is only
    in the A_REGS class, which is the BASE_REG_CLASS for GCC.  Defining this
-   register helps the reload pass of GCC.  Otherwise, the reload often aborts
+   register helps the reload pass of GCC.  Otherwise, the reload often dies
    with register spill failures.
 
    The Z register is replaced by either X or Y during the machine specific
@@ -409,9 +408,9 @@ SOFT_REG_FIRST+28, SOFT_REG_FIRST+29,SOFT_REG_FIRST+30,SOFT_REG_FIRST+31
    ((GET_MODE_SIZE (MODE) + HARD_REG_SIZE - 1) / HARD_REG_SIZE))
 
 /* Value is 1 if hard register REGNO can hold a value of machine-mode MODE.
-    - 8 bit values are stored anywhere (except the SP register).
-    - 16 bit values can be stored in any register whose mode is 16
-    - 32 bit values can be stored in D, X registers or in a soft register
+    - 8-bit values are stored anywhere (except the SP register).
+    - 16-bit values can be stored in any register whose mode is 16
+    - 32-bit values can be stored in D, X registers or in a soft register
       (except the last one because we need 2 soft registers)
     - Values whose size is > 32 bit are not stored in real hard
       registers.  They may be stored in soft registers if there are
@@ -450,7 +449,7 @@ SOFT_REG_FIRST+28, SOFT_REG_FIRST+29,SOFT_REG_FIRST+30,SOFT_REG_FIRST+31
    For any two classes, it is very desirable that there be another
    class that represents their union.  */
 
-/* The M68hc11 has so fiew registers that it's not possible for GCC to
+/* The M68hc11 has so few registers that it's not possible for GCC to
    do any register allocation without breaking. We extend the processor
    registers by having soft registers. These registers are treated as
    hard registers by GCC but they are located in memory and accessed by page0
@@ -461,7 +460,7 @@ enum reg_class
   D_REGS,			/* 16-bit data register */
   X_REGS,			/* 16-bit X register */
   Y_REGS,			/* 16-bit Y register */
-  SP_REGS,			/* 16 bit stack pointer */
+  SP_REGS,			/* 16-bit stack pointer */
   DA_REGS,			/* 8-bit A reg.  */
   DB_REGS,			/* 8-bit B reg.  */
   Z_REGS,			/* 16-bit fake Z register */
@@ -489,7 +488,7 @@ enum reg_class
   D_OR_SP_OR_S_REGS,		/* 16-bit soft register or D or SP register */
   A_OR_S_REGS,			/* 16-bit soft register or X, Y registers */
   D_OR_A_OR_S_REGS,		/* 16-bit soft register or D, X, Y registers */
-  TMP_REGS,			/* 16 bit fake scratch register */
+  TMP_REGS,			/* 16-bit fake scratch register */
   D_OR_A_OR_TMP_REGS,		/* General scratch register */
   G_REGS,			/* 16-bit general register
                                    (H_REGS + soft registers) */
@@ -800,14 +799,14 @@ extern enum reg_class m68hc11_tmp_regs_class;
    makes the stack pointer a smaller address.  */
 #define STACK_GROWS_DOWNWARD
 
-/* Define this if the nominal address of the stack frame
+/* Define this to nonzero if the nominal address of the stack frame
    is at the high-address end of the local variables;
    that is, each additional local variable allocated
    goes at a more negative offset in the frame.
 
-   Don't define for 68HC11, the frame pointer is the bottom
+   Define to 0 for 68HC11, the frame pointer is the bottom
    of local variables.  */
-/* #define FRAME_GROWS_DOWNWARD */
+#define FRAME_GROWS_DOWNWARD		0
 
 /* Define this if successive arguments to a function occupy decreasing 
    addresses in the stack.  */
@@ -1037,6 +1036,13 @@ typedef struct m68hc11_args
 
 /* Addressing modes, and classification of registers for them.  */
 
+#define ADDR_STRICT       0x01  /* Accept only registers in class A_REGS  */
+#define ADDR_INCDEC       0x02  /* Post/Pre inc/dec */
+#define ADDR_INDEXED      0x04  /* D-reg index */
+#define ADDR_OFFSET       0x08
+#define ADDR_INDIRECT     0x10  /* Accept (mem (mem ...)) for [n,X] */
+#define ADDR_CONST        0x20  /* Accept const and symbol_ref  */
+
 /* The 68HC12 has all the post/pre increment/decrement modes.  */
 #define HAVE_POST_INCREMENT (TARGET_M6812 && TARGET_AUTO_INC_DEC)
 #define HAVE_PRE_INCREMENT  (TARGET_M6812 && TARGET_AUTO_INC_DEC)
@@ -1062,7 +1068,7 @@ extern enum reg_class m68hc11_index_reg_class;
 
 
 /* Internal macro, return 1 if REGNO is a valid base register.  */
-#define REG_VALID_P(REGNO) (1)	/* ? */
+#define REG_VALID_P(REGNO) ((REGNO) >= 0)
 
 extern unsigned char m68hc11_reg_valid_for_base[FIRST_PSEUDO_REGISTER];
 #define REG_VALID_FOR_BASE_P(REGNO) \
@@ -1232,12 +1238,7 @@ extern unsigned char m68hc11_reg_valid_for_index[FIRST_PSEUDO_REGISTER];
 
 /* Go to LABEL if ADDR (a legitimate address expression)
    has an effect that depends on the machine mode it is used for.  */
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)  \
-{									\
-  if (GET_CODE (ADDR) == PRE_DEC || GET_CODE (ADDR) == POST_DEC		\
-      || GET_CODE (ADDR) == PRE_INC || GET_CODE (ADDR) == POST_INC)	\
-    goto LABEL;								\
-}
+#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)
 
 /* Nonzero if the constant value X is a legitimate general operand.
    It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.  */
@@ -1406,6 +1407,7 @@ do {                                                                    \
 /* Output #ident as a .ident.  */
 
 /* output external reference */
+#undef ASM_OUTPUT_EXTERNAL
 #define ASM_OUTPUT_EXTERNAL(FILE,DECL,NAME) \
   {fputs ("\t; extern\t", FILE); \
   assemble_name (FILE, NAME); \

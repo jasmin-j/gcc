@@ -1,6 +1,8 @@
 /* Threads compatibility routines for libgcc2 and libobjc.  */
 /* Compile this one with gcc.  */
-/* Copyright (C) 1999, 2000, 2002, 2003, 2004  Free Software Foundation, Inc.
+
+/* Copyright (C) 1999, 2000, 2002, 2003, 2004, 2005
+   Free Software Foundation, Inc.
    Contributed by Mumit Khan <khan@xraylith.wisc.edu>.
 
 This file is part of GCC.
@@ -17,8 +19,8 @@ for more details.
 
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301, USA.  */
 
 /* As a special exception, if you link this library with other files,
    some of which are compiled with GCC, to produce an executable,
@@ -421,6 +423,7 @@ extern int __gthr_win32_recursive_mutex_lock (__gthread_recursive_mutex_t *);
 extern int
   __gthr_win32_recursive_mutex_trylock (__gthread_recursive_mutex_t *);
 extern int __gthr_win32_recursive_mutex_unlock (__gthread_recursive_mutex_t *);
+extern void __gthr_win32_mutex_destroy (__gthread_mutex_t *);
 
 static inline int
 __gthread_once (__gthread_once_t *once, void (*func) (void))
@@ -459,6 +462,12 @@ static inline void
 __gthread_mutex_init_function (__gthread_mutex_t *mutex)
 {
   __gthr_win32_mutex_init_function (mutex);
+}
+
+static inline void
+__gthread_mutex_destroy (__gthread_mutex_t *mutex)
+{
+  __gthr_win32_mutex_destroy (mutex);
 }
 
 static inline int
@@ -560,7 +569,8 @@ __gthread_once (__gthread_once_t *once, void (*func) (void))
    leaks, especially in threaded applications making extensive use of
    C++ EH. Mingw uses a thread-support DLL to work-around this problem.  */
 static inline int
-__gthread_key_create (__gthread_key_t *key, void (*dtor) (void *))
+__gthread_key_create (__gthread_key_t *key,
+		      void (*dtor) (void *) __attribute__((unused)))
 {
   int status = 0;
   DWORD tls_index = TlsAlloc ();
@@ -610,6 +620,12 @@ __gthread_mutex_init_function (__gthread_mutex_t *mutex)
 {
   mutex->counter = -1;
   mutex->sema = CreateSemaphore (NULL, 0, 65535, NULL);
+}
+
+static inline void
+__gthread_mutex_destroy (__gthread_mutex_t *mutex)
+{
+  CloseHandle ((HANDLE) mutex->sema);
 }
 
 static inline int

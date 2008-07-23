@@ -1,5 +1,5 @@
 `/* Implementation of the EOSHIFT intrinsic
-   Copyright 2002 Free Software Foundation, Inc.
+   Copyright 2002, 2005, 2007 Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -25,70 +25,94 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
+#include "libgfortran.h"
 #include <stdlib.h>
 #include <assert.h>
-#include <string.h>
-#include "libgfortran.h"'
+#include <string.h>'
+
 include(iparm.m4)dnl
 
-static const char zeros[16] =
-  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+`#if defined (HAVE_'atype_name`)
 
-extern void eoshift3_`'atype_kind (gfc_array_char *, gfc_array_char *,
-				     atype *, const gfc_array_char *,
-				     atype_name *);
-export_proto(eoshift3_`'atype_kind);
-
-void
-eoshift3_`'atype_kind (gfc_array_char *ret, gfc_array_char *array,
-		       atype *h, const gfc_array_char *bound,
-		       atype_name *pwhich)
+static void
+eoshift3 (gfc_array_char * const restrict ret, 
+	const gfc_array_char * const restrict array, 
+	const 'atype` * const restrict h,
+	const gfc_array_char * const restrict bound, 
+	const 'atype_name` * const restrict pwhich,
+	index_type size, const char * filler, index_type filler_len)
 {
   /* r.* indicates the return array.  */
-  index_type rstride[GFC_MAX_DIMENSIONS - 1];
+  index_type rstride[GFC_MAX_DIMENSIONS];
   index_type rstride0;
   index_type roffset;
   char *rptr;
-  char *dest;
+  char * restrict dest;
   /* s.* indicates the source array.  */
-  index_type sstride[GFC_MAX_DIMENSIONS - 1];
+  index_type sstride[GFC_MAX_DIMENSIONS];
   index_type sstride0;
   index_type soffset;
   const char *sptr;
   const char *src;
-`  /* h.* indicates the shift array.  */'
-  index_type hstride[GFC_MAX_DIMENSIONS - 1];
+  /* h.* indicates the shift array.  */
+  index_type hstride[GFC_MAX_DIMENSIONS];
   index_type hstride0;
-  const atype_name *hptr;
+  const 'atype_name` *hptr;
   /* b.* indicates the bound array.  */
-  index_type bstride[GFC_MAX_DIMENSIONS - 1];
+  index_type bstride[GFC_MAX_DIMENSIONS];
   index_type bstride0;
   const char *bptr;
 
-  index_type count[GFC_MAX_DIMENSIONS - 1];
-  index_type extent[GFC_MAX_DIMENSIONS - 1];
+  index_type count[GFC_MAX_DIMENSIONS];
+  index_type extent[GFC_MAX_DIMENSIONS];
   index_type dim;
-  index_type size;
   index_type len;
   index_type n;
   int which;
-  atype_name sh;
-  atype_name delta;
+  'atype_name` sh;
+  'atype_name` delta;
+
+  /* The compiler cannot figure out that these are set, initialize
+     them to avoid warnings.  */
+  len = 0;
+  soffset = 0;
+  roffset = 0;
 
   if (pwhich)
     which = *pwhich - 1;
   else
     which = 0;
 
-  size = GFC_DESCRIPTOR_SIZE (ret);
+  if (ret->data == NULL)
+    {
+      int i;
+
+      ret->data = internal_malloc_size (size * size0 ((array_t *)array));
+      ret->offset = 0;
+      ret->dtype = array->dtype;
+      for (i = 0; i < GFC_DESCRIPTOR_RANK (array); i++)
+        {
+          ret->dim[i].lbound = 0;
+          ret->dim[i].ubound = array->dim[i].ubound - array->dim[i].lbound;
+
+          if (i == 0)
+            ret->dim[i].stride = 1;
+          else
+            ret->dim[i].stride = (ret->dim[i-1].ubound + 1) * ret->dim[i-1].stride;
+        }
+    }
+  else
+    {
+      if (size0 ((array_t *) ret) == 0)
+	return;
+    }
+
 
   extent[0] = 1;
   count[0] = 0;
-  size = GFC_DESCRIPTOR_SIZE (array);
   n = 0;
   for (dim = 0; dim < GFC_DESCRIPTOR_RANK (array); dim++)
     {
@@ -111,7 +135,7 @@ eoshift3_`'atype_kind (gfc_array_char *ret, gfc_array_char *array,
 
           hstride[n] = h->dim[n].stride;
           if (bound)
-            bstride[n] = bound->dim[n].stride;
+            bstride[n] = bound->dim[n].stride * size;
           else
             bstride[n] = 0;
           n++;
@@ -137,13 +161,20 @@ eoshift3_`'atype_kind (gfc_array_char *ret, gfc_array_char *array,
   if (bound)
     bptr = bound->data;
   else
-    bptr = zeros;
+    bptr = NULL;
 
   while (rptr)
     {
-`      /* Do the shift for this dimension.  */'
+      /* Do the shift for this dimension.  */
       sh = *hptr;
-      delta = (sh >= 0) ? sh: -sh;
+      if (( sh >= 0 ? sh : -sh ) > len)
+	{
+	  delta = len;
+	  sh = len;
+	}
+      else
+	delta = (sh >= 0) ? sh: -sh;
+
       if (sh > 0)
         {
           src = &sptr[delta * soffset];
@@ -164,11 +195,25 @@ eoshift3_`'atype_kind (gfc_array_char *ret, gfc_array_char *array,
         dest = rptr;
       n = delta;
 
-      while (n--)
-        {
-          memcpy (dest, bptr, size);
-          dest += roffset;
-        }
+      if (bptr)
+	while (n--)
+	  {
+	    memcpy (dest, bptr, size);
+	    dest += roffset;
+	  }
+      else
+	while (n--)
+	  {
+	    index_type i;
+
+	    if (filler_len == 1)
+	      memset (dest, filler[0], size);
+	    else
+	      for (i = 0; i < size; i += filler_len)
+		memcpy (&dest[i], filler, filler_len);
+
+	    dest += roffset;
+	  }
 
       /* Advance to the next section.  */
       rptr += rstride0;
@@ -183,7 +228,7 @@ eoshift3_`'atype_kind (gfc_array_char *ret, gfc_array_char *array,
              the next dimension.  */
           count[n] = 0;
           /* We could precalculate these products, but this is a less
-             frequently used path so proabably not worth it.  */
+             frequently used path so probably not worth it.  */
           rptr -= rstride[n] * extent[n];
           sptr -= sstride[n] * extent[n];
 	  hptr -= hstride[n] * extent[n];
@@ -206,3 +251,71 @@ eoshift3_`'atype_kind (gfc_array_char *ret, gfc_array_char *array,
         }
     }
 }
+
+extern void eoshift3_'atype_kind` (gfc_array_char * const restrict, 
+	const gfc_array_char * const restrict,
+	const 'atype` * const restrict, 
+	const gfc_array_char * const restrict,
+	const 'atype_name` *);
+export_proto(eoshift3_'atype_kind`);
+
+void
+eoshift3_'atype_kind` (gfc_array_char * const restrict ret, 
+	const gfc_array_char * const restrict array,
+	const 'atype` * const restrict h, 
+	const gfc_array_char * const restrict bound,
+	const 'atype_name` * const restrict pwhich)
+{
+  eoshift3 (ret, array, h, bound, pwhich, GFC_DESCRIPTOR_SIZE (array),
+	    "\0", 1);
+}
+
+
+extern void eoshift3_'atype_kind`_char (gfc_array_char * const restrict, 
+	GFC_INTEGER_4,
+	const gfc_array_char * const restrict,
+	const 'atype` * const restrict,
+	const gfc_array_char * const restrict,
+	const 'atype_name` * const restrict, 
+	GFC_INTEGER_4, GFC_INTEGER_4);
+export_proto(eoshift3_'atype_kind`_char);
+
+void
+eoshift3_'atype_kind`_char (gfc_array_char * const restrict ret,
+	GFC_INTEGER_4 ret_length __attribute__((unused)),
+	const gfc_array_char * const restrict array, 
+	const 'atype` *  const restrict h,
+	const gfc_array_char * const restrict bound,
+	const 'atype_name` * const restrict pwhich,
+	GFC_INTEGER_4 array_length,
+	GFC_INTEGER_4 bound_length __attribute__((unused)))
+{
+  eoshift3 (ret, array, h, bound, pwhich, array_length, " ", 1);
+}
+
+
+extern void eoshift3_'atype_kind`_char4 (gfc_array_char * const restrict, 
+	GFC_INTEGER_4,
+	const gfc_array_char * const restrict,
+	const 'atype` * const restrict,
+	const gfc_array_char * const restrict,
+	const 'atype_name` * const restrict, 
+	GFC_INTEGER_4, GFC_INTEGER_4);
+export_proto(eoshift3_'atype_kind`_char4);
+
+void
+eoshift3_'atype_kind`_char4 (gfc_array_char * const restrict ret,
+	GFC_INTEGER_4 ret_length __attribute__((unused)),
+	const gfc_array_char * const restrict array, 
+	const 'atype` *  const restrict h,
+	const gfc_array_char * const restrict bound,
+	const 'atype_name` * const restrict pwhich,
+	GFC_INTEGER_4 array_length,
+	GFC_INTEGER_4 bound_length __attribute__((unused)))
+{
+  static const gfc_char4_t space = (unsigned char) ''` ''`;
+  eoshift3 (ret, array, h, bound, pwhich, array_length * sizeof (gfc_char4_t),
+	    (const char *) &space, sizeof (gfc_char4_t));
+}
+
+#endif'

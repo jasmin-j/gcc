@@ -1,5 +1,5 @@
 /* Implementation of the TRANSPOSE intrinsic
-   Copyright 2003, 2005 Free Software Foundation, Inc.
+   Copyright 2003, 2005, 2006, 2007 Free Software Foundation, Inc.
    Contributed by Tobias Schlüter
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -25,22 +25,26 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
-#include <assert.h>
 #include "libgfortran.h"
+#include <assert.h>
 
-extern void transpose_i4 (gfc_array_i4 * ret, gfc_array_i4 * source);
+
+#if defined (HAVE_GFC_INTEGER_4)
+
+extern void transpose_i4 (gfc_array_i4 * const restrict ret, 
+	gfc_array_i4 * const restrict source);
 export_proto(transpose_i4);
 
 void
-transpose_i4 (gfc_array_i4 * ret, gfc_array_i4 * source)
+transpose_i4 (gfc_array_i4 * const restrict ret, 
+	gfc_array_i4 * const restrict source)
 {
   /* r.* indicates the return array.  */
   index_type rxstride, rystride;
-  GFC_INTEGER_4 *rptr;
+  GFC_INTEGER_4 * restrict rptr;
   /* s.* indicates the source array.  */
   index_type sxstride, systride;
   const GFC_INTEGER_4 *sptr;
@@ -63,14 +67,9 @@ transpose_i4 (gfc_array_i4 * ret, gfc_array_i4 * source)
       ret->dim[1].ubound = source->dim[0].ubound - source->dim[0].lbound;
       ret->dim[1].stride = ret->dim[0].ubound+1;
 
-      ret->data = internal_malloc_size (sizeof (GFC_INTEGER_4) * size0 (ret));
-      ret->base = 0;
+      ret->data = internal_malloc_size (sizeof (GFC_INTEGER_4) * size0 ((array_t *) ret));
+      ret->offset = 0;
     }
-
-  if (ret->dim[0].stride == 0)
-    ret->dim[0].stride = 1;
-  if (source->dim[0].stride == 0)
-    source->dim[0].stride = 1;
 
   sxstride = source->dim[0].stride;
   systride = source->dim[1].stride;
@@ -96,3 +95,5 @@ transpose_i4 (gfc_array_i4 * ret, gfc_array_i4 * source)
         rptr += rxstride - (rystride * xcount);
     }
 }
+
+#endif

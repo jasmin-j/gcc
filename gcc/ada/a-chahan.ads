@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -20,8 +20,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,9 +35,10 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-
 package Ada.Characters.Handling is
-pragma Preelaborate (Handling);
+   pragma Preelaborate;
+   pragma Pure_05;
+   --  In accordance with Ada 2005 AI-362
 
    ----------------------------------------
    -- Character Classification Functions --
@@ -90,54 +91,38 @@ pragma Preelaborate (Handling);
    -- Classifications of Wide_Character and Characters --
    ------------------------------------------------------
 
-   function Is_Character (Item : Wide_Character)           return Boolean;
-   function Is_Character (Item : Wide_Wide_Character)      return Boolean;
-   function Is_String    (Item : Wide_String)              return Boolean;
-   function Is_String    (Item : Wide_Wide_String)         return Boolean;
-   function Is_Wide_Character (Item : Wide_Wide_Character) return Boolean;
-   function Is_Wide_String (Item : Wide_Wide_String)       return Boolean;
+   --  Ada 2005 AI 395: these functions are moved to Ada.Characters.Conversions
+   --  and are considered obsolete in Ada.Characters.Handling. However we do
+   --  not complain about this obsolescence, since in practice it is necessary
+   --  to use these routines when creating code that is intended to run in
+   --  either Ada 95 or Ada 2005 mode.
 
-   ---------------------------------------------------------------------------
-   -- Conversions between Wide_Wide_Character, Wide_Character and Character --
-   ---------------------------------------------------------------------------
+   function Is_Character (Item : Wide_Character) return Boolean;
+   function Is_String    (Item : Wide_String)    return Boolean;
+
+   ------------------------------------------------------
+   -- Conversions between Wide_Character and Character --
+   ------------------------------------------------------
+
+   --  Ada 2005 AI 395: these functions are moved to Ada.Characters.Conversions
+   --  and are considered obsolete in Ada.Characters.Handling. However we do
+   --  not complain about this obsolescence, since in practice it is necessary
+   --  to use these routines when creating code that is intended to run in
+   --  either Ada 95 or Ada 2005 mode.
 
    function To_Character
      (Item       : Wide_Character;
-      Substitute : Character := ' ')      return Character;
-
-   function To_Character
-     (Item       : Wide_Wide_Character;
-      Substitute : Character := ' ')      return Character;
+      Substitute : Character := ' ') return Character;
 
    function To_String
      (Item       : Wide_String;
-      Substitute : Character := ' ')      return String;
-
-   function To_String
-     (Item       : Wide_Wide_String;
-      Substitute : Character := ' ')      return String;
+      Substitute : Character := ' ') return String;
 
    function To_Wide_Character
-     (Item : Character)                   return Wide_Character;
-   function To_Wide_Character
-     (Item       : Wide_Wide_Character;
-      Substitute : Wide_Character := ' ') return Wide_Character;
+     (Item : Character) return Wide_Character;
 
    function To_Wide_String
-     (Item : String)                      return Wide_String;
-   function To_Wide_String
-     (Item       : Wide_Wide_String;
-      Substitute : Wide_Character := ' ') return Wide_String;
-
-   function To_Wide_Wide_Character
-     (Item : Character)                   return Wide_Wide_Character;
-   function To_Wide_Wide_Character
-     (Item : Wide_Character)              return Wide_Wide_Character;
-
-   function To_Wide_Wide_String
-     (Item : String)                      return Wide_Wide_String;
-   function To_Wide_Wide_String
-     (Item : Wide_String)                 return Wide_Wide_String;
+     (Item : String) return Wide_String;
 
 private
    pragma Inline (Is_Control);
@@ -157,6 +142,5 @@ private
    pragma Inline (Is_Character);
    pragma Inline (To_Character);
    pragma Inline (To_Wide_Character);
-   pragma Inline (To_Wide_Wide_Character);
 
 end Ada.Characters.Handling;

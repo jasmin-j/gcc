@@ -1,6 +1,6 @@
 /* gnu.java.lang.MainThread
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+   2006, 2008 Free Software Foundation, Inc.
 
 This file is part of GNU Classpath.
 
@@ -16,8 +16,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -39,6 +39,7 @@ exception statement from your version. */
 
 package gnu.java.lang;
 
+import java.io.File;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 
@@ -58,8 +59,6 @@ final class MainThread extends Thread
   static final Class Kfile     = gnu.java.net.protocol.file.Handler.class;
   static final Class Khttp     = gnu.java.net.protocol.http.Handler.class;
   static final Class Kjar      = gnu.java.net.protocol.jar.Handler.class;
-  static final Class Klocale   = gnu.java.locale.LocaleInformation.class;
-  static final Class Kcalendar = gnu.java.locale.Calendar.class;
 
   // Private data.
   private Class klass;
@@ -91,8 +90,10 @@ final class MainThread extends Thread
       {
         try
 	  {
-	    klass = Class.forName(klass_name, true,
-				  ClassLoader.getSystemClassLoader());
+            ClassLoader cl = ClassLoader.getSystemClassLoader();
+	    // Permit main class name to be specified in file-system format.
+	    klass_name = klass_name.replace(File.separatorChar, '.');
+            klass = cl.loadClass(klass_name);
 	  }
 	catch (ClassNotFoundException x)
 	  {

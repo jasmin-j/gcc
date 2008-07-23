@@ -1,12 +1,12 @@
 /* Iterator routines for manipulating GENERIC and GIMPLE tree statements.
-   Copyright (C) 2003, 2004 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2007 Free Software Foundation, Inc.
    Contributed by Andrew MacLeod  <amacleod@redhat.com>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -40,6 +39,7 @@ alloc_stmt_list (void)
   if (list)
     {
       stmt_list_cache = TREE_CHAIN (list);
+      gcc_assert (stmt_list_cache != list);
       memset (list, 0, sizeof(struct tree_common));
       TREE_SET_CODE (list, STATEMENT_LIST);
     }
@@ -54,6 +54,9 @@ free_stmt_list (tree t)
 {
   gcc_assert (!STATEMENT_LIST_HEAD (t));
   gcc_assert (!STATEMENT_LIST_TAIL (t));
+  /* If this triggers, it's a sign that the same list is being freed
+     twice.  */
+  gcc_assert (t != stmt_list_cache || stmt_list_cache == NULL);
   TREE_CHAIN (t) = stmt_list_cache;
   stmt_list_cache = t;
 }
@@ -86,7 +89,7 @@ tsi_link_before (tree_stmt_iterator *i, tree t, enum tsi_iterator_update mode)
     }
   else
     {
-      head = ggc_alloc (sizeof (*head));
+      head = GGC_NEW (struct tree_statement_list_node);
       head->prev = NULL;
       head->next = NULL;
       head->stmt = t;
@@ -110,8 +113,11 @@ tsi_link_before (tree_stmt_iterator *i, tree t, enum tsi_iterator_update mode)
     }
   else
     {
-      gcc_assert (!STATEMENT_LIST_TAIL (i->container));
-      STATEMENT_LIST_HEAD (i->container) = head;
+      head->prev = STATEMENT_LIST_TAIL (i->container);
+      if (head->prev)
+       head->prev->next = head;
+      else
+       STATEMENT_LIST_HEAD (i->container) = head;
       STATEMENT_LIST_TAIL (i->container) = tail;
     }
 
@@ -127,7 +133,6 @@ tsi_link_before (tree_stmt_iterator *i, tree t, enum tsi_iterator_update mode)
       i->ptr = tail;
       break;
     case TSI_SAME_STMT:
-      gcc_assert (cur);
       break;
     }
 }
@@ -160,7 +165,7 @@ tsi_link_after (tree_stmt_iterator *i, tree t, enum tsi_iterator_update mode)
     }
   else
     {
-      head = ggc_alloc (sizeof (*head));
+      head = GGC_NEW (struct tree_statement_list_node);
       head->prev = NULL;
       head->next = NULL;
       head->stmt = t;
@@ -283,7 +288,10 @@ tsi_split_statement_list_before (tree_stmt_iterator *i)
   STATEMENT_LIST_TAIL (new_sl) = STATEMENT_LIST_TAIL (old_sl);
   STATEMENT_LIST_TAIL (old_sl) = prev;
   cur->prev = NULL;
-  prev->next = NULL;
+  if (prev)
+    prev->next = NULL;
+  else
+    STATEMENT_LIST_HEAD (old_sl) = NULL;
 
   return new_sl;
 }
@@ -305,11 +313,25 @@ expr_first (tree expr)
 
   while (TREE_CODE (expr) == COMPOUND_EXPR)
     expr = TREE_OPERAND (expr, 0);
+
   return expr;
 }
 
 /* Return the last expression in a sequence of COMPOUND_EXPRs,
    or in a STATEMENT_LIST.  */
+
+#define EXPR_LAST_BODY do { \
+  if (expr == NULL_TREE) \
+    return expr;\
+  if (TREE_CODE (expr) == STATEMENT_LIST) \
+    { \
+      struct tree_statement_list_node *n = STATEMENT_LIST_TAIL (expr); \
+      return n ? n->stmt : NULL_TREE; \
+    } \
+  while (TREE_CODE (expr) == COMPOUND_EXPR) \
+    expr = TREE_OPERAND (expr, 1); \
+  return expr; \
+} while (0)
 
 tree
 expr_last (tree expr)
@@ -325,11 +347,13 @@ expr_last (tree expr)
 
   while (TREE_CODE (expr) == COMPOUND_EXPR)
     expr = TREE_OPERAND (expr, 1);
+
   return expr;
 }
 
-/* If EXPR is a single statement, naked or in a STATEMENT_LIST, then
-   return it.  Otherwise return NULL.  */
+/* If EXPR is a single statement return it.  If EXPR is a
+   STATEMENT_LIST containing exactly one statement S, return S.
+   Otherwise, return NULL.  */
 
 tree 
 expr_only (tree expr)

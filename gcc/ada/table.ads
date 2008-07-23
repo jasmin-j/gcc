@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2003 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -43,7 +43,7 @@
 with Types; use Types;
 
 package Table is
-pragma Elaborate_Body (Table);
+   pragma Elaborate_Body;
 
    generic
       type Table_Component_Type is private;
@@ -89,7 +89,7 @@ pragma Elaborate_Body (Table);
       --  chunks controlled by the allocation parameters).
 
       --  Note: We do not make the table components aliased, since this would
-      --  restict the use of table for discriminated types. If it is necessary
+      --  restrict the use of table for discriminated types. If it is necessary
       --  to take the access of a table element, use Unrestricted_Access.
 
       --  WARNING: On HPPA, the virtual addressing approach used in this unit
@@ -117,6 +117,7 @@ pragma Elaborate_Body (Table);
       --  safety is not compromised by this approach.
 
       type Table_Ptr is access all Big_Table_Type;
+      for Table_Ptr'Storage_Size use 0;
       --  The table is actually represented as a pointer to allow reallocation
 
       Table : aliased Table_Ptr := null;
@@ -174,11 +175,11 @@ pragma Elaborate_Body (Table);
 
       procedure Increment_Last;
       pragma Inline (Increment_Last);
-      --  Adds 1 to Last (same as Set_Last (Last + 1).
+      --  Adds 1 to Last (same as Set_Last (Last + 1)
 
       procedure Decrement_Last;
       pragma Inline (Decrement_Last);
-      --  Subtracts 1 from Last (same as Set_Last (Last - 1).
+      --  Subtracts 1 from Last (same as Set_Last (Last - 1)
 
       procedure Append (New_Val : Table_Component_Type);
       pragma Inline (Append);

@@ -1,6 +1,7 @@
 // Position types -*- C++ -*-
 
-// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2003, 2004
+// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+// 2006, 2007, 2008
 // Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
@@ -16,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -28,15 +29,15 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
-//
-// ISO C++ 14882: 27.4.1 - Types
-// ISO C++ 14882: 27.4.3 - Template class fpos
-//
-
 /** @file postypes.h
  *  This is an internal header file, included by other library headers.
  *  You should not attempt to use it directly.
  */
+
+//
+// ISO C++ 14882: 27.4.1 - Types
+// ISO C++ 14882: 27.4.3 - Template class fpos
+//
 
 #ifndef _GLIBCXX_POSTYPES_H
 #define _GLIBCXX_POSTYPES_H 1
@@ -45,15 +46,11 @@
 
 #include <cwchar> // For mbstate_t
 
-#ifdef _GLIBCXX_HAVE_STDINT_H
-#include <stdint.h> // For int64_t
-#endif
+_GLIBCXX_BEGIN_NAMESPACE(std)
 
-namespace std
-{
   // The types streamoff, streampos and wstreampos and the class
   // template fpos<> are described in clauses 21.1.2, 21.1.3, 27.1.2,
-  // 27.2, 27.4.1, 27.4.3 and D.6. Despite all this verbage, the
+  // 27.2, 27.4.1, 27.4.3 and D.6. Despite all this verbiage, the
   // behaviour of these types is mostly implementation defined or
   // unspecified. The behaviour in this implementation is as noted
   // below.
@@ -61,24 +58,23 @@ namespace std
   /**
    *  @brief  Type used by fpos, char_traits<char>, and char_traits<wchar_t>.
    *
-   *  @if maint
    *  In clauses 21.1.3.1 and 27.4.1 streamoff is described as an
    *  implementation defined type.
    *  Note: In versions of GCC up to and including GCC 3.3, streamoff
    *  was typedef long.
-   *  @endif
   */  
 #ifdef _GLIBCXX_HAVE_INT64_T
-  typedef int64_t       streamoff;
+# if (__CHAR_BIT__ * __SIZEOF_LONG__ == 64)
+  typedef long          streamoff;
+# else
+  typedef long long     streamoff;
+# endif
 #else
   typedef long long     streamoff;
 #endif
 
   /// Integral type for I/O operation counts and buffer sizes.
   typedef ptrdiff_t	streamsize; // Signed integral type
-
-  template<typename _StateT>
-    class fpos;
 
   /**
    *  @brief  Class representing stream positions.
@@ -129,22 +125,8 @@ namespace std
       state() const
       { return _M_state; }
 
-      // The standard only requires that operator== must be an
-      // equivalence relation. In this implementation two fpos<StateT>
-      // objects belong to the same equivalence class if the contained
-      // offsets compare equal.
-      /// Test if equivalent to another position.
-      bool
-      operator==(const fpos& __other) const
-      { return _M_off == __other._M_off; }
-
-      /// Test if not equivalent to another position.
-      bool
-      operator!=(const fpos& __other) const
-      { return _M_off != __other._M_off; }
-
       // The standard requires that this operator must be defined, but
-      // gives no semantics. In this implemenation it just adds it's
+      // gives no semantics. In this implementation it just adds its
       // argument to the stored offset and returns *this.
       /// Add offset to this position.
       fpos&
@@ -155,8 +137,8 @@ namespace std
       }
 
       // The standard requires that this operator must be defined, but
-      // gives no semantics. In this implemenation it just subtracts
-      // it's argument from the stored offset and returns *this.
+      // gives no semantics. In this implementation it just subtracts
+      // its argument from the stored offset and returns *this.
       /// Subtract offset from this position.
       fpos&
       operator-=(streamoff __off)
@@ -166,7 +148,7 @@ namespace std
       }
 
       // The standard requires that this operator must be defined, but
-      // defines it's semantics only in terms of operator-. In this
+      // defines its semantics only in terms of operator-. In this
       // implementation it constructs a copy of *this, adds the
       // argument to that copy using operator+= and then returns the
       // copy.
@@ -180,7 +162,7 @@ namespace std
       }
 
       // The standard requires that this operator must be defined, but
-      // defines it's semantics only in terms of operator+. In this
+      // defines its semantics only in terms of operator+. In this
       // implementation it constructs a copy of *this, subtracts the
       // argument from that copy using operator-= and then returns the
       // copy.
@@ -194,7 +176,7 @@ namespace std
       }
 
       // The standard requires that this operator must be defined, but
-      // defines it's semantics only in terms of operator+. In this
+      // defines its semantics only in terms of operator+. In this
       // implementation it returns the difference between the offset
       // stored in *this and in the argument.
       /// Subtract position to return offset.
@@ -203,6 +185,21 @@ namespace std
       { return _M_off - __other._M_off; }
     };
 
+  // The standard only requires that operator== must be an
+  // equivalence relation. In this implementation two fpos<StateT>
+  // objects belong to the same equivalence class if the contained
+  // offsets compare equal.
+  /// Test if equivalent to another position.
+  template<typename _StateT>
+    inline bool
+    operator==(const fpos<_StateT>& __lhs, const fpos<_StateT>& __rhs)
+    { return streamoff(__lhs) == streamoff(__rhs); }
+
+  template<typename _StateT>
+    inline bool
+    operator!=(const fpos<_StateT>& __lhs, const fpos<_StateT>& __rhs)
+    { return streamoff(__lhs) != streamoff(__rhs); }
+
   // Clauses 21.1.3.1 and 21.1.3.2 describe streampos and wstreampos
   // as implementation defined types, but clause 27.2 requires that
   // they must both be typedefs for fpos<mbstate_t>
@@ -210,6 +207,7 @@ namespace std
   typedef fpos<mbstate_t> streampos;
   /// File position for wchar_t streams.
   typedef fpos<mbstate_t> wstreampos;
-} // namespace std
+
+_GLIBCXX_END_NAMESPACE
 
 #endif

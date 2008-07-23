@@ -1,12 +1,12 @@
 /* Base configuration file for all NetBSD targets.
-   Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004
-   Free Software Foundation, Inc.
+   Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
+   2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* TARGET_OS_CPP_BUILTINS() common to all NetBSD targets.  */
 #define NETBSD_OS_CPP_BUILTINS_COMMON()		\
@@ -156,8 +155,8 @@ Boston, MA 02111-1307, USA.  */
     fprintf ((STREAM), "void __fini() {\n\t%s();\n}\n", (FUNC));	\
   } while (0)
 
-#undef TARGET_HAS_F_SETLKW
-#define TARGET_HAS_F_SETLKW
+#undef TARGET_POSIX_IO
+#define TARGET_POSIX_IO
 
 /* Handle #pragma weak and #pragma pack.  */
 
@@ -225,3 +224,6 @@ __enable_execute_stack (void *addr)					\
   /* 7 == PROT_READ | PROT_WRITE | PROT_EXEC */				\
   (void) mprotect (page, end - page, 7);				\
 }
+
+/* Define this so we can compile MS code for use with WINE.  */
+#define HANDLE_PRAGMA_PACK_PUSH_POP 1

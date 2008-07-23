@@ -26,8 +26,8 @@ for more details.
 
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301, USA.  */
 
 #ifndef GCC_UNWIND_DW2_FDE_H
 #define GCC_UNWIND_DW2_FDE_H
@@ -160,13 +160,13 @@ typedef struct dwarf_fde fde;
 static inline const struct dwarf_cie *
 get_cie (const struct dwarf_fde *f)
 {
-  return (void *)&f->CIE_delta - f->CIE_delta;
+  return (const void *)&f->CIE_delta - f->CIE_delta;
 }
 
 static inline const fde *
 next_fde (const fde *f)
 {
-  return (const fde *) ((char *) f + f->length + sizeof (f->length));
+  return (const fde *) ((const char *) f + f->length + sizeof (f->length));
 }
 
 extern const fde * _Unwind_Find_FDE (void *, struct dwarf_eh_bases *);

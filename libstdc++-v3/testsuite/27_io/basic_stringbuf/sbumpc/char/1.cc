@@ -1,6 +1,7 @@
 // 981208 bkoz test functionality of basic_stringbuf for char_type == char
 
-// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004
+// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+// 2006, 2007
 // Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
@@ -16,7 +17,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 #include <sstream>
@@ -47,8 +48,8 @@ void test04()
   int_type c1 = strb_01.sbumpc();
   int_type c2 = strb_02.sbumpc();
   VERIFY( c1 != c2 );
-  VERIFY( c1 == str_01[0] );
-  VERIFY( c2 == str_02[0] ); //should equal first letter at this point
+  VERIFY( c1 == traits_type::to_int_type(str_01[0]) );
+  VERIFY( c2 == traits_type::to_int_type(str_02[0]) ); //should equal first letter at this point
   int_type c3 = strb_01.sbumpc();
   int_type c4 = strb_02.sbumpc();
   VERIFY( c1 != c2 );

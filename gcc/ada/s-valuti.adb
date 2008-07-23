@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2002, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -72,7 +72,6 @@ package body System.Val_Util is
             S (J) := To_Upper (S (J));
          end loop;
       end if;
-
    end Normalize_String;
 
    -------------------
@@ -81,10 +80,9 @@ package body System.Val_Util is
 
    function Scan_Exponent
      (Str  : String;
-      Ptr  : access Integer;
+      Ptr  : not null access Integer;
       Max  : Integer;
-      Real : Boolean := False)
-      return Integer
+      Real : Boolean := False) return Integer
    is
       P : Natural := Ptr.all;
       M : Boolean;
@@ -157,8 +155,51 @@ package body System.Val_Util is
 
       Ptr.all := P;
       return X;
-
    end Scan_Exponent;
+
+   --------------------
+   -- Scan_Plus_Sign --
+   --------------------
+
+   procedure Scan_Plus_Sign
+     (Str   : String;
+      Ptr   : not null access Integer;
+      Max   : Integer;
+      Start : out Positive)
+   is
+      P : Natural := Ptr.all;
+
+   begin
+      if P > Max then
+         raise Constraint_Error;
+      end if;
+
+      --  Scan past initial blanks
+
+      while Str (P) = ' ' loop
+         P := P + 1;
+
+         if P > Max then
+            Ptr.all := P;
+            raise Constraint_Error;
+         end if;
+      end loop;
+
+      Start := P;
+
+      --  Skip past an initial plus sign
+
+      if Str (P) = '+' then
+         P := P + 1;
+
+         if P > Max then
+            Ptr.all := Start;
+            raise Constraint_Error;
+         end if;
+      end if;
+
+      Ptr.all := P;
+   end Scan_Plus_Sign;
 
    ---------------
    -- Scan_Sign --
@@ -166,7 +207,7 @@ package body System.Val_Util is
 
    procedure Scan_Sign
      (Str   : String;
-      Ptr   : access Integer;
+      Ptr   : not null access Integer;
       Max   : Integer;
       Minus : out Boolean;
       Start : out Positive)
@@ -243,7 +284,7 @@ package body System.Val_Util is
    procedure Scan_Underscore
      (Str : String;
       P   : in out Natural;
-      Ptr : access Integer;
+      Ptr : not null access Integer;
       Max : Integer;
       Ext : Boolean)
    is
@@ -253,8 +294,8 @@ package body System.Val_Util is
       P := P + 1;
 
       --  If underscore is at the end of string, then this is an error and
-      --  we raise Constraint_Error, leaving the pointer past the undescore.
-      --  This seems a bit strange. It means e,g, that if the field is:
+      --  we raise Constraint_Error, leaving the pointer past the underscore.
+      --  This seems a bit strange. It means e.g. that if the field is:
 
       --    345_
 

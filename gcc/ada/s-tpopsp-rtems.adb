@@ -10,6 +10,7 @@
 --                             $Revision: 1.2 $
 --                                                                          --
 --            Copyright (C) 1991-2003, Florida State University             --
+--            Copyright (C) 2008, Free Software Foundation, Inc.            --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -19,8 +20,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -36,7 +37,7 @@
 ------------------------------------------------------------------------------
 
 --  This is a RTEMS version of this package which uses a special
---  variable for Ada self which is contexted switch implicitly by RTEMS.
+--  variable for Ada self which is context switched implicitly by RTEMS.
 --
 --  This is the same as the POSIX version except that an RTEMS variable
 --  is used instead of a POSIX key.

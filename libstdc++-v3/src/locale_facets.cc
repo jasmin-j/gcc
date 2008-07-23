@@ -1,4 +1,5 @@
-// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004
+// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+// 2006, 2007
 // Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
@@ -14,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -28,8 +29,8 @@
 
 #include <locale>
 
-namespace std 
-{
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
   // Definitions for static const data members of time_base.
   template<> 
     const char*
@@ -89,5 +90,29 @@ namespace std
       *__fptr++ = (__flags & ios_base::uppercase) ? 'G' : 'g';
     *__fptr = '\0';
   }
-} // namespace std
 
+  bool
+  __verify_grouping(const char* __grouping, size_t __grouping_size,
+		    const string& __grouping_tmp)
+  {
+    const size_t __n = __grouping_tmp.size() - 1;
+    const size_t __min = std::min(__n, size_t(__grouping_size - 1));
+    size_t __i = __n;
+    bool __test = true;
+    
+    // Parsed number groupings have to match the
+    // numpunct::grouping string exactly, starting at the
+    // right-most point of the parsed sequence of elements ...
+    for (size_t __j = 0; __j < __min && __test; --__i, ++__j)
+      __test = __grouping_tmp[__i] == __grouping[__j];
+    for (; __i && __test; --__i)
+      __test = __grouping_tmp[__i] == __grouping[__min];
+    // ... but the first parsed grouping can be <= numpunct
+    // grouping (only do the check if the numpunct char is > 0
+    // because <= 0 means any size is ok).
+    if (static_cast<signed char>(__grouping[__min]) > 0)
+      __test &= __grouping_tmp[0] <= __grouping[__min];
+    return __test;
+  }
+
+_GLIBCXX_END_NAMESPACE

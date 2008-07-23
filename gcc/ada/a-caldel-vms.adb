@@ -1,13 +1,13 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                   A D A . C A L E N D A R . D E L A Y S                  --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
 --             Copyright (C) 1991-1994, Florida State University            --
---             Copyright (C) 1995-2003, Ada Core Technologies               --
+--                     Copyright (C) 1995-2008, AdaCore                     --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +17,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,13 +32,10 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This is the Alpha/VMS version.
+--  This is the Alpha/VMS version
 
 with System.OS_Primitives;
---  Used for Max_Sensible_Delay
-
 with System.Soft_Links;
---  Used for Timed_Delay
 
 package body Ada.Calendar.Delays is
 
@@ -46,6 +43,13 @@ package body Ada.Calendar.Delays is
    package TSL renames System.Soft_Links;
 
    use type TSL.Timed_Delay_Call;
+
+   -----------------------
+   -- Local Subprograms --
+   -----------------------
+
+   procedure Timed_Delay_NT (Time : Duration; Mode : Integer);
+   --  Timed delay procedure used when no tasking is active
 
    ---------------
    -- Delay_For --
@@ -79,8 +83,6 @@ package body Ada.Calendar.Delays is
    -- Timed_Delay_NT --
    --------------------
 
-   procedure Timed_Delay_NT (Time : Duration; Mode : Integer);
-
    procedure Timed_Delay_NT (Time : Duration; Mode : Integer) is
    begin
       OSP.Timed_Delay (Time, Mode);
@@ -88,9 +90,8 @@ package body Ada.Calendar.Delays is
 
 begin
    --  Set up the Timed_Delay soft link to the non tasking version if it has
-   --  not been already set.
-   --  If tasking is present, Timed_Delay has already set this soft link, or
-   --  this will be overriden during the elaboration of
+   --  not been already set. If tasking is present, Timed_Delay has already set
+   --  this soft link, or this will be overridden during the elaboration of
    --  System.Tasking.Initialization
 
    if TSL.Timed_Delay = null then

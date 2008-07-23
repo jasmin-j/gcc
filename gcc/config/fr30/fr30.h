@@ -1,7 +1,7 @@
 /*{{{  Comment.  */ 
 
 /* Definitions of FR30 target. 
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004, 2007
    Free Software Foundation, Inc.
    Contributed by Cygnus Solutions.
 
@@ -9,7 +9,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -18,9 +18,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /*}}}*/ 
 /*{{{  Driver configuration.  */ 
@@ -463,8 +462,8 @@ enum reg_class
    to a smaller address.  */
 #define STACK_GROWS_DOWNWARD 1
 
-/* Define this macro if the addresses of local variable slots are at negative
-   offsets from the frame pointer.  */
+/* Define this to macro nonzero if the addresses of local variable slots
+   are at negative offsets from the frame pointer.  */
 #define FRAME_GROWS_DOWNWARD 1
 
 /* Offset from the frame pointer to the first local variable slot to be
@@ -535,7 +534,7 @@ enum reg_class
    register.  See `FIXED_REGISTERS' for more information.  */
 /* #define FRAME_POINTER_REQUIRED 0 */
 #define FRAME_POINTER_REQUIRED \
-     (flag_omit_frame_pointer == 0 || current_function_pretend_args_size > 0)
+     (flag_omit_frame_pointer == 0 || crtl->args.pretend_args_size > 0)
 
 /* If defined, this macro specifies a table of register pairs used to eliminate
    unneeded registers that point into the stack frame.  If it is not defined,
@@ -587,7 +586,7 @@ enum reg_class
 
 /* If defined, the maximum amount of space required for outgoing arguments will
    be computed and placed into the variable
-   `current_function_outgoing_args_size'.  No space will be pushed onto the
+   `crtl->outgoing_args_size'.  No space will be pushed onto the
    stack for each call; instead, the function prologue should increase the
    stack frame size by this amount.
 
@@ -727,7 +726,7 @@ enum reg_class
    in memory.  Since this results in slower code, this should be defined only
    if needed for compatibility with other compilers or with an ABI.  If you
    define this macro to be 0, then the conventions used for structure and union
-   return values are decided by the `RETURN_IN_MEMORY' macro.
+   return values are decided by the `TARGET_RETURN_IN_MEMORY' macro.
 
    If not defined, this defaults to the value 1.  */
 #define DEFAULT_PCC_STRUCT_RETURN 1
@@ -842,13 +841,15 @@ do										\
         goto LABEL;							\
       if (GET_CODE (X) == PLUS						\
 	  && ((MODE) == SImode || (MODE) == SFmode)			\
-	  && XEXP (X, 0) == stack_pointer_rtx				\
+	  && GET_CODE (XEXP (X, 0)) == REG				\
+          && REGNO (XEXP (X, 0)) == STACK_POINTER_REGNUM		\
 	  && GET_CODE (XEXP (X, 1)) == CONST_INT			\
 	  && IN_RANGE (INTVAL (XEXP (X, 1)), 0, (1 <<  6) - 4))		\
 	goto LABEL;							\
       if (GET_CODE (X) == PLUS						\
 	  && ((MODE) == SImode || (MODE) == SFmode)			\
-	  && XEXP (X, 0) == frame_pointer_rtx				\
+	  && GET_CODE (XEXP (X, 0)) == REG				\
+          && REGNO (XEXP (X, 0)) == FRAME_POINTER_REGNUM		\
 	  && GET_CODE (XEXP (X, 1)) == CONST_INT			\
 	  && IN_RANGE (INTVAL (XEXP (X, 1)), -(1 << 9), (1 <<  9) - 4))	\
         goto LABEL;							\
@@ -862,15 +863,16 @@ do										\
         goto LABEL;							\
       if (GET_CODE (X) == PLUS						\
 	  && ((MODE) == SImode || (MODE) == SFmode)			\
-	  && XEXP (X, 0) == stack_pointer_rtx				\
+	  && GET_CODE (XEXP (X, 0)) == REG				\
+          && REGNO (XEXP (X, 0)) == STACK_POINTER_REGNUM		\
 	  && GET_CODE (XEXP (X, 1)) == CONST_INT			\
 	  && IN_RANGE (INTVAL (XEXP (X, 1)), 0, (1 <<  6) - 4))		\
 	goto LABEL;							\
       if (GET_CODE (X) == PLUS						\
 	  && ((MODE) == SImode || (MODE) == SFmode)			\
-	  && GET_CODE (XEXP (X, 0)) == REG \
-          && (REGNO (XEXP (X, 0)) == FRAME_POINTER_REGNUM \
-           || REGNO (XEXP (X, 0)) == ARG_POINTER_REGNUM) \
+	  && GET_CODE (XEXP (X, 0)) == REG				\
+          && (REGNO (XEXP (X, 0)) == FRAME_POINTER_REGNUM		\
+	      || REGNO (XEXP (X, 0)) == ARG_POINTER_REGNUM)		\
 	  && GET_CODE (XEXP (X, 1)) == CONST_INT			\
 	  && IN_RANGE (INTVAL (XEXP (X, 1)), -(1 << 9), (1 <<  9) - 4))	\
         goto LABEL;							\
@@ -1107,7 +1109,7 @@ fprintf (STREAM, "\t.word .L%d\n", VALUE)
 #define FUNCTION_MODE QImode
 
 /* If cross-compiling, don't require stdio.h etc to build libgcc.a.  */
-#if defined CROSS_COMPILE && ! defined inhibit_libc
+#if defined CROSS_DIRECTORY_STRUCTURE && ! defined inhibit_libc
 #define inhibit_libc
 #endif
 

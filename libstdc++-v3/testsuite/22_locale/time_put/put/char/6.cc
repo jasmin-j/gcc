@@ -1,6 +1,9 @@
+// { dg-require-namedlocale "" }
+
 // 2001-09-17 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003, 2004 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007 
+// Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +18,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 22.2.5.3.1 time_put members
@@ -33,13 +36,13 @@ void test06()
   bool test __attribute__((unused)) = true;
 
   // create "C" time objects
-  tm time1 = { 0, 0, 12, 4, 3, 71, 0, 93, 0 };
+  const tm time1 = __gnu_test::test_tm(0, 0, 12, 4, 3, 71, 0, 93, 0);
   const char* date = "%A, the second of %B";
   const char* date_ex = "%Ex";
 
   // basic construction and sanity check
   locale loc_c = locale::classic();
-  locale loc_de = __gnu_test::try_named_locale("de_DE");
+  locale loc_de = locale("de_DE");
   VERIFY( loc_de != loc_c );
 
   // create an ostream-derived object, cache the time_put facet
@@ -53,7 +56,8 @@ void test06()
   string result7 = oss.str();
   VERIFY( result7 == "Sonntag, the second of April");
   iterator_type os_it08 = tim_put.put(oss.rdbuf(), oss, '*', &time1, 
-				      date_ex, date_ex + traits::length(date));
+				      date_ex,
+				      date_ex + traits::length(date_ex));
   string result8 = oss.str();
   VERIFY( result8 != result7 );
 }

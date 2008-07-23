@@ -6,7 +6,7 @@
  *                                                                          *
  *                              C Header File                               *
  *                                                                          *
- *          Copyright (C) 1992-2004 Free Software Foundation, Inc.          *
+ *          Copyright (C) 1992-2008, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -16,8 +16,8 @@
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
  * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
+ * Boston, MA 02110-1301, USA.                                              *
  *                                                                          *
  * As a  special  exception,  if you  link  this file  with other  files to *
  * produce an executable,  this file does not by itself cause the resulting *
@@ -36,7 +36,7 @@
 /* comperr:  */
 
 #define Compiler_Abort comperr__compiler_abort
-extern int Compiler_Abort (Fat_Pointer, int) ATTRIBUTE_NORETURN;
+extern int Compiler_Abort (Fat_Pointer, int, Fat_Pointer) ATTRIBUTE_NORETURN;
 
 /* csets: */
 
@@ -46,10 +46,7 @@ extern char Fold_Lower[], Fold_Upper[];
 
 /* debug: */
 
-#define Debug_Flag_XX debug__debug_flag_xx
 #define Debug_Flag_NN debug__debug_flag_nn
-
-extern Boolean Debug_Flag_XX;
 extern Boolean Debug_Flag_NN;
 
 /* einfo: We will be setting Esize for types, Component_Bit_Offset for fields,
@@ -99,6 +96,14 @@ extern void Set_Identifier_Casing (Char *, Char *);
 extern Entity_Id             Error_Msg_Node_2;
 extern Uint                  Error_Msg_Uint_1;
 extern Uint                  Error_Msg_Uint_2;
+
+/* exp_ch11:  */
+
+#define Get_Local_Raise_Call_Entity exp_ch11__get_local_raise_call_entity
+#define Get_RT_Exception_Entity exp_ch11__get_rt_exception_entity
+
+extern Entity_Id Get_Local_Raise_Call_Entity (void);
+extern Entity_Id Get_RT_Exception_Entity (int);
 
 /* exp_code:  */
 
@@ -150,13 +155,15 @@ extern Boolean In_Same_Source_Unit              (Node_Id, Node_Id);
 
 /* opt: */
 
-#define Global_Discard_Names   opt__global_discard_names
-#define Exception_Mechanism    opt__exception_mechanism
-#define Back_Annotate_Rep_Info opt__back_annotate_rep_info
+#define Global_Discard_Names           opt__global_discard_names
+#define Exception_Locations_Suppressed opt__exception_locations_suppressed
+#define Exception_Mechanism            opt__exception_mechanism
+#define Back_Annotate_Rep_Info         opt__back_annotate_rep_info
 
-typedef enum {Setjmp_Longjmp, Front_End_ZCX, GCC_ZCX} Exception_Mechanism_Type;
+typedef enum {Setjmp_Longjmp, Back_End_Exceptions} Exception_Mechanism_Type;
 
 extern Boolean Global_Discard_Names;
+extern Boolean Exception_Locations_Suppressed;
 extern Exception_Mechanism_Type Exception_Mechanism;
 extern Boolean Back_Annotate_Rep_Info;
 
@@ -165,12 +172,12 @@ extern Boolean Back_Annotate_Rep_Info;
 #define No_Exception_Handlers_Set      restrict__no_exception_handlers_set
 #define Check_No_Implicit_Heap_Alloc   restrict__check_no_implicit_heap_alloc
 #define Check_Elaboration_Code_Allowed restrict__check_elaboration_code_allowed
-#define Check_No_Implicit_Heap_Alloc   restrict__check_no_implicit_heap_alloc
+#define Check_Implicit_Dynamic_Code_Allowed restrict__check_implicit_dynamic_code_allowed
 
 extern Boolean No_Exception_Handlers_Set   (void);
 extern void Check_No_Implicit_Heap_Alloc   (Node_Id);
 extern void Check_Elaboration_Code_Allowed (Node_Id);
-extern void Check_No_Implicit_Heap_Alloc   (Node_Id);
+extern void Check_Implicit_Dynamic_Code_Allowed (Node_Id);
 
 /* sem_elim: */
 
@@ -213,5 +220,7 @@ extern void Set_Has_No_Elaboration_Code	(Node_Id, Boolean);
 /* targparm: */
 
 #define Stack_Check_Probes_On_Target targparm__stack_check_probes_on_target
+#define Stack_Check_Limits_On_Target targparm__stack_check_limits_on_target
 
 extern Boolean Stack_Check_Probes_On_Target;
+extern Boolean Stack_Check_Limits_On_Target;

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1996-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1996-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -33,13 +33,7 @@
 
 --  This is the dummy version used on non-VMS systems
 
-with Ada.Exceptions;
-with Ada.Task_Identification;
-with System.Aux_DEC;
-
 package body System.AST_Handling is
-
-   pragma Warnings (Off); -- kill warnings on unreferenced formals
 
    ------------------------
    -- Create_AST_Handler --
@@ -47,29 +41,20 @@ package body System.AST_Handling is
 
    function Create_AST_Handler
      (Taskid  : Ada.Task_Identification.Task_Id;
-      Entryno : Natural)
-      return    System.Aux_DEC.AST_Handler
+      Entryno : Natural) return System.Aux_DEC.AST_Handler
    is
    begin
-      Ada.Exceptions.Raise_Exception
-        (E       => Program_Error'Identity,
-         Message => "AST is implemented only on VMS systems");
-
+      raise Program_Error with "AST is implemented only on VMS systems";
       return System.Aux_DEC.No_AST_Handler;
    end Create_AST_Handler;
 
    procedure Expand_AST_Packet_Pool
-     (Requested_Packets : in Natural;
+     (Requested_Packets : Natural;
       Actual_Number     : out Natural;
       Total_Number      : out Natural)
    is
    begin
-      Ada.Exceptions.Raise_Exception
-        (E       => Program_Error'Identity,
-         Message => "AST is implemented only on VMS systems");
-
-      Actual_Number := 0;
-      Total_Number := 0;
+      raise Program_Error with "AST is implemented only on VMS systems";
    end Expand_AST_Packet_Pool;
 
 end System.AST_Handling;

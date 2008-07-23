@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
---                   SYSTEM.TASK_PRIMITIVES.OPERATIONS.DEC                  --
+--                  SYSTEM.TASK_PRIMITIVES.OPERATIONS.DEC                   --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---          Copyright (C) 2000-2003 Free Software Foundation, Inc.          --
+--          Copyright (C) 2000-2007, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -37,18 +37,19 @@ with System.Aux_DEC;
 package System.Task_Primitives.Operations.DEC is
 
    procedure Interrupt_AST_Handler (ID : Address);
-   --  Handles the AST for Ada95 Interrupts.
+   pragma Convention (C, Interrupt_AST_Handler);
+   --  Handles the AST for Ada95 Interrupts
 
    procedure RMS_AST_Handler (ID : Address);
-   --  Handles the AST for RMS_Asynch_Operations.
+   --  Handles the AST for RMS_Asynch_Operations
 
    function Self return System.Aux_DEC.Unsigned_Longword;
-   --  Returns the task identification for the AST.
+   --  Returns the task identification for the AST
 
    procedure Starlet_AST_Handler (ID : Address);
-   --  Handles the AST for Starlet Tasking_Services.
+   --  Handles the AST for Starlet Tasking_Services
 
    procedure Task_Synch;
-   --  Synchronizes the task after the system service completes.
+   --  Synchronizes the task after the system service completes
 
 end System.Task_Primitives.Operations.DEC;

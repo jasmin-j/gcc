@@ -6,32 +6,34 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Binderr; use Binderr;
-with Butil;   use Butil;
-with Debug;   use Debug;
-with Fname;   use Fname;
-with Lib;     use Lib;
-with Namet;   use Namet;
-with Opt;     use Opt;
-with Output;  use Output;
+with Binderr;  use Binderr;
+with Butil;    use Butil;
+with Debug;    use Debug;
+with Fname;    use Fname;
+with Namet;    use Namet;
+with Opt;      use Opt;
+with Osint;
+with Output;   use Output;
+with Targparm; use Targparm;
+
+with System.Case_Util; use System.Case_Util;
 
 package body Binde is
 
@@ -71,8 +73,13 @@ package body Binde is
       --  elaborated before unit X is elaborated. The Elab_All_Link list
       --  traces the dependencies in the latter case.
 
-      Elab_Desirable,
+      Elab_All_Desirable,
       --  This is just like Elab_All, except that the elaborate all was not
+      --  explicitly present in the source, but rather was created by the
+      --  front end, which decided that it was "desirable".
+
+      Elab_Desirable,
+      --  This is just like Elab, except that the elaborate was not
       --  explicitly present in the source, but rather was created by the
       --  front end, which decided that it was "desirable".
 
@@ -248,7 +255,7 @@ package body Binde is
       Link   : Elab_All_Id);
    --  Used to compute the transitive closure of elaboration links for an
    --  Elaborate_All pragma (Reason = Elab_All) or for an indication of
-   --  Elaborate_All_Desirable (Reason = Elab_Desirable). Unit After has
+   --  Elaborate_All_Desirable (Reason = Elab_All_Desirable). Unit After has
    --  a pragma Elaborate_All or the front end has determined that a reference
    --  probably requires Elaborate_All is required, and unit Before must be
    --  previously elaborated. First a link is built making sure that unit
@@ -260,16 +267,24 @@ package body Binde is
 
    procedure Elab_Error_Msg (S : Successor_Id);
    --  Given a successor link, outputs an error message of the form
-   --  "& must be elaborated before & ..." where ... is the reason.
+   --  "$ must be elaborated before $ ..." where ... is the reason.
 
    procedure Gather_Dependencies;
    --  Compute dependencies, building the Succ and UNR tables
 
+   function Is_Body_Unit (U : Unit_Id) return Boolean;
+   pragma Inline (Is_Body_Unit);
+   --  Determines if given unit is a body
+
+   function Is_Waiting_Body (U : Unit_Id) return Boolean;
+   pragma Inline (Is_Waiting_Body);
+   --  Determines if U is a waiting body, defined as a body which has
+   --  not been elaborated, but whose spec has been elaborated.
+
    function Make_Elab_Entry
      (Unam : Unit_Name_Type;
-      Link : Elab_All_Id)
-      return Elab_All_Id;
-   --  Make an Elab_All_Entries table entry with the given Unam and Link.
+      Link : Elab_All_Id) return Elab_All_Id;
+   --  Make an Elab_All_Entries table entry with the given Unam and Link
 
    function Unit_Id_Of (Uname : Unit_Name_Type) return Unit_Id;
    --  This function uses the Info field set in the names table to obtain
@@ -293,70 +308,82 @@ package body Binde is
    -------------------
 
    function Better_Choice (U1, U2 : Unit_Id) return Boolean is
-
-      function Body_Unit (U : Unit_Id) return Boolean;
-      --  Determines if given unit is a body
-
-      function Waiting_Body (U : Unit_Id) return Boolean;
-      --  Determines if U is a waiting body, defined as a body which has
-      --  not been elaborated, but whose spec has been elaborated.
-
-      function Body_Unit (U : Unit_Id) return Boolean is
-      begin
-         return Units.Table (U).Utype = Is_Body
-           or else Units.Table (U).Utype = Is_Body_Only;
-      end Body_Unit;
-
-      function Waiting_Body (U : Unit_Id) return Boolean is
-      begin
-         return Units.Table (U).Utype = Is_Body
-           and then UNR.Table (Corresponding_Spec (U)).Elab_Position /= 0;
-      end Waiting_Body;
-
-   --  Start of processing for Better_Choice
-
-   --  Note: the checks here are applied in sequence, and the ordering is
-   --  significant (i.e. the more important criteria are applied first).
+      UT1 : Unit_Record renames Units.Table (U1);
+      UT2 : Unit_Record renames Units.Table (U2);
 
    begin
+      if Debug_Flag_B then
+         Write_Str ("Better_Choice (");
+         Write_Unit_Name (UT1.Uname);
+         Write_Str (", ");
+         Write_Unit_Name (UT2.Uname);
+         Write_Line (")");
+      end if;
+
+      --  Note: the checks here are applied in sequence, and the ordering is
+      --  significant (i.e. the more important criteria are applied first).
+
       --  Prefer a waiting body to any other case
 
-      if Waiting_Body (U1) and not Waiting_Body (U2) then
+      if Is_Waiting_Body (U1) and not Is_Waiting_Body (U2) then
+         if Debug_Flag_B then
+            Write_Line ("  True: u1 is waiting body, u2 is not");
+         end if;
+
          return True;
 
-      elsif Waiting_Body (U2) and not Waiting_Body (U1) then
+      elsif Is_Waiting_Body (U2) and not Is_Waiting_Body (U1) then
+         if Debug_Flag_B then
+            Write_Line ("  False: u2 is waiting body, u1 is not");
+         end if;
+
          return False;
 
       --  Prefer a predefined unit to a non-predefined unit
 
-      elsif Units.Table (U1).Predefined
-        and not Units.Table (U2).Predefined
-      then
+      elsif UT1.Predefined and not UT2.Predefined then
+         if Debug_Flag_B then
+            Write_Line ("  True: u1 is predefined, u2 is not");
+         end if;
+
          return True;
 
-      elsif Units.Table (U2).Predefined
-        and not Units.Table (U1).Predefined
-      then
+      elsif UT2.Predefined and not UT1.Predefined then
+         if Debug_Flag_B then
+            Write_Line ("  False: u2 is predefined, u1 is not");
+         end if;
+
          return False;
 
       --  Prefer an internal unit to a non-internal unit
 
-      elsif Units.Table (U1).Internal
-        and not Units.Table (U2).Internal
-      then
+      elsif UT1.Internal and not UT2.Internal then
+         if Debug_Flag_B then
+            Write_Line ("  True: u1 is internal, u2 is not");
+         end if;
          return True;
 
-      elsif Units.Table (U2).Internal
-        and not Units.Table (U1).Internal
-      then
+      elsif UT2.Internal and not UT1.Internal then
+         if Debug_Flag_B then
+            Write_Line ("  False: u2 is internal, u1 is not");
+         end if;
+
          return False;
 
       --  Prefer a body to a spec
 
-      elsif Body_Unit (U1) and not Body_Unit (U2) then
+      elsif Is_Body_Unit (U1) and not Is_Body_Unit (U2) then
+         if Debug_Flag_B then
+            Write_Line ("  True: u1 is body, u2 is not");
+         end if;
+
          return True;
 
-      elsif Body_Unit (U2) and not Body_Unit (U1) then
+      elsif Is_Body_Unit (U2) and not Is_Body_Unit (U1) then
+         if Debug_Flag_B then
+            Write_Line ("  False: u2 is body, u1 is not");
+         end if;
+
          return False;
 
       --  If both are waiting bodies, then prefer the one whose spec is
@@ -371,16 +398,89 @@ package body Binde is
       --  must be the case that A depends on B. It is therefore a good idea
       --  to put the body of B first.
 
-      elsif Waiting_Body (U1) and then Waiting_Body (U2) then
-         return
-           UNR.Table (Corresponding_Spec (U1)).Elab_Position >
-           UNR.Table (Corresponding_Spec (U2)).Elab_Position;
+      elsif Is_Waiting_Body (U1) and then Is_Waiting_Body (U2) then
+         declare
+            Result : constant Boolean :=
+                       UNR.Table (Corresponding_Spec (U1)).Elab_Position >
+                       UNR.Table (Corresponding_Spec (U2)).Elab_Position;
+         begin
+            if Debug_Flag_B then
+               if Result then
+                  Write_Line ("  True: based on waiting body elab positions");
+               else
+                  Write_Line ("  False: based on waiting body elab positions");
+               end if;
+            end if;
 
-      --  Otherwise decide on the basis of alphabetical order
-
-      else
-         return Uname_Less (Units.Table (U1).Uname, Units.Table (U2).Uname);
+            return Result;
+         end;
       end if;
+
+      --  Remaining choice rules are disabled by Debug flag -do
+
+      if not Debug_Flag_O then
+
+         --  The following deal with the case of specs which have been marked
+         --  as Elaborate_Body_Desirable. We generally want to delay these
+         --  specs as long as possible, so that the bodies have a better chance
+         --  of being elaborated closer to the specs.
+
+         --  If we have two units, one of which is a spec for which this flag
+         --  is set, and the other is not, we prefer to delay the spec for
+         --  which the flag is set.
+
+         if not UT1.Elaborate_Body_Desirable
+           and then UT2.Elaborate_Body_Desirable
+         then
+            if Debug_Flag_B then
+               Write_Line ("  True: u1 is elab body desirable, u2 is not");
+            end if;
+
+            return True;
+
+         elsif not UT2.Elaborate_Body_Desirable
+           and then UT1.Elaborate_Body_Desirable
+         then
+            if Debug_Flag_B then
+               Write_Line ("  False: u1 is elab body desirable, u2 is not");
+            end if;
+
+            return False;
+
+            --  If we have two specs that are both marked as Elaborate_Body
+            --  desirable, we prefer the one whose body is nearer to being able
+            --  to be elaborated, based on the Num_Pred count. This helps to
+            --  ensure bodies are as close to specs as possible.
+
+         elsif UT1.Elaborate_Body_Desirable
+           and then UT2.Elaborate_Body_Desirable
+         then
+            declare
+               Result : constant Boolean :=
+                          UNR.Table (Corresponding_Body (U1)).Num_Pred <
+                          UNR.Table (Corresponding_Body (U2)).Num_Pred;
+            begin
+               if Debug_Flag_B then
+                  if Result then
+                     Write_Line ("  True based on Num_Pred compare");
+                  else
+                     Write_Line ("  False based on Num_Pred compare");
+                  end if;
+               end if;
+
+               return Result;
+            end;
+         end if;
+      end if;
+
+      --  If we fall through, it means that no preference rule applies, so we
+      --  use alphabetical order to at least give a deterministic result.
+
+      if Debug_Flag_B then
+         Write_Line ("  choose on alpha order");
+      end if;
+
+      return Uname_Less (UT1.Uname, UT2.Uname);
    end Better_Choice;
 
    ----------------
@@ -480,7 +580,6 @@ package body Binde is
       --  if it becomes zero, then add to no predecessor list.
 
       S := UNR.Table (Chosen).Successors;
-
       while S /= No_Successor loop
          U := Succ.Table (S).After;
          UNR.Table (U).Num_Pred := UNR.Table (U).Num_Pred - 1;
@@ -738,7 +837,6 @@ package body Binde is
       --  and we should have found and eliminated at least one bad path.
 
       raise Program_Error;
-
    end Diagnose_Elaboration_Problem;
 
    --------------------
@@ -767,18 +865,71 @@ package body Binde is
         Units.Table (Before).First_With .. Units.Table (Before).Last_With
       loop
          --  Skip if this with is an interface to a stand-alone library.
-         --  Skip also if no ALI file for this with, happens with certain
-         --  specialized generic files that do not get compiled.
+         --  Skip also if no ALI file for this WITH, happens for language
+         --  defined generics while bootstrapping the compiler (see body of
+         --  Lib.Writ.Write_With_Lines). Finally, skip if it is a limited
+         --  with clause, which does not impose an elaboration link.
 
          if not Withs.Table (W).SAL_Interface
            and then Withs.Table (W).Afile /= No_File
-           and then Generic_Separately_Compiled (Withs.Table (W).Sfile)
+           and then not Withs.Table (W).Limited_With
          then
-            Elab_All_Links
-              (Unit_Id_Of (Withs.Table (W).Uname),
-               After,
-               Reason,
-               Make_Elab_Entry (Withs.Table (W).Uname, Link));
+            declare
+               Info : constant Int :=
+                        Get_Name_Table_Info
+                          (Withs.Table (W).Uname);
+
+            begin
+               --  If the unit is unknown, for some unknown reason, fail
+               --  graciously explaining that the unit is unknown. Without
+               --  this check, gnatbind will crash in Unit_Id_Of.
+
+               if Info = 0 or else Unit_Id (Info) = No_Unit_Id then
+                  declare
+                     Withed       : String :=
+                                      Get_Name_String (Withs.Table (W).Uname);
+                     Last_Withed  : Natural := Withed'Last;
+                     Withing      : String :=
+                                      Get_Name_String
+                                        (Units.Table (Before).Uname);
+                     Last_Withing : Natural := Withing'Last;
+                     Spec_Body    : String  := " (Spec)";
+
+                  begin
+                     To_Mixed (Withed);
+                     To_Mixed (Withing);
+
+                     if Last_Withed > 2 and then
+                       Withed (Last_Withed - 1) = '%'
+                     then
+                        Last_Withed := Last_Withed - 2;
+                     end if;
+
+                     if Last_Withing > 2 and then
+                       Withing (Last_Withing - 1) = '%'
+                     then
+                        Last_Withing := Last_Withing - 2;
+                     end if;
+
+                     if Units.Table (Before).Utype = Is_Body or else
+                       Units.Table (Before).Utype = Is_Body_Only
+                     then
+                        Spec_Body := " (Body)";
+                     end if;
+
+                     Osint.Fail
+                       ("could not find unit ",
+                        Withed (Withed'First .. Last_Withed) & " needed by " &
+                        Withing (Withing'First .. Last_Withing) & Spec_Body);
+                  end;
+               end if;
+
+               Elab_All_Links
+                 (Unit_Id_Of (Withs.Table (W).Uname),
+                  After,
+                  Reason,
+                  Make_Elab_Entry (Withs.Table (W).Uname, Link));
+            end;
          end if;
       end loop;
 
@@ -801,9 +952,9 @@ package body Binde is
       SL : Successor_Link renames Succ.Table (S);
 
    begin
-      --  Nothing to do if internal unit involved and no -de flag
+      --  Nothing to do if internal unit involved and no -da flag
 
-      if not Debug_Flag_E
+      if not Debug_Flag_A
         and then
           (Is_Internal_File_Name (Units.Table (SL.Before).Sfile)
             or else
@@ -814,17 +965,17 @@ package body Binde is
 
       --  Here we want to generate output
 
-      Error_Msg_Name_1 := Units.Table (SL.Before).Uname;
+      Error_Msg_Unit_1 := Units.Table (SL.Before).Uname;
 
       if SL.Elab_Body then
-         Error_Msg_Name_2 := Units.Table (Corresponding_Body (SL.After)).Uname;
+         Error_Msg_Unit_2 := Units.Table (Corresponding_Body (SL.After)).Uname;
       else
-         Error_Msg_Name_2 := Units.Table (SL.After).Uname;
+         Error_Msg_Unit_2 := Units.Table (SL.After).Uname;
       end if;
 
-      Error_Msg_Output ("  & must be elaborated before &", Info => True);
+      Error_Msg_Output ("  $ must be elaborated before $", Info => True);
 
-      Error_Msg_Name_1 := Units.Table (SL.Reason_Unit).Uname;
+      Error_Msg_Unit_1 := Units.Table (SL.Reason_Unit).Uname;
 
       case SL.Reason is
          when Withed =>
@@ -834,21 +985,30 @@ package body Binde is
 
          when Elab =>
             Error_Msg_Output
-              ("     reason: pragma Elaborate in unit &",
+              ("     reason: pragma Elaborate in unit $",
                Info => True);
 
          when Elab_All =>
             Error_Msg_Output
-              ("     reason: pragma Elaborate_All in unit &",
+              ("     reason: pragma Elaborate_All in unit $",
+               Info => True);
+
+         when Elab_All_Desirable =>
+            Error_Msg_Output
+              ("     reason: implicit Elaborate_All in unit $",
+               Info => True);
+
+            Error_Msg_Output
+              ("     recompile $ with -gnatwl for full details",
                Info => True);
 
          when Elab_Desirable =>
             Error_Msg_Output
-              ("     reason: implicit Elaborate_All in unit &",
+              ("     reason: implicit Elaborate in unit $",
                Info => True);
 
             Error_Msg_Output
-              ("     recompile & with -gnatwl for full details",
+              ("     recompile $ with -gnatwl for full details",
                Info => True);
 
          when Spec_First =>
@@ -860,19 +1020,21 @@ package body Binde is
       Write_Elab_All_Chain (S);
 
       if SL.Elab_Body then
-         Error_Msg_Name_1 := Units.Table (SL.Before).Uname;
-         Error_Msg_Name_2 := Units.Table (SL.After).Uname;
+         Error_Msg_Unit_1 := Units.Table (SL.Before).Uname;
+         Error_Msg_Unit_2 := Units.Table (SL.After).Uname;
          Error_Msg_Output
-           ("  & must therefore be elaborated before &",
+           ("  $ must therefore be elaborated before $",
             True);
 
-         Error_Msg_Name_1 := Units.Table (SL.After).Uname;
+         Error_Msg_Unit_1 := Units.Table (SL.After).Uname;
          Error_Msg_Output
-           ("     (because & has a pragma Elaborate_Body)",
+           ("     (because $ has a pragma Elaborate_Body)",
             True);
       end if;
 
-      Write_Eol;
+      if not Zero_Formatting then
+         Write_Eol;
+      end if;
    end Elab_Error_Msg;
 
    ---------------------
@@ -897,6 +1059,20 @@ package body Binde is
          UNR.Table (UNR.Last).Elab_Order    := 0;
          UNR.Table (UNR.Last).Elab_Position := 0;
       end loop;
+
+      --  Output warning if -p used with no -gnatE units
+
+      if Pessimistic_Elab_Order
+        and not Dynamic_Elaboration_Checks_Specified
+      then
+         if OpenVMS_On_Target then
+            Error_Msg ("?use of /PESSIMISTIC_ELABORATION questionable");
+         else
+            Error_Msg ("?use of -p switch questionable");
+         end if;
+
+         Error_Msg ("?since all units compiled with static elaboration model");
+      end if;
 
       --  Gather dependencies and output them if option set
 
@@ -924,6 +1100,7 @@ package body Binde is
       --  nodes have been chosen.
 
       Outer : loop
+
          --  If there are no nodes with predecessors, then either we are
          --  done, as indicated by Num_Left being set to zero, or we have
          --  a circularity. In the latter case, diagnose the circularity,
@@ -991,7 +1168,6 @@ package body Binde is
             Choose (Best_So_Far);
          end if;
       end loop Outer;
-
    end Find_Elab_Order;
 
    -------------------------
@@ -1035,9 +1211,9 @@ package body Binde is
                   --  obsolete unit with's a previous (now disappeared) spec.
 
                   if Get_Name_Table_Info (Withs.Table (W).Uname) = 0 then
-                     Error_Msg_Name_1 := Units.Table (U).Sfile;
-                     Error_Msg_Name_2 := Withs.Table (W).Uname;
-                     Error_Msg ("% depends on & which no longer exists");
+                     Error_Msg_File_1 := Units.Table (U).Sfile;
+                     Error_Msg_Unit_1 := Withs.Table (W).Uname;
+                     Error_Msg ("{ depends on $ which no longer exists");
                      goto Next_With;
                   end if;
 
@@ -1063,8 +1239,8 @@ package body Binde is
                         Make_Elab_Entry
                           (Withs.Table (W).Uname, No_Elab_All_Link));
 
-                     --  Elaborate_All_Desirable case, for this we establish
-                     --  the same links as above, but with a different reason.
+                  --  Elaborate_All_Desirable case, for this we establish the
+                  --  same links as above, but with a different reason.
 
                   elsif Withs.Table (W).Elab_All_Desirable then
 
@@ -1078,19 +1254,19 @@ package body Binde is
                      --  Now establish all the links we need
 
                      Elab_All_Links
-                       (Withed_Unit, U, Elab_Desirable,
+                       (Withed_Unit, U, Elab_All_Desirable,
                         Make_Elab_Entry
                           (Withs.Table (W).Uname, No_Elab_All_Link));
 
-                     --  Pragma Elaborate case. We must build a link for the
-                     --  withed unit itself, and also the corresponding body
-                     --  if there is one.
+                  --  Pragma Elaborate case. We must build a link for the
+                  --  withed unit itself, and also the corresponding body if
+                  --  there is one.
 
-                     --  However, skip this processing if there is no ALI file
-                     --  for the WITH entry, because this means it is a
-                     --  generic (even when we fix the generics so that an ALI
-                     --  file is present, we probably still will have no ALI
-                     --  file for unchecked and other special cases).
+                  --  However, skip this processing if there is no ALI file for
+                  --  the WITH entry, because this means it is a generic (even
+                  --  when we fix the generics so that an ALI file is present,
+                  --  we probably still will have no ALI file for unchecked and
+                  --  other special cases).
 
                   elsif Withs.Table (W).Elaborate
                     and then Withs.Table (W).Afile /= No_File
@@ -1102,8 +1278,26 @@ package body Binde is
                           (Corresponding_Body (Withed_Unit), U, Elab);
                      end if;
 
-                     --  Case of normal WITH with no elaboration pragmas, just
-                     --  build the single link to the directly referenced unit
+                  --  Elaborate_Desirable case, for this we establish
+                  --  the same links as above, but with a different reason.
+
+                  elsif Withs.Table (W).Elab_Desirable then
+                     Build_Link (Withed_Unit, U, Withed);
+
+                     if Units.Table (Withed_Unit).Utype = Is_Spec then
+                        Build_Link
+                          (Corresponding_Body (Withed_Unit),
+                           U, Elab_Desirable);
+                     end if;
+
+                  --  A limited_with does not establish an elaboration
+                  --  dependence (that's the whole point!).
+
+                  elsif Withs.Table (W).Limited_With then
+                     null;
+
+                  --  Case of normal WITH with no elaboration pragmas, just
+                  --  build the single link to the directly referenced unit
 
                   else
                      Build_Link (Withed_Unit, U, Withed);
@@ -1117,14 +1311,33 @@ package body Binde is
       end loop;
    end Gather_Dependencies;
 
+   ------------------
+   -- Is_Body_Unit --
+   ------------------
+
+   function Is_Body_Unit (U : Unit_Id) return Boolean is
+   begin
+      return Units.Table (U).Utype = Is_Body
+        or else Units.Table (U).Utype = Is_Body_Only;
+   end Is_Body_Unit;
+
+   ---------------------
+   -- Is_Waiting_Body --
+   ---------------------
+
+   function Is_Waiting_Body (U : Unit_Id) return Boolean is
+   begin
+      return Units.Table (U).Utype = Is_Body
+        and then UNR.Table (Corresponding_Spec (U)).Elab_Position /= 0;
+   end Is_Waiting_Body;
+
    ---------------------
    -- Make_Elab_Entry --
    ---------------------
 
    function Make_Elab_Entry
      (Unam : Unit_Name_Type;
-      Link : Elab_All_Id)
-      return Elab_All_Id
+      Link : Elab_All_Id) return Elab_All_Id
    is
    begin
       Elab_All_Entries.Increment_Last;
@@ -1139,7 +1352,6 @@ package body Binde is
 
    function Unit_Id_Of (Uname : Unit_Name_Type) return Unit_Id is
       Info : constant Int := Get_Name_Table_Info (Uname);
-
    begin
       pragma Assert (Info /= 0 and then Unit_Id (Info) /= No_Unit_Id);
       return Unit_Id (Info);
@@ -1150,54 +1362,35 @@ package body Binde is
    ------------------
 
    function Worse_Choice (U1, U2 : Unit_Id) return Boolean is
-
-      function Body_Unit (U : Unit_Id) return Boolean;
-      --  Determines if given unit is a body
-
-      function Waiting_Body (U : Unit_Id) return Boolean;
-      --  Determines if U is a waiting body, defined as a body which has
-      --  not been elaborated, but whose spec has been elaborated.
-
-      function Body_Unit (U : Unit_Id) return Boolean is
-      begin
-         return Units.Table (U).Utype = Is_Body
-           or else Units.Table (U).Utype = Is_Body_Only;
-      end Body_Unit;
-
-      function Waiting_Body (U : Unit_Id) return Boolean is
-      begin
-         return Units.Table (U).Utype = Is_Body and then
-            UNR.Table (Corresponding_Spec (U)).Elab_Position /= 0;
-      end Waiting_Body;
-
-   --  Start of processing for Worse_Choice
-
-   --  Note: the checks here are applied in sequence, and the ordering is
-   --  significant (i.e. the more important criteria are applied first).
+      UT1 : Unit_Record renames Units.Table (U1);
+      UT2 : Unit_Record renames Units.Table (U2);
 
    begin
+      --  Note: the checks here are applied in sequence, and the ordering is
+      --  significant (i.e. the more important criteria are applied first).
+
       --  If either unit is internal, then use Better_Choice, since the
       --  language requires that predefined units not mess up in the choice
       --  of elaboration order, and for internal units, any problems are
       --  ours and not the programmers.
 
-      if Units.Table (U1).Internal or else Units.Table (U2).Internal then
+      if UT1.Internal or else UT2.Internal then
          return Better_Choice (U1, U2);
 
       --  Prefer anything else to a waiting body (!)
 
-      elsif Waiting_Body (U1) and not Waiting_Body (U2) then
+      elsif Is_Waiting_Body (U1) and not Is_Waiting_Body (U2) then
          return False;
 
-      elsif Waiting_Body (U2) and not Waiting_Body (U1) then
+      elsif Is_Waiting_Body (U2) and not Is_Waiting_Body (U1) then
          return True;
 
       --  Prefer a spec to a body (!)
 
-      elsif Body_Unit (U1) and not Body_Unit (U2) then
+      elsif Is_Body_Unit (U1) and not Is_Body_Unit (U2) then
          return False;
 
-      elsif Body_Unit (U2) and not Body_Unit (U1) then
+      elsif Is_Body_Unit (U2) and not Is_Body_Unit (U1) then
          return True;
 
       --  If both are waiting bodies, then prefer the one whose spec is
@@ -1213,18 +1406,57 @@ package body Binde is
       --  to put the body of B last so that if there is an elaboration order
       --  problem, we will find it (that's what horrible order is about)
 
-      elsif Waiting_Body (U1) and then Waiting_Body (U2) then
+      elsif Is_Waiting_Body (U1) and then Is_Waiting_Body (U2) then
          return
            UNR.Table (Corresponding_Spec (U1)).Elab_Position <
            UNR.Table (Corresponding_Spec (U2)).Elab_Position;
-
-      --  Otherwise decide on the basis of alphabetical order. We do not try
-      --  to reverse the usual choice here, since it can cause cancelling
-      --  errors with the other inversions.
-
-      else
-         return Uname_Less (Units.Table (U1).Uname, Units.Table (U2).Uname);
       end if;
+
+      --  Remaining choice rules are disabled by Debug flag -do
+
+      if not Debug_Flag_O then
+
+         --  The following deal with the case of specs which have been marked
+         --  as Elaborate_Body_Desirable. In the normal case, we generally want
+         --  to delay the elaboration of these specs as long as possible, so
+         --  that bodies have better chance of being elaborated closer to the
+         --  specs. Worse_Choice as usual wants to do the opposite and
+         --  elaborate such specs as early as possible.
+
+         --  If we have two units, one of which is a spec for which this flag
+         --  is set, and the other is not, we normally prefer to delay the spec
+         --  for which the flag is set, and so Worse_Choice does the opposite.
+
+         if not UT1.Elaborate_Body_Desirable
+           and then UT2.Elaborate_Body_Desirable
+         then
+            return False;
+
+         elsif not UT2.Elaborate_Body_Desirable
+           and then UT1.Elaborate_Body_Desirable
+         then
+            return True;
+
+            --  If we have two specs that are both marked as Elaborate_Body
+            --  desirable, we normally prefer the one whose body is nearer to
+            --  being able to be elaborated, based on the Num_Pred count. This
+            --  helps to ensure bodies are as close to specs as possible. As
+            --  usual, Worse_Choice does the opposite.
+
+         elsif UT1.Elaborate_Body_Desirable
+           and then UT2.Elaborate_Body_Desirable
+         then
+            return UNR.Table (Corresponding_Body (U1)).Num_Pred >=
+              UNR.Table (Corresponding_Body (U2)).Num_Pred;
+         end if;
+      end if;
+
+      --  If we fall through, it means that no preference rule applies, so we
+      --  use alphabetical order to at least give a deterministic result. Since
+      --  Worse_Choice is in the business of stirring up the order, we will
+      --  use reverse alphabetical ordering.
+
+      return Uname_Less (UT2.Uname, UT1.Uname);
    end Worse_Choice;
 
    ------------------------
@@ -1233,11 +1465,12 @@ package body Binde is
 
    procedure Write_Dependencies is
    begin
-      Write_Eol;
-      Write_Str
-        ("                 ELABORATION ORDER DEPENDENCIES");
-      Write_Eol;
-      Write_Eol;
+      if not Zero_Formatting then
+         Write_Eol;
+         Write_Str ("                 ELABORATION ORDER DEPENDENCIES");
+         Write_Eol;
+         Write_Eol;
+      end if;
 
       Info_Prefix_Suppress := True;
 
@@ -1246,7 +1479,10 @@ package body Binde is
       end loop;
 
       Info_Prefix_Suppress := False;
-      Write_Eol;
+
+      if not Zero_Formatting then
+         Write_Eol;
+      end if;
    end Write_Dependencies;
 
    --------------------------
@@ -1263,12 +1499,12 @@ package body Binde is
       First_Name : Boolean := True;
 
    begin
-      if ST.Reason in Elab_All .. Elab_Desirable then
+      if ST.Reason in Elab_All .. Elab_All_Desirable then
          L := ST.Elab_All_Link;
          while L /= No_Elab_All_Link loop
             Nam := Elab_All_Entries.Table (L).Needed_By;
-            Error_Msg_Name_1 := Nam;
-            Error_Msg_Output ("        &", Info => True);
+            Error_Msg_Unit_1 := Nam;
+            Error_Msg_Output ("        $", Info => True);
 
             Get_Name_String (Nam);
 
@@ -1303,8 +1539,8 @@ package body Binde is
             L := Elab_All_Entries.Table (L).Next_Elab;
          end loop;
 
-         Error_Msg_Name_1 := After;
-         Error_Msg_Output ("        &", Info => True);
+         Error_Msg_Unit_1 := After;
+         Error_Msg_Output ("        $", Info => True);
       end if;
    end Write_Elab_All_Chain;
 

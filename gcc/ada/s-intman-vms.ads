@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --            S Y S T E M . I N T E R R U P T _ M A N A G E M E N T         --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---          Copyright (C) 1991-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1991-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -39,16 +39,6 @@
 
 --  PLEASE DO NOT add any with-clauses to this package
 
---  This is designed to work for both tasking and non-tasking systems, without
---  pulling in any of the tasking support.
-
---  PLEASE DO NOT remove the Elaborate_Body pragma from this package.
---  Elaboration of this package should happen early, as most other
-
---  Forcing immediate elaboration of the body also helps to enforce the design
---  assumption that this is a second-level package, just one level above
---  System.OS_Interface, with no cross-dependences.
-
 --  PLEASE DO NOT put any subprogram declarations with arguments of type
 --  Interrupt_ID into the visible part of this package.
 
@@ -58,12 +48,9 @@
 --  implemented as visible arrays rather than functions.)
 
 with System.OS_Interface;
---  used for Signal
---           sigset_t
 
 package System.Interrupt_Management is
-
-   pragma Elaborate_Body;
+   pragma Preelaborate;
 
    type Interrupt_Mask is limited private;
 
@@ -78,11 +65,9 @@ package System.Interrupt_Management is
    --  all systems, but is always reserved when it is defined. If we have the
    --  convention that ID zero is not used for any "real" signals, and SIGRARE
    --  = 0 when SIGRARE is not one of the locally supported signals, we can
-   --  write
-
+   --  write:
    --     Reserved (SIGRARE) := true;
-
-   --  Then the initialization code will be portable
+   --  Then the initialization code will be portable.
 
    Abort_Task_Interrupt : Interrupt_ID;
    --  The interrupt that is used to implement task abort, if an interrupt is
@@ -110,11 +95,10 @@ package System.Interrupt_Management is
    --  example, if interrupts are OS signals and signal masking is per-task,
    --  use of the sigwait operation requires the signal be masked in all tasks.
 
-   procedure Initialize_Interrupts;
-   --  On systems where there is no signal inheritance between tasks (e.g
-   --  VxWorks, GNU/LinuxThreads), this procedure is used to initialize
-   --  interrupts handling in each task. Otherwise this function should
-   --  only be called by initialize in this package body.
+   procedure Initialize;
+   --  Initialize the various variables defined in this package.
+   --  This procedure must be called before accessing any object from this
+   --  package and can be called multiple times.
 
 private
    use type System.OS_Interface.unsigned_long;

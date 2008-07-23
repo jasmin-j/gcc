@@ -1,12 +1,12 @@
 /* Definitions for SOM assembler support.
-   Copyright (C) 1999, 2001, 2002, 2003, 2004, 2005 Free Software Foundation,
+   Copyright (C) 1999, 2001, 2002, 2003, 2004, 2005, 2007 Free Software Foundation,
    Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* So we can conditionalize small amounts of code in pa.c or pa.md.  */
 #undef TARGET_SOM
@@ -33,15 +32,6 @@ Boston, MA 02111-1307, USA.  */
 /* gdb needs a null N_SO at the end of each file for scattered loading.  */
 
 #define DBX_OUTPUT_NULL_N_SO_AT_MAIN_SOURCE_FILE_END
-
-/* Select a format to encode pointers in exception handling data.  CODE
-   is 0 for data, 1 for code labels, 2 for function pointers.  GLOBAL is
-   true if the symbol may be affected by dynamic relocations.  Because
-   the HP assembler does auto alignment, it is necessary to use
-   DW_EH_PE_aligned instead of the default DW_EH_PE_absptr.  */
-
-#define ASM_PREFERRED_EH_DATA_FORMAT(CODE, GLOBAL) \
-  (TARGET_GAS ? DW_EH_PE_absptr : DW_EH_PE_aligned)
 
 /* HPUX has a program 'chatr' to list the dependencies of dynamically
    linked executables and shared libraries.  */
@@ -184,37 +174,13 @@ do {								\
 	   }} while (0)
 
 #define TARGET_ASM_FILE_START pa_som_file_start
-
-/* String to output before text.  */
-#define TEXT_SECTION_ASM_OP som_text_section_asm_op ()
+#define TARGET_ASM_INIT_SECTIONS pa_som_asm_init_sections
 
 /* String to output before writable data.  */
 #define DATA_SECTION_ASM_OP "\t.SPACE $PRIVATE$\n\t.SUBSPA $DATA$\n"
 
 /* String to output before uninitialized data.  */
 #define BSS_SECTION_ASM_OP "\t.SPACE $PRIVATE$\n\t.SUBSPA $BSS$\n"
-
-/* FIXME: HPUX ld generates incorrect GOT entries for "T" fixups
-   which reference data within the $TEXT$ space (for example constant
-   strings in the $LIT$ subspace).
-
-   The assemblers (GAS and HP as) both have problems with handling
-   the difference of two symbols which is the other correct way to
-   reference constant data during PIC code generation.
-
-   So, there's no way to reference constant data which is in the
-   $TEXT$ space during PIC generation.  Instead place all constant
-   data into the $PRIVATE$ subspace (this reduces sharing, but it
-   works correctly).  */
-#define READONLY_DATA_SECTION \
-  (flag_pic ? data_section : som_readonly_data_section)
-
-/* We must not have a reference to an external symbol defined in a
-   shared library in a readonly section, else the SOM linker will
-   complain.
-
-   So, we force exception information into the data section.  */
-#define TARGET_ASM_EXCEPTION_SECTION data_section
 
 /* This is how to output a command to make the user-level label
    named NAME defined for reference from other files.  We use
@@ -307,10 +273,6 @@ do {						\
    cannot be moved after installation using a symlink.  */
 #define ALWAYS_STRIP_DOTDOT 1
 
-/* Aggregates with a single float or double field should be passed and
-   returned in the general registers.  */
-#define MEMBER_TYPE_FORCES_BLK(FIELD, MODE) (MODE==SFmode || MODE==DFmode)
-
 /* If GAS supports weak, we can support weak when we have working linker
    support for secondary definitions and are generating code for GAS.  */
 #ifdef HAVE_GAS_WEAK
@@ -373,3 +335,7 @@ do {						\
 /* We can't handle weak aliases, and therefore can't support pragma weak.
    Suppress the use of pragma weak in gthr-dce.h and gthr-posix.h.  */
 #define GTHREAD_USE_WEAK 0
+
+/* Shared library suffix.  Collect2 strips the version string after
+   this suffix when generating constructor/destructor names.  */ 
+#define SHLIB_SUFFIX ".sl"

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
--- This specification is adapted from the Ada Reference Manual for use with --
+-- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT.  In accordance with the copyright of that document, you can freely --
 -- copy and modify this specification,  provided that if you redistribute a --
 -- modified version,  any changes that you have made are clearly indicated. --
@@ -16,7 +16,7 @@
 with System.Parameters;
 
 package Interfaces.C is
-pragma Pure (C);
+   pragma Pure;
 
    --  Declaration's based on C's <limits.h>
 
@@ -79,7 +79,7 @@ pragma Pure (C);
    type char_array is array (size_t range <>) of aliased char;
    for char_array'Component_Size use CHAR_BIT;
 
-   function Is_Nul_Terminated (Item : in char_array) return Boolean;
+   function Is_Nul_Terminated (Item : char_array) return Boolean;
 
    function To_C
      (Item       : String;

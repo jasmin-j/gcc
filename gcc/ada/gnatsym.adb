@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2003-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 2003-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -41,6 +40,9 @@
 --    - (optional) the policy to create the symbol file
 --    - (optional) the name of the reference symbol file
 --    - the names of one or more object files where the symbols are found
+
+with Ada.Exceptions; use Ada.Exceptions;
+with Ada.Text_IO;    use Ada.Text_IO;
 
 with GNAT.Command_Line; use GNAT.Command_Line;
 with GNAT.OS_Lib;       use GNAT.OS_Lib;
@@ -78,14 +80,14 @@ procedure Gnatsym is
    --  The name of the reference symbol file
 
    Version_String : String_Access := Empty;
-   --  The version of the library. Used on VMS.
+   --  The version of the library (used on VMS)
 
    package Object_Files is new Table.Table
      (Table_Component_Type => String_Access,
       Table_Index_Type     => Natural,
       Table_Low_Bound      => 0,
       Table_Initial        => 10,
-      Table_Increment      => 10,
+      Table_Increment      => 100,
       Table_Name           => "Gnatsymb.Object_Files");
    --  A table to store the object file names
 
@@ -125,7 +127,7 @@ procedure Gnatsym is
    procedure Parse_Cmd_Line is
    begin
       loop
-         case GNAT.Command_Line.Getopt ("c C q r: R s: v V:") is
+         case GNAT.Command_Line.Getopt ("c C D q r: R s: v V:") is
             when ASCII.NUL =>
                exit;
 
@@ -134,6 +136,9 @@ procedure Gnatsym is
 
             when 'C' =>
                Symbol_Policy := Controlled;
+
+            when 'D' =>
+               Symbol_Policy := Direct;
 
             when 'q' =>
                Quiet := True;
@@ -222,6 +227,56 @@ begin
       Usage;
       OS_Exit (1);
 
+   --  When symbol policy is direct, simply copy the reference symbol file to
+   --  the symbol file.
+
+   elsif Symbol_Policy = Direct then
+      declare
+         File_In  : Ada.Text_IO.File_Type;
+         File_Out : Ada.Text_IO.File_Type;
+         Line     : String (1 .. 1_000);
+         Last     : Natural;
+
+      begin
+         begin
+            Open (File_In, In_File, Reference_Symbol_File_Name.all);
+
+         exception
+            when X : others =>
+               if not Quiet then
+                  Put_Line
+                    ("could not open """ &
+                     Reference_Symbol_File_Name.all
+                     & """");
+                  Put_Line (Exception_Message (X));
+               end if;
+
+               OS_Exit (1);
+         end;
+
+         begin
+            Create (File_Out, Out_File, Symbol_File_Name.all);
+
+         exception
+            when X : others =>
+               if not Quiet then
+                  Put_Line
+                    ("could not create """ & Symbol_File_Name.all & """");
+                  Put_Line (Exception_Message (X));
+               end if;
+
+               OS_Exit (1);
+         end;
+
+         while not End_Of_File (File_In) loop
+            Get_Line (File_In, Line, Last);
+            Put_Line (File_Out, Line (1 .. Last));
+         end loop;
+
+         Close (File_In);
+         Close (File_Out);
+      end;
+
    else
       if Verbose then
          Write_Str ("Initializing symbol file """);
@@ -253,7 +308,7 @@ begin
             Write_Line ("""");
          end if;
 
-         Process (Object_Files.Table (Object_File).all, Success);
+         Processing.Process (Object_Files.Table (Object_File).all, Success);
       end loop;
 
       --  Finalize the object file

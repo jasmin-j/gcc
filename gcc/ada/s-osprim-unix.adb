@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                  S Y S T E M . O S _ P R I M I T I V E S                 --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---          Copyright (C) 1998-2003 Free Software Foundation, Inc.          --
+--          Copyright (C) 1998-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -48,7 +48,7 @@ package body System.OS_Primitives is
    pragma Convention (C, struct_timeval);
 
    procedure gettimeofday
-     (tv : access struct_timeval;
+     (tv : not null access struct_timeval;
       tz : Address := Null_Address);
    pragma Import (C, gettimeofday, "gettimeofday");
 
@@ -57,7 +57,7 @@ package body System.OS_Primitives is
       readfds,
       writefds,
       exceptfds : Address := Null_Address;
-      timeout   : access struct_timeval);
+      timeout   : not null access struct_timeval);
    pragma Import (C, C_select, "select");
 
    -----------
@@ -88,7 +88,8 @@ package body System.OS_Primitives is
    is
       Rel_Time   : Duration;
       Abs_Time   : Duration;
-      Check_Time : Duration := Clock;
+      Base_Time  : constant Duration := Clock;
+      Check_Time : Duration := Base_Time;
       timeval    : aliased struct_timeval;
 
    begin
@@ -114,11 +115,20 @@ package body System.OS_Primitives is
             C_select (timeout => timeval'Unchecked_Access);
             Check_Time := Clock;
 
-            exit when Abs_Time <= Check_Time;
+            exit when Abs_Time <= Check_Time or else Check_Time < Base_Time;
 
             Rel_Time := Abs_Time - Check_Time;
          end loop;
       end if;
    end Timed_Delay;
+
+   ----------------
+   -- Initialize --
+   ----------------
+
+   procedure Initialize is
+   begin
+      null;
+   end Initialize;
 
 end System.OS_Primitives;

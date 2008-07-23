@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2003-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 2003-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,8 +35,9 @@
 --  on non-VMS systems.
 
 with System.Parameters;
+
 package System.CRTL is
-pragma Preelaborate (CRTL);
+   pragma Preelaborate;
 
    subtype chars is System.Address;
    --  Pointer to null-terminated array of characters
@@ -56,14 +57,16 @@ pragma Preelaborate (CRTL);
 
    type size_t is mod 2 ** Standard'Address_Size;
 
+   type Filename_Encoding is (UTF8, ASCII_8bits);
+   for Filename_Encoding use (UTF8 => 0, ASCII_8bits => 1);
+   pragma Convention (C, Filename_Encoding);
+   --  Describes the filename's encoding
+
    function atoi (A : System.Address) return Integer;
    pragma Import (C, atoi, "atoi");
 
    procedure clearerr (stream : FILEs);
    pragma Import (C, clearerr, "clearerr");
-
-   function closedir (directory : DIRs) return Integer;
-   pragma Import (C, closedir, "closedir");
 
    function dup  (handle : int) return int;
    pragma Import (C, dup, "dup");
@@ -86,8 +89,11 @@ pragma Preelaborate (CRTL);
    function fgets (strng : chars; n : int; stream : FILEs) return chars;
    pragma Import (C, fgets, "fgets");
 
-   function fopen (filename : chars; Mode : chars) return FILEs;
-   pragma Import (C, fopen, "fopen");
+   function fopen
+     (filename : chars;
+      mode     : chars;
+      encoding : Filename_Encoding := UTF8) return FILEs;
+   pragma Import (C, fopen, "__gnat_fopen");
 
    function fputc (C : int; stream : FILEs) return int;
    pragma Import (C, fputc, "fputc");
@@ -101,9 +107,9 @@ pragma Preelaborate (CRTL);
    function freopen
      (filename : chars;
       mode     : chars;
-      stream   : FILEs)
-      return     FILEs;
-   pragma Import (C, freopen, "freopen");
+      stream   : FILEs;
+      encoding : Filename_Encoding := UTF8) return FILEs;
+   pragma Import (C, freopen, "__gnat_freopen");
 
    function fseek
      (stream : FILEs;
@@ -127,6 +133,11 @@ pragma Preelaborate (CRTL);
    function malloc (Size : size_t) return System.Address;
    pragma Import (C, malloc, "malloc");
 
+   function malloc32 (Size : size_t) return System.Address;
+   pragma Import (C, malloc32, "malloc");
+   --  An uncalled alias for malloc except on 64bit systems needing to
+   --  allocate 32bit memory.
+
    procedure memcpy (S1 : System.Address; S2 : System.Address; N : size_t);
    pragma Import (C, memcpy, "memcpy");
 
@@ -136,21 +147,21 @@ pragma Preelaborate (CRTL);
    procedure mktemp (template : chars);
    pragma Import (C, mktemp, "mktemp");
 
-   function opendir (file_name : String) return DIRs;
-   pragma Import (C, opendir, "opendir");
-
    function pclose (stream : System.Address) return int;
    pragma Import (C, pclose, "pclose");
 
    function popen (command, mode : System.Address) return System.Address;
    pragma Import (C, popen, "popen");
 
-   function read (fd : int; buffer : chars; nbytes : int) return int;
-   pragma Import (C, read, "read");
-
    function realloc
      (Ptr : System.Address; Size : size_t) return System.Address;
    pragma Import (C, realloc, "realloc");
+
+   function realloc32
+     (Ptr : System.Address; Size : size_t) return System.Address;
+   pragma Import (C, realloc32, "realloc");
+   --  An uncalled alias for realloc except on 64bit systems needing to
+   --  allocate 32bit memory.
 
    procedure rewind (stream : FILEs);
    pragma Import (C, rewind, "rewind");
@@ -178,6 +189,16 @@ pragma Preelaborate (CRTL);
    function unlink (filename : chars) return int;
    pragma Import (C, unlink, "unlink");
 
+   function open (filename : chars; oflag : int) return int;
+   pragma Import (C, open, "open");
+
+   function close (fd : int) return int;
+   pragma Import (C, close, "close");
+
+   function read (fd : int; buffer : chars; nbytes : int) return int;
+   pragma Import (C, read, "read");
+
    function write (fd : int; buffer : chars; nbytes : int) return int;
    pragma Import (C, write, "write");
+
 end System.CRTL;

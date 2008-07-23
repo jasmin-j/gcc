@@ -1,4 +1,7 @@
-// Copyright (C) 2003 Free Software Foundation, Inc.
+// { dg-require-fork "" }
+// { dg-require-mkfifo "" }
+
+// Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -13,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 27.8.1.4 Overridden virtual functions
@@ -24,6 +27,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fstream>
+#include <cstdlib>
 #include <testsuite_hooks.h>
 
 // libstdc++/9533
@@ -39,7 +43,7 @@ void test_01()
   signal(SIGPIPE, SIG_IGN);
   unlink(name);
   
-  if (0 != try_mkfifo(name, S_IRWXU))
+  if (0 != mkfifo(name, S_IRWXU))
     {
       VERIFY( false );
     }

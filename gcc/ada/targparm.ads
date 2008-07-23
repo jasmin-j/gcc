@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1999-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1999-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,16 +16,25 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
+--                                                                          --
+-- As a special exception,  if other files  instantiate  generics from this --
+-- unit, or you link  this unit with other files  to produce an executable, --
+-- this  unit  does not  by itself cause  the resulting  executable  to  be --
+-- covered  by the  GNU  General  Public  License.  This exception does not --
+-- however invalidate  any other reasons why  the executable file  might be --
+-- covered by the  GNU Public License.                                      --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This package obtains parameters from the target runtime version of
---  System, to indicate parameters relevant to the target environment.
+--  This package obtains parameters from the target runtime version of System,
+--  to indicate parameters relevant to the target environment.
+
+--  Is it right for this to be modified GPL???
 
 --  Conceptually, these parameters could be obtained using rtsfind, but
 --  we do not do this for four reasons:
@@ -63,13 +72,14 @@
 
 --     3. Identification information. This is an optional string constant
 --        that gives the name of the run-time library configuration. This
---        line may be ommitted for a version of system.ads to be used with
+--        line may be omitted for a version of system.ads to be used with
 --        the full Ada 95 run time.
 
---     4. Other characterisitics of package System. At the current time the
+--     4. Other characteristics of package System. At the current time the
 --        only item in this category is whether type Address is private.
 
 with Rident; use Rident;
+with Namet;  use Namet;
 with Types;  use Types;
 
 package Targparm is
@@ -122,7 +132,7 @@ package Targparm is
    --  then the flag Opt.Address_Is_Private is set True, otherwise this flag
    --  is set False.
 
-   Restrictions_On_Target : Restrictions_Info;
+   Restrictions_On_Target : Restrictions_Info := No_Restrictions;
    --  Records restrictions specified by system.ads. Only the Set and Value
    --  members are modified. The Violated and Count fields are never modified.
    --  Note that entries can be set either by a pragma Restrictions or by
@@ -154,6 +164,17 @@ package Targparm is
    --  The name should contain only letters A-Z, digits 1-9, spaces,
    --  and underscores.
 
+   --------------------------
+   -- Executable Extension --
+   --------------------------
+
+   Executable_Extension_On_Target : Name_Id := No_Name;
+   --  Executable extension on the target. This name is useful for setting
+   --  the executable extension in a dynamic way, e.g. depending on the
+   --  run time used, rather than using a configure-time macro as done by
+   --  Get_Target_Executable_Suffix. If not set (No_Name), instead use
+   --  System.OS_Lib.Get_Target_Executable_Suffix.
+
    -----------------------
    -- Target Parameters --
    -----------------------
@@ -161,32 +182,25 @@ package Targparm is
    --  The following parameters correspond to the variables defined in the
    --  private part of System (without the terminating _On_Target). Note
    --  that it is required that all parameters defined here be specified
-   --  in the target specific version of system.ads (there are no defaults).
+   --  in the target specific version of system.ads. Thus, to add a new
+   --  parameter, add it to all system*.ads files. (There is a defaulting
+   --  mechanism, but we don't normally take advantage of it, as explained
+   --  below.)
+
+   --  The default values here are used if no value is found in system.ads.
+   --  This should normally happen if the special version of system.ads used
+   --  by the compiler itself is in use or if the value is only relevant to
+   --  a particular target (e.g. OpenVMS, AAMP). The default values are
+   --  suitable for use in normal environments. This approach allows the
+   --  possibility of new versions of the compiler (possibly with new system
+   --  parameters added) being used to compile older versions of the compiler
+   --  sources, as well as avoiding duplicating values in all system-*.ads
+   --  files for flags that are used on a few platforms only.
 
    --  All these parameters should be regarded as read only by all clients
    --  of the package. The only way they get modified is by calling the
    --  Get_Target_Parameters routine which reads the values from a provided
    --  text buffer containing the source of the system package.
-
-   --  The default values here are used if no value is found in system.ads.
-   --  This should normally happen only if the special version of system.ads
-   --  used by the compiler itself is in use. The default values are suitable
-   --  for use by the compiler itself in normal environments. This approach
-   --  allows the possibility of new versions of the compiler (possibly with
-   --  new system parameters added) being used to compile older versions of
-   --  the compiler sources. This is not guaranteed to work, but often will
-   --  and by setting appropriate default values, we make it more likely that
-   --  this can succeed.
-
-   Compiler_System_Version : Boolean := True;
-   --  This is set False in all target dependent versions of System. In the
-   --  compiler default version, it is omitted entirely, meaning that the
-   --  above default value of True will be set. If the flag is False, then
-   --  the scanning circuits in the body of this package do an error check to
-   --  ensure that all parameters other than this one are specified and not
-   --  defaulted. If the parameter is set True, then this check is omitted,
-   --  and any parameters not present in system.ads are left set to their
-   --  default value as described above.
 
    ----------------------------
    -- Special Target Control --
@@ -201,6 +215,11 @@ package Targparm is
 
    OpenVMS_On_Target : Boolean := False;
    --  Set to True if target is OpenVMS
+
+   type Virtual_Machine_Kind is (No_VM, JVM_Target, CLI_Target);
+   VM_Target : Virtual_Machine_Kind := No_VM;
+   --  Kind of virtual machine targetted
+   --  Needs comments, don't depend on names ???
 
    -------------------------------
    -- Backend Arithmetic Checks --
@@ -239,7 +258,7 @@ package Targparm is
    --      The generation of the setjmp and longjmp calls is handled by
    --      the front end of the compiler (this includes gigi in the case
    --      of the standard GCC back end). It does not use any back end
-   --      suport (such as the GCC3 exception handling mechanism). When
+   --      support (such as the GCC3 exception handling mechanism). When
    --      this approach is used, the compiler generates special exception
    --      handlers for handling cleanups when an exception is raised.
 
@@ -278,50 +297,24 @@ package Targparm is
 
    --    Controlling the selection of methods
 
-   --      The Front-End Longjmp/Setjmp approach is always available in
-   --      all implementations. If it is not the default method, then it
-   --      may be explicitly specified by the use of -gnatL. Note however
-   --      that there is a requirement that all Ada units in a partition
-   --      be compiled with this overriding option if it is not the default.
-
-   --      On some, but not all, implementations of GNAT, one of the two
-   --      ZCX approaches (but not both) is implemented. If this is the
-   --      case, and ZCX is not the default mechanism, then ZCX handling
-   --      (front-end or back-end according to the implementation) may be
-   --      specified by use of the -gnatZ switch. Again, this switch must
-   --      be used to compile all Ada units in a partition. The use of
-   --      the -gnatZ switch will cause termination with a fatal error.
-
-   --      Finally the debug option -gnatdX can be used to force the
-   --      compiler to operate in front-end ZCX exception mode and force
-   --      the front end to generate exception tables. This is only useful
-   --      for debugging purposes for implementations which do not provide
-   --      the possibility of front-end ZCX mode. The resulting object file
-   --      is unusable, but this debug switch may still be useful (e.g. in
-   --      conjunction with -gnatG) for front-end debugging purposes.
+   --      On most implementations, back-end zero-cost exceptions are used.
+   --      Otherwise, Front-End Longjmp/Setjmp approach is used.
+   --      Note that there is a requirement that all Ada units in a partition
+   --      be compiled with the same exception model.
 
    --    Control of Available Methods and Defaults
 
-   --      The following switches specify which of the two ZCX methods
-   --      (if any) is available in an implementation, and which method
-   --      is the default method.
+   --      The following switches specify whether ZCX is available, and
+   --      whether it is enabled by default.
 
    ZCX_By_Default_On_Target : Boolean := False;
    --  Indicates if zero cost exceptions are active by default. If this
    --  variable is False, then the only possible exception method is the
    --  front-end setjmp/longjmp approach, and this is the default. If
-   --  this variable is True, then one of the following two flags must
-   --  be True, and represents the method to be used by default.
+   --  this variable is True, then GCC ZCX is used.
 
    GCC_ZCX_Support_On_Target  : Boolean := False;
-   --  Indicates that when ZCX is active, the mechanism to be used is the
-   --  back-end ZCX exception approach. If this variable is set to True,
-   --  then Front_End_ZCX_Support_On_Target must be False.
-
-   Front_End_ZCX_Support_On_Target : Boolean := False;
-   --  Indicates that when ZCX is active, the mechanism to be used is the
-   --  front-end ZCX exception approach. If this variable is set to True,
-   --  then GCC_ZCX_Support_On_Target must be False.
+   --  Indicates that the target supports GCC Exceptions
 
    ------------------------------------
    -- Run-Time Library Configuration --
@@ -366,9 +359,6 @@ package Targparm is
    --    The generation of global variables in the bind file is suppressed,
    --    with the exception of the priority of the environment task, which
    --    is needed by the Ravenscar run-time.
-   --
-   --    The generation of exception tables is suppressed for front end
-   --    ZCX exception handling (since we assume no exception handling).
    --
    --    The calls to __gnat_initialize and __gnat_finalize are omitted
    --
@@ -441,6 +431,16 @@ package Targparm is
    --  the source program may not contain explicit 64-bit shifts. In addition,
    --  the code generated for packed arrays will avoid the use of long shifts.
 
+   --------------------
+   -- Indirect Calls --
+   --------------------
+
+   Always_Compatible_Rep_On_Target : Boolean := True;
+   --  If True, the Can_Use_Internal_Rep flag (see Einfo) is set to False in
+   --  all cases. This corresponds to the traditional code generation
+   --  strategy. False allows the front end to choose a policy that partly or
+   --  entirely eliminates dynamically generated trampolines.
+
    -------------------------------
    -- Control of Stack Checking --
    -------------------------------
@@ -460,6 +460,18 @@ package Targparm is
    --      size for the environment task depends on the operating
    --      system and cannot be set in a system-independent way.
 
+   --   GCC Stack-limit Mechanism
+
+   --      This approach uses the GCC stack limits mechanism.
+   --      It relies on comparing the stack pointer with the
+   --      values of a global symbol. If the check fails, a
+   --      trap is explicitly generated. The advantage is
+   --      that the mechanism requires no memory protection,
+   --      but operating system and run-time support are
+   --      needed to manage the per-task values of the symbol.
+   --      This is the default method after probing where it
+   --      is available.
+
    --   GNAT Stack-limit Checking
 
    --      This method relies on comparing the stack pointer
@@ -468,13 +480,17 @@ package Targparm is
    --      that the method requires no extra system dependent
    --      runtime support and can be used on systems without
    --      memory protection as well, but at the cost of more
-   --      overhead for doing the check. This method is the
-   --      default on systems that lack complete support for
-   --      probing.
+   --      overhead for doing the check. This is the fallback
+   --      method if the above two are not supported.
 
    Stack_Check_Probes_On_Target : Boolean := False;
-   --  Indicates if stack check probes are used, as opposed to the standard
-   --  target independent comparison method.
+   --  Indicates if the GCC probing mechanism is used
+
+   Stack_Check_Limits_On_Target : Boolean := False;
+   --  Indicates if the GCC stack-limit mechanism is used
+
+   --  Both flags cannot be simultaneously set to True. If neither
+   --  is, the target independent fallback method is used.
 
    Stack_Check_Default_On_Target : Boolean := False;
    --  Indicates if stack checking is on by default
@@ -552,7 +568,7 @@ package Targparm is
    --  Set to True for targets where S'Machine_Overflows is True
 
    Signed_Zeros_On_Target : Boolean := True;
-   --  Set to False on targets that do not reliably support signed zeros.
+   --  Set to False on targets that do not reliably support signed zeros
 
    -------------------------------------------
    -- Boolean-Valued Fixed-Point Attributes --
@@ -563,46 +579,6 @@ package Targparm is
    --  and division for fixed-point types with a small value equal to
    --  2 ** (-(T'Object_Size - 1)) and whose values have an absolute
    --  value less than 1.0.
-
-   --------------------------------------------------------------
-   -- Handling of Unconstrained Values Returned from Functions --
-   --------------------------------------------------------------
-
-   --  Functions that return variable length objects, notably unconstrained
-   --  arrays are a special case, because there is no simple obvious way of
-   --  implementing this feature. Furthermore, this capability is not present
-   --  in C++ or C, so typically the system ABI does not handle this case.
-
-   --  GNAT uses two different approaches
-
-   --    The Secondary Stack
-
-   --      The secondary stack is a special storage pool that is used for
-   --      this purpose. The called function places the result on the
-   --      secondary stack, and the caller uses or copies the value from
-   --      the secondary stack, and pops the secondary stack after the
-   --      value is consumed. The secondary stack is outside the system
-   --      ABI, and the important point is that although generally it is
-   --      handled in a stack like manner corresponding to the subprogram
-   --      call structure, a return from a function does NOT pop the stack.
-
-   --    DSP (Depressed Stack Pointer)
-
-   --      Some targets permit the implementation of a function call/return
-   --      protocol in which the function does not pop the main stack pointer
-   --      on return, but rather returns with the stack pointer depressed.
-   --      This is not generally permitted by any ABI, but for at least some
-   --      targets, the implementation of alloca provides a model for this
-   --      approach. If return-with-DSP is implemented, then functions that
-   --      return variable length objects do it by returning with the stack
-   --      pointer depressed, and the returned object is a pointer to the
-   --      area within the stack frame of the called procedure that contains
-   --      the returned value. The caller must then pop the main stack when
-   --      this value is consumed.
-
-   Functions_Return_By_DSP_On_Target : Boolean := False;
-   --  Set to True if target permits functions to return with using the
-   --  DSP (depressed stack pointer) approach.
 
    -----------------
    -- Data Layout --

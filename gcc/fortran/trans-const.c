@@ -1,12 +1,13 @@
 /* Translation of constants
-   Copyright (C) 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008 Free Software
+   Foundation, Inc.
    Contributed by Paul Brook
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,9 +16,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* trans-const.c -- convert constant values */
 
@@ -28,16 +28,12 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 #include "ggc.h"
 #include "toplev.h"
 #include "real.h"
+#include "double-int.h"
 #include "gfortran.h"
 #include "trans.h"
 #include "trans-const.h"
 #include "trans-types.h"
-
-/* String constants.  */
-tree gfc_strconst_bounds;
-tree gfc_strconst_fault;
-tree gfc_strconst_wrong_return;
-tree gfc_strconst_current_filename;
+#include "target-memory.h"
 
 tree gfc_rank_cst[GFC_MAX_DIMENSIONS + 1];
 
@@ -71,6 +67,8 @@ gfc_build_const (tree type, tree intval)
   return val;
 }
 
+/* Build a string constant with C char type.  */
+
 tree
 gfc_build_string_const (int length, const char *s)
 {
@@ -86,13 +84,52 @@ gfc_build_string_const (int length, const char *s)
   return str;
 }
 
-/* Build a Fortran character constant from a zero-terminated string.  */
+
+/* Build a string constant with a type given by its kind; take care of
+   non-default character kinds.  */
 
 tree
-gfc_build_cstring_const (const char *s)
+gfc_build_wide_string_const (int kind, int length, const gfc_char_t *string)
 {
-  return gfc_build_string_const (strlen (s) + 1, s);
+  int i;
+  tree str, len;
+  size_t size;
+  char *s;
+
+  i = gfc_validate_kind (BT_CHARACTER, kind, false);
+  size = length * gfc_character_kinds[i].bit_size / 8;
+
+  s = XCNEWVAR (char, size);
+  gfc_encode_character (kind, length, string, (unsigned char *) s, size);
+
+  str = build_string (size, s);
+  gfc_free (s);
+
+  len = build_int_cst (NULL_TREE, length);
+  TREE_TYPE (str) =
+    build_array_type (gfc_get_char_type (kind),
+		      build_range_type (gfc_charlen_type_node,
+					integer_one_node, len));
+  return str;
 }
+
+
+/* Build a Fortran character constant from a zero-terminated string.
+   There a two version of this function, one that translates the string
+   and one that doesn't.  */
+tree
+gfc_build_cstring_const (const char *string)
+{
+  return gfc_build_string_const (strlen (string) + 1, string);
+}
+
+tree
+gfc_build_localized_cstring_const (const char *msgid)
+{
+  const char *localized = _(msgid);
+  return gfc_build_string_const (strlen (localized) + 1, localized);
+}
+
 
 /* Return a string constant with the given length.  Used for static
    initializers.  The constant will be padded or truncated to match 
@@ -101,13 +138,14 @@ gfc_build_cstring_const (const char *s)
 tree
 gfc_conv_string_init (tree length, gfc_expr * expr)
 {
-  char *s;
+  gfc_char_t *s;
   HOST_WIDE_INT len;
   int slen;
   tree str;
+  bool free_s = false;
 
   gcc_assert (expr->expr_type == EXPR_CONSTANT);
-  gcc_assert (expr->ts.type == BT_CHARACTER && expr->ts.kind == 1);
+  gcc_assert (expr->ts.type == BT_CHARACTER);
   gcc_assert (INTEGER_CST_P (length));
   gcc_assert (TREE_INT_CST_HIGH (length) == 0);
 
@@ -116,14 +154,18 @@ gfc_conv_string_init (tree length, gfc_expr * expr)
 
   if (len > slen)
     {
-      s = gfc_getmem (len);
-      memcpy (s, expr->value.character.string, slen);
-      memset (&s[slen], ' ', len - slen);
-      str = gfc_build_string_const (len, s);
-      gfc_free (s);
+      s = gfc_get_wide_string (len);
+      memcpy (s, expr->value.character.string, slen * sizeof (gfc_char_t));
+      gfc_wide_memset (&s[slen], ' ', len - slen);
+      free_s = true;
     }
   else
-    str = gfc_build_string_const (len, expr->value.character.string);
+    s = expr->value.character.string;
+
+  str = gfc_build_wide_string_const (expr->ts.kind, len, s);
+
+  if (free_s)
+    gfc_free (s);
 
   return str;
 }
@@ -141,6 +183,8 @@ gfc_conv_const_charlen (gfc_charlen * cl)
     {
       cl->backend_decl = gfc_conv_mpz_to_tree (cl->length->value.integer,
 					       cl->length->ts.kind);
+      cl->backend_decl = fold_convert (gfc_charlen_type_node,
+					cl->backend_decl);
     }
 }
 
@@ -151,137 +195,50 @@ gfc_init_constants (void)
 
   for (n = 0; n <= GFC_MAX_DIMENSIONS; n++)
     gfc_rank_cst[n] = build_int_cst (gfc_array_index_type, n);
-
-  gfc_strconst_bounds = gfc_build_cstring_const ("Array bound mismatch");
-
-  gfc_strconst_fault =
-    gfc_build_cstring_const ("Array reference out of bounds");
-
-  gfc_strconst_wrong_return =
-    gfc_build_cstring_const ("Incorrect function return value");
-
-  gfc_strconst_current_filename =
-    gfc_build_cstring_const (gfc_option.source);
 }
 
 /* Converts a GMP integer into a backend tree node.  */
+
 tree
 gfc_conv_mpz_to_tree (mpz_t i, int kind)
 {
-  HOST_WIDE_INT high;
-  unsigned HOST_WIDE_INT low;
-
-  if (mpz_fits_slong_p (i))
-    {
-      /* Note that HOST_WIDE_INT is never smaller than long.  */
-      low = mpz_get_si (i);
-      high = mpz_sgn (i) < 0 ? -1 : 0;
-    }
-  else
-    {
-      unsigned HOST_WIDE_INT words[2];
-      size_t count;
-
-      /* Since we know that the value is not zero (mpz_fits_slong_p),
-	 we know that at least one word will be written, but we don't know
-	 about the second.  It's quicker to zero the second word before
-	 than conditionally clear it later.  */
-      words[1] = 0;
-
-      /* Extract the absolute value into words.  */
-      mpz_export (words, &count, -1, sizeof (HOST_WIDE_INT), 0, 0, i);
-
-      /* We assume that all numbers are in range for its type, and that
-	 we never create a type larger than 2*HWI, which is the largest
-	 that the middle-end can handle.  */
-      gcc_assert (count == 1 || count == 2);
-
-      low = words[0];
-      high = words[1];
-
-      /* Negate if necessary.  */
-      if (mpz_sgn (i) < 0)
-	{
-	  if (low == 0)
-	    high = -high;
-	  else
-	    low = -low, high = ~high;
-	}
-    }
-
-  return build_int_cst_wide (gfc_get_int_type (kind), low, high);
+  double_int val = mpz_get_double_int (gfc_get_int_type (kind), i, true);
+  return double_int_to_tree (gfc_get_int_type (kind), val);
 }
 
-/* Converts a real constant into backend form.  Uses an intermediate string
-   representation.  */
+/* Converts a backend tree into a GMP integer.  */
+
+void
+gfc_conv_tree_to_mpz (mpz_t i, tree source)
+{
+  double_int val = tree_to_double_int (source);
+  mpz_set_double_int (i, val, TYPE_UNSIGNED (TREE_TYPE (source)));
+}
+
+/* Converts a real constant into backend form.  */
 
 tree
 gfc_conv_mpfr_to_tree (mpfr_t f, int kind)
 {
-  tree res;
   tree type;
-  mp_exp_t exp;
-  char *p;
-  char *q;
   int n;
-  int edigits;
+  REAL_VALUE_TYPE real;
 
-  for (n = 0; gfc_real_kinds[n].kind != 0; n++)
-    {
-      if (gfc_real_kinds[n].kind == kind)
-	break;
-    }
-  gcc_assert (gfc_real_kinds[n].kind);
-
-  n = MAX (abs (gfc_real_kinds[n].min_exponent),
-	   abs (gfc_real_kinds[n].max_exponent));
-
-  edigits = 1;
-  while (n > 0)
-    {
-      n = n / 10;
-      edigits += 3;
-    }
-
-  if (kind == gfc_default_double_kind)
-    p = mpfr_get_str (NULL, &exp, 10, 17, f, GFC_RND_MODE);
-  else
-    p = mpfr_get_str (NULL, &exp, 10, 8, f, GFC_RND_MODE);
-
-
-  /* We also have one minus sign, "e", "." and a null terminator.  */
-  q = (char *) gfc_getmem (strlen (p) + edigits + 4);
-
-  if (p[0])
-    {
-      if (p[0] == '-')
-	{
-	  strcpy (&q[2], &p[1]);
-	  q[0] = '-';
-	  q[1] = '.';
-	}
-      else
-	{
-	  strcpy (&q[1], p);
-	  q[0] = '.';
-	}
-      strcat (q, "e");
-      sprintf (&q[strlen (q)], "%d", (int) exp);
-    }
-  else
-    {
-      strcpy (q, "0");
-    }
+  n = gfc_validate_kind (BT_REAL, kind, false);
+  gcc_assert (gfc_real_kinds[n].radix == 2);
 
   type = gfc_get_real_type (kind);
-  res = build_real (type, REAL_VALUE_ATOF (q, TYPE_MODE (type)));
-
-  gfc_free (q);
-  gfc_free (p);
-
-  return res;
+  real_from_mpfr (&real, f, type, GFC_RND_MODE);
+  return build_real (type, real);
 }
 
+/* Converts a backend tree into a real constant.  */
+
+void
+gfc_conv_tree_to_mpfr (mpfr_ptr f, tree source)
+{
+  mpfr_from_real (f, TREE_REAL_CST_PTR (source), GFC_RND_MODE);
+}
 
 /* Translate any literal constant to a tree.  Constants never have
    pre or post chains.  Character literal constants are special
@@ -295,34 +252,69 @@ gfc_conv_mpfr_to_tree (mpfr_t f, int kind)
 tree
 gfc_conv_constant_to_tree (gfc_expr * expr)
 {
+  tree res;
+
   gcc_assert (expr->expr_type == EXPR_CONSTANT);
 
+  /* If it is has a prescribed memory representation, we build a string
+     constant and VIEW_CONVERT to its type.  */
+ 
   switch (expr->ts.type)
     {
     case BT_INTEGER:
-      return gfc_conv_mpz_to_tree (expr->value.integer, expr->ts.kind);
+      if (expr->representation.string)
+	return fold_build1 (VIEW_CONVERT_EXPR,
+			    gfc_get_int_type (expr->ts.kind),
+			    gfc_build_string_const (expr->representation.length,
+						    expr->representation.string));
+      else
+	return gfc_conv_mpz_to_tree (expr->value.integer, expr->ts.kind);
 
     case BT_REAL:
-      return gfc_conv_mpfr_to_tree (expr->value.real, expr->ts.kind);
+      if (expr->representation.string)
+	return fold_build1 (VIEW_CONVERT_EXPR,
+			    gfc_get_real_type (expr->ts.kind),
+			    gfc_build_string_const (expr->representation.length,
+						    expr->representation.string));
+      else
+	return gfc_conv_mpfr_to_tree (expr->value.real, expr->ts.kind);
 
     case BT_LOGICAL:
-      return build_int_cst (gfc_get_logical_type (expr->ts.kind),
+      if (expr->representation.string)
+	return fold_build1 (VIEW_CONVERT_EXPR,
+			    gfc_get_logical_type (expr->ts.kind),
+			    gfc_build_string_const (expr->representation.length,
+						    expr->representation.string));
+      else
+	return build_int_cst (gfc_get_logical_type (expr->ts.kind),
 			    expr->value.logical);
 
     case BT_COMPLEX:
-      {
-	tree real = gfc_conv_mpfr_to_tree (expr->value.complex.r,
+      if (expr->representation.string)
+	return fold_build1 (VIEW_CONVERT_EXPR,
+			    gfc_get_complex_type (expr->ts.kind),
+			    gfc_build_string_const (expr->representation.length,
+						    expr->representation.string));
+      else
+	{
+	  tree real = gfc_conv_mpfr_to_tree (expr->value.complex.r,
 					  expr->ts.kind);
-	tree imag = gfc_conv_mpfr_to_tree (expr->value.complex.i,
+	  tree imag = gfc_conv_mpfr_to_tree (expr->value.complex.i,
 					  expr->ts.kind);
 
-	return build_complex (gfc_typenode_for_spec (&expr->ts),
-			      real, imag);
-      }
+	  return build_complex (gfc_typenode_for_spec (&expr->ts),
+				real, imag);
+	}
 
     case BT_CHARACTER:
-      return gfc_build_string_const (expr->value.character.length,
-				     expr->value.character.string);
+      res = gfc_build_wide_string_const (expr->ts.kind,
+					 expr->value.character.length,
+					 expr->value.character.string);
+      return res;
+
+    case BT_HOLLERITH:
+      return gfc_build_string_const (expr->representation.length,
+				     expr->representation.string);
 
     default:
       fatal_error ("gfc_conv_constant_to_tree(): invalid type: %s",
@@ -337,6 +329,20 @@ gfc_conv_constant_to_tree (gfc_expr * expr)
 void
 gfc_conv_constant (gfc_se * se, gfc_expr * expr)
 {
+  /* We may be receiving an expression for C_NULL_PTR or C_NULL_FUNPTR.  If
+     so, they expr_type will not yet be an EXPR_CONSTANT.  We need to make
+     it so here.  */
+  if (expr->ts.type == BT_DERIVED && expr->ts.derived
+      && expr->ts.derived->attr.is_iso_c)
+    {
+      if (expr->symtree->n.sym->intmod_sym_id == ISOCBINDING_NULL_PTR 
+          || expr->symtree->n.sym->intmod_sym_id == ISOCBINDING_NULL_FUNPTR)
+        {
+          /* Create a new EXPR_CONSTANT expression for our local uses.  */
+          expr = gfc_int_expr (0);
+        }
+    }
+
   gcc_assert (expr->expr_type == EXPR_CONSTANT);
 
   if (se->ss != NULL)

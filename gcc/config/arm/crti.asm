@@ -21,8 +21,8 @@
 # 
 # You should have received a copy of the GNU General Public License
 # along with this program; see the file COPYING.  If not, write to
-# the Free Software Foundation, 59 Temple Place - Suite 330,
-# Boston, MA 02111-1307, USA.
+# the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+# Boston, MA 02110-1301, USA.
 # 
 #    As a special exception, if you link this library with files
 #    compiled with GCC to produce an executable, this does not cause
@@ -30,6 +30,12 @@
 #    This exception does not however invalidate any other reasons why
 #    the executable file might be covered by the GNU General Public License.
 # 
+
+/* An executable stack is *not* required for these functions.  */
+#if defined(__ELF__) && defined(__linux__)
+.section .note.GNU-stack,"",%progbits
+.previous
+#endif
 
 # This file just make a stack frame for the contents of the .fini and
 # .init sections.  Users may put any desired instructions in those
@@ -58,8 +64,6 @@
 #endif
 .endm
 		
-	.file		"crti.asm"
-
 	.section	".init"
 	.align 2
 	.global	_init

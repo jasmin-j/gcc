@@ -1,13 +1,13 @@
 /* Data structures and function declarations for the SSA value propagation
    engine.
-   Copyright (C) 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007 Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef _TREE_SSA_PROPAGATE_H
 #define _TREE_SSA_PROPAGATE_H 1
@@ -73,6 +72,39 @@ struct prop_value_d {
 typedef struct prop_value_d prop_value_t;
 
 
+/* Type of value ranges.  See value_range_d for a description of these
+   types.  */
+enum value_range_type { VR_UNDEFINED, VR_RANGE, VR_ANTI_RANGE, VR_VARYING };
+
+/* Range of values that can be associated with an SSA_NAME after VRP
+   has executed.  */
+struct value_range_d
+{
+  /* Lattice value represented by this range.  */
+  enum value_range_type type;
+
+  /* Minimum and maximum values represented by this range.  These
+     values should be interpreted as follows:
+
+	- If TYPE is VR_UNDEFINED or VR_VARYING then MIN and MAX must
+	  be NULL.
+
+	- If TYPE == VR_RANGE then MIN holds the minimum value and
+	  MAX holds the maximum value of the range [MIN, MAX].
+
+	- If TYPE == ANTI_RANGE the variable is known to NOT
+	  take any values in the range [MIN, MAX].  */
+  tree min;
+  tree max;
+
+  /* Set of SSA names whose value ranges are equivalent to this one.
+     This set is only valid when TYPE is VR_RANGE or VR_ANTI_RANGE.  */
+  bitmap equiv;
+};
+
+typedef struct value_range_d value_range_t;
+
+
 /* Call-back functions used by the value propagation engine.  */
 typedef enum ssa_prop_result (*ssa_prop_visit_stmt_fn) (tree, edge *, tree *);
 typedef enum ssa_prop_result (*ssa_prop_visit_phi_fn) (tree);
@@ -81,12 +113,13 @@ typedef enum ssa_prop_result (*ssa_prop_visit_phi_fn) (tree);
 /* In tree-ssa-propagate.c  */
 void ssa_propagate (ssa_prop_visit_stmt_fn, ssa_prop_visit_phi_fn);
 tree get_rhs (tree);
+bool valid_gimple_expression_p (tree expr);
 bool set_rhs (tree *, tree);
 tree first_vdef (tree);
 bool stmt_makes_single_load (tree);
 bool stmt_makes_single_store (tree);
 prop_value_t *get_value_loaded_by (tree, prop_value_t *);
 bool replace_uses_in (tree, bool *, prop_value_t *);
-void substitute_and_fold (prop_value_t *);
+bool substitute_and_fold (prop_value_t *, bool);
 
 #endif /* _TREE_SSA_PROPAGATE_H  */

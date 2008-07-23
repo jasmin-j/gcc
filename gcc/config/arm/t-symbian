@@ -1,4 +1,4 @@
-LIB1ASMFUNCS = _bb_init_func _call_via_rX _interwork_call_via_rX
+LIB1ASMFUNCS = _bb_init_func _call_via_rX _interwork_call_via_rX _clzsi2 _clzdi2
 
 # These functions have __aeabi equivalents and will never be called by GCC.  
 # By putting them in LIB1ASMFUNCS, we avoid the standard libgcc2.c code being
@@ -11,6 +11,11 @@ LIB1ASMFUNCS += \
 	_negdf2 _addsubdf3 _muldivdf3 _cmpdf2 _unorddf2 _fixdfsi _fixunsdfsi \
 	_truncdfsf2 _negsf2 _addsubsf3 _muldivsf3 _cmpsf2 _unordsf2 \
 	_fixsfsi _fixunssfsi
+
+# Include the gcc personality routine
+UNWIND_H = $(srcdir)/config/arm/unwind-arm.h
+LIB2ADDEH = $(srcdir)/unwind-c.c $(srcdir)/config/arm/pr-support.c
+LIB2ADDEHDEP = $(UNWIND_H)
 
 # Create a multilib for processors with VFP floating-point, and a
 # multilib for those without -- using the soft-float ABI in both

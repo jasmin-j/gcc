@@ -1,6 +1,7 @@
 // Allocators -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2003, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -51,8 +52,8 @@
 // Define the base class to std::allocator.
 #include <bits/c++allocator.h>
 
-namespace std
-{
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
   template<typename _Tp>
     class allocator;
 
@@ -76,10 +77,10 @@ namespace std
    * @brief  The "standard" allocator, as per [20.4].
    *
    *  Further details:
-   *  http://gcc.gnu.org/onlinedocs/libstdc++/20_util/allocator.html
+   *  http://gcc.gnu.org/onlinedocs/libstdc++/manual/bk01pt04ch11.html
    */
   template<typename _Tp>
-    class allocator: public ___glibcxx_base_allocator<_Tp>
+    class allocator: public __glibcxx_base_allocator<_Tp>
     {
    public:
       typedef size_t     size_type;
@@ -97,7 +98,7 @@ namespace std
       allocator() throw() { }
 
       allocator(const allocator& __a) throw()
-      : ___glibcxx_base_allocator<_Tp>(__a) { }
+      : __glibcxx_base_allocator<_Tp>(__a) { }
 
       template<typename _Tp1>
         allocator(const allocator<_Tp1>&) throw() { }
@@ -112,9 +113,19 @@ namespace std
     operator==(const allocator<_T1>&, const allocator<_T2>&)
     { return true; }
 
+  template<typename _Tp>
+    inline bool
+    operator==(const allocator<_Tp>&, const allocator<_Tp>&)
+    { return true; }
+
   template<typename _T1, typename _T2>
     inline bool
     operator!=(const allocator<_T1>&, const allocator<_T2>&)
+    { return false; }
+
+  template<typename _Tp>
+    inline bool
+    operator!=(const allocator<_Tp>&, const allocator<_Tp>&)
     { return false; }
 
   // Inhibit implicit instantiations for required instantiations,
@@ -126,7 +137,42 @@ namespace std
 #endif
 
   // Undefine.
-#undef ___glibcxx_base_allocator
-} // namespace std
+#undef __glibcxx_base_allocator
+
+  // To implement Option 3 of DR 431.
+  template<typename _Alloc, bool = __is_empty(_Alloc)>
+    struct __alloc_swap
+    { static void _S_do_it(_Alloc&, _Alloc&) { } };
+
+  template<typename _Alloc>
+    struct __alloc_swap<_Alloc, false>
+    {
+      static void
+      _S_do_it(_Alloc& __one, _Alloc& __two)
+      {
+	// Precondition: swappable allocators.
+	if (__one != __two)
+	  swap(__one, __two);
+      }
+    };
+
+  // Optimize for stateless allocators.
+  template<typename _Alloc, bool = __is_empty(_Alloc)>
+    struct __alloc_neq
+    {
+      static bool
+      _S_do_it(const _Alloc&, const _Alloc&)
+      { return false; }
+    };
+
+  template<typename _Alloc>
+    struct __alloc_neq<_Alloc, false>
+    {
+      static bool
+      _S_do_it(const _Alloc& __one, const _Alloc& __two)
+      { return __one != __two; }
+    };
+
+_GLIBCXX_END_NAMESPACE
 
 #endif

@@ -1,6 +1,6 @@
 /* Definitions of target machine for GCC, for SPARC running Solaris 2
-   Copyright 1992, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright 1992, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2004, 2005,
+   2006, 2007 Free Software Foundation, Inc.
    Contributed by Ron Guilmette (rfg@netcom.com).
    Additional changes by David V. Henkel-Wallace (gumby@cygnus.com).
 
@@ -8,7 +8,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -17,9 +17,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* Supposedly the same as vanilla sparc svr4, except for the stuff below: */
 
@@ -41,11 +40,23 @@ Boston, MA 02111-1307, USA.  */
 #define ASM_CPU_DEFAULT_SPEC "-xarch=v8plusb"
 #endif
 
+#if TARGET_CPU_DEFAULT == TARGET_CPU_niagara
+#undef ASM_CPU_DEFAULT_SPEC
+#define ASM_CPU_DEFAULT_SPEC "-xarch=v8plusb"
+#endif
+
+#if TARGET_CPU_DEFAULT == TARGET_CPU_niagara2
+#undef ASM_CPU_DEFAULT_SPEC
+#define ASM_CPU_DEFAULT_SPEC "-xarch=v8plusb"
+#endif
+
 #undef ASM_CPU_SPEC
 #define ASM_CPU_SPEC "\
 %{mcpu=v9:-xarch=v8plus} \
 %{mcpu=ultrasparc:-xarch=v8plusa} \
 %{mcpu=ultrasparc3:-xarch=v8plusb} \
+%{mcpu=niagara:-xarch=v8plusb} \
+%{mcpu=niagara2:-xarch=v8plusb} \
 %{!mcpu*:%(asm_cpu_default)} \
 "
 
@@ -72,7 +83,7 @@ Boston, MA 02111-1307, USA.  */
 
 #undef  ASM_GENERATE_INTERNAL_LABEL
 #define ASM_GENERATE_INTERNAL_LABEL(LABEL,PREFIX,NUM)	\
-  sprintf ((LABEL), "*.L%s%ld", (PREFIX), (long)(NUM))
+  sprintf ((LABEL), "*.L%s%lu", (PREFIX), (unsigned long)(NUM))
 
 /* The native TLS-enabled assembler requires the directive #tls_object
    to be put on objects in TLS sections (as of v7.1).  This is not
@@ -83,7 +94,7 @@ Boston, MA 02111-1307, USA.  */
     {								\
       HOST_WIDE_INT size;					\
 								\
-      if (DECL_THREAD_LOCAL (DECL))				\
+      if (targetm.have_tls && DECL_THREAD_LOCAL_P (DECL))	\
 	ASM_OUTPUT_TYPE_DIRECTIVE (FILE, NAME, "tls_object");	\
       else							\
 	ASM_OUTPUT_TYPE_DIRECTIVE (FILE, NAME, "object");	\
@@ -148,7 +159,8 @@ Boston, MA 02111-1307, USA.  */
 /* Solaris allows 64 bit out and global registers in 32 bit mode.
    sparc_override_options will disable V8+ if not generating V9 code.  */
 #undef TARGET_DEFAULT
-#define TARGET_DEFAULT (MASK_V8PLUS + MASK_FPU + MASK_LONG_DOUBLE_128)
+#define TARGET_DEFAULT (MASK_V8PLUS + MASK_APP_REGS + MASK_FPU \
+			+ MASK_LONG_DOUBLE_128)
 
 /* Solaris-specific #pragmas are implemented on top of attributes.  Hook in
    the bits from config/sol2.c.  */

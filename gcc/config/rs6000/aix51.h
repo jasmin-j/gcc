@@ -1,13 +1,13 @@
 /* Definitions of target machine for GNU compiler,
    for IBM RS/6000 POWER running AIX V5.
-   Copyright (C) 2001, 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2001, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
    Contributed by David Edelsohn (edelsohn@gnu.org).
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -16,19 +16,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the
-   Free Software Foundation, 59 Temple Place - Suite 330, Boston,
-   MA 02111-1307, USA.  */
-
-/* AIX V5 and above support 64-bit executables.  */
-#undef  SUBSUBTARGET_SWITCHES
-#define SUBSUBTARGET_SWITCHES					\
-  {"aix64", 		MASK_64BIT | MASK_POWERPC64 | MASK_POWERPC,	\
-   N_("Compile for 64-bit pointers") },					\
-  {"aix32",		- (MASK_64BIT | MASK_POWERPC64),		\
-   N_("Compile for 32-bit pointers") },					\
-  {"pe",		0,						\
-   N_("Support message passing with the Parallel Environment") },
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 /* Sometimes certain combinations of command options do not make sense
    on a particular target machine.  You can define a macro
@@ -45,12 +34,12 @@ do {									\
   if (TARGET_64BIT && (target_flags & NON_POWERPC_MASKS))		\
     {									\
       target_flags &= ~NON_POWERPC_MASKS;				\
-      warning ("-maix64 and POWER architecture are incompatible");	\
+      warning (0, "-maix64 and POWER architecture are incompatible");	\
     }									\
   if (TARGET_64BIT && ! TARGET_POWERPC64)				\
     {									\
       target_flags |= MASK_POWERPC64;					\
-      warning ("-maix64 requires PowerPC64 architecture remain enabled"); \
+      warning (0, "-maix64 requires PowerPC64 architecture remain enabled"); \
     }									\
   if (TARGET_POWERPC64 && ! TARGET_64BIT)				\
     {									\
@@ -129,6 +118,12 @@ do {									\
 #undef PROCESSOR_DEFAULT
 #define PROCESSOR_DEFAULT PROCESSOR_PPC604e
 
+/* AIX does not support Altivec.  */
+#undef  TARGET_ALTIVEC
+#define TARGET_ALTIVEC 0
+#undef  TARGET_ALTIVEC_ABI
+#define TARGET_ALTIVEC_ABI 0
+
 /* Define this macro as a C expression for the initializer of an
    array of string to tell the driver program which options are
    defaults for this target and thus do not need to be handled
@@ -188,7 +183,5 @@ do {									\
 #undef LD_INIT_SWITCH
 #define LD_INIT_SWITCH "-binitfini"
 
-/* AIX 5.1 has the float and long double forms of math functions.  */
-#undef TARGET_C99_FUNCTIONS
-#define TARGET_C99_FUNCTIONS  1
-
+/* This target uses the aix64.opt file.  */
+#define TARGET_USES_AIX64_OPT 1

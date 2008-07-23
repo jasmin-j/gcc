@@ -1,13 +1,13 @@
 /* Definitions of target machine for GNU compiler,
    for IBM RS/6000 POWER running AIX.
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
    Free Software Foundation, Inc.
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -16,9 +16,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the
-   Free Software Foundation, 59 Temple Place - Suite 330, Boston,
-   MA 02111-1307, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 /* Yes!  We are AIX!  */
 #define DEFAULT_ABI ABI_AIX
@@ -33,13 +32,12 @@
 /* AIX allows r13 to be used in 32-bit mode.  */
 #define FIXED_R13 0
 
-/* AIX does not support Altivec.  */
-#undef  TARGET_ALTIVEC
-#define TARGET_ALTIVEC 0
-#undef  TARGET_ALTIVEC_ABI
-#define TARGET_ALTIVEC_ABI 0
-#undef  TARGET_ALTIVEC_VRSAVE
-#define TARGET_ALTIVEC_VRSAVE 0
+/* 32-bit and 64-bit AIX stack boundary is 128.  */
+#undef  STACK_BOUNDARY
+#define STACK_BOUNDARY 128
+
+#undef  TARGET_IEEEQUAD
+#define TARGET_IEEEQUAD 0
 
 /* The AIX linker will discard static constructors in object files before
    collect has a chance to see them, so scan the object files directly.  */
@@ -106,6 +104,8 @@
 #define CPP_SPEC "%{posix: -D_POSIX_SOURCE}\
    %{ansi: -D_ANSI_C_SOURCE}"
 
+#define CC1_SPEC "%(cc1_cpu)"
+
 #undef ASM_DEFAULT_SPEC
 #define ASM_DEFAULT_SPEC ""
 
@@ -120,14 +120,14 @@
 /* #define ASM_SPEC "-u %(asm_cpu)" */
 
 /* Default location of syscalls.exp under AIX */
-#ifndef CROSS_COMPILE
+#ifndef CROSS_DIRECTORY_STRUCTURE
 #define LINK_SYSCALLS_SPEC "-bI:/lib/syscalls.exp"
 #else
 #define LINK_SYSCALLS_SPEC ""
 #endif
 
 /* Default location of libg.exp under AIX */
-#ifndef CROSS_COMPILE
+#ifndef CROSS_DIRECTORY_STRUCTURE
 #define LINK_LIBG_SPEC "-bexport:/usr/lib/libg.exp"
 #else
 #define LINK_LIBG_SPEC ""
@@ -158,20 +158,19 @@
 /* This now supports a natural alignment mode.  */
 /* AIX word-aligns FP doubles but doubleword-aligns 64-bit ints.  */
 #define ADJUST_FIELD_ALIGN(FIELD, COMPUTED) \
-  (TARGET_ALIGN_NATURAL ? (COMPUTED) : \
-  (TYPE_MODE (TREE_CODE (TREE_TYPE (FIELD)) == ARRAY_TYPE \
-	      ? get_inner_array_type (FIELD) \
-	      : TREE_TYPE (FIELD)) == DFmode \
-   ? MIN ((COMPUTED), 32) : (COMPUTED)))
+  ((TARGET_ALIGN_NATURAL == 0						\
+    && TYPE_MODE (strip_array_types (TREE_TYPE (FIELD))) == DFmode)	\
+   ? MIN ((COMPUTED), 32)						\
+   : (COMPUTED))
 
 /* AIX increases natural record alignment to doubleword if the first
    field is an FP double while the FP fields remain word aligned.  */
-#define ROUND_TYPE_ALIGN(STRUCT, COMPUTED, SPECIFIED)				\
-  ((TREE_CODE (STRUCT) == RECORD_TYPE						\
-    || TREE_CODE (STRUCT) == UNION_TYPE						\
-    || TREE_CODE (STRUCT) == QUAL_UNION_TYPE)					\
-   && TARGET_ALIGN_NATURAL == 0							\
-   ? rs6000_special_round_type_align (STRUCT, COMPUTED, SPECIFIED)		\
+#define ROUND_TYPE_ALIGN(STRUCT, COMPUTED, SPECIFIED)			\
+  ((TREE_CODE (STRUCT) == RECORD_TYPE					\
+    || TREE_CODE (STRUCT) == UNION_TYPE					\
+    || TREE_CODE (STRUCT) == QUAL_UNION_TYPE)				\
+   && TARGET_ALIGN_NATURAL == 0						\
+   ? rs6000_special_round_type_align (STRUCT, COMPUTED, SPECIFIED)	\
    : MAX ((COMPUTED), (SPECIFIED)))
 
 /* The AIX ABI isn't explicit on whether aggregates smaller than a
@@ -194,19 +193,6 @@
 
 #define JUMP_TABLES_IN_TEXT_SECTION 1
 
-/* Enable AIX XL compiler calling convention breakage compatibility.  */
-#undef TARGET_XL_COMPAT
-#define MASK_XL_COMPAT		0x40000000
-#define	TARGET_XL_COMPAT	(target_flags & MASK_XL_COMPAT)
-#undef  SUBTARGET_SWITCHES
-#define SUBTARGET_SWITCHES		\
-  {"xl-compat", 	MASK_XL_COMPAT,					\
-   N_("Conform more closely to IBM XLC semantics") },		\
-  {"no-xl-compat",	- MASK_XL_COMPAT,					\
-   N_("Default GCC semantics that differ from IBM XLC") },	\
-  SUBSUBTARGET_SWITCHES
-#define SUBSUBTARGET_SWITCHES 
-
 /* Define any extra SPECS that the compiler needs to generate.  */
 #undef  SUBTARGET_EXTRA_SPECS
 #define SUBTARGET_EXTRA_SPECS						\
@@ -215,6 +201,8 @@
 
 /* Define cutoff for using external functions to save floating point.  */
 #define FP_SAVE_INLINE(FIRST_REG) ((FIRST_REG) == 62 || (FIRST_REG) == 63)
+/* And similarly for general purpose registers.  */
+#define GP_SAVE_INLINE(FIRST_REG) ((FIRST_REG) < 32)
 
 /* __throw will restore its own return address to be the same as the
    return address of the function that the throw is being made to.
@@ -229,6 +217,8 @@
    code that does the save/restore is generated by the linker, so
    we have no good way to determine at compile time what to do.  */
 
+#define R_LR 65
+
 #ifdef __64BIT__
 #define MD_FROB_UPDATE_CONTEXT(CTX, FS)					\
   do {									\
@@ -236,7 +226,7 @@
       {									\
 	unsigned int *insn						\
 	  = (unsigned int *)						\
-	    _Unwind_GetGR ((CTX), LINK_REGISTER_REGNUM);		\
+	    _Unwind_GetGR ((CTX), R_LR);				\
 	if (*insn == 0xE8410028)					\
 	  _Unwind_SetGRPtr ((CTX), 2, (CTX)->cfa + 40);			\
       }									\
@@ -248,7 +238,7 @@
       {									\
 	unsigned int *insn						\
 	  = (unsigned int *)						\
-	    _Unwind_GetGR ((CTX), LINK_REGISTER_REGNUM);		\
+	    _Unwind_GetGR ((CTX), R_LR);				\
 	if (*insn == 0x80410014)					\
 	  _Unwind_SetGRPtr ((CTX), 2, (CTX)->cfa + 20);			\
       }									\

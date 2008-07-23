@@ -1,12 +1,12 @@
 /* Handle the constant pool of the Java(TM) Virtual Machine.
-   Copyright (C) 1997, 1998, 1999, 2000, 2001, 2003, 2004
-   Free Software Foundation, Inc.
+   Copyright (C) 1997, 1998, 1999, 2000, 2001, 2003, 2004, 2005, 2006,
+   2007, 2008  Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -14,9 +14,8 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA. 
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>. 
 
 Java and all Java-based marks are trademarks or registered trademarks
 of Sun Microsystems, Inc. in the United States and other countries.
@@ -34,11 +33,8 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 
 static void set_constant_entry (CPool *, int, int, jword);
 static int find_tree_constant (CPool *, int, tree);
-static int find_class_or_string_constant (CPool *, int, tree);
 static int find_name_and_type_constant (CPool *, tree, tree);
 static tree get_tag_node (int);
-static tree build_constant_data_ref (void);
-static CPool *cpool_for_class (tree);
 
 /* Set the INDEX'th constant in CPOOL to have the given TAG and VALUE. */
 
@@ -48,9 +44,8 @@ set_constant_entry (CPool *cpool, int index, int tag, jword value)
   if (cpool->data == NULL)
     {
       cpool->capacity = 100;
-      cpool->tags = ggc_alloc_cleared (sizeof(uint8) * cpool->capacity);
-      cpool->data = ggc_alloc_cleared (sizeof(union cpool_entry)
-				       * cpool->capacity);
+      cpool->tags = GGC_CNEWVEC (uint8, cpool->capacity);
+      cpool->data = GGC_CNEWVEC (union cpool_entry, cpool->capacity);
       cpool->count = 1;
     }
   if (index >= cpool->capacity)
@@ -59,10 +54,9 @@ set_constant_entry (CPool *cpool, int index, int tag, jword value)
       cpool->capacity *= 2;
       if (index >= cpool->capacity)
 	cpool->capacity = index + 10;
-      cpool->tags = ggc_realloc (cpool->tags, 
-				 sizeof(uint8) * cpool->capacity);
-      cpool->data = ggc_realloc (cpool->data,
-				 sizeof(union cpool_entry) * cpool->capacity);
+      cpool->tags = GGC_RESIZEVEC (uint8, cpool->tags, cpool->capacity);
+      cpool->data = GGC_RESIZEVEC (union cpool_entry, cpool->data,
+				   cpool->capacity);
 
       /* Make sure GC never sees uninitialized tag values.  */
       memset (cpool->tags + old_cap, 0, cpool->capacity - old_cap);
@@ -134,7 +128,7 @@ find_utf8_constant (CPool *cpool, tree name)
   return find_tree_constant (cpool, CONSTANT_Utf8, name);
 }
 
-static int
+int
 find_class_or_string_constant (CPool *cpool, int tag, tree name)
 {
   jword j = find_utf8_constant (cpool, name);
@@ -313,8 +307,7 @@ write_constant_pool (CPool *cpool, unsigned char *buffer, int length)
 	}
     }
 
-  if (ptr != buffer + length)
-    abort ();
+  gcc_assert (ptr == buffer + length);
 }
 
 static GTY(()) tree tag_nodes[13];
@@ -323,6 +316,9 @@ get_tag_node (int tag)
 {
   /* A Cache for build_int_cst (CONSTANT_XXX, 0). */
 
+  if (tag >= 13)
+    return build_int_cst (NULL_TREE, tag);
+
   if (tag_nodes[tag] == NULL_TREE)
     tag_nodes[tag] = build_int_cst (NULL_TREE, tag);
   return tag_nodes[tag];
@@ -330,15 +326,15 @@ get_tag_node (int tag)
 
 /* Given a class, return its constant pool, creating one if necessary.  */
 
-static CPool *
-cpool_for_class (tree class)
+CPool *
+cpool_for_class (tree klass)
 {
-  CPool *cpool = TYPE_CPOOL (class);
+  CPool *cpool = TYPE_CPOOL (klass);
 
   if (cpool == NULL)
     {
-      cpool = ggc_alloc_cleared (sizeof (struct CPool));
-      TYPE_CPOOL (class) = cpool;
+      cpool = GGC_CNEW (struct CPool);
+      TYPE_CPOOL (klass) = cpool;
     }
   return cpool;
 }
@@ -354,6 +350,41 @@ alloc_name_constant (int tag, tree name)
 {
   CPool *outgoing_cpool = cpool_for_class (output_class);
   return find_tree_constant (outgoing_cpool, tag, name);
+}
+
+/* Create a constant pool entry for a name_and_type.  This one has '.'
+   rather than '/' because it isn't going into a class file, it's
+   going into a compiled object.  We don't use the '/' separator in
+   compiled objects.  */
+
+static int
+find_name_and_type_constant_tree (CPool *cpool, tree name, tree type)
+{
+  int name_index = find_utf8_constant (cpool, name);
+  int type_index 
+    = find_utf8_constant (cpool, 
+			  identifier_subst (build_java_signature (type), 
+					    "", '/', '.', ""));
+  return find_constant1 (cpool, CONSTANT_NameAndType,
+			 (name_index << 16) | type_index);
+}
+
+/* Look for a field ref that matches DECL in the constant pool of
+   KLASS.  
+   Return the index of the entry.  */
+
+int
+alloc_constant_fieldref (tree klass, tree decl)
+{
+  CPool *outgoing_cpool = cpool_for_class (klass);
+  int class_index 
+    = find_tree_constant (outgoing_cpool, CONSTANT_Class, 
+			  DECL_NAME (TYPE_NAME (DECL_CONTEXT (decl))));
+  int name_type_index
+    = find_name_and_type_constant_tree (outgoing_cpool, DECL_NAME (decl), 
+					TREE_TYPE (decl));
+  return find_constant1 (outgoing_cpool, CONSTANT_Fieldref,
+			 (class_index << 16) | name_type_index);
 }
 
 /* Build an identifier for the internal name of reference type TYPE. */
@@ -389,14 +420,35 @@ alloc_class_constant (tree clas)
 
 /* Return the decl of the data array of the current constant pool. */
 
-static tree
-build_constant_data_ref (void)
+tree
+build_constant_data_ref (bool indirect)
 {
-  tree decl = TYPE_CPOOL_DATA_REF (output_class);
-
-  if (decl == NULL_TREE)
+  if (indirect)
     {
-      tree type;
+      tree d;
+      tree cpool_type = build_array_type (ptr_type_node, NULL_TREE);
+      tree decl = build_class_ref (output_class);
+      tree klass = build1 (INDIRECT_REF, TREE_TYPE (TREE_TYPE (decl)),
+			   decl);
+      tree constants = build3 (COMPONENT_REF, 
+			       TREE_TYPE (constants_field_decl_node), klass,
+			       constants_field_decl_node,
+			       NULL_TREE);
+      tree data = build3 (COMPONENT_REF, 
+			  TREE_TYPE (constants_data_field_decl_node), 
+			  constants,
+			  constants_data_field_decl_node,
+			  NULL_TREE);
+
+      TREE_THIS_NOTRAP (klass) = 1;
+      data = fold_convert (build_pointer_type (cpool_type), data);
+      d = build1 (INDIRECT_REF, cpool_type, data);
+
+      return d;
+    }
+  else
+    {
+      tree type, decl;
       tree decl_name = mangled_classname ("_CD_", output_class);
 
       /* Build a type with unspecified bounds.  The will make sure
@@ -411,11 +463,9 @@ build_constant_data_ref (void)
 
       decl = build_decl (VAR_DECL, decl_name, type);
       TREE_STATIC (decl) = 1;
-      make_decl_rtl (decl);
-      TYPE_CPOOL_DATA_REF (output_class) = decl;
-    }
 
-  return decl;
+      return decl;
+    }
 }
 
 /* Get the pointer value at the INDEX'th element of the constant pool. */
@@ -423,10 +473,16 @@ build_constant_data_ref (void)
 tree
 build_ref_from_constant_pool (int index)
 {
-  tree d = build_constant_data_ref ();
-  tree i = build_int_cst (NULL_TREE, index);
-  return build4 (ARRAY_REF, TREE_TYPE (TREE_TYPE (d)), d, i,
+  tree i;
+  tree d = TYPE_CPOOL_DATA_REF (output_class);
+
+  if (d == NULL_TREE)
+    d = build_constant_data_ref (flag_indirect_classes);
+
+  i = build_int_cst (NULL_TREE, index);
+  d = build4 (ARRAY_REF, TREE_TYPE (TREE_TYPE (d)), d, i,
 		 NULL_TREE, NULL_TREE);
+  return d;
 }
 
 /* Build an initializer for the constants field of the current constant pool.
@@ -441,15 +497,57 @@ build_constants_constructor (void)
   tree tags_list = NULL_TREE;
   tree data_list = NULL_TREE;
   int i;
+
   for (i = outgoing_cpool->count;  --i > 0; )
-    {
-      tags_list
-	= tree_cons (NULL_TREE, get_tag_node (outgoing_cpool->tags[i]),
-		     tags_list);
-      data_list
-	= tree_cons (NULL_TREE, build_utf8_ref (outgoing_cpool->data[i].t),
-		     data_list);
-    }
+    switch (outgoing_cpool->tags[i] & ~CONSTANT_LazyFlag)
+      {
+      case CONSTANT_None:  /* The second half of a Double or Long on a
+			      32-bit target.  */
+      case CONSTANT_Fieldref:
+      case CONSTANT_NameAndType:
+      case CONSTANT_Float:
+      case CONSTANT_Integer:
+      case CONSTANT_Double:
+      case CONSTANT_Long:
+      case CONSTANT_Methodref:
+      case CONSTANT_InterfaceMethodref:
+	{
+	  unsigned HOST_WIDE_INT temp = outgoing_cpool->data[i].w;
+
+	  /* Make sure that on a big-endian machine with 64-bit
+	     pointers this 32-bit jint appears in the first word.
+	     FIXME: This is a kludge.  The field we're initializing is
+	     not a scalar but a union, and that's how we should
+	     represent it in the compiler.  We should fix this.  */
+	  if (BYTES_BIG_ENDIAN && POINTER_SIZE > 32)
+	    temp <<= POINTER_SIZE - 32;
+
+	  tags_list
+	    = tree_cons (NULL_TREE, get_tag_node (outgoing_cpool->tags[i]),
+			 tags_list);
+	  data_list
+	    = tree_cons (NULL_TREE, 
+			 fold_convert (ptr_type_node, 
+				       (build_int_cst (NULL_TREE, temp))),
+			 data_list);
+	}
+	break;
+
+      case CONSTANT_Class:
+      case CONSTANT_String:
+      case CONSTANT_Unicode:
+      case CONSTANT_Utf8:
+	tags_list
+	  = tree_cons (NULL_TREE, get_tag_node (outgoing_cpool->tags[i]),
+		       tags_list);
+	data_list
+	  = tree_cons (NULL_TREE, build_utf8_ref (outgoing_cpool->data[i].t),
+		       data_list);
+	break;
+
+      default:
+	gcc_assert (false);
+      }
   if (outgoing_cpool->count > 0)
     {
       tree data_decl, tags_decl, tags_type;
@@ -460,10 +558,10 @@ build_constants_constructor (void)
       tags_list = tree_cons (NULL_TREE, get_tag_node (0), tags_list);
       data_list = tree_cons (NULL_TREE, null_pointer_node, data_list);
   
-      data_decl = build_constant_data_ref ();
-      TREE_TYPE (data_decl) = build_array_type (ptr_type_node, index_type), 
-      DECL_INITIAL (data_decl) = build_constructor (TREE_TYPE (data_decl),
-						    data_list);
+      data_decl = build_constant_data_ref (false);
+      TREE_TYPE (data_decl) = build_array_type (ptr_type_node, index_type);
+      DECL_INITIAL (data_decl) = build_constructor_from_list
+				  (TREE_TYPE (data_decl), data_list);
       DECL_SIZE (data_decl) = TYPE_SIZE (TREE_TYPE (data_decl));
       DECL_SIZE_UNIT (data_decl) = TYPE_SIZE_UNIT (TREE_TYPE (data_decl));
       rest_of_decl_compilation (data_decl, 1, 0);
@@ -474,7 +572,8 @@ build_constants_constructor (void)
 							   current_class),
 			      tags_type);
       TREE_STATIC (tags_decl) = 1;
-      DECL_INITIAL (tags_decl) = build_constructor (tags_type, tags_list);
+      DECL_INITIAL (tags_decl) = build_constructor_from_list
+				 (tags_type, tags_list);
       rest_of_decl_compilation (tags_decl, 1, 0);
       tags_value = build_address_of (tags_decl);
     }

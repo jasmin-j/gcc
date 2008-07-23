@@ -1,5 +1,5 @@
 /* Implementation of the TIME and TIME8 g77 intrinsics.
-   Copyright (C) 2005 Free Software Foundation, Inc.
+   Copyright (C) 2005, 2007 Free Software Foundation, Inc.
    Contributed by François-Xavier Coudert <coudert@clipper.ens.fr>
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -25,10 +25,9 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
 #include "libgfortran.h"
 
 #ifdef TIME_WITH_SYS_TIME
@@ -43,8 +42,6 @@ Boston, MA 02111-1307, USA.  */
 #    endif
 #  endif
 #endif
-
-#include "../io/io.h"
 
 
 /* INTEGER(KIND=4) FUNCTION TIME()  */

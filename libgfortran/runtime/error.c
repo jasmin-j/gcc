@@ -1,4 +1,4 @@
-/* Copyright (C) 2002-2003 Free Software Foundation, Inc.
+/* Copyright (C) 2002, 2003, 2005, 2006, 2007 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -24,18 +24,82 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with libgfortran; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-
-#include "config.h"
-#include <stdio.h>
-#include <stdarg.h>
-#include <string.h>
-#include <float.h>
 
 #include "libgfortran.h"
-#include "../io/io.h"
+#include <assert.h>
+#include <string.h>
+#include <errno.h>
+
+#ifdef HAVE_SIGNAL_H
+#include <signal.h>
+#endif
+
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+
+#ifdef HAVE_STDLIB_H
+#include <stdlib.h>
+#endif
+
+#ifdef HAVE_SYS_TIME_H
+#include <sys/time.h>
+#endif
+
+/* <sys/time.h> has to be included before <sys/resource.h> to work
+   around PR 30518; otherwise, MacOS 10.3.9 headers are just broken.  */
+#ifdef HAVE_SYS_RESOURCE_H
+#include <sys/resource.h>
+#endif
+
+
+#ifdef __MINGW32__
+#define HAVE_GETPID 1
+#include <process.h>
+#endif
+
+
+/* sys_exit()-- Terminate the program with an exit code.  */
+
+void
+sys_exit (int code)
+{
+  /* Show error backtrace if possible.  */
+  if (code != 0 && code != 4
+      && (options.backtrace == 1
+	  || (options.backtrace == -1 && compile_options.backtrace == 1)))
+    show_backtrace ();
+
+  /* Dump core if requested.  */
+  if (code != 0
+      && (options.dump_core == 1
+	 || (options.dump_core == -1 && compile_options.dump_core == 1)))
+    {
+#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
+      /* Warn if a core file cannot be produced because
+	 of core size limit.  */
+
+      struct rlimit core_limit;
+
+      if (getrlimit (RLIMIT_CORE, &core_limit) == 0 && core_limit.rlim_cur == 0)
+	st_printf ("** Warning: a core dump was requested, but the core size"
+		   "limit\n**          is currently zero.\n\n");
+#endif
+      
+      
+#if defined(HAVE_KILL) && defined(HAVE_GETPID) && defined(SIGQUIT)
+      kill (getpid (), SIGQUIT);
+#else
+      st_printf ("Core dump not possible, sorry.");
+#endif
+    }
+
+  exit (code);
+}
+
 
 /* Error conditions.  The tricky part here is printing a message when
  * it is the I/O subsystem that is severely wounded.  Our goal is to
@@ -52,35 +116,19 @@ Boston, MA 02111-1307, USA.  */
  * Other error returns are reserved for the STOP statement with a numeric code.
  */
 
-/* locus variables.  These are optionally set by a caller before a
- * library subroutine is called.  They are always cleared on exit so
- * that files that report loci and those that do not can be linked
- * together without reporting an erroneous position. */
+/* gfc_itoa()-- Integer to decimal conversion. */
 
-char *filename = 0;
-iexport_data(filename);
-
-unsigned line = 0;
-iexport_data(line);
-
-static char buffer[32];		/* buffer for integer/ascii conversions */
-
-
-/* Returns a pointer to a static buffer. */
-
-char *
-gfc_itoa (int64_t n)
+const char *
+gfc_itoa (GFC_INTEGER_LARGEST n, char *buffer, size_t len)
 {
   int negative;
   char *p;
-  uint64_t t;
+  GFC_UINTEGER_LARGEST t;
+
+  assert (len >= GFC_ITOA_BUF_SIZE);
 
   if (n == 0)
-    {
-      buffer[0] = '0';
-      buffer[1] = '\0';
-      return buffer;
-    }
+    return "0";
 
   negative = 0;
   t = n;
@@ -90,39 +138,36 @@ gfc_itoa (int64_t n)
       t = -n; /*must use unsigned to protect from overflow*/
     }
 
-  p = buffer + sizeof (buffer) - 1;
-  *p-- = '\0';
+  p = buffer + GFC_ITOA_BUF_SIZE - 1;
+  *p = '\0';
 
   while (t != 0)
     {
-      *p-- = '0' + (t % 10);
+      *--p = '0' + (t % 10);
       t /= 10;
     }
 
   if (negative)
-    *p-- = '-';
-  return ++p;
+    *--p = '-';
+  return p;
 }
 
 
-/* xtoa()-- Integer to hexadecimal conversion.  Returns a pointer to a
- * static buffer. */
+/* xtoa()-- Integer to hexadecimal conversion.  */
 
-char *
-xtoa (uint64_t n)
+const char *
+xtoa (GFC_UINTEGER_LARGEST n, char *buffer, size_t len)
 {
   int digit;
   char *p;
 
-  if (n == 0)
-    {
-      buffer[0] = '0';
-      buffer[1] = '\0';
-      return buffer;
-    }
+  assert (len >= GFC_XTOA_BUF_SIZE);
 
-  p = buffer + sizeof (buffer) - 1;
-  *p-- = '\0';
+  if (n == 0)
+    return "0";
+
+  p = buffer + GFC_XTOA_BUF_SIZE - 1;
+  *p = '\0';
 
   while (n != 0)
     {
@@ -130,173 +175,42 @@ xtoa (uint64_t n)
       if (digit > 9)
 	digit += 'A' - '0' - 10;
 
-      *p-- = '0' + digit;
+      *--p = '0' + digit;
       n >>= 4;
     }
 
-  return ++p;
+  return p;
 }
-
-
-/* st_printf()-- simple printf() function for streams that handles the
- * formats %d, %s and %c.  This function handles printing of error
- * messages that originate within the library itself, not from a user
- * program. */
-
-int
-st_printf (const char *format, ...)
-{
-  int count, total;
-  va_list arg;
-  char *p, *q;
-  stream *s;
-
-  total = 0;
-  s = init_error_stream ();
-  va_start (arg, format);
-
-  for (;;)
-    {
-      count = 0;
-
-      while (format[count] != '%' && format[count] != '\0')
-	count++;
-
-      if (count != 0)
-	{
-	  p = salloc_w (s, &count);
-	  memmove (p, format, count);
-	  sfree (s);
-	}
-
-      total += count;
-      format += count;
-      if (*format++ == '\0')
-	break;
-
-      switch (*format)
-	{
-	case 'c':
-	  count = 1;
-
-	  p = salloc_w (s, &count);
-	  *p = (char) va_arg (arg, int);
-
-	  sfree (s);
-	  break;
-
-	case 'd':
-	  q = gfc_itoa (va_arg (arg, int));
-	  count = strlen (q);
-
-	  p = salloc_w (s, &count);
-	  memmove (p, q, count);
-	  sfree (s);
-	  break;
-
-	case 'x':
-	  q = xtoa (va_arg (arg, unsigned));
-	  count = strlen (q);
-
-	  p = salloc_w (s, &count);
-	  memmove (p, q, count);
-	  sfree (s);
-	  break;
-
-	case 's':
-	  q = va_arg (arg, char *);
-	  count = strlen (q);
-
-	  p = salloc_w (s, &count);
-	  memmove (p, q, count);
-	  sfree (s);
-	  break;
-
-	case '\0':
-	  return total;
-
-	default:
-	  count = 2;
-	  p = salloc_w (s, &count);
-	  p[0] = format[-1];
-	  p[1] = format[0];
-	  sfree (s);
-	  break;
-	}
-
-      total += count;
-      format++;
-    }
-
-  va_end (arg);
-  return total;
-}
-
-
-/* st_sprintf()-- Simple sprintf() for formatting memory buffers. */
-
-void
-st_sprintf (char *buffer, const char *format, ...)
-{
-  va_list arg;
-  char c, *p;
-  int count;
-
-  va_start (arg, format);
-
-  for (;;)
-    {
-      c = *format++;
-      if (c != '%')
-	{
-	  *buffer++ = c;
-	  if (c == '\0')
-	    break;
-	  continue;
-	}
-
-      c = *format++;
-      switch (c)
-	{
-	case 'c':
-	  *buffer++ = (char) va_arg (arg, int);
-	  break;
-
-	case 'd':
-	  p = gfc_itoa (va_arg (arg, int));
-	  count = strlen (p);
-
-	  memcpy (buffer, p, count);
-	  buffer += count;
-	  break;
-
-	case 's':
-	  p = va_arg (arg, char *);
-	  count = strlen (p);
-
-	  memcpy (buffer, p, count);
-	  buffer += count;
-	  break;
-
-	default:
-	  *buffer++ = c;
-	}
-    }
-
-  va_end (arg);
-}
-
 
 /* show_locus()-- Print a line number and filename describing where
  * something went wrong */
 
 void
-show_locus (void)
+show_locus (st_parameter_common *cmp)
 {
-  if (!options.locus || filename == NULL)
-    return;
+  static char *filename;
 
-  st_printf ("At line %d of file %s\n", line, filename);
+  if (!options.locus || cmp == NULL || cmp->filename == NULL)
+    return;
+  
+  if (cmp->unit > 0)
+    {
+      filename = filename_from_unit (cmp->unit);
+      if (filename != NULL)
+	{
+	  st_printf ("At line %d of file %s (unit = %d, file = '%s')\n",
+		   (int) cmp->line, cmp->filename, cmp->unit, filename);
+	  free_mem (filename);
+	}
+      else
+	{
+	  st_printf ("At line %d of file %s (unit = %d)\n",
+		   (int) cmp->line, cmp->filename, cmp->unit);
+	}
+      return;
+    }
+
+  st_printf ("At line %d of file %s\n", (int) cmp->line, cmp->filename);
 }
 
 
@@ -327,35 +241,66 @@ void
 os_error (const char *message)
 {
   recursion_check ();
-  show_locus ();
   st_printf ("Operating system error: %s\n%s\n", get_oserror (), message);
   sys_exit (1);
 }
+iexport(os_error);
 
 
 /* void runtime_error()-- These are errors associated with an
  * invalid fortran program. */
 
 void
-runtime_error (const char *message)
+runtime_error (const char *message, ...)
 {
+  va_list ap;
+
   recursion_check ();
-  show_locus ();
-  st_printf ("Fortran runtime error: %s\n", message);
+  st_printf ("Fortran runtime error: ");
+  va_start (ap, message);
+  st_vprintf (message, ap);
+  va_end (ap);
+  st_printf ("\n");
   sys_exit (2);
 }
 iexport(runtime_error);
+
+/* void runtime_error_at()-- These are errors associated with a
+ * run time error generated by the front end compiler.  */
+
+void
+runtime_error_at (const char *where, const char *message, ...)
+{
+  va_list ap;
+
+  recursion_check ();
+  st_printf ("%s\n", where);
+  st_printf ("Fortran runtime error: ");
+  va_start (ap, message);
+  st_vprintf (message, ap);
+  va_end (ap);
+  st_printf ("\n");
+  sys_exit (2);
+}
+iexport(runtime_error_at);
 
 
 /* void internal_error()-- These are this-can't-happen errors
  * that indicate something deeply wrong. */
 
 void
-internal_error (const char *message)
+internal_error (st_parameter_common *cmp, const char *message)
 {
   recursion_check ();
-  show_locus ();
+  show_locus (cmp);
   st_printf ("Internal Error: %s\n", message);
+
+  /* This function call is here to get the main.o object file included
+     when linking statically. This works because error.o is supposed to
+     be always linked in (and the function call is in internal_error
+     because hopefully it doesn't happen too often).  */
+  stupid_function_name_for_static_linking();
+
   sys_exit (3);
 }
 
@@ -370,64 +315,84 @@ translate_error (int code)
 
   switch (code)
     {
-    case ERROR_EOR:
+    case LIBERROR_EOR:
       p = "End of record";
       break;
 
-    case ERROR_END:
+    case LIBERROR_END:
       p = "End of file";
       break;
 
-    case ERROR_OK:
+    case LIBERROR_OK:
       p = "Successful return";
       break;
 
-    case ERROR_OS:
+    case LIBERROR_OS:
       p = "Operating system error";
       break;
 
-    case ERROR_BAD_OPTION:
+    case LIBERROR_BAD_OPTION:
       p = "Bad statement option";
       break;
 
-    case ERROR_MISSING_OPTION:
+    case LIBERROR_MISSING_OPTION:
       p = "Missing statement option";
       break;
 
-    case ERROR_OPTION_CONFLICT:
+    case LIBERROR_OPTION_CONFLICT:
       p = "Conflicting statement options";
       break;
 
-    case ERROR_ALREADY_OPEN:
+    case LIBERROR_ALREADY_OPEN:
       p = "File already opened in another unit";
       break;
 
-    case ERROR_BAD_UNIT:
+    case LIBERROR_BAD_UNIT:
       p = "Unattached unit";
       break;
 
-    case ERROR_FORMAT:
+    case LIBERROR_FORMAT:
       p = "FORMAT error";
       break;
 
-    case ERROR_BAD_ACTION:
+    case LIBERROR_BAD_ACTION:
       p = "Incorrect ACTION specified";
       break;
 
-    case ERROR_ENDFILE:
+    case LIBERROR_ENDFILE:
       p = "Read past ENDFILE record";
       break;
 
-    case ERROR_BAD_US:
+    case LIBERROR_BAD_US:
       p = "Corrupt unformatted sequential file";
       break;
 
-    case ERROR_READ_VALUE:
+    case LIBERROR_READ_VALUE:
       p = "Bad value during read";
       break;
 
-    case ERROR_READ_OVERFLOW:
+    case LIBERROR_READ_OVERFLOW:
       p = "Numeric overflow on read";
+      break;
+
+    case LIBERROR_INTERNAL:
+      p = "Internal error in run-time library";
+      break;
+
+    case LIBERROR_INTERNAL_UNIT:
+      p = "Internal unit I/O error";
+      break;
+
+    case LIBERROR_DIRECT_EOR:
+      p = "Write exceeds length of DIRECT access record";
+      break;
+
+    case LIBERROR_SHORT_RECORD:
+      p = "I/O past end of record on unformatted file";
+      break;
+
+    case LIBERROR_CORRUPT_FILE:
+      p = "Unformatted file structure has been corrupted";
       break;
 
     default:
@@ -440,51 +405,117 @@ translate_error (int code)
 
 
 /* generate_error()-- Come here when an error happens.  This
- * subroutine is called if it is possible to continue on after the
- * error.  If an IOSTAT variable exists, we set it.  If the IOSTAT or
- * ERR label is present, we return, otherwise we terminate the program
- * after print a message.  The error code is always required but the
+ * subroutine is called if it is possible to continue on after the error.
+ * If an IOSTAT or IOMSG variable exists, we set it.  If IOSTAT or
+ * ERR labels are present, we return, otherwise we terminate the program
+ * after printing a message.  The error code is always required but the
  * message parameter can be NULL, in which case a string describing
  * the most recent operating system error is used. */
 
 void
-generate_error (int family, const char *message)
+generate_error (st_parameter_common *cmp, int family, const char *message)
 {
+
+  /* If there was a previous error, don't mask it with another
+     error message, EOF or EOR condition.  */
+
+  if ((cmp->flags & IOPARM_LIBRETURN_MASK) == IOPARM_LIBRETURN_ERROR)
+    return;
+
   /* Set the error status.  */
-  if (ioparm.iostat != NULL)
-    *ioparm.iostat = family;
+  if ((cmp->flags & IOPARM_HAS_IOSTAT))
+    *cmp->iostat = (family == LIBERROR_OS) ? errno : family;
+
+  if (message == NULL)
+    message =
+      (family == LIBERROR_OS) ? get_oserror () : translate_error (family);
+
+  if (cmp->flags & IOPARM_HAS_IOMSG)
+    cf_strcpy (cmp->iomsg, cmp->iomsg_len, message);
 
   /* Report status back to the compiler.  */
+  cmp->flags &= ~IOPARM_LIBRETURN_MASK;
   switch (family)
     {
-    case ERROR_EOR:
-      ioparm.library_return = LIBRARY_EOR;
-      if (ioparm.eor != 0)
+    case LIBERROR_EOR:
+      cmp->flags |= IOPARM_LIBRETURN_EOR;
+      if ((cmp->flags & IOPARM_EOR))
 	return;
       break;
 
-    case ERROR_END:
-      ioparm.library_return = LIBRARY_END;
-      if (ioparm.end != 0)
+    case LIBERROR_END:
+      cmp->flags |= IOPARM_LIBRETURN_END;
+      if ((cmp->flags & IOPARM_END))
 	return;
       break;
 
     default:
-      ioparm.library_return = LIBRARY_ERROR;
-      if (ioparm.err != 0)
+      cmp->flags |= IOPARM_LIBRETURN_ERROR;
+      if ((cmp->flags & IOPARM_ERR))
 	return;
       break;
     }
 
   /* Return if the user supplied an iostat variable.  */
-  if (ioparm.iostat != NULL)
+  if ((cmp->flags & IOPARM_HAS_IOSTAT))
     return;
 
   /* Terminate the program */
 
-  if (message == NULL)
-    message =
-      (family == ERROR_OS) ? get_oserror () : translate_error (family);
+  recursion_check ();
+  show_locus (cmp);
+  st_printf ("Fortran runtime error: %s\n", message);
+  sys_exit (2);
+}
+iexport(generate_error);
 
-  runtime_error (message);
+/* Whether, for a feature included in a given standard set (GFC_STD_*),
+   we should issue an error or a warning, or be quiet.  */
+
+notification
+notification_std (int std)
+{
+  int warning;
+
+  if (!compile_options.pedantic)
+    return SILENT;
+
+  warning = compile_options.warn_std & std;
+  if ((compile_options.allow_std & std) != 0 && !warning)
+    return SILENT;
+
+  return warning ? WARNING : ERROR;
+}
+
+
+
+/* Possibly issue a warning/error about use of a nonstandard (or deleted)
+   feature.  An error/warning will be issued if the currently selected
+   standard does not contain the requested bits.  */
+
+try
+notify_std (st_parameter_common *cmp, int std, const char * message)
+{
+  int warning;
+
+  if (!compile_options.pedantic)
+    return SUCCESS;
+
+  warning = compile_options.warn_std & std;
+  if ((compile_options.allow_std & std) != 0 && !warning)
+    return SUCCESS;
+
+  if (!warning)
+    {
+      recursion_check ();
+      show_locus (cmp);
+      st_printf ("Fortran runtime error: %s\n", message);
+      sys_exit (2);
+    }
+  else
+    {
+      show_locus (cmp);
+      st_printf ("Fortran runtime warning: %s\n", message);
+    }
+  return FAILURE;
 }

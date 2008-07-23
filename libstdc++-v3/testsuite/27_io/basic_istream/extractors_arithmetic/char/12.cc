@@ -1,6 +1,7 @@
 // 1999-04-12 bkoz
 
-// Copyright (C) 1999, 2000, 2002, 2003 Free Software Foundation, Inc.
+// Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 27.6.1.2.2 arithmetic extractors
@@ -23,10 +24,11 @@
 // XXX This test fails on sparc-solaris2 because of a bug in libc
 // XXX sscanf for very long input.  See:
 // XXX http://gcc.gnu.org/ml/gcc/2002-12/msg01422.html
-// { dg-do run { xfail sparc*-*-solaris2* } }
+// { dg-do run { xfail { { sparc*-*-solaris2* } || lax_strtofp } } }
 
 #include <istream>
 #include <sstream>
+#include <limits>
 #include <testsuite_hooks.h>
 
 // libstdc++/3720

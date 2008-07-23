@@ -1,11 +1,11 @@
 ;; Scheduling description for IBM Power4 and PowerPC 970 processors.
-;;   Copyright (C) 2003, 2004 Free Software Foundation, Inc.
+;;   Copyright (C) 2003, 2004, 2007 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
 ;; GCC is free software; you can redistribute it and/or modify it
 ;; under the terms of the GNU General Public License as published
-;; by the Free Software Foundation; either version 2, or (at your
+;; by the Free Software Foundation; either version 3, or (at your
 ;; option) any later version.
 ;;
 ;; GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -14,9 +14,8 @@
 ;; License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License
-;; along with GCC; see the file COPYING.  If not, write to the
-;; Free Software Foundation, 59 Temple Place - Suite 330, Boston,
-;; MA 02111-1307, USA.
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.
 
 ;; Sources: IBM Red Book and White Paper on POWER4
 
@@ -174,10 +173,17 @@
   |(du3_power4,lsu2_power4,vec_power4)\
   |(du4_power4,lsu1_power4,vec_power4)")
 
+(define_insn_reservation "power4-llsc" 11
+  (and (eq_attr "type" "load_l,store_c,sync")
+       (eq_attr "cpu" "power4"))
+  "du1_power4+du2_power4+du3_power4+du4_power4,\
+  lsu1_power4")
+
 
 ; Integer latency is 2 cycles
 (define_insn_reservation "power4-integer" 2
-  (and (eq_attr "type" "integer")
+  (and (eq_attr "type" "integer,insert_dword,shift,trap,\
+                        var_shift_rotate,cntlz,exts")
        (eq_attr "cpu" "power4"))
   "iq_power4")
 
@@ -214,7 +220,7 @@
   "iq_power4")
 
 (define_insn_reservation "power4-compare" 2
-  (and (eq_attr "type" "compare,delayed_compare")
+  (and (eq_attr "type" "compare,delayed_compare,var_delayed_compare")
        (eq_attr "cpu" "power4"))
   "(du1_power4+du2_power4,iu1_power4,iu2_power4)\
   |(du2_power4+du3_power4,iu2_power4,iu2_power4)\
@@ -353,6 +359,12 @@
   |(du2_power4,fpu2_power4*35)\
   |(du3_power4,fpu2_power4*35)\
   |(du4_power4,fpu2_power4*35)")
+
+(define_insn_reservation "power4-isync" 2
+  (and (eq_attr "type" "isync")
+       (eq_attr "cpu" "power4"))
+  "du1_power4+du2_power4+du3_power4+du4_power4,\
+  lsu1_power4")
 
 
 ; VMX

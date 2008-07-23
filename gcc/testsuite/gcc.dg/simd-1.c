@@ -32,7 +32,8 @@ hanneke ()
   e = (typeof (e)) a;
 
   /* Different signed SIMD assignment.  */
-  f = a;
+  f = a; /* { dg-message "note: use -flax-vector-conversions to permit conversions between vectors with differing element types or numbers of subparts" } */
+  /* { dg-error "incompatible types in assignment" "" { target *-*-* } 35 } */
 
   /* Casted different signed SIMD assignment.  */
   f = (uv4si) a;
@@ -54,8 +55,8 @@ hanneke ()
   a = -b;
 
   /* Operators on incompatible SIMD types.  */
-  a = b + c; /* { dg-error "can't convert between vector values of different size" } */
-  a = b - c; /* { dg-error "can't convert between vector values of different size" } */
-  a = b * c; /* { dg-error "can't convert between vector values of different size" } */
-  a = b / c; /* { dg-error "can't convert between vector values of different size" } */
+  a = b + c; /* { dg-error "invalid operands to binary +" } */
+  a = b - c; /* { dg-error "invalid operands to binary -" } */
+  a = b * c; /* { dg-error "invalid operands to binary *" } */
+  a = b / c; /* { dg-error "invalid operands to binary /" } */
 }

@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --                 A D A . T E X T _ I O . F I X E D _ I O                  --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -183,7 +183,7 @@ package body Ada.Text_IO.Fixed_IO is
 
    --    Fore + Aft + Exp + Extra_Layout_Space
 
-   --  is always long enough for formatting any fixed point number.
+   --  is always long enough for formatting any fixed point number
 
    --  Implementation of Put routines
 
@@ -247,7 +247,7 @@ package body Ada.Text_IO.Fixed_IO is
    --  least 20 in order to print T'First, which is at most -2.0**63.
    --  This means D < 0, so use
 
-   --    (1)   Y = -S and Z = -10**(-D).
+   --    (1)   Y = -S and Z = -10**(-D)
 
    --  If 1.0 / S is an integer greater than one, use
 
@@ -279,7 +279,7 @@ package body Ada.Text_IO.Fixed_IO is
    --  decimal point.
 
    subtype Int is Integer;
-   E0 : constant Int := -20 * Boolean'Pos (Num'Small >= 1.0E1);
+   E0 : constant Int := -(20 * Boolean'Pos (Num'Small >= 1.0E1));
    E1 : constant Int := E0 + 10 * Boolean'Pos (Num'Small * 10.0**E0 < 1.0E-10);
    E2 : constant Int := E1 +  5 * Boolean'Pos (Num'Small * 10.0**E1 < 1.0E-5);
    E3 : constant Int := E2 +  3 * Boolean'Pos (Num'Small * 10.0**E2 < 1.0E-3);
@@ -314,9 +314,9 @@ package body Ada.Text_IO.Fixed_IO is
    ---------
 
    procedure Get
-     (File  : in File_Type;
+     (File  : File_Type;
       Item  : out Num;
-      Width : in Field := 0)
+      Width : Field := 0)
    is
       pragma Unsuppress (Range_Check);
 
@@ -329,7 +329,7 @@ package body Ada.Text_IO.Fixed_IO is
 
    procedure Get
      (Item  : out Num;
-      Width : in Field := 0)
+      Width : Field := 0)
    is
       pragma Unsuppress (Range_Check);
 
@@ -341,7 +341,7 @@ package body Ada.Text_IO.Fixed_IO is
    end Get;
 
    procedure Get
-     (From : in String;
+     (From : String;
       Item : out Num;
       Last : out Positive)
    is
@@ -359,11 +359,11 @@ package body Ada.Text_IO.Fixed_IO is
    ---------
 
    procedure Put
-     (File : in File_Type;
-      Item : in Num;
-      Fore : in Field := Default_Fore;
-      Aft  : in Field := Default_Aft;
-      Exp  : in Field := Default_Exp)
+     (File : File_Type;
+      Item : Num;
+      Fore : Field := Default_Fore;
+      Aft  : Field := Default_Aft;
+      Exp  : Field := Default_Exp)
    is
       S    : String (1 .. Fore + Aft + Exp + Extra_Layout_Space);
       Last : Natural;
@@ -373,10 +373,10 @@ package body Ada.Text_IO.Fixed_IO is
    end Put;
 
    procedure Put
-     (Item : in Num;
-      Fore : in Field := Default_Fore;
-      Aft  : in Field := Default_Aft;
-      Exp  : in Field := Default_Exp)
+     (Item : Num;
+      Fore : Field := Default_Fore;
+      Aft  : Field := Default_Aft;
+      Exp  : Field := Default_Exp)
    is
       S    : String (1 .. Fore + Aft + Exp + Extra_Layout_Space);
       Last : Natural;
@@ -387,9 +387,9 @@ package body Ada.Text_IO.Fixed_IO is
 
    procedure Put
      (To   : out String;
-      Item : in Num;
-      Aft  : in Field := Default_Aft;
-      Exp  : in Field := Default_Exp)
+      Item : Num;
+      Aft  : Field := Default_Aft;
+      Exp  : Field := Default_Exp)
    is
       Fore : constant Integer := To'Length
                                 - 1                      -- Decimal point
@@ -399,7 +399,7 @@ package body Ada.Text_IO.Fixed_IO is
       Last : Natural;
 
    begin
-      if Fore not in Field'Range then
+      if Fore - Boolean'Pos (Item < 0.0) < 1 or else Fore > Field'Last then
          raise Layout_Error;
       end if;
 
@@ -419,10 +419,11 @@ package body Ada.Text_IO.Fixed_IO is
       Exp  : Field)
    is
       subtype Digit is Int64 range 0 .. 9;
-      X     : constant Int64   := Int64'Integer_Value (Item);
-      A     : constant Field   := Field'Max (Aft, 1);
-      Neg   : constant Boolean := (Item < 0.0);
-      Pos   : Integer;  -- Next digit X has value X * 10.0**Pos;
+
+      X   : constant Int64   := Int64'Integer_Value (Item);
+      A   : constant Field   := Field'Max (Aft, 1);
+      Neg : constant Boolean := (Item < 0.0);
+      Pos : Integer := 0;  -- Next digit X has value X * 10.0**Pos;
 
       Y, Z : Int64;
       E : constant Integer := Boolean'Pos (not Exact)
@@ -438,7 +439,7 @@ package body Ada.Text_IO.Fixed_IO is
 
       procedure Put_Digit (X : Digit);
       --  Add digit X to the output string (going from left to right),
-      --  updating Last and Pos, and inserting the sign, leading zeroes
+      --  updating Last and Pos, and inserting the sign, leading zeros
       --  or a decimal point when necessary. After outputting the first
       --  digit, Pos must not be changed outside Put_Digit anymore
 
@@ -461,7 +462,13 @@ package body Ada.Text_IO.Fixed_IO is
       procedure Put_Character (C : Character) is
       begin
          Last := Last + 1;
-         To (Last) := C;
+
+         --  Never put a character outside of string To. Exception Layout_Error
+         --  will be raised later if Last is greater than To'Last.
+
+         if Last <= To'Last then
+            To (Last) := C;
+         end if;
       end Put_Character;
 
       ---------------
@@ -470,11 +477,12 @@ package body Ada.Text_IO.Fixed_IO is
 
       procedure Put_Digit (X : Digit) is
          Digs : constant array (Digit) of Character := "0123456789";
+
       begin
-         if Last = 0 then
+         if Last = To'First - 1 then
             if X /= 0 or Pos <= 0 then
                --  Before outputting first digit, include leading space,
-               --  posible minus sign and, if the first digit is fractional,
+               --  possible minus sign and, if the first digit is fractional,
                --  decimal seperator and leading zeros.
 
                --  The Fore part has Pos + 1 + Boolean'Pos (Neg) characters,
@@ -530,11 +538,21 @@ package body Ada.Text_IO.Fixed_IO is
             return;
          end if;
 
-         Pos := Scale;
-
          if X not in -9 .. 9 then
             Put_Int64 (X / 10, Scale + 1);
          end if;
+
+         --  Use Put_Digit to advance Pos. This fixes a case where the second
+         --  or later Scaled_Divide would omit leading zeroes, resulting in
+         --  too few digits produced and a Layout_Error as result.
+
+         while Pos > Scale loop
+            Put_Digit (0);
+         end loop;
+
+         --  If Pos is less than Scale now, reset to equal Scale
+
+         Pos := Scale;
 
          Put_Digit (abs (X rem 10));
       end Put_Int64;
@@ -620,11 +638,13 @@ package body Ada.Text_IO.Fixed_IO is
          --  been generated, compute the Aft next digits (without rounding).
          --  Once a non-zero digit is generated, determine the exact number
          --  of digits remaining and compute them with rounding.
+
          --  Since a large number of iterations might be necessary in case
          --  of Aft = 1, the following optimization would be desirable.
+
          --  Count the number Z of leading zero bits in the integer
-         --  representation of X, and start with producing
-         --  Aft + Z * 1000 / 3322 digits in the first scaled division.
+         --  representation of X, and start with producing Aft + Z * 1000 /
+         --  3322 digits in the first scaled division.
 
          --  However, the floating-point routines are still used now ???
 
@@ -635,10 +655,10 @@ package body Ada.Text_IO.Fixed_IO is
 
       if Exact then
          Y := Int64'Min (Int64 (-Num'Small), -1) * 10**Integer'Max (0, D);
-         Z := Int64'Min (Int64 (-1.0 / Num'Small), -1)
+         Z := Int64'Min (Int64 (-(1.0 / Num'Small)), -1)
                                                  * 10**Integer'Max (0, -D);
       else
-         Y := Int64 (-Num'Small * 10.0**E);
+         Y := Int64 (-(Num'Small * 10.0**E));
          Z := -10**Max_Digits;
       end if;
 

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -83,8 +83,8 @@ package body Types is
 
       --  Note that we do not bother to worry about shifts in the day.
       --  It seems unlikely that such shifts could ever occur in practice
-      --  and even if they do we err on the safe side, ie we say that the time
-      --  stamps are different.
+      --  and even if they do we err on the safe side, i.e., we say that the
+      --  time stamps are different.
 
       Sright := V (Right, 13) + 60 * (V (Right, 11) + 60 * V (Right, 09));
       Sleft  := V (Left,  13) + 60 * (V (Left,  11) + 60 * V (Left,  09));

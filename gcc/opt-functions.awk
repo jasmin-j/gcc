@@ -1,10 +1,10 @@
-#  Copyright (C) 2003,2004 Free Software Foundation, Inc.
+#  Copyright (C) 2003, 2004, 2007 Free Software Foundation, Inc.
 #  Contributed by Kelley Cook, June 2004.
 #  Original code from Neil Booth, May 2003.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
-# Free Software Foundation; either version 2, or (at your option) any
+# Free Software Foundation; either version 3, or (at your option) any
 # later version.
 # 
 # This program is distributed in the hope that it will be useful,
@@ -13,8 +13,8 @@
 # GNU General Public License for more details.
 # 
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+# along with this program; see the file COPYING3.  If not see
+# <http://www.gnu.org/licenses/>.
 
 # Some common subroutines for use by opt[ch]-gen.awk.
 
@@ -77,6 +77,8 @@ function switch_flags (flags)
 	  test_flag("RejectNegative", flags, " | CL_REJECT_NEGATIVE") \
 	  test_flag("UInteger", flags, " | CL_UINTEGER") \
 	  test_flag("Undocumented", flags,  " | CL_UNDOCUMENTED") \
+	  test_flag("Warning", flags,  " | CL_WARNING") \
+	  test_flag("Optimization", flags,  " | CL_OPTIMIZATION") \
 	  test_flag("Report", flags, " | CL_REPORT")
 	sub( "^0 \\| ", "", result )
 	return result
@@ -89,6 +91,60 @@ function var_name(flags)
 	return nth_arg(0, opt_args("Var", flags))
 }
 
+# Return true if the option described by FLAGS has a globally-visible state.
+function global_state_p(flags)
+{
+	return (var_name(flags) != "" \
+		|| opt_args("Mask", flags) != "" \
+		|| opt_args("InverseMask", flags) != "")
+}
+
+# Return true if the option described by FLAGS must have some state
+# associated with it.
+function needs_state_p(flags)
+{
+	return flag_set_p("Target", flags)
+}
+
+# If FLAGS describes an option that needs a static state variable,
+# return the name of that variable, otherwise return "".  NAME is
+# the name of the option.
+function static_var(name, flags)
+{
+	if (global_state_p(flags) || !needs_state_p(flags))
+		return ""
+	gsub ("[^A-Za-z0-9]", "_", name)
+	return "VAR_" name
+}
+
+# Return the type of variable that should be associated with the given flags.
+function var_type(flags)
+{
+	if (!flag_set_p("Joined.*", flags))
+		return "int "
+	else if (flag_set_p("UInteger", flags))
+		return "int "
+	else
+		return "const char *"
+}
+
+# Return the type of variable that should be associated with the given flags
+# for use within a structure.  Simple variables are changed to unsigned char
+# type instead of int to save space.
+function var_type_struct(flags)
+{
+	if (flag_set_p("UInteger", flags))
+		return "int "
+	else if (!flag_set_p("Joined.*", flags)) {
+		if (flag_set_p(".*Mask.*", flags))
+			return "int "
+		else
+			return "unsigned char "
+	}
+	else
+		return "const char *"
+}
+
 # Given that an option has flags FLAGS, return an initializer for the
 # "var_cond" and "var_value" fields of its cl_options[] entry.
 function var_set(flags)
@@ -97,19 +153,31 @@ function var_set(flags)
 	if (s != "")
 		return "CLVC_EQUAL, " s
 	s = opt_args("Mask", flags);
-	if (s != "")
-		return "CLVC_BIT_SET, MASK_" s
+	if (s != "") {
+		vn = var_name(flags);
+		if (vn)
+			return "CLVC_BIT_SET, OPTION_MASK_" s
+		else
+			return "CLVC_BIT_SET, MASK_" s
+	}
 	s = nth_arg(0, opt_args("InverseMask", flags));
-	if (s != "")
-		return "CLVC_BIT_CLEAR, MASK_" s
+	if (s != "") {
+		vn = var_name(flags);
+		if (vn)
+			return "CLVC_BIT_CLEAR, OPTION_MASK_" s
+		else
+			return "CLVC_BIT_CLEAR, MASK_" s
+	}
+	if (var_type(flags) == "const char *")
+		return "CLVC_STRING, 0"
 	return "CLVC_BOOLEAN, 0"
 }
 
-# Given that an option has flags FLAGS, return an initializer for the
-# "flag_var" field of its cl_options[] entry.
-function var_ref(flags)
+# Given that an option called NAME has flags FLAGS, return an initializer
+# for the "flag_var" field of its cl_options[] entry.
+function var_ref(name, flags)
 {
-	name = var_name(flags)
+	name = var_name(flags) static_var(name, flags)
 	if (name != "")
 		return "&" name
 	if (opt_args("Mask", flags) != "")

@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                   S Y S T E M . O S _ I N T E R F A C E                  --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---           Copyright (C) 1999-2003 Free Software Foundation, Inc.         --
+--          Copyright (C) 1999-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -36,8 +36,6 @@
 pragma Polling (Off);
 --  Turn off polling, we do not want ATC polling to take place during
 --  tasking operations. It causes infinite loops and other problems.
-
-with Interfaces.C;
 
 package body System.OS_Interface is
 
@@ -75,10 +73,16 @@ package body System.OS_Interface is
       return Duration (TS.tv_sec) + Duration (TS.tv_nsec) / 10#1#E9;
    end To_Duration;
 
-   function To_Duration (TV : struct_timeval) return Duration is
+   ------------------------
+   -- To_Target_Priority --
+   ------------------------
+
+   function To_Target_Priority
+     (Prio : System.Any_Priority) return Interfaces.C.int
+   is
    begin
-      return Duration (TV.tv_sec) + Duration (TV.tv_usec) / 10#1#E6;
-   end To_Duration;
+      return Interfaces.C.int (Prio);
+   end To_Target_Priority;
 
    -----------------
    -- To_Timespec --
@@ -103,30 +107,6 @@ package body System.OS_Interface is
       return timespec'(tv_sec => S,
         tv_nsec => long (Long_Long_Integer (F * 10#1#E9)));
    end To_Timespec;
-
-   ----------------
-   -- To_Timeval --
-   ----------------
-
-   function To_Timeval (D : Duration) return struct_timeval is
-      S : time_t;
-      F : Duration;
-
-   begin
-      S := time_t (Long_Long_Integer (D));
-      F := D - Duration (S);
-
-      --  If F has negative value due to a round-up, adjust for positive F
-      --  value.
-
-      if F < 0.0 then
-         S := S - 1;
-         F := F + 1.0;
-      end if;
-
-      return struct_timeval'(tv_sec => S,
-        tv_usec => time_t (Long_Long_Integer (F * 10#1#E6)));
-   end To_Timeval;
 
    -------------------------
    -- POSIX.1c  Section 3 --
@@ -158,7 +138,7 @@ package body System.OS_Interface is
    --------------------------
 
    --  For all the following functions, LynxOS threads has the POSIX Draft 4
-   --  begavior; it sets errno but the standard Posix requires it to be
+   --  behavior; it sets errno but the standard Posix requires it to be
    --  returned.
 
    function pthread_mutexattr_init

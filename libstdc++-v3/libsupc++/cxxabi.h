@@ -1,6 +1,6 @@
 // new abi support -*- C++ -*-
   
-// Copyright (C) 2000, 2002, 2003, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2000, 2002, 2003, 2004, 2006, 2007 Free Software Foundation, Inc.
 //
 // This file is part of GCC.
 //
@@ -16,8 +16,8 @@
 // 
 // You should have received a copy of the GNU General Public License
 // along with GCC; see the file COPYING.  If not, write to
-// the Free Software Foundation, 59 Temple Place - Suite 330,
-// Boston, MA 02111-1307, USA.
+// the Free Software Foundation, 51 Franklin Street, Fifth Floor,
+// Boston, MA 02110-1301, USA.
 
 // As a special exception, you may use this file as part of a free software
 // library without restriction.  Specifically, if other files instantiate
@@ -50,15 +50,22 @@
 
 #include <stddef.h>
 #include <bits/cxxabi_tweaks.h>
+#include <cxxabi-forced.h>
  
+#ifdef __cplusplus
+#define _GLIBCXX_NOTHROW throw() 
+#else
+#define _GLIBCXX_NOTHROW __attribute__((nothrow))
+#endif
+
 #ifdef __cplusplus
 namespace __cxxabiv1
 {  
-  typedef __cxa_cdtor_return_type (*__cxa_cdtor_type)(void *);
-
   extern "C" 
   {
 #endif
+
+  typedef __cxa_cdtor_return_type (*__cxa_cdtor_type)(void *);
 
   // Allocate array.
   void* 
@@ -136,7 +143,7 @@ namespace __cxxabiv1
 
   // DSO destruction.
   int
-  __cxa_atexit(void (*)(void*), void*, void*);
+  __cxa_atexit(void (*)(void*), void*, void*) _GLIBCXX_NOTHROW;
 
   int
   __cxa_finalize(void*);
@@ -467,7 +474,7 @@ namespace __cxxabiv1
   {
   public:
     unsigned int 		__flags;  // Details about the class hierarchy.
-    unsigned int 		__base_count;  // Dumber of direct bases.
+    unsigned int 		__base_count;  // Number of direct bases.
 
     // The array of bases uses the trailing array struct hack so this
     // class is not constructable with a normal constructor. It is
@@ -525,6 +532,15 @@ namespace __cxxabiv1
   // null if there is none.
   extern "C" std::type_info*
   __cxa_current_exception_type();
+
+  // A magic placeholder class that can be caught by reference
+  // to recognize foreign exceptions.
+  class __foreign_exception
+  {
+    virtual ~__foreign_exception() throw();
+    virtual void __pure_dummy() = 0; // prevent catch by value
+  };
+
 } // namespace __cxxabiv1
 
 // User programs should use the alias `abi'. 

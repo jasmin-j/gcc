@@ -1,11 +1,12 @@
 /* Darwin/powerpc host-specific hook definitions.
-   Copyright (C) 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008
+   Free Software Foundation, Inc.
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -14,9 +15,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the
-   Free Software Foundation, 59 Temple Place - Suite 330, Boston,
-   MA 02111-1307, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -33,9 +33,19 @@ static void segv_crash_handler (int);
 static void segv_handler (int, siginfo_t *, void *);
 static void darwin_rs6000_extra_signals (void);
 
+#ifndef HAVE_DECL_SIGALTSTACK
 /* This doesn't have a prototype in signal.h in 10.2.x and earlier,
    fixed in later releases.  */
 extern int sigaltstack(const struct sigaltstack *, struct sigaltstack *);
+#endif
+
+/* The fields of the mcontext_t type have acquired underscores in later
+   OS versions.  */
+#ifdef HAS_MCONTEXT_T_UNDERSCORES
+#define MC_FLD(x) __ ## x
+#else
+#define MC_FLD(x) x
+#endif
 
 #undef HOST_HOOKS_EXTRA_SIGNALS
 #define HOST_HOOKS_EXTRA_SIGNALS darwin_rs6000_extra_signals
@@ -58,13 +68,17 @@ segv_handler (int sig ATTRIBUTE_UNUSED,
 	      void *scp)
 {
   ucontext_t *uc = (ucontext_t *)scp;
+  sigset_t sigset;
   unsigned faulting_insn;
 
   /* The fault might have happened when trying to run some instruction, in
      which case the next line will segfault _again_.  Handle this case.  */
   signal (SIGSEGV, segv_crash_handler);
+  sigemptyset (&sigset);
+  sigaddset (&sigset, SIGSEGV);
+  sigprocmask (SIG_UNBLOCK, &sigset, NULL);
 
-  faulting_insn = *(unsigned *)uc->uc_mcontext->ss.srr0;
+  faulting_insn = *(unsigned *)uc->uc_mcontext->MC_FLD(ss).MC_FLD(srr0);
 
   /* Note that this only has to work for GCC, so we don't have to deal
      with all the possible cases (GCC has no AltiVec code, for
@@ -73,7 +87,7 @@ segv_handler (int sig ATTRIBUTE_UNUSED,
      this.  */
 
   if ((faulting_insn & 0xFFFF8000) == 0x94218000  /* stwu %r1, -xxx(%r1) */
-      || (faulting_insn & 0xFFFF03FF) == 0x7C21016E /* stwux %r1, xxx, %r1 */
+      || (faulting_insn & 0xFC1F03FF) == 0x7C01016E /* stwux xxx, %r1, xxx */
       || (faulting_insn & 0xFC1F8000) == 0x90018000 /* stw xxx, -yyy(%r1) */
       || (faulting_insn & 0xFC1F8000) == 0xD8018000 /* stfd xxx, -yyy(%r1) */
       || (faulting_insn & 0xFC1F8000) == 0xBC018000 /* stmw xxx, -yyy(%r1) */)
@@ -107,13 +121,14 @@ segv_handler (int sig ATTRIBUTE_UNUSED,
 	}
       
       if (global_dc->abort_on_error)
-	abort ();
+	fancy_abort (__FILE__, __LINE__, __FUNCTION__);
 
       exit (FATAL_EXIT_CODE);
     }
 
   fprintf (stderr, "[address=%08lx pc=%08x]\n", 
-	   uc->uc_mcontext->es.dar, uc->uc_mcontext->ss.srr0);
+	   uc->uc_mcontext->MC_FLD(es).MC_FLD(dar),
+	   uc->uc_mcontext->MC_FLD(ss).MC_FLD(srr0));
   internal_error ("Segmentation Fault");
   exit (FATAL_EXIT_CODE);
 }
@@ -124,7 +139,7 @@ darwin_rs6000_extra_signals (void)
   struct sigaction sact;
   stack_t sigstk;
 
-  sigstk.ss_sp = xmalloc (SIGSTKSZ);
+  sigstk.ss_sp = (char*)xmalloc (SIGSTKSZ);
   sigstk.ss_size = SIGSTKSZ;
   sigstk.ss_flags = 0;
   if (sigaltstack (&sigstk, NULL) < 0)

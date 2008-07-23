@@ -6,8 +6,8 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1998-2002 Free Software Foundation, Inc.          --
---                                                                          --
+--          Copyright (C) 1998-2008, Free Software Foundation, Inc.         --
+--                                                                         --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
 -- ware  Foundation;  either version 2,  or (at your option) any later ver- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -31,10 +31,8 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.Exceptions;
 with Ada.IO_Exceptions;
 with Ada.Streams;
-with Ada.Streams.Stream_IO;
 
 with System.Global_Locks;
 with System.Soft_Links;
@@ -44,8 +42,8 @@ with System.File_Control_Block;
 with System.File_IO;
 with System.HTable;
 
-with Unchecked_Deallocation;
-with Unchecked_Conversion;
+with Ada.Unchecked_Deallocation;
+with Ada.Unchecked_Conversion;
 
 package body System.Shared_Storage is
 
@@ -58,7 +56,7 @@ package body System.Shared_Storage is
    package SFI renames System.File_IO;
 
    type String_Access is access String;
-   procedure Free is new Unchecked_Deallocation
+   procedure Free is new Ada.Unchecked_Deallocation
      (Object => String, Name => String_Access);
 
    Dir : String_Access;
@@ -86,7 +84,7 @@ package body System.Shared_Storage is
 
    procedure Write
      (Stream : in out File_Stream_Type;
-      Item   : in AS.Stream_Element_Array);
+      Item   : AS.Stream_Element_Array);
 
    subtype Hash_Header is Natural range 0 .. 30;
    --  Number of hash headers, related (for efficiency purposes only)
@@ -107,16 +105,16 @@ package body System.Shared_Storage is
       --  Links for LRU chain
    end record;
 
-   procedure Free is new Unchecked_Deallocation
+   procedure Free is new Ada.Unchecked_Deallocation
      (Object => Shared_Var_File_Entry,
       Name   => Shared_Var_File_Entry_Ptr);
 
-   procedure Free is new Unchecked_Deallocation
+   procedure Free is new Ada.Unchecked_Deallocation
      (Object => File_Stream_Type'Class,
       Name   => File_Stream_Access);
 
    function To_AFCB_Ptr is
-     new Unchecked_Conversion (SIO.File_Type, FCB.AFCB_Ptr);
+     new Ada.Unchecked_Conversion (SIO.File_Type, FCB.AFCB_Ptr);
 
    LRU_Head : Shared_Var_File_Entry_Ptr;
    LRU_Tail : Shared_Var_File_Entry_Ptr;
@@ -249,7 +247,7 @@ package body System.Shared_Storage is
 
    procedure Initialize is
       procedure Get_Env_Value_Ptr (Name, Length, Ptr : Address);
-      pragma Import (C, Get_Env_Value_Ptr, "__gnat_get_env_value_ptr");
+      pragma Import (C, Get_Env_Value_Ptr, "__gnat_getenv");
 
       procedure Strncpy (Astring_Addr, Cstring : Address; N : Integer);
       pragma Import (C, Strncpy, "strncpy");
@@ -331,7 +329,7 @@ package body System.Shared_Storage is
    -- Shared_Var_Close --
    ----------------------
 
-   procedure Shared_Var_Close (Var : in SIO.Stream_Access) is
+   procedure Shared_Var_Close (Var : SIO.Stream_Access) is
       pragma Warnings (Off, Var);
 
    begin
@@ -342,7 +340,7 @@ package body System.Shared_Storage is
    -- Shared_Var_Lock --
    ---------------------
 
-   procedure Shared_Var_Lock (Var : in String) is
+   procedure Shared_Var_Lock (Var : String) is
       pragma Warnings (Off, Var);
 
    begin
@@ -364,6 +362,43 @@ package body System.Shared_Storage is
          System.Soft_Links.Unlock_Task.all;
          raise;
    end Shared_Var_Lock;
+
+   ----------------------
+   -- Shared_Var_Procs --
+   ----------------------
+
+   package body Shared_Var_Procs is
+
+      use type SIO.Stream_Access;
+
+      ----------
+      -- Read --
+      ----------
+
+      procedure Read is
+         S : SIO.Stream_Access := null;
+      begin
+         S := Shared_Var_ROpen (Full_Name);
+         if S /= null then
+            Typ'Read (S, V);
+            Shared_Var_Close (S);
+         end if;
+      end Read;
+
+      ------------
+      -- Write --
+      ------------
+
+      procedure Write is
+         S : SIO.Stream_Access := null;
+      begin
+         S := Shared_Var_WOpen (Full_Name);
+         Typ'Write (S, V);
+         Shared_Var_Close (S);
+         return;
+      end Write;
+
+   end Shared_Var_Procs;
 
    ----------------------
    -- Shared_Var_ROpen --
@@ -429,7 +464,7 @@ package body System.Shared_Storage is
    -- Shared_Var_Unlock --
    -----------------------
 
-   procedure Shared_Var_Unlock (Var : in String) is
+   procedure Shared_Var_Unlock (Var : String) is
       pragma Warnings (Off, Var);
 
    begin
@@ -484,10 +519,8 @@ package body System.Shared_Storage is
                   --  Error if we cannot create the file
 
                   when others =>
-                     Ada.Exceptions.Raise_Exception
-                       (Program_Error'Identity,
-                        "Cannot create shared variable file for """ &
-                        S & '"'); -- "
+                     raise Program_Error with
+                        "Cannot create shared variable file for """ & S & '"';
                end;
          end;
 
@@ -522,7 +555,7 @@ package body System.Shared_Storage is
 
    procedure Write
      (Stream : in out File_Stream_Type;
-      Item   : in AS.Stream_Element_Array)
+      Item   : AS.Stream_Element_Array)
    is
    begin
       SIO.Write (Stream.File, Item);

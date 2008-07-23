@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---               GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS                --
+--                GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                  --
 --                                                                          --
---              SYSTEM.TASKING.PROTECTED_OBJECTS.SINGLE_ENTRY               --
+--             SYSTEM.TASKING.PROTECTED_OBJECTS.SINGLE_ENTRY                --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -34,13 +34,13 @@
 --  This package provides an optimized version of Protected_Objects.Operations
 --  and Protected_Objects.Entries making the following assumptions:
 --
---  PO have only one entry
---  There is only one caller at a time (No_Entry_Queue)
---  There is no dynamic priority support (No_Dynamic_Priorities)
---  No Abort Statements
---    (No_Abort_Statements, Max_Asynchronous_Select_Nesting => 0)
---  PO are at library level
---  None of the tasks will terminate (no need for finalization)
+--    PO have only one entry
+--    There is only one caller at a time (No_Entry_Queue)
+--    There is no dynamic priority support (No_Dynamic_Priorities)
+--    No Abort Statements
+--      (No_Abort_Statements, Max_Asynchronous_Select_Nesting => 0)
+--    PO are at library level
+--    None of the tasks will terminate (no need for finalization)
 --
 --  This interface is intended to be used in the ravenscar profile, the
 --  compiler is responsible for ensuring that the conditions mentioned above
@@ -204,7 +204,7 @@ package System.Tasking.Protected_Objects.Single_Entry is
    --  Lock a protected object for read access.  Upon return, the caller
    --  owns the lock for read access, and no other calls to Lock
    --  with the same argument will return until the corresponding call
-   --  to Unlock has been made by the caller.  Other cals to Lock_Read_Only
+   --  to Unlock has been made by the caller.  Other calls to Lock_Read_Only
    --  may (but need not) return before the call to Unlock, and the
    --  corresponding callers will also own the lock for read access.
 
@@ -267,7 +267,7 @@ package System.Tasking.Protected_Objects.Single_Entry is
 
    function Protected_Count_Entry (Object : Protection_Entry)
      return Natural;
-   --  Return the number of entry calls on Object (0 or 1).
+   --  Return the number of entry calls on Object (0 or 1)
 
    function Protected_Single_Entry_Caller (Object : Protection_Entry)
      return Task_Id;

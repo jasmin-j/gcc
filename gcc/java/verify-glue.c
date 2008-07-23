@@ -1,11 +1,11 @@
 /* Glue to interface gcj with bytecode verifier.
-   Copyright (C) 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -14,9 +14,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.
 
 Java and all Java-based marks are trademarks or registered trademarks
 of Sun Microsystems, Inc. in the United States and other countries.
@@ -30,12 +29,12 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "coretypes.h"
 #include "tm.h"
 #include "tree.h"
-#include "errors.h"
 #include "parse.h"
 
 #include "verify.h"
 #include "java-tree.h"
 #include "java-except.h"
+#include "toplev.h"
 
 void *
 vfy_alloc (size_t bytes)
@@ -211,18 +210,6 @@ vfy_get_pool_class (vfy_constants *pool, int index)
 }
 
 vfy_string
-vfy_make_string (const char *s, int len)
-{
-  tree result;
-  char *s2 = (char *) s;
-  char save = s2[len];
-  s2[len] = '\0';
-  result = get_identifier (s2);
-  s2[len] = save;
-  return result;  
-}
-
-vfy_string
 vfy_get_class_name (vfy_jclass klass)
 {
   return DECL_NAME (TYPE_NAME (klass));
@@ -252,8 +239,7 @@ char
 vfy_get_primitive_char (vfy_jclass klass)
 {
   tree sig;
-  if (! vfy_is_primitive (klass))
-    abort ();
+  gcc_assert (vfy_is_primitive (klass));
   sig = build_java_signature (klass);
   return (IDENTIFIER_POINTER (sig))[0];
 }
@@ -296,8 +282,7 @@ vfy_jclass
 vfy_get_component_type (vfy_jclass klass)
 {
   vfy_jclass k;
-  if (! vfy_is_array (klass))
-    abort ();
+  gcc_assert (vfy_is_array (klass));
   k = TYPE_ARRAY_ELEMENT (klass);
   if (TREE_CODE (k) == POINTER_TYPE)
     k = TREE_TYPE (k);
@@ -328,6 +313,12 @@ vfy_object_type (void)
   vfy_jclass k;
   k = object_type_node;
   return k;
+}
+
+vfy_jclass
+vfy_class_type (void)
+{
+  return class_type_node;
 }
 
 vfy_jclass
@@ -402,37 +393,41 @@ vfy_get_primitive_type (int type)
 void
 vfy_note_stack_depth (vfy_method *method, int pc, int depth)
 {
-  tree label = lookup_label (pc);
-  LABEL_TYPE_STATE (label) = make_tree_vec (method->max_locals + depth);
+  tree val = make_tree_vec (method->max_locals + depth);
+  VEC_replace (tree, type_states, pc, val);
+  /* Called for side effects.  */
+  lookup_label (pc);
 }
 
 void
 vfy_note_stack_type (vfy_method *method, int pc, int slot, vfy_jclass type)
 {
-  tree label, vec;
+  tree vec;
   
   slot += method->max_locals;
 
   if (type == object_type_node)
     type = object_ptr_type_node;
 
-  label = lookup_label (pc);
-  vec = LABEL_TYPE_STATE (label);
+  vec = VEC_index (tree, type_states, pc);
   TREE_VEC_ELT (vec, slot) = type;
+  /* Called for side effects.  */
+  lookup_label (pc);
 }
 
 void
 vfy_note_local_type (vfy_method *method ATTRIBUTE_UNUSED, int pc, int slot,
 		     vfy_jclass type)
 {
-  tree label, vec;
+  tree vec;
   
   if (type == object_type_node)
     type = object_ptr_type_node;
 
-  label = lookup_label (pc);
-  vec = LABEL_TYPE_STATE (label);
+  vec = VEC_index (tree, type_states, pc);
   TREE_VEC_ELT (vec, slot) = type;
+  /* Called for side effects.  */
+  lookup_label (pc);
 }
 
 void

@@ -1,4 +1,4 @@
-// Copyright (C) 2004 Free Software Foundation, Inc.
+// Copyright (C) 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -13,7 +13,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -25,7 +25,7 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
-#include <string>
+#include <ext/vstring.h>
 #include <ext/array_allocator.h>
 #include <testsuite_hooks.h>
 
@@ -39,9 +39,9 @@ void test01()
 {
   bool test __attribute__((unused)) = true;
 
-  using std::basic_string;
+  using __gnu_cxx::__versa_string;
   typedef __gnu_cxx::array_allocator<char_type, array_type> allocator_type;
-  typedef basic_string<char_type, traits_type, allocator_type> string_type;
+  typedef __versa_string<char_type, traits_type, allocator_type> string_type;
 
   // Construct array_allocator without underlying array.
   allocator_type a;

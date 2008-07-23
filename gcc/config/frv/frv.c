@@ -1,4 +1,4 @@
-/* Copyright (C) 1997, 1998, 1999, 2000, 2001, 2003, 2004, 2005
+/* Copyright (C) 1997, 1998, 1999, 2000, 2001, 2003, 2004, 2005, 2006, 2007
    Free Software Foundation, Inc.
    Contributed by Red Hat, Inc.
 
@@ -6,7 +6,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -51,6 +50,7 @@ Boston, MA 02111-1307, USA.  */
 #include "targhooks.h"
 #include "integrate.h"
 #include "langhooks.h"
+#include "df.h"
 
 #ifndef FRV_INLINE
 #define FRV_INLINE inline
@@ -109,6 +109,21 @@ static GTY(()) rtx frv_nops[NUM_NOP_PATTERNS];
 /* The number of nop instructions in frv_nops[].  */
 static unsigned int frv_num_nops;
 
+/* Information about one __builtin_read or __builtin_write access, or
+   the combination of several such accesses.  The most general value
+   is all-zeros (an unknown access to an unknown address).  */
+struct frv_io {
+  /* The type of access.  FRV_IO_UNKNOWN means the access can be either
+     a read or a write.  */
+  enum { FRV_IO_UNKNOWN, FRV_IO_READ, FRV_IO_WRITE } type;
+
+  /* The constant address being accessed, or zero if not known.  */
+  HOST_WIDE_INT const_address;
+
+  /* The run-time address, as used in operand 0 of the membar pattern.  */
+  rtx var_address;
+};
+
 /* Return true if instruction INSN should be packed with the following
    instruction.  */
 #define PACKING_FLAG_P(INSN) (GET_MODE (INSN) == TImode)
@@ -122,6 +137,16 @@ static unsigned int frv_num_nops;
   for (REG = REGNO (X);							\
        REG < REGNO (X) + HARD_REGNO_NREGS (REGNO (X), GET_MODE (X));	\
        REG++)
+
+/* This structure contains machine specific function data.  */
+struct machine_function GTY(())
+{
+  /* True if we have created an rtx that relies on the stack frame.  */
+  int frame_needed;
+
+  /* True if this function contains at least one __builtin_{read,write}*.  */
+  bool has_membar_p;
+};
 
 /* Temporary register allocation support structure.  */
 typedef struct frv_tmp_reg_struct
@@ -245,7 +270,7 @@ frv_cpu_t frv_cpu_type = CPU_TYPE;	/* value of -mcpu= */
 
 static bool frv_handle_option			(size_t, const char *, int);
 static int frv_default_flags_for_cpu		(void);
-static int frv_string_begins_with		(tree, const char *);
+static int frv_string_begins_with		(const_tree, const char *);
 static FRV_INLINE bool frv_small_data_reloc_p	(rtx, int);
 static void frv_print_operand_memory_reference_reg
 						(FILE *, rtx);
@@ -272,8 +297,8 @@ static void frv_frame_access_standard_regs	(enum frv_stack_op,
 static struct machine_function *frv_init_machine_status		(void);
 static rtx frv_int_to_acc			(enum insn_code, int, rtx);
 static enum machine_mode frv_matching_accg_mode	(enum machine_mode);
-static rtx frv_read_argument			(tree *);
-static rtx frv_read_iacc_argument		(enum machine_mode, tree *);
+static rtx frv_read_argument			(tree, unsigned int);
+static rtx frv_read_iacc_argument		(enum machine_mode, tree, unsigned int);
 static int frv_check_constant_argument		(enum insn_code, int, rtx);
 static rtx frv_legitimize_target		(enum insn_code, rtx);
 static rtx frv_legitimize_argument		(enum insn_code, int, rtx);
@@ -305,7 +330,7 @@ static int frv_cond_flags 			(rtx);
 static bool frv_regstate_conflict_p 		(regstate_t, regstate_t);
 static int frv_registers_conflict_p_1 		(rtx *, void *);
 static bool frv_registers_conflict_p 		(rtx);
-static void frv_registers_update_1 		(rtx, rtx, void *);
+static void frv_registers_update_1 		(rtx, const_rtx, void *);
 static void frv_registers_update 		(rtx);
 static void frv_start_packet 			(void);
 static void frv_start_packet_block 		(void);
@@ -333,13 +358,14 @@ static bool frv_assemble_integer		(rtx, unsigned, int);
 static void frv_init_builtins			(void);
 static rtx frv_expand_builtin			(tree, rtx, rtx, enum machine_mode, int);
 static void frv_init_libfuncs			(void);
-static bool frv_in_small_data_p			(tree);
+static bool frv_in_small_data_p			(const_tree);
 static void frv_asm_output_mi_thunk
   (FILE *, tree, HOST_WIDE_INT, HOST_WIDE_INT, tree);
 static void frv_setup_incoming_varargs		(CUMULATIVE_ARGS *,
 						 enum machine_mode,
 						 tree, int *, int);
 static rtx frv_expand_builtin_saveregs		(void);
+static void frv_expand_builtin_va_start		(tree, rtx);
 static bool frv_rtx_costs			(rtx, int, int, int*);
 static void frv_asm_out_constructor		(rtx, int);
 static void frv_asm_out_destructor		(rtx, int);
@@ -350,9 +376,11 @@ static void frv_output_const_unspec		(FILE *,
 						 const struct frv_unspec *);
 static bool frv_function_ok_for_sibcall		(tree, tree);
 static rtx frv_struct_value_rtx			(tree, int);
-static bool frv_must_pass_in_stack (enum machine_mode mode, tree type);
+static bool frv_must_pass_in_stack (enum machine_mode mode, const_tree type);
 static int frv_arg_partial_bytes (CUMULATIVE_ARGS *, enum machine_mode,
 				  tree, bool);
+static void frv_output_dwarf_dtprel		(FILE *, int, rtx)
+  ATTRIBUTE_UNUSED;
 
 /* Allow us to easily change the default for -malloc-cc.  */
 #ifndef DEFAULT_NO_ALLOC_CC
@@ -425,6 +453,14 @@ static int frv_arg_partial_bytes (CUMULATIVE_ARGS *, enum machine_mode,
 #define TARGET_SETUP_INCOMING_VARARGS frv_setup_incoming_varargs
 #undef TARGET_MACHINE_DEPENDENT_REORG
 #define TARGET_MACHINE_DEPENDENT_REORG frv_reorg
+
+#undef TARGET_EXPAND_BUILTIN_VA_START
+#define TARGET_EXPAND_BUILTIN_VA_START frv_expand_builtin_va_start
+
+#if HAVE_AS_TLS
+#undef TARGET_ASM_OUTPUT_DWARF_DTPREL
+#define TARGET_ASM_OUTPUT_DWARF_DTPREL frv_output_dwarf_dtprel
+#endif
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 
@@ -571,8 +607,10 @@ frv_default_flags_for_cpu (void)
     case FRV_CPU_FR300:
     case FRV_CPU_SIMPLE:
       return MASK_DEFAULT_SIMPLE;
+
+    default:
+      gcc_unreachable ();
     }
-  abort ();
 }
 
 /* Sometimes certain combinations of command options do not make
@@ -747,6 +785,9 @@ frv_override_options (void)
   if ((target_flags_explicit & MASK_LINKED_FP) == 0)
     target_flags |= MASK_LINKED_FP;
 
+  if ((target_flags_explicit & MASK_OPTIMIZE_MEMBAR) == 0)
+    target_flags |= MASK_OPTIMIZE_MEMBAR;
+
   for (i = 0; i < ARRAY_SIZE (frv_unit_names); i++)
     frv_unit_codes[i] = get_cpu_unit_code (frv_unit_names[i]);
 
@@ -796,9 +837,9 @@ frv_optimization_options (int level, int size ATTRIBUTE_UNUSED)
 /* Return true if NAME (a STRING_CST node) begins with PREFIX.  */
 
 static int
-frv_string_begins_with (tree name, const char *prefix)
+frv_string_begins_with (const_tree name, const char *prefix)
 {
-  int prefix_len = strlen (prefix);
+  const int prefix_len = strlen (prefix);
 
   /* Remember: NAME's length includes the null terminator.  */
   return (TREE_STRING_LENGTH (name) > prefix_len
@@ -1130,11 +1171,11 @@ frv_stack_info (void)
 	default:
 	  for (regno = first; regno <= last; regno++)
 	    {
-	      if ((regs_ever_live[regno] && !call_used_regs[regno])
-		  || (current_function_calls_eh_return
+	      if ((df_regs_ever_live_p (regno) && !call_used_regs[regno])
+		  || (crtl->calls_eh_return
 		      && (regno >= FIRST_EH_REGNUM && regno <= LAST_EH_REGNUM))
 		  || (!TARGET_FDPIC && flag_pic
-		      && cfun->uses_pic_offset_table && regno == PIC_REGNO))
+		      && crtl->uses_pic_offset_table && regno == PIC_REGNO))
 		{
 		  info_ptr->save_p[regno] = REG_SAVE_1WORD;
 		  size_1word += UNITS_PER_WORD;
@@ -1148,13 +1189,13 @@ frv_stack_info (void)
 	  break;
 
 	case STACK_REGS_LR:
-	  if (regs_ever_live[LR_REGNO]
+	  if (df_regs_ever_live_p (LR_REGNO)
               || profile_flag
 	      /* This is set for __builtin_return_address, etc.  */
 	      || cfun->machine->frame_needed
               || (TARGET_LINKED_FP && frame_pointer_needed)
               || (!TARGET_FDPIC && flag_pic
-		  && cfun->uses_pic_offset_table))
+		  && crtl->uses_pic_offset_table))
 	    {
 	      info_ptr->save_p[LR_REGNO] = REG_SAVE_1WORD;
 	      size_1word += UNITS_PER_WORD;
@@ -1167,7 +1208,7 @@ frv_stack_info (void)
 	      /* If this is a stdarg function with a non varardic
 		 argument split between registers and the stack,
 		 adjust the saved registers downward.  */
-	      last -= (ADDR_ALIGN (cfun->pretend_args_size, UNITS_PER_WORD)
+	      last -= (ADDR_ALIGN (crtl->args.pretend_args_size, UNITS_PER_WORD)
 		       / UNITS_PER_WORD);
 
 	      for (regno = first; regno <= last; regno++)
@@ -1227,13 +1268,13 @@ frv_stack_info (void)
      be used, or the size of a word otherwise.  */
   alignment = (TARGET_DWORD? 2 * UNITS_PER_WORD : UNITS_PER_WORD);
 
-  info_ptr->parameter_size = ADDR_ALIGN (cfun->outgoing_args_size, alignment);
+  info_ptr->parameter_size = ADDR_ALIGN (crtl->outgoing_args_size, alignment);
   info_ptr->regs_size = ADDR_ALIGN (info_ptr->regs_size_2words
 				    + info_ptr->regs_size_1word,
 				    alignment);
   info_ptr->vars_size = ADDR_ALIGN (get_frame_size (), alignment);
 
-  info_ptr->pretend_size = cfun->pretend_args_size;
+  info_ptr->pretend_size = crtl->args.pretend_args_size;
 
   /* Work out the size of the frame, excluding the header.  Both the frame
      body and register parameter area will be dword-aligned.  */
@@ -1461,8 +1502,7 @@ frv_function_prologue (FILE *file, HOST_WIDE_INT size ATTRIBUTE_UNUSED)
       rtx insn;
 
       /* Just to check that the above comment is true.  */
-      if (regs_ever_live[GPR_FIRST + 3])
-	abort ();
+      gcc_assert (!df_regs_ever_live_p (GPR_FIRST + 3));
 
       /* Generate the instruction that saves the link register.  */
       fprintf (file, "\tmovsg lr,gr3\n");
@@ -1482,7 +1522,7 @@ frv_function_prologue (FILE *file, HOST_WIDE_INT size ATTRIBUTE_UNUSED)
 	      {
 		rtx address = XEXP (XVECEXP (pattern, 0, 1), 0);
 		if (GET_CODE (address) == REG && REGNO (address) == LR_REGNO)
-		  REGNO (address) = GPR_FIRST + 3;
+		  SET_REGNO (address, GPR_FIRST + 3);
 	      }
 	  }
     }
@@ -1519,10 +1559,8 @@ frv_alloc_temp_reg (
 	regno = 0;
       if (regno == orig_regno)
 	{
-	  if (no_abort)
-	    return NULL_RTX;
-	  else
-	    abort ();
+	  gcc_assert (no_abort);
+	  return NULL_RTX;
 	}
     }
 
@@ -1644,7 +1682,7 @@ frv_frame_access (frv_frame_accessor_t *accessor, rtx reg, int stack_offset)
 	}
       else
 	emit_insn (gen_rtx_SET (VOIDmode, reg, mem));
-      emit_insn (gen_rtx_USE (VOIDmode, reg));
+      emit_use (reg);
     }
   else
     {
@@ -1826,7 +1864,7 @@ frv_expand_prologue (void)
     emit_insn (gen_blockage ());
 
   /* Set up pic register/small data register for this function.  */
-  if (!TARGET_FDPIC && flag_pic && cfun->uses_pic_offset_table)
+  if (!TARGET_FDPIC && flag_pic && crtl->uses_pic_offset_table)
     emit_insn (gen_pic_prologue (gen_rtx_REG (Pmode, PIC_REGNO),
 				 gen_rtx_REG (Pmode, LR_REGNO),
 				 gen_rtx_REG (SImode, OFFSET_REGNO)));
@@ -1908,7 +1946,7 @@ frv_expand_epilogue (bool emit_return)
   if (frame_pointer_needed)
     {
       emit_insn (gen_rtx_SET (VOIDmode, fp, gen_rtx_MEM (Pmode, fp)));
-      emit_insn (gen_rtx_USE (VOIDmode, fp));
+      emit_use (fp);
     }
 
   /* Deallocate the stack frame.  */
@@ -1919,7 +1957,7 @@ frv_expand_epilogue (bool emit_return)
     }
 
   /* If this function uses eh_return, add the final stack adjustment now.  */
-  if (current_function_calls_eh_return)
+  if (crtl->calls_eh_return)
     emit_insn (gen_stack_adjust (sp, sp, EH_RETURN_STACKADJ_RTX));
 
   if (emit_return)
@@ -1934,7 +1972,7 @@ frv_expand_epilogue (bool emit_return)
 	  emit_move_insn (lr, return_addr);
 	}
 
-      emit_insn (gen_rtx_USE (VOIDmode, lr));
+      emit_use (lr);
     }
 }
 
@@ -2072,7 +2110,7 @@ frv_frame_pointer_required (void)
   if (!current_function_sp_is_unchanging)
     return TRUE;
 
-  if (!TARGET_FDPIC && flag_pic && cfun->uses_pic_offset_table)
+  if (!TARGET_FDPIC && flag_pic && crtl->uses_pic_offset_table)
     return TRUE;
 
   if (profile_flag)
@@ -2109,7 +2147,7 @@ frv_initial_elimination_offset (int from, int to)
 	   - info->pretend_size);
 
   else
-    abort ();
+    gcc_unreachable ();
 
   if (TARGET_DEBUG_STACK)
     fprintf (stderr, "Eliminate %s to %s by adding %d\n",
@@ -2152,11 +2190,11 @@ frv_expand_builtin_saveregs (void)
 
 /* Expand __builtin_va_start to do the va_start macro.  */
 
-void
+static void
 frv_expand_builtin_va_start (tree valist, rtx nextarg)
 {
   tree t;
-  int num = cfun->args_info - FIRST_ARG_REGNUM - FRV_NUM_ARG_REGS;
+  int num = crtl->args.info - FIRST_ARG_REGNUM - FRV_NUM_ARG_REGS;
 
   nextarg = gen_rtx_PLUS (Pmode, virtual_incoming_args_rtx,
 			  GEN_INT (UNITS_PER_WORD * num));
@@ -2164,13 +2202,14 @@ frv_expand_builtin_va_start (tree valist, rtx nextarg)
   if (TARGET_DEBUG_ARG)
     {
       fprintf (stderr, "va_start: args_info = %d, num = %d\n",
-	       cfun->args_info, num);
+	       crtl->args.info, num);
 
       debug_rtx (nextarg);
     }
 
-  t = build (MODIFY_EXPR, TREE_TYPE (valist), valist,
-	     make_tree (ptr_type_node, nextarg));
+  t = build2 (GIMPLE_MODIFY_STMT, TREE_TYPE (valist), valist,
+	      fold_convert (TREE_TYPE (valist),
+			    make_tree (sizetype, nextarg)));
   TREE_SIDE_EFFECTS (t) = 1;
 
   expand_expr (t, const0_rtx, VOIDmode, EXPAND_NORMAL);
@@ -2223,9 +2262,8 @@ frv_expand_block_move (rtx operands[])
   if (! constp)
     return FALSE;
 
-  /* If this is not a fixed size alignment, abort.  */
-  if (GET_CODE (align_rtx) != CONST_INT)
-    abort ();
+  /* This should be a fixed size alignment.  */
+  gcc_assert (GET_CODE (align_rtx) == CONST_INT);
 
   align = INTVAL (align_rtx);
 
@@ -2293,14 +2331,14 @@ frv_expand_block_move (rtx operands[])
 
    operands[0] is the destination
    operands[1] is the length
-   operands[2] is the alignment */
+   operands[3] is the alignment */
 
 int
 frv_expand_block_clear (rtx operands[])
 {
   rtx orig_dest = operands[0];
   rtx bytes_rtx	= operands[1];
-  rtx align_rtx = operands[2];
+  rtx align_rtx = operands[3];
   int constp	= (GET_CODE (bytes_rtx) == CONST_INT);
   int align;
   int bytes;
@@ -2316,9 +2354,8 @@ frv_expand_block_clear (rtx operands[])
   if (! constp)
     return FALSE;
 
-  /* If this is not a fixed size alignment, abort.  */
-  if (GET_CODE (align_rtx) != CONST_INT)
-    abort ();
+  /* This should be a fixed size alignment.  */
+  gcc_assert (GET_CODE (align_rtx) == CONST_INT);
 
   align = INTVAL (align_rtx);
 
@@ -2506,7 +2543,7 @@ frv_print_operand_address (FILE * stream, rtx x)
       break;
     }
 
-  fatal_insn ("Bad insn to frv_print_operand_address:", x);
+  fatal_insn ("bad insn to frv_print_operand_address:", x);
 }
 
 
@@ -2517,7 +2554,7 @@ frv_print_operand_memory_reference_reg (FILE * stream, rtx x)
   if (GPR_P (regno))
     fputs (reg_names[regno], stream);
   else
-    fatal_insn ("Bad register to frv_print_operand_memory_reference_reg:", x);
+    fatal_insn ("bad register to frv_print_operand_memory_reference_reg:", x);
 }
 
 /* Print a memory reference suitable for the ld/st instructions.  */
@@ -2556,7 +2593,7 @@ frv_print_operand_memory_reference (FILE * stream, rtx x, int addr_offset)
       break;
 
     default:
-      fatal_insn ("Bad insn to frv_print_operand_memory_reference:", x);
+      fatal_insn ("bad insn to frv_print_operand_memory_reference:", x);
       break;
 
     }
@@ -2566,7 +2603,7 @@ frv_print_operand_memory_reference (FILE * stream, rtx x, int addr_offset)
       if (!x1)
 	x1 = const0_rtx;
       else if (GET_CODE (x1) != CONST_INT)
-	fatal_insn ("Bad insn to frv_print_operand_memory_reference:", x);
+	fatal_insn ("bad insn to frv_print_operand_memory_reference:", x);
     }
 
   fputs ("@(", stream);
@@ -2575,7 +2612,7 @@ frv_print_operand_memory_reference (FILE * stream, rtx x, int addr_offset)
   else if (GET_CODE (x0) == REG || GET_CODE (x0) == SUBREG)
     frv_print_operand_memory_reference_reg (stream, x0);
   else
-    fatal_insn ("Bad insn to frv_print_operand_memory_reference:", x);
+    fatal_insn ("bad insn to frv_print_operand_memory_reference:", x);
 
   fputs (",", stream);
   if (!x1)
@@ -2596,12 +2633,12 @@ frv_print_operand_memory_reference (FILE * stream, rtx x, int addr_offset)
 
 	case CONST:
 	  if (!frv_const_unspec_p (x1, &unspec))
-	    fatal_insn ("Bad insn to frv_print_operand_memory_reference:", x1);
+	    fatal_insn ("bad insn to frv_print_operand_memory_reference:", x1);
 	  frv_output_const_unspec (stream, &unspec);
 	  break;
 
 	default:
-	  fatal_insn ("Bad insn to frv_print_operand_memory_reference:", x);
+	  fatal_insn ("bad insn to frv_print_operand_memory_reference:", x);
 	}
     }
 
@@ -2623,8 +2660,7 @@ frv_print_operand_jump_hint (rtx insn)
   HOST_WIDE_INT prob = -1;
   enum { UNKNOWN, BACKWARD, FORWARD } jump_type = UNKNOWN;
 
-  if (GET_CODE (insn) != JUMP_INSN)
-    abort ();
+  gcc_assert (GET_CODE (insn) == JUMP_INSN);
 
   /* Assume any non-conditional jump is likely.  */
   if (! any_condjump_p (insn))
@@ -2763,7 +2799,7 @@ frv_print_operand (FILE * file, rtx x, int code)
 	value = CONST_DOUBLE_LOW (x);
 
       else
-        fatal_insn ("Bad insn in frv_print_operand, bad const_double", x);
+        fatal_insn ("bad insn in frv_print_operand, bad const_double", x);
     }
 
   else
@@ -2824,7 +2860,7 @@ frv_print_operand (FILE * file, rtx x, int code)
 	fputs ("0", file);
 
       else
-	fatal_insn ("Bad insn to frv_print_operand, 'e' modifier:", x);
+	fatal_insn ("bad insn to frv_print_operand, 'e' modifier:", x);
       break;
 
     case 'F':
@@ -2832,7 +2868,7 @@ frv_print_operand (FILE * file, rtx x, int code)
       switch (GET_CODE (x))
 	{
 	default:
-	  fatal_insn ("Bad insn to frv_print_operand, 'F' modifier:", x);
+	  fatal_insn ("bad insn to frv_print_operand, 'F' modifier:", x);
 
 	case EQ:  fputs ("ne",  file); break;
 	case NE:  fputs ("eq",  file); break;
@@ -2848,7 +2884,7 @@ frv_print_operand (FILE * file, rtx x, int code)
       switch (GET_CODE (x))
 	{
 	default:
-	  fatal_insn ("Bad insn to frv_print_operand, 'f' modifier:", x);
+	  fatal_insn ("bad insn to frv_print_operand, 'f' modifier:", x);
 
 	case EQ:  fputs ("eq",  file); break;
 	case NE:  fputs ("ne",  file); break;
@@ -2862,7 +2898,7 @@ frv_print_operand (FILE * file, rtx x, int code)
     case 'g':
       /* Print appropriate GOT function.  */
       if (GET_CODE (x) != CONST_INT)
-	fatal_insn ("Bad insn to frv_print_operand, 'g' modifier:", x);
+	fatal_insn ("bad insn to frv_print_operand, 'g' modifier:", x);
       fputs (unspec_got_name (INTVAL (x)), file);
       break;
 
@@ -2910,7 +2946,7 @@ frv_print_operand (FILE * file, rtx x, int code)
       if (GET_CODE (x) == REG)
 	fputs (reg_names[ REGNO (x)+1 ], file);
       else
-	fatal_insn ("Bad insn to frv_print_operand, 'L' modifier:", x);
+	fatal_insn ("bad insn to frv_print_operand, 'L' modifier:", x);
       break;
 
     /* case 'l': print a LABEL_REF.  */
@@ -2923,7 +2959,7 @@ frv_print_operand (FILE * file, rtx x, int code)
       switch (GET_CODE (x))
 	{
 	default:
-	  fatal_insn ("Bad insn to frv_print_operand, 'M/N' modifier:", x);
+	  fatal_insn ("bad insn to frv_print_operand, 'M/N' modifier:", x);
 
 	case MEM:
 	  frv_print_operand_memory_reference (file, XEXP (x, 0), offset);
@@ -2944,7 +2980,7 @@ frv_print_operand (FILE * file, rtx x, int code)
       switch (GET_CODE (x))
 	{
 	default:
-	  fatal_insn ("Bad insn to frv_print_operand, 'O' modifier:", x);
+	  fatal_insn ("bad insn to frv_print_operand, 'O' modifier:", x);
 
 	case PLUS:     fputs ("add", file); break;
 	case MINUS:    fputs ("sub", file); break;
@@ -2962,7 +2998,7 @@ frv_print_operand (FILE * file, rtx x, int code)
     case 'P':
       /* Print PIC label using operand as the number.  */
       if (GET_CODE (x) != CONST_INT)
-	fatal_insn ("Bad insn to frv_print_operand, P modifier:", x);
+	fatal_insn ("bad insn to frv_print_operand, P modifier:", x);
 
       fprintf (file, ".LCF%ld", (long)INTVAL (x));
       break;
@@ -2982,7 +3018,7 @@ frv_print_operand (FILE * file, rtx x, int code)
         fputs (reg_names [REGNO (x)], file);
 
       else
-        fatal_insn ("Bad insn in frv_print_operand, z case", x);
+        fatal_insn ("bad insn in frv_print_operand, z case", x);
       break;
 
     case 'x':
@@ -3013,7 +3049,7 @@ frv_print_operand (FILE * file, rtx x, int code)
         frv_print_operand_address (file, x);
 
       else
-        fatal_insn ("Bad insn in frv_print_operand, 0 case", x);
+        fatal_insn ("bad insn in frv_print_operand, 0 case", x);
 
       break;
 
@@ -3082,7 +3118,7 @@ frv_init_cumulative_args (CUMULATIVE_ARGS *cum,
    in registers.  */
 
 static bool
-frv_must_pass_in_stack (enum machine_mode mode, tree type)
+frv_must_pass_in_stack (enum machine_mode mode, const_tree type)
 {
   if (mode == BLKmode)
     return true;
@@ -3329,7 +3365,7 @@ frv_legitimate_address_p (enum machine_mode mode,
       break;
 
     case CONST_INT:
-      /* 12 bit immediate */
+      /* 12-bit immediate */
       if (condexec_p)
 	ret = FALSE;
       else
@@ -3380,7 +3416,7 @@ frv_legitimate_address_p (enum machine_mode mode,
 	  break;
 
 	case CONST_INT:
-          /* 12 bit immediate */
+          /* 12-bit immediate */
 	  if (condexec_p)
 	    ret = FALSE;
 	  else
@@ -3419,7 +3455,7 @@ frv_legitimate_address_p (enum machine_mode mode,
 static rtx
 gen_inlined_tls_plt (rtx addr)
 {
-  rtx mem, retval, dest;
+  rtx retval, dest;
   rtx picreg = get_hard_reg_initial_val (Pmode, FDPIC_REG);
 
 
@@ -3568,7 +3604,7 @@ frv_legitimize_tls_address (rtx addr, enum tls_model model)
 	break;
       }
     default:
-      abort ();
+      gcc_unreachable ();
     }
 
   return dest;
@@ -3670,7 +3706,7 @@ unspec_got_name (int i)
     case R_FRV_TLSDESCLO: return "tlsdesclo";
     case R_FRV_GOTTLSDESCHI: return "gottlsdeschi";
     case R_FRV_GOTTLSDESCLO: return "gottlsdesclo";
-    default: abort ();
+    default: gcc_unreachable ();
     }
 }
 
@@ -3763,9 +3799,9 @@ frv_expand_fdpic_call (rtx *operands, bool ret_value, bool sibcall)
 	x = gen_symGOTOFF2reg (dest, addr, OUR_FDPIC_REG,
 			       GEN_INT (R_FRV_FUNCDESC_GOTOFF12));
       emit_insn (x);
-      cfun->uses_pic_offset_table = TRUE;
+      crtl->uses_pic_offset_table = TRUE;
       addr = dest;
-    }    
+    }
   else if (GET_CODE (addr) == SYMBOL_REF)
     {
       /* These are always either local, or handled through a local
@@ -3919,7 +3955,7 @@ frv_emit_move (enum machine_mode mode, rtx dest, rtx src)
       break;
 
     default:
-      abort ();
+      gcc_unreachable ();
     }
 
   emit_insn (gen_rtx_SET (VOIDmode, dest, src));
@@ -3986,7 +4022,7 @@ frv_emit_movsi (rtx dest, rtx src)
 	     (read-write) for code size (read-only, shareable), as
 	     long as the symbol is not used in more than two different
 	     locations.
-	     
+
 	     With -fpie/-fpic, we'd be trading a single load for a
 	     sequence of 4 instructions, because the offset of the
 	     label can't be assumed to be addressable with 12 bits, so
@@ -4085,11 +4121,11 @@ frv_emit_movsi (rtx dest, rtx src)
 
 		  if (init && init != error_mark_node)
 		    reloc = compute_reloc_for_constant (init);
-		  
+
 		  named_section = TREE_CODE (decl) == VAR_DECL
 		    && lookup_attribute ("section", DECL_ATTRIBUTES (decl));
 		  readonly = decl_readonly_section (decl, reloc);
-		  
+
 		  if (named_section)
 		    unspec = R_FRV_GOT12;
 		  else if (!readonly)
@@ -4124,7 +4160,7 @@ frv_emit_movsi (rtx dest, rtx src)
 					   gen_rtx_REG (Pmode, base_regno),
 					   GEN_INT (R_FRV_GPREL12)));
       if (base_regno == PIC_REGNO)
-	cfun->uses_pic_offset_table = TRUE;
+	crtl->uses_pic_offset_table = TRUE;
       return TRUE;
     }
 
@@ -4134,8 +4170,7 @@ frv_emit_movsi (rtx dest, rtx src)
 
       /* Since OUR_FDPIC_REG is a pseudo register, we can't safely introduce
 	 new uses of it once reload has begun.  */
-      if (reload_in_progress || reload_completed)
-	abort ();
+      gcc_assert (!reload_in_progress && !reload_completed);
 
       switch (unspec)
 	{
@@ -4169,7 +4204,7 @@ frv_emit_movsi (rtx dest, rtx src)
 	  break;
 	}
       emit_insn (x);
-      cfun->uses_pic_offset_table = TRUE;
+      crtl->uses_pic_offset_table = TRUE;
       return TRUE;
     }
 
@@ -4388,7 +4423,7 @@ output_move_single (rtx operands[], rtx insn)
 	}
     }
 
-  fatal_insn ("Bad output_move_single operand", insn);
+  fatal_insn ("bad output_move_single operand", insn);
   return "";
 }
 
@@ -4515,7 +4550,7 @@ output_move_double (rtx operands[], rtx insn)
 	}
     }
 
-  fatal_insn ("Bad output_move_double operand", insn);
+  fatal_insn ("bad output_move_double operand", insn);
   return "";
 }
 
@@ -4657,7 +4692,7 @@ output_condmove_single (rtx operands[], rtx insn)
 	}
     }
 
-  fatal_insn ("Bad output_condmove_single operand", insn);
+  fatal_insn ("bad output_condmove_single operand", insn);
   return "";
 }
 
@@ -4933,7 +4968,7 @@ frv_split_cond_move (rtx operands[])
 	}
 
       else
-	abort ();
+	gcc_unreachable ();
     }
   else
     {
@@ -5035,7 +5070,7 @@ frv_split_minmax (rtx operands[])
   switch (GET_CODE (minmax))
     {
     default:
-      abort ();
+      gcc_unreachable ();
 
     case SMIN: test_code = LT;  break;
     case SMAX: test_code = GT;  break;
@@ -5061,8 +5096,7 @@ frv_split_minmax (rtx operands[])
      then do a conditional move of the other value.  */
   if (GET_CODE (src2) == CONST_INT && INTVAL (src2) != 0)
     {
-      if (rtx_equal_p (dest, src1))
-	abort ();
+      gcc_assert (!rtx_equal_p (dest, src1));
 
       emit_move_insn (dest, src2);
       emit_insn (gen_rtx_COND_EXEC (VOIDmode,
@@ -5264,13 +5298,15 @@ frv_ifcvt_modify_tests (ce_if_block_t *ce_info, rtx *p_true, rtx *p_false)
       for (j = CC_FIRST; j <= CC_LAST; j++)
 	if (TEST_HARD_REG_BIT (tmp_reg->regs, j))
 	  {
-	    if (REGNO_REG_SET_P (then_bb->global_live_at_start, j))
+	    if (REGNO_REG_SET_P (df_get_live_in (then_bb), j))
 	      continue;
 
-	    if (else_bb && REGNO_REG_SET_P (else_bb->global_live_at_start, j))
+	    if (else_bb
+		&& REGNO_REG_SET_P (df_get_live_in (else_bb), j))
 	      continue;
 
-	    if (join_bb && REGNO_REG_SET_P (join_bb->global_live_at_start, j))
+	    if (join_bb
+		&& REGNO_REG_SET_P (df_get_live_in (join_bb), j))
 	      continue;
 
 	    SET_HARD_REG_BIT (frv_ifcvt.nested_cc_ok_rewrite, j);
@@ -5288,11 +5324,11 @@ frv_ifcvt_modify_tests (ce_if_block_t *ce_info, rtx *p_true, rtx *p_false)
 
   if (join_bb)
     {
-      int regno;
+      unsigned int regno;
 
       /* Remove anything live at the beginning of the join block from being
          available for allocation.  */
-      EXECUTE_IF_SET_IN_REG_SET (join_bb->global_live_at_start, 0, regno, rsi)
+      EXECUTE_IF_SET_IN_REG_SET (df_get_live_in (join_bb), 0, regno, rsi)
 	{
 	  if (regno < FIRST_PSEUDO_REGISTER)
 	    CLEAR_HARD_REG_BIT (tmp_reg->regs, regno);
@@ -5325,7 +5361,7 @@ frv_ifcvt_modify_tests (ce_if_block_t *ce_info, rtx *p_true, rtx *p_false)
     {
       rtx last_insn = BB_END (bb[j]);
       rtx insn = BB_HEAD (bb[j]);
-      int regno;
+      unsigned int regno;
 
       if (dump_file)
 	fprintf (dump_file, "Scanning %s block %d, start %d, end %d\n",
@@ -5336,7 +5372,7 @@ frv_ifcvt_modify_tests (ce_if_block_t *ce_info, rtx *p_true, rtx *p_false)
 
       /* Anything live at the beginning of the block is obviously unavailable
          for allocation.  */
-      EXECUTE_IF_SET_IN_REG_SET (bb[j]->global_live_at_start, 0, regno, rsi)
+      EXECUTE_IF_SET_IN_REG_SET (df_get_live_in (bb[j]), 0, regno, rsi)
 	{
 	  if (regno < FIRST_PSEUDO_REGISTER)
 	    CLEAR_HARD_REG_BIT (tmp_reg->regs, regno);
@@ -5870,8 +5906,7 @@ frv_ifcvt_modify_insn (ce_if_block_t *ce_info,
   rtx op1;
   rtx test;
 
-  if (GET_CODE (pattern) != COND_EXEC)
-    abort ();
+  gcc_assert (GET_CODE (pattern) == COND_EXEC);
 
   test = COND_EXEC_TEST (pattern);
   if (GET_CODE (test) == AND)
@@ -5964,7 +5999,7 @@ frv_ifcvt_modify_insn (ce_if_block_t *ce_info,
 		goto fail;
 	    }
 
-	  frv_ifcvt_add_insn (gen_rtx_USE (VOIDmode, dest), insn, FALSE);
+	  frv_ifcvt_add_insn (gen_use (dest), insn, FALSE);
 	}
 
       /* If we are just loading a constant created for a nested conditional
@@ -5990,17 +6025,15 @@ frv_ifcvt_modify_insn (ce_if_block_t *ce_info,
 		  limit scheduling of the combined block quite
 		  severely.  */
 	       && ce_info->join_bb
-	       && ! (REGNO_REG_SET_P
-		     (ce_info->join_bb->global_live_at_start,
-		      REGNO (SET_DEST (set))))
+	       && ! (REGNO_REG_SET_P (df_get_live_in (ce_info->join_bb),
+				      REGNO (SET_DEST (set))))
 	       /* Similarly, we must not unconditionally set a reg
 		  used as scratch in the THEN branch if the same reg
 		  is live in the ELSE branch.  */
 	       && (! ce_info->else_bb
 		   || BLOCK_FOR_INSN (insn) == ce_info->else_bb
-		   || ! (REGNO_REG_SET_P
-			 (ce_info->else_bb->global_live_at_start,
-			  REGNO (SET_DEST (set))))))
+		   || ! (REGNO_REG_SET_P (df_get_live_in (ce_info->else_bb),
+					  REGNO (SET_DEST (set))))))
 	pattern = set;
 
       else if (mode == QImode || mode == HImode || mode == SImode
@@ -6137,8 +6170,7 @@ frv_ifcvt_modify_final (ce_if_block_t *ce_info ATTRIBUTE_UNUSED)
 
   /* Loop inserting the check insns.  The last check insn is the first test,
      and is the appropriate place to insert constants.  */
-  if (! p)
-    abort ();
+  gcc_assert (p);
 
   do
     {
@@ -6486,8 +6518,7 @@ frv_adjust_field_align (tree field, int computed)
 	  prev = cur;
 	}
 
-      if (!cur)
-	abort ();
+      gcc_assert (cur);
 
       /* If this isn't a :0 field and if the previous element is a bitfield
 	 also, see if the type is different, if so, we will need to align the
@@ -6919,7 +6950,7 @@ frv_assemble_integer (rtx value, unsigned int size, int aligned_p)
 static struct machine_function *
 frv_init_machine_status (void)
 {
-  return ggc_alloc_cleared (sizeof (struct machine_function));
+  return GGC_CNEW (struct machine_function);
 }
 
 /* Implement TARGET_SCHED_ISSUE_RATE.  */
@@ -7007,8 +7038,7 @@ frv_insn_unit (rtx insn)
 	if (cpu_unit_reservation_p (state, frv_unit_codes[unit]))
 	  break;
 
-      if (unit == ARRAY_SIZE (frv_unit_codes))
-	abort ();
+      gcc_assert (unit != ARRAY_SIZE (frv_unit_codes));
 
       frv_type_to_unit[type] = unit;
     }
@@ -7076,15 +7106,14 @@ static struct {
 static int
 frv_cond_flags (rtx cond)
 {
-  if ((GET_CODE (cond) == EQ || GET_CODE (cond) == NE)
-      && GET_CODE (XEXP (cond, 0)) == REG
-      && CR_P (REGNO (XEXP (cond, 0)))
-      && XEXP (cond, 1) == const0_rtx)
-    return ((REGNO (XEXP (cond, 0)) - CR_FIRST)
-	    | (GET_CODE (cond) == NE
-	       ? REGSTATE_IF_TRUE
-	       : REGSTATE_IF_FALSE));
-  abort ();
+  gcc_assert ((GET_CODE (cond) == EQ || GET_CODE (cond) == NE)
+	      && GET_CODE (XEXP (cond, 0)) == REG
+	      && CR_P (REGNO (XEXP (cond, 0)))
+	      && XEXP (cond, 1) == const0_rtx);
+  return ((REGNO (XEXP (cond, 0)) - CR_FIRST)
+	  | (GET_CODE (cond) == NE
+	     ? REGSTATE_IF_TRUE
+	     : REGSTATE_IF_FALSE));
 }
 
 
@@ -7189,7 +7218,7 @@ frv_registers_conflict_p (rtx x)
    under which X is modified.  Update FRV_PACKET accordingly.  */
 
 static void
-frv_registers_update_1 (rtx x, rtx pat ATTRIBUTE_UNUSED, void *data)
+frv_registers_update_1 (rtx x, const_rtx pat ATTRIBUTE_UNUSED, void *data)
 {
   unsigned int regno;
 
@@ -7496,7 +7525,8 @@ frv_sort_insn_group_1 (enum frv_insn_group group,
 static int
 frv_compare_insns (const void *first, const void *second)
 {
-  const rtx *insn1 = first, *insn2 = second;
+  const rtx *const insn1 = (rtx const *) first,
+    *const insn2 = (rtx const *) second;
   return frv_insn_unit (*insn1) - frv_insn_unit (*insn2);
 }
 
@@ -7569,7 +7599,7 @@ frv_sort_insn_group (enum frv_insn_group group)
 	    return;
 	}
     }
-  abort ();
+  gcc_unreachable ();
 }
 
 /* Sort the current packet into assembly-language order.  Set packing
@@ -7601,14 +7631,13 @@ frv_reorder_packet (void)
       if (cursor[group] < packet_group->num_insns)
 	{
 	  /* frv_reorg should have added nops for us.  */
-	  if (packet_group->sorted[cursor[group]] == packet_group->nop)
-	    abort ();
+	  gcc_assert (packet_group->sorted[cursor[group]]
+		      != packet_group->nop);
 	  insns[to++] = packet_group->sorted[cursor[group]++];
 	}
     }
 
-  if (to != frv_packet.num_insns)
-    abort ();
+  gcc_assert (to == frv_packet.num_insns);
 
   /* Clear the last instruction's packing flag, thus marking the end of
      a packet.  Reorder the other instructions relative to it.  */
@@ -7616,7 +7645,7 @@ frv_reorder_packet (void)
   for (from = 0; from < to - 1; from++)
     {
       remove_insn (insns[from]);
-      add_insn_before (insns[from], insns[to - 1]);
+      add_insn_before (insns[from], insns[to - 1], NULL);
       SET_PACKING_FLAG (insns[from]);
     }
 }
@@ -7664,6 +7693,334 @@ frv_fill_unused_units (enum frv_insn_group group)
     frv_insert_nop_in_packet (packet_group->nop);
 }
 
+/* Return true if accesses IO1 and IO2 refer to the same doubleword.  */
+
+static bool
+frv_same_doubleword_p (const struct frv_io *io1, const struct frv_io *io2)
+{
+  if (io1->const_address != 0 && io2->const_address != 0)
+    return io1->const_address == io2->const_address;
+
+  if (io1->var_address != 0 && io2->var_address != 0)
+    return rtx_equal_p (io1->var_address, io2->var_address);
+
+  return false;
+}
+
+/* Return true if operations IO1 and IO2 are guaranteed to complete
+   in order.  */
+
+static bool
+frv_io_fixed_order_p (const struct frv_io *io1, const struct frv_io *io2)
+{
+  /* The order of writes is always preserved.  */
+  if (io1->type == FRV_IO_WRITE && io2->type == FRV_IO_WRITE)
+    return true;
+
+  /* The order of reads isn't preserved.  */
+  if (io1->type != FRV_IO_WRITE && io2->type != FRV_IO_WRITE)
+    return false;
+
+  /* One operation is a write and the other is (or could be) a read.
+     The order is only guaranteed if the accesses are to the same
+     doubleword.  */
+  return frv_same_doubleword_p (io1, io2);
+}
+
+/* Generalize I/O operation X so that it covers both X and Y. */
+
+static void
+frv_io_union (struct frv_io *x, const struct frv_io *y)
+{
+  if (x->type != y->type)
+    x->type = FRV_IO_UNKNOWN;
+  if (!frv_same_doubleword_p (x, y))
+    {
+      x->const_address = 0;
+      x->var_address = 0;
+    }
+}
+
+/* Fill IO with information about the load or store associated with
+   membar instruction INSN.  */
+
+static void
+frv_extract_membar (struct frv_io *io, rtx insn)
+{
+  extract_insn (insn);
+  io->type = INTVAL (recog_data.operand[2]);
+  io->const_address = INTVAL (recog_data.operand[1]);
+  io->var_address = XEXP (recog_data.operand[0], 0);
+}
+
+/* A note_stores callback for which DATA points to an rtx.  Nullify *DATA
+   if X is a register and *DATA depends on X.  */
+
+static void
+frv_io_check_address (rtx x, const_rtx pat ATTRIBUTE_UNUSED, void *data)
+{
+  rtx *other = (rtx *) data;
+
+  if (REG_P (x) && *other != 0 && reg_overlap_mentioned_p (x, *other))
+    *other = 0;
+}
+
+/* A note_stores callback for which DATA points to a HARD_REG_SET.
+   Remove every modified register from the set.  */
+
+static void
+frv_io_handle_set (rtx x, const_rtx pat ATTRIBUTE_UNUSED, void *data)
+{
+  HARD_REG_SET *set = (HARD_REG_SET *) data;
+  unsigned int regno;
+
+  if (REG_P (x))
+    FOR_EACH_REGNO (regno, x)
+      CLEAR_HARD_REG_BIT (*set, regno);
+}
+
+/* A for_each_rtx callback for which DATA points to a HARD_REG_SET.
+   Add every register in *X to the set.  */
+
+static int
+frv_io_handle_use_1 (rtx *x, void *data)
+{
+  HARD_REG_SET *set = (HARD_REG_SET *) data;
+  unsigned int regno;
+
+  if (REG_P (*x))
+    FOR_EACH_REGNO (regno, *x)
+      SET_HARD_REG_BIT (*set, regno);
+
+  return 0;
+}
+
+/* A note_stores callback that applies frv_io_handle_use_1 to an
+   entire rhs value.  */
+
+static void
+frv_io_handle_use (rtx *x, void *data)
+{
+  for_each_rtx (x, frv_io_handle_use_1, data);
+}
+
+/* Go through block BB looking for membars to remove.  There are two
+   cases where intra-block analysis is enough:
+
+   - a membar is redundant if it occurs between two consecutive I/O
+   operations and if those operations are guaranteed to complete
+   in order.
+
+   - a membar for a __builtin_read is redundant if the result is
+   used before the next I/O operation is issued.
+
+   If the last membar in the block could not be removed, and there
+   are guaranteed to be no I/O operations between that membar and
+   the end of the block, store the membar in *LAST_MEMBAR, otherwise
+   store null.
+
+   Describe the block's first I/O operation in *NEXT_IO.  Describe
+   an unknown operation if the block doesn't do any I/O.  */
+
+static void
+frv_optimize_membar_local (basic_block bb, struct frv_io *next_io,
+			   rtx *last_membar)
+{
+  HARD_REG_SET used_regs;
+  rtx next_membar, set, insn;
+  bool next_is_end_p;
+
+  /* NEXT_IO is the next I/O operation to be performed after the current
+     instruction.  It starts off as being an unknown operation.  */
+  memset (next_io, 0, sizeof (*next_io));
+
+  /* NEXT_IS_END_P is true if NEXT_IO describes the end of the block.  */
+  next_is_end_p = true;
+
+  /* If the current instruction is a __builtin_read or __builtin_write,
+     NEXT_MEMBAR is the membar instruction associated with it.  NEXT_MEMBAR
+     is null if the membar has already been deleted.
+
+     Note that the initialization here should only be needed to
+     suppress warnings.  */
+  next_membar = 0;
+
+  /* USED_REGS is the set of registers that are used before the
+     next I/O instruction.  */
+  CLEAR_HARD_REG_SET (used_regs);
+
+  for (insn = BB_END (bb); insn != BB_HEAD (bb); insn = PREV_INSN (insn))
+    if (GET_CODE (insn) == CALL_INSN)
+      {
+	/* We can't predict what a call will do to volatile memory.  */
+	memset (next_io, 0, sizeof (struct frv_io));
+	next_is_end_p = false;
+	CLEAR_HARD_REG_SET (used_regs);
+      }
+    else if (INSN_P (insn))
+      switch (recog_memoized (insn))
+	{
+	case CODE_FOR_optional_membar_qi:
+	case CODE_FOR_optional_membar_hi:
+	case CODE_FOR_optional_membar_si:
+	case CODE_FOR_optional_membar_di:
+	  next_membar = insn;
+	  if (next_is_end_p)
+	    {
+	      /* Local information isn't enough to decide whether this
+		 membar is needed.  Stash it away for later.  */
+	      *last_membar = insn;
+	      frv_extract_membar (next_io, insn);
+	      next_is_end_p = false;
+	    }
+	  else
+	    {
+	      /* Check whether the I/O operation before INSN could be
+		 reordered with one described by NEXT_IO.  If it can't,
+		 INSN will not be needed.  */
+	      struct frv_io prev_io;
+
+	      frv_extract_membar (&prev_io, insn);
+	      if (frv_io_fixed_order_p (&prev_io, next_io))
+		{
+		  if (dump_file)
+		    fprintf (dump_file,
+			     ";; [Local] Removing membar %d since order"
+			     " of accesses is guaranteed\n",
+			     INSN_UID (next_membar));
+
+		  insn = NEXT_INSN (insn);
+		  delete_insn (next_membar);
+		  next_membar = 0;
+		}
+	      *next_io = prev_io;
+	    }
+	  break;
+
+	default:
+	  /* Invalidate NEXT_IO's address if it depends on something that
+	     is clobbered by INSN.  */
+	  if (next_io->var_address)
+	    note_stores (PATTERN (insn), frv_io_check_address,
+			 &next_io->var_address);
+
+	  /* If the next membar is associated with a __builtin_read,
+	     see if INSN reads from that address.  If it does, and if
+	     the destination register is used before the next I/O access,
+	     there is no need for the membar.  */
+	  set = PATTERN (insn);
+	  if (next_io->type == FRV_IO_READ
+	      && next_io->var_address != 0
+	      && next_membar != 0
+	      && GET_CODE (set) == SET
+	      && GET_CODE (SET_DEST (set)) == REG
+	      && TEST_HARD_REG_BIT (used_regs, REGNO (SET_DEST (set))))
+	    {
+	      rtx src;
+
+	      src = SET_SRC (set);
+	      if (GET_CODE (src) == ZERO_EXTEND)
+		src = XEXP (src, 0);
+
+	      if (GET_CODE (src) == MEM
+		  && rtx_equal_p (XEXP (src, 0), next_io->var_address))
+		{
+		  if (dump_file)
+		    fprintf (dump_file,
+			     ";; [Local] Removing membar %d since the target"
+			     " of %d is used before the I/O operation\n",
+			     INSN_UID (next_membar), INSN_UID (insn));
+
+		  if (next_membar == *last_membar)
+		    *last_membar = 0;
+
+		  delete_insn (next_membar);
+		  next_membar = 0;
+		}
+	    }
+
+	  /* If INSN has volatile references, forget about any registers
+	     that are used after it.  Otherwise forget about uses that
+	     are (or might be) defined by INSN.  */
+	  if (volatile_refs_p (PATTERN (insn)))
+	    CLEAR_HARD_REG_SET (used_regs);
+	  else
+	    note_stores (PATTERN (insn), frv_io_handle_set, &used_regs);
+
+	  note_uses (&PATTERN (insn), frv_io_handle_use, &used_regs);
+	  break;
+	}
+}
+
+/* See if MEMBAR, the last membar instruction in BB, can be removed.
+   FIRST_IO[X] describes the first operation performed by basic block X.  */
+
+static void
+frv_optimize_membar_global (basic_block bb, struct frv_io *first_io,
+			    rtx membar)
+{
+  struct frv_io this_io, next_io;
+  edge succ;
+  edge_iterator ei;
+
+  /* We need to keep the membar if there is an edge to the exit block.  */
+  FOR_EACH_EDGE (succ, ei, bb->succs)
+  /* for (succ = bb->succ; succ != 0; succ = succ->succ_next) */
+    if (succ->dest == EXIT_BLOCK_PTR)
+      return;
+
+  /* Work out the union of all successor blocks.  */
+  ei = ei_start (bb->succs);
+  ei_cond (ei, &succ);
+  /* next_io = first_io[bb->succ->dest->index]; */
+  next_io = first_io[succ->dest->index];
+  ei = ei_start (bb->succs);
+  if (ei_cond (ei, &succ))
+    {
+      for (ei_next (&ei); ei_cond (ei, &succ); ei_next (&ei))
+	/*for (succ = bb->succ->succ_next; succ != 0; succ = succ->succ_next)*/
+	frv_io_union (&next_io, &first_io[succ->dest->index]);
+    }
+  else
+    gcc_unreachable ();
+
+  frv_extract_membar (&this_io, membar);
+  if (frv_io_fixed_order_p (&this_io, &next_io))
+    {
+      if (dump_file)
+	fprintf (dump_file,
+		 ";; [Global] Removing membar %d since order of accesses"
+		 " is guaranteed\n", INSN_UID (membar));
+
+      delete_insn (membar);
+    }
+}
+
+/* Remove redundant membars from the current function.  */
+
+static void
+frv_optimize_membar (void)
+{
+  basic_block bb;
+  struct frv_io *first_io;
+  rtx *last_membar;
+
+  compute_bb_for_insn ();
+  first_io = XCNEWVEC (struct frv_io, last_basic_block);
+  last_membar = XCNEWVEC (rtx, last_basic_block);
+
+  FOR_EACH_BB (bb)
+    frv_optimize_membar_local (bb, &first_io[bb->index],
+			       &last_membar[bb->index]);
+
+  FOR_EACH_BB (bb)
+    if (last_membar[bb->index] != 0)
+      frv_optimize_membar_global (bb, first_io, last_membar[bb->index]);
+
+  free (first_io);
+  free (last_membar);
+}
+
 /* Used by frv_reorg to keep track of the current packet's address.  */
 static unsigned int frv_packet_address;
 
@@ -7776,6 +8133,9 @@ frv_register_nop (rtx nop)
 static void
 frv_reorg (void)
 {
+  if (optimize > 0 && TARGET_OPTIMIZE_MEMBAR && cfun->machine->has_membar_p)
+    frv_optimize_membar ();
+
   frv_num_nops = 0;
   frv_register_nop (gen_nop ());
   if (TARGET_MEDIA)
@@ -7792,7 +8152,7 @@ frv_reorg (void)
 }
 
 #define def_builtin(name, type, code) \
-  lang_hooks.builtin_function ((name), (type), (code), BUILT_IN_MD, NULL, NULL)
+  add_builtin_function ((name), (type), (code), BUILT_IN_MD, NULL, NULL)
 
 struct builtin_description
 {
@@ -7956,6 +8316,35 @@ static struct builtin_description bdesc_voidacc[] =
   { CODE_FOR_mdasaccs, "__MDASACCS", FRV_BUILTIN_MDASACCS, 0, 0 }
 };
 
+/* Intrinsics that load a value and then issue a MEMBAR.  The load is
+   a normal move and the ICODE is for the membar.  */
+
+static struct builtin_description bdesc_loads[] =
+{
+  { CODE_FOR_optional_membar_qi, "__builtin_read8",
+    FRV_BUILTIN_READ8, 0, 0 },
+  { CODE_FOR_optional_membar_hi, "__builtin_read16",
+    FRV_BUILTIN_READ16, 0, 0 },
+  { CODE_FOR_optional_membar_si, "__builtin_read32",
+    FRV_BUILTIN_READ32, 0, 0 },
+  { CODE_FOR_optional_membar_di, "__builtin_read64",
+    FRV_BUILTIN_READ64, 0, 0 }
+};
+
+/* Likewise stores.  */
+
+static struct builtin_description bdesc_stores[] =
+{
+  { CODE_FOR_optional_membar_qi, "__builtin_write8",
+    FRV_BUILTIN_WRITE8, 0, 0 },
+  { CODE_FOR_optional_membar_hi, "__builtin_write16",
+    FRV_BUILTIN_WRITE16, 0, 0 },
+  { CODE_FOR_optional_membar_si, "__builtin_write32",
+    FRV_BUILTIN_WRITE32, 0, 0 },
+  { CODE_FOR_optional_membar_di, "__builtin_write64",
+    FRV_BUILTIN_WRITE64, 0, 0 },
+};
+
 /* Initialize media builtins.  */
 
 static void
@@ -7971,6 +8360,8 @@ frv_init_builtins (void)
   tree sword2 = long_long_integer_type_node;
   tree uword2 = long_long_unsigned_type_node;
   tree uword4 = build_pointer_type (uword1);
+  tree vptr   = build_pointer_type (build_type_variant (void_type_node, 0, 1));
+  tree ubyte  = unsigned_char_type_node;
   tree iacc   = integer_type_node;
 
 #define UNARY(RET, T1) \
@@ -8037,6 +8428,12 @@ frv_init_builtins (void)
   tree sw2_ftype_iacc      = UNARY (sword2, iacc);
   tree sw1_ftype_iacc      = UNARY (sword1, iacc);
   tree void_ftype_ptr      = UNARY (voidt, const_ptr_type_node);
+  tree uw1_ftype_vptr      = UNARY (uword1, vptr);
+  tree uw2_ftype_vptr      = UNARY (uword2, vptr);
+  tree void_ftype_vptr_ub  = BINARY (voidt, vptr, ubyte);
+  tree void_ftype_vptr_uh  = BINARY (voidt, vptr, uhalf);
+  tree void_ftype_vptr_uw1 = BINARY (voidt, vptr, uword1);
+  tree void_ftype_vptr_uw2 = BINARY (voidt, vptr, uword2);
 
   def_builtin ("__MAND", uw1_ftype_uw1_uw1, FRV_BUILTIN_MAND);
   def_builtin ("__MOR", uw1_ftype_uw1_uw1, FRV_BUILTIN_MOR);
@@ -8142,6 +8539,15 @@ frv_init_builtins (void)
   def_builtin ("__IACCsetl", void_ftype_iacc_sw1, FRV_BUILTIN_IACCsetl);
   def_builtin ("__data_prefetch0", void_ftype_ptr, FRV_BUILTIN_PREFETCH0);
   def_builtin ("__data_prefetch", void_ftype_ptr, FRV_BUILTIN_PREFETCH);
+  def_builtin ("__builtin_read8", uw1_ftype_vptr, FRV_BUILTIN_READ8);
+  def_builtin ("__builtin_read16", uw1_ftype_vptr, FRV_BUILTIN_READ16);
+  def_builtin ("__builtin_read32", uw1_ftype_vptr, FRV_BUILTIN_READ32);
+  def_builtin ("__builtin_read64", uw2_ftype_vptr, FRV_BUILTIN_READ64);
+
+  def_builtin ("__builtin_write8", void_ftype_vptr_ub, FRV_BUILTIN_WRITE8);
+  def_builtin ("__builtin_write16", void_ftype_vptr_uh, FRV_BUILTIN_WRITE16);
+  def_builtin ("__builtin_write32", void_ftype_vptr_uw1, FRV_BUILTIN_WRITE32);
+  def_builtin ("__builtin_write64", void_ftype_vptr_uw2, FRV_BUILTIN_WRITE64);
 
 #undef UNARY
 #undef BINARY
@@ -8209,7 +8615,7 @@ frv_int_to_acc (enum insn_code icode, int opnum, rtx opval)
   rtx reg;
   int i;
 
-  /* ACCs and ACCGs are implicity global registers if media intrinsics
+  /* ACCs and ACCGs are implicit global registers if media intrinsics
      are being used.  We set up this lazily to avoid creating lots of
      unnecessary call_insn rtl in non-media code.  */
   for (i = 0; i <= ACC_MASK; i++)
@@ -8230,7 +8636,7 @@ frv_int_to_acc (enum insn_code icode, int opnum, rtx opval)
   reg = gen_rtx_REG (insn_data[icode].operand[opnum].mode,
 		     ACC_FIRST + INTVAL (opval));
   if (! (*insn_data[icode].operand[opnum].predicate) (reg, VOIDmode))
-    REGNO (reg) = ACCG_FIRST + INTVAL (opval);
+    SET_REGNO (reg, ACCG_FIRST + INTVAL (opval));
 
   if (! (*insn_data[icode].operand[opnum].predicate) (reg, VOIDmode))
     {
@@ -8258,8 +8664,20 @@ frv_matching_accg_mode (enum machine_mode mode)
       return QImode;
 
     default:
-      abort ();
+      gcc_unreachable ();
     }
+}
+
+/* Given that a __builtin_read or __builtin_write function is accessing
+   address ADDRESS, return the value that should be used as operand 1
+   of the membar.  */
+
+static rtx
+frv_io_address_cookie (rtx address)
+{
+  return (GET_CODE (address) == CONST_INT
+	  ? GEN_INT (INTVAL (address) / 8 * 8)
+	  : const0_rtx);
 }
 
 /* Return the accumulator guard that should be paired with accumulator
@@ -8273,28 +8691,27 @@ frv_matching_accg_for_acc (rtx acc)
 		      REGNO (acc) - ACC_FIRST + ACCG_FIRST);
 }
 
-/* Read a value from the head of the tree list pointed to by ARGLISTPTR.
-   Return the value as an rtx and replace *ARGLISTPTR with the tail of the
-   list.  */
+/* Read the requested argument from the call EXP given by INDEX.
+   Return the value as an rtx.  */
 
 static rtx
-frv_read_argument (tree *arglistptr)
+frv_read_argument (tree exp, unsigned int index)
 {
-  tree next = TREE_VALUE (*arglistptr);
-  *arglistptr = TREE_CHAIN (*arglistptr);
-  return expand_expr (next, NULL_RTX, VOIDmode, 0);
+  return expand_expr (CALL_EXPR_ARG (exp, index),
+		      NULL_RTX, VOIDmode, 0);
 }
 
 /* Like frv_read_argument, but interpret the argument as the number
    of an IACC register and return a (reg:MODE ...) rtx for it.  */
 
 static rtx
-frv_read_iacc_argument (enum machine_mode mode, tree *arglistptr)
+frv_read_iacc_argument (enum machine_mode mode, tree call,
+			unsigned int index)
 {
   int i, regno;
   rtx op;
 
-  op = frv_read_argument (arglistptr);
+  op = frv_read_argument (call, index);
   if (GET_CODE (op) != CONST_INT
       || INTVAL (op) < 0
       || INTVAL (op) > IACC_LAST - IACC_FIRST
@@ -8304,7 +8721,7 @@ frv_read_iacc_argument (enum machine_mode mode, tree *arglistptr)
       op = const0_rtx;
     }
 
-  /* IACCs are implicity global registers.  We set up this lazily to
+  /* IACCs are implicit global registers.  We set up this lazily to
      avoid creating lots of unnecessary call_insn rtl when IACCs aren't
      being used.  */
   regno = INTVAL (op) + IACC_FIRST;
@@ -8367,14 +8784,26 @@ frv_legitimize_argument (enum insn_code icode, int opnum, rtx arg)
     return copy_to_mode_reg (mode, arg);
 }
 
+/* Return a volatile memory reference of mode MODE whose address is ARG.  */
+
+static rtx
+frv_volatile_memref (enum machine_mode mode, rtx arg)
+{
+  rtx mem;
+
+  mem = gen_rtx_MEM (mode, memory_address (mode, arg));
+  MEM_VOLATILE_P (mem) = 1;
+  return mem;
+}
+
 /* Expand builtins that take a single, constant argument.  At the moment,
    only MHDSETS falls into this category.  */
 
 static rtx
-frv_expand_set_builtin (enum insn_code icode, tree arglist, rtx target)
+frv_expand_set_builtin (enum insn_code icode, tree call, rtx target)
 {
   rtx pat;
-  rtx op0 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
 
   if (! frv_check_constant_argument (icode, 1, op0))
     return NULL_RTX;
@@ -8391,10 +8820,10 @@ frv_expand_set_builtin (enum insn_code icode, tree arglist, rtx target)
 /* Expand builtins that take one operand.  */
 
 static rtx
-frv_expand_unop_builtin (enum insn_code icode, tree arglist, rtx target)
+frv_expand_unop_builtin (enum insn_code icode, tree call, rtx target)
 {
   rtx pat;
-  rtx op0 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
 
   target = frv_legitimize_target (icode, target);
   op0 = frv_legitimize_argument (icode, 1, op0);
@@ -8409,11 +8838,11 @@ frv_expand_unop_builtin (enum insn_code icode, tree arglist, rtx target)
 /* Expand builtins that take two operands.  */
 
 static rtx
-frv_expand_binop_builtin (enum insn_code icode, tree arglist, rtx target)
+frv_expand_binop_builtin (enum insn_code icode, tree call, rtx target)
 {
   rtx pat;
-  rtx op0 = frv_read_argument (&arglist);
-  rtx op1 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
+  rtx op1 = frv_read_argument (call, 1);
 
   target = frv_legitimize_target (icode, target);
   op0 = frv_legitimize_argument (icode, 1, op0);
@@ -8430,11 +8859,11 @@ frv_expand_binop_builtin (enum insn_code icode, tree arglist, rtx target)
    one.  */
 
 static rtx
-frv_expand_cut_builtin (enum insn_code icode, tree arglist, rtx target)
+frv_expand_cut_builtin (enum insn_code icode, tree call, rtx target)
 {
   rtx pat;
-  rtx op0 = frv_read_argument (&arglist);
-  rtx op1 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
+  rtx op1 = frv_read_argument (call, 1);
   rtx op2;
 
   target = frv_legitimize_target (icode, target);
@@ -8462,11 +8891,11 @@ frv_expand_cut_builtin (enum insn_code icode, tree arglist, rtx target)
 /* Expand builtins that take two operands and the second is immediate.  */
 
 static rtx
-frv_expand_binopimm_builtin (enum insn_code icode, tree arglist, rtx target)
+frv_expand_binopimm_builtin (enum insn_code icode, tree call, rtx target)
 {
   rtx pat;
-  rtx op0 = frv_read_argument (&arglist);
-  rtx op1 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
+  rtx op1 = frv_read_argument (call, 1);
 
   if (! frv_check_constant_argument (icode, 2, op1))
     return NULL_RTX;
@@ -8485,11 +8914,11 @@ frv_expand_binopimm_builtin (enum insn_code icode, tree arglist, rtx target)
    ints and return void.  */
 
 static rtx
-frv_expand_voidbinop_builtin (enum insn_code icode, tree arglist)
+frv_expand_voidbinop_builtin (enum insn_code icode, tree call)
 {
   rtx pat;
-  rtx op0 = frv_read_argument (&arglist);
-  rtx op1 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
+  rtx op1 = frv_read_argument (call, 1);
   enum machine_mode mode0 = insn_data[icode].operand[0].mode;
   rtx addr;
 
@@ -8523,11 +8952,11 @@ frv_expand_voidbinop_builtin (enum insn_code icode, tree arglist)
 /* Expand builtins that take two long operands and return void.  */
 
 static rtx
-frv_expand_int_void2arg (enum insn_code icode, tree arglist)
+frv_expand_int_void2arg (enum insn_code icode, tree call)
 {
   rtx pat;
-  rtx op0 = frv_read_argument (&arglist);
-  rtx op1 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
+  rtx op1 = frv_read_argument (call, 1);
 
   op0 = frv_legitimize_argument (icode, 1, op0);
   op1 = frv_legitimize_argument (icode, 1, op1);
@@ -8542,10 +8971,10 @@ frv_expand_int_void2arg (enum insn_code icode, tree arglist)
 /* Expand prefetch builtins.  These take a single address as argument.  */
 
 static rtx
-frv_expand_prefetches (enum insn_code icode, tree arglist)
+frv_expand_prefetches (enum insn_code icode, tree call)
 {
   rtx pat;
-  rtx op0 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
 
   pat = GEN_FCN (icode) (force_reg (Pmode, op0));
   if (! pat)
@@ -8561,12 +8990,12 @@ frv_expand_prefetches (enum insn_code icode, tree arglist)
    corresponds to the accumulator.  */
 
 static rtx
-frv_expand_voidtriop_builtin (enum insn_code icode, tree arglist)
+frv_expand_voidtriop_builtin (enum insn_code icode, tree call)
 {
   rtx pat;
-  rtx op0 = frv_read_argument (&arglist);
-  rtx op1 = frv_read_argument (&arglist);
-  rtx op2 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
+  rtx op1 = frv_read_argument (call, 1);
+  rtx op2 = frv_read_argument (call, 2);
   rtx op3;
 
   op0 = frv_int_to_acc (icode, 0, op0);
@@ -8589,11 +9018,11 @@ frv_expand_voidtriop_builtin (enum insn_code icode, tree arglist)
    void.  */
 
 static rtx
-frv_expand_voidaccop_builtin (enum insn_code icode, tree arglist)
+frv_expand_voidaccop_builtin (enum insn_code icode, tree call)
 {
   rtx pat;
-  rtx op0 = frv_read_argument (&arglist);
-  rtx op1 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
+  rtx op1 = frv_read_argument (call, 1);
   rtx op2;
   rtx op3;
 
@@ -8615,29 +9044,64 @@ frv_expand_voidaccop_builtin (enum insn_code icode, tree arglist)
   return NULL_RTX;
 }
 
-/* Expand the MDPACKH builtin.  It takes four unsigned short arguments and
-   each argument forms one word of the two double-word input registers.
-   ARGLIST is a TREE_LIST of the arguments and TARGET, if nonnull,
-   suggests a good place to put the return value.  */
+/* Expand a __builtin_read* function.  ICODE is the instruction code for the
+   membar and TARGET_MODE is the mode that the loaded value should have.  */
 
 static rtx
-frv_expand_mdpackh_builtin (tree arglist, rtx target)
+frv_expand_load_builtin (enum insn_code icode, enum machine_mode target_mode,
+                         tree call, rtx target)
+{
+  rtx op0 = frv_read_argument (call, 0);
+  rtx cookie = frv_io_address_cookie (op0);
+
+  if (target == 0 || !REG_P (target))
+    target = gen_reg_rtx (target_mode);
+  op0 = frv_volatile_memref (insn_data[icode].operand[0].mode, op0);
+  convert_move (target, op0, 1);
+  emit_insn (GEN_FCN (icode) (copy_rtx (op0), cookie, GEN_INT (FRV_IO_READ)));
+  cfun->machine->has_membar_p = 1;
+  return target;
+}
+
+/* Likewise __builtin_write* functions.  */
+
+static rtx
+frv_expand_store_builtin (enum insn_code icode, tree call)
+{
+  rtx op0 = frv_read_argument (call, 0);
+  rtx op1 = frv_read_argument (call, 1);
+  rtx cookie = frv_io_address_cookie (op0);
+
+  op0 = frv_volatile_memref (insn_data[icode].operand[0].mode, op0);
+  convert_move (op0, force_reg (insn_data[icode].operand[0].mode, op1), 1);
+  emit_insn (GEN_FCN (icode) (copy_rtx (op0), cookie, GEN_INT (FRV_IO_WRITE)));
+  cfun->machine->has_membar_p = 1;
+  return NULL_RTX;
+}
+
+/* Expand the MDPACKH builtin.  It takes four unsigned short arguments and
+   each argument forms one word of the two double-word input registers.
+   CALL is the tree for the call and TARGET, if nonnull, suggests a good place
+   to put the return value.  */
+
+static rtx
+frv_expand_mdpackh_builtin (tree call, rtx target)
 {
   enum insn_code icode = CODE_FOR_mdpackh;
   rtx pat, op0, op1;
-  rtx arg1 = frv_read_argument (&arglist);
-  rtx arg2 = frv_read_argument (&arglist);
-  rtx arg3 = frv_read_argument (&arglist);
-  rtx arg4 = frv_read_argument (&arglist);
+  rtx arg1 = frv_read_argument (call, 0);
+  rtx arg2 = frv_read_argument (call, 1);
+  rtx arg3 = frv_read_argument (call, 2);
+  rtx arg4 = frv_read_argument (call, 3);
 
   target = frv_legitimize_target (icode, target);
   op0 = gen_reg_rtx (DImode);
   op1 = gen_reg_rtx (DImode);
 
-  /* The high half of each word is not explicitly initialised, so indicate
+  /* The high half of each word is not explicitly initialized, so indicate
      that the input operands are not live before this point.  */
-  emit_insn (gen_rtx_CLOBBER (DImode, op0));
-  emit_insn (gen_rtx_CLOBBER (DImode, op1));
+  emit_clobber (op0);
+  emit_clobber (op1);
 
   /* Move each argument into the low half of its associated input word.  */
   emit_move_insn (simplify_gen_subreg (HImode, op0, DImode, 2), arg1);
@@ -8657,11 +9121,11 @@ frv_expand_mdpackh_builtin (tree arglist, rtx target)
    number as argument.  */
 
 static rtx
-frv_expand_mclracc_builtin (tree arglist)
+frv_expand_mclracc_builtin (tree call)
 {
   enum insn_code icode = CODE_FOR_mclracc;
   rtx pat;
-  rtx op0 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
 
   op0 = frv_int_to_acc (icode, 0, op0);
   if (! op0)
@@ -8690,11 +9154,11 @@ frv_expand_noargs_builtin (enum insn_code icode)
    number or accumulator guard number as argument and return an SI integer.  */
 
 static rtx
-frv_expand_mrdacc_builtin (enum insn_code icode, tree arglist)
+frv_expand_mrdacc_builtin (enum insn_code icode, tree call)
 {
   rtx pat;
   rtx target = gen_reg_rtx (SImode);
-  rtx op0 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
 
   op0 = frv_int_to_acc (icode, 1, op0);
   if (! op0)
@@ -8713,11 +9177,11 @@ frv_expand_mrdacc_builtin (enum insn_code icode, tree arglist)
    second.  */
 
 static rtx
-frv_expand_mwtacc_builtin (enum insn_code icode, tree arglist)
+frv_expand_mwtacc_builtin (enum insn_code icode, tree call)
 {
   rtx pat;
-  rtx op0 = frv_read_argument (&arglist);
-  rtx op1 = frv_read_argument (&arglist);
+  rtx op0 = frv_read_argument (call, 0);
+  rtx op1 = frv_read_argument (call, 1);
 
   op0 = frv_int_to_acc (icode, 0, op0);
   if (! op0)
@@ -8755,8 +9219,7 @@ frv_expand_builtin (tree exp,
                     enum machine_mode mode ATTRIBUTE_UNUSED,
                     int ignore ATTRIBUTE_UNUSED)
 {
-  tree arglist = TREE_OPERAND (exp, 1);
-  tree fndecl = TREE_OPERAND (TREE_OPERAND (exp, 0), 0);
+  tree fndecl = TREE_OPERAND (CALL_EXPR_FN (exp), 0);
   unsigned fcode = (unsigned)DECL_FUNCTION_CODE (fndecl);
   unsigned i;
   struct builtin_description *d;
@@ -8860,7 +9323,7 @@ frv_expand_builtin (tree exp,
       return frv_expand_noargs_builtin (CODE_FOR_mtrap);
 
     case FRV_BUILTIN_MCLRACC:
-      return frv_expand_mclracc_builtin (arglist);
+      return frv_expand_mclracc_builtin (exp);
 
     case FRV_BUILTIN_MCLRACCA:
       if (TARGET_ACC_8)
@@ -8869,23 +9332,23 @@ frv_expand_builtin (tree exp,
 	return frv_expand_noargs_builtin (CODE_FOR_mclracca4);
 
     case FRV_BUILTIN_MRDACC:
-      return frv_expand_mrdacc_builtin (CODE_FOR_mrdacc, arglist);
+      return frv_expand_mrdacc_builtin (CODE_FOR_mrdacc, exp);
 
     case FRV_BUILTIN_MRDACCG:
-      return frv_expand_mrdacc_builtin (CODE_FOR_mrdaccg, arglist);
+      return frv_expand_mrdacc_builtin (CODE_FOR_mrdaccg, exp);
 
     case FRV_BUILTIN_MWTACC:
-      return frv_expand_mwtacc_builtin (CODE_FOR_mwtacc, arglist);
+      return frv_expand_mwtacc_builtin (CODE_FOR_mwtacc, exp);
 
     case FRV_BUILTIN_MWTACCG:
-      return frv_expand_mwtacc_builtin (CODE_FOR_mwtaccg, arglist);
+      return frv_expand_mwtacc_builtin (CODE_FOR_mwtaccg, exp);
 
     case FRV_BUILTIN_MDPACKH:
-      return frv_expand_mdpackh_builtin (arglist, target);
+      return frv_expand_mdpackh_builtin (exp, target);
 
     case FRV_BUILTIN_IACCreadll:
       {
-	rtx src = frv_read_iacc_argument (DImode, &arglist);
+	rtx src = frv_read_iacc_argument (DImode, exp, 0);
 	if (target == 0 || !REG_P (target))
 	  target = gen_reg_rtx (DImode);
 	frv_split_iacc_move (target, src);
@@ -8893,20 +9356,20 @@ frv_expand_builtin (tree exp,
       }
 
     case FRV_BUILTIN_IACCreadl:
-      return frv_read_iacc_argument (SImode, &arglist);
+      return frv_read_iacc_argument (SImode, exp, 0);
 
     case FRV_BUILTIN_IACCsetll:
       {
-	rtx dest = frv_read_iacc_argument (DImode, &arglist);
-	rtx src = frv_read_argument (&arglist);
+	rtx dest = frv_read_iacc_argument (DImode, exp, 0);
+	rtx src = frv_read_argument (exp, 1);
 	frv_split_iacc_move (dest, force_reg (DImode, src));
 	return 0;
       }
 
     case FRV_BUILTIN_IACCsetl:
       {
-	rtx dest = frv_read_iacc_argument (SImode, &arglist);
-	rtx src = frv_read_argument (&arglist);
+	rtx dest = frv_read_iacc_argument (SImode, exp, 0);
+	rtx src = frv_read_argument (exp, 1);
 	emit_move_insn (dest, force_reg (SImode, src));
 	return 0;
       }
@@ -8919,54 +9382,63 @@ frv_expand_builtin (tree exp,
 
   for (i = 0, d = bdesc_set; i < ARRAY_SIZE (bdesc_set); i++, d++)
     if (d->code == fcode)
-      return frv_expand_set_builtin (d->icode, arglist, target);
+      return frv_expand_set_builtin (d->icode, exp, target);
 
   for (i = 0, d = bdesc_1arg; i < ARRAY_SIZE (bdesc_1arg); i++, d++)
     if (d->code == fcode)
-      return frv_expand_unop_builtin (d->icode, arglist, target);
+      return frv_expand_unop_builtin (d->icode, exp, target);
 
   for (i = 0, d = bdesc_2arg; i < ARRAY_SIZE (bdesc_2arg); i++, d++)
     if (d->code == fcode)
-      return frv_expand_binop_builtin (d->icode, arglist, target);
+      return frv_expand_binop_builtin (d->icode, exp, target);
 
   for (i = 0, d = bdesc_cut; i < ARRAY_SIZE (bdesc_cut); i++, d++)
     if (d->code == fcode)
-      return frv_expand_cut_builtin (d->icode, arglist, target);
+      return frv_expand_cut_builtin (d->icode, exp, target);
 
   for (i = 0, d = bdesc_2argimm; i < ARRAY_SIZE (bdesc_2argimm); i++, d++)
     if (d->code == fcode)
-      return frv_expand_binopimm_builtin (d->icode, arglist, target);
+      return frv_expand_binopimm_builtin (d->icode, exp, target);
 
   for (i = 0, d = bdesc_void2arg; i < ARRAY_SIZE (bdesc_void2arg); i++, d++)
     if (d->code == fcode)
-      return frv_expand_voidbinop_builtin (d->icode, arglist);
+      return frv_expand_voidbinop_builtin (d->icode, exp);
 
   for (i = 0, d = bdesc_void3arg; i < ARRAY_SIZE (bdesc_void3arg); i++, d++)
     if (d->code == fcode)
-      return frv_expand_voidtriop_builtin (d->icode, arglist);
+      return frv_expand_voidtriop_builtin (d->icode, exp);
 
   for (i = 0, d = bdesc_voidacc; i < ARRAY_SIZE (bdesc_voidacc); i++, d++)
     if (d->code == fcode)
-      return frv_expand_voidaccop_builtin (d->icode, arglist);
+      return frv_expand_voidaccop_builtin (d->icode, exp);
 
   for (i = 0, d = bdesc_int_void2arg;
        i < ARRAY_SIZE (bdesc_int_void2arg); i++, d++)
     if (d->code == fcode)
-      return frv_expand_int_void2arg (d->icode, arglist);
+      return frv_expand_int_void2arg (d->icode, exp);
 
   for (i = 0, d = bdesc_prefetches;
        i < ARRAY_SIZE (bdesc_prefetches); i++, d++)
     if (d->code == fcode)
-      return frv_expand_prefetches (d->icode, arglist);
+      return frv_expand_prefetches (d->icode, exp);
+
+  for (i = 0, d = bdesc_loads; i < ARRAY_SIZE (bdesc_loads); i++, d++)
+    if (d->code == fcode)
+      return frv_expand_load_builtin (d->icode, TYPE_MODE (TREE_TYPE (exp)),
+				      exp, target);
+
+  for (i = 0, d = bdesc_stores; i < ARRAY_SIZE (bdesc_stores); i++, d++)
+    if (d->code == fcode)
+      return frv_expand_store_builtin (d->icode, exp);
 
   return 0;
 }
 
 static bool
-frv_in_small_data_p (tree decl)
+frv_in_small_data_p (const_tree decl)
 {
   HOST_WIDE_INT size;
-  tree section_name;
+  const_tree section_name;
 
   /* Don't apply the -G flag to internal compiler structures.  We
      should leave such structures in the main data section, partly
@@ -8980,8 +9452,7 @@ frv_in_small_data_p (tree decl)
   section_name = DECL_SECTION_NAME (decl);
   if (section_name)
     {
-      if (TREE_CODE (section_name) != STRING_CST)
-	abort ();
+      gcc_assert (TREE_CODE (section_name) == STRING_CST);
       if (frv_string_begins_with (section_name, ".sdata"))
 	return true;
       if (frv_string_begins_with (section_name, ".sbss"))
@@ -9013,7 +9484,7 @@ frv_rtx_costs (rtx x,
   switch (code)
     {
     case CONST_INT:
-      /* Make 12 bit integers really cheap.  */
+      /* Make 12-bit integers really cheap.  */
       if (IN_RANGE_P (INTVAL (x), -2048, 2047))
 	{
 	  *total = 0;
@@ -9073,12 +9544,13 @@ frv_rtx_costs (rtx x,
 static void
 frv_asm_out_constructor (rtx symbol, int priority ATTRIBUTE_UNUSED)
 {
-  ctors_section ();
+  switch_to_section (ctors_section);
   assemble_align (POINTER_SIZE);
   if (TARGET_FDPIC)
     {
-      if (!frv_assemble_integer (symbol, POINTER_SIZE / BITS_PER_UNIT, 1))
-	abort ();
+      int ok = frv_assemble_integer (symbol, POINTER_SIZE / BITS_PER_UNIT, 1);
+
+      gcc_assert (ok);
       return;
     }
   assemble_integer_with_op ("\t.picptr\t", symbol);
@@ -9087,12 +9559,13 @@ frv_asm_out_constructor (rtx symbol, int priority ATTRIBUTE_UNUSED)
 static void
 frv_asm_out_destructor (rtx symbol, int priority ATTRIBUTE_UNUSED)
 {
-  dtors_section ();
+  switch_to_section (dtors_section);
   assemble_align (POINTER_SIZE);
   if (TARGET_FDPIC)
     {
-      if (!frv_assemble_integer (symbol, POINTER_SIZE / BITS_PER_UNIT, 1))
-	abort ();
+      int ok = frv_assemble_integer (symbol, POINTER_SIZE / BITS_PER_UNIT, 1);
+
+      gcc_assert (ok);
       return;
     }
   assemble_integer_with_op ("\t.picptr\t", symbol);
@@ -9109,14 +9582,13 @@ frv_struct_value_rtx (tree fntype ATTRIBUTE_UNUSED,
 
 #define TLS_BIAS (2048 - 16)
 
-/* This is called from dwarf2out.c via ASM_OUTPUT_DWARF_DTPREL.
+/* This is called from dwarf2out.c via TARGET_ASM_OUTPUT_DWARF_DTPREL.
    We need to emit DTP-relative relocations.  */
 
-void
+static void
 frv_output_dwarf_dtprel (FILE *file, int size, rtx x)
 {
-  if (size != 4)
-    abort ();
+  gcc_assert (size == 4);
   fputs ("\t.picptr\ttlsmoff(", file);
   /* We want the unbiased TLS offset, so add the bias to the
      expression, such that the implicit biasing cancels out.  */

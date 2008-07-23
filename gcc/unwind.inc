@@ -1,5 +1,5 @@
 /* Exception handling and frame unwind runtime interface routines. -*- C -*-
-   Copyright (C) 2001, 2003 Free Software Foundation, Inc.
+   Copyright (C) 2001, 2003, 2008 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -24,12 +24,13 @@
 
    You should have received a copy of the GNU General Public License
    along with GCC; see the file COPYING.  If not, write to the Free
-   Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-   02111-1307, USA.  */
+   Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+   02110-1301, USA.  */
 
 /* This is derived from the C++ ABI for IA-64.  Where we diverge
    for cross-architecture compatibility are noted with "@@@".  
-   This file is included from unwind-dw2.c or unwind-ia64.c.  */
+   This file is included from unwind-dw2.c, unwind-sjlj.c or
+   unwind-ia64.c.  */
 
 /* Subroutine of _Unwind_RaiseException also invoked from _Unwind_Resume. 
 
@@ -72,8 +73,7 @@ _Unwind_RaiseException_Phase2(struct _Unwind_Exception *exc,
 	}
 
       /* Don't let us unwind past the handler context.  */
-      if (match_handler)
-	abort ();
+      gcc_assert (!match_handler);
 
       uw_update_context (context, &fs);
     }
@@ -83,7 +83,7 @@ _Unwind_RaiseException_Phase2(struct _Unwind_Exception *exc,
 
 /* Raise an exception, passing along the given exception object.  */
 
-_Unwind_Reason_Code
+_Unwind_Reason_Code LIBGCC2_UNWIND_ATTRIBUTE
 _Unwind_RaiseException(struct _Unwind_Exception *exc)
 {
   struct _Unwind_Context this_context, cur_context;
@@ -108,7 +108,7 @@ _Unwind_RaiseException(struct _Unwind_Exception *exc)
 	return _URC_END_OF_STACK;
 
       if (code != _URC_NO_REASON)
-	/* Some error encountered.  Ususally the unwinder doesn't
+	/* Some error encountered.  Usually the unwinder doesn't
 	   diagnose these and merely crashes.  */
 	return _URC_FATAL_PHASE1_ERROR;
 
@@ -144,8 +144,8 @@ _Unwind_RaiseException(struct _Unwind_Exception *exc)
 /* Subroutine of _Unwind_ForcedUnwind also invoked from _Unwind_Resume.  */
 
 static _Unwind_Reason_Code
-_Unwind_ForcedUnwind_Phase2(struct _Unwind_Exception *exc,
-			    struct _Unwind_Context *context)
+_Unwind_ForcedUnwind_Phase2 (struct _Unwind_Exception *exc,
+			     struct _Unwind_Context *context)
 {
   _Unwind_Stop_Fn stop = (_Unwind_Stop_Fn) (_Unwind_Ptr) exc->private_1;
   void *stop_argument = (void *) (_Unwind_Ptr) exc->private_2;
@@ -185,8 +185,9 @@ _Unwind_ForcedUnwind_Phase2(struct _Unwind_Exception *exc,
 	    return _URC_FATAL_PHASE2_ERROR;
 	}
 
-      /* Update cur_context to describe the same frame as fs.  */
-      uw_update_context (context, &fs);
+      /* Update cur_context to describe the same frame as fs, and discard
+	 the previous context if necessary.  */
+      uw_advance_context (context, &fs);
     }
 
   return code;
@@ -195,7 +196,7 @@ _Unwind_ForcedUnwind_Phase2(struct _Unwind_Exception *exc,
 
 /* Raise an exception for forced unwinding.  */
 
-_Unwind_Reason_Code
+_Unwind_Reason_Code LIBGCC2_UNWIND_ATTRIBUTE
 _Unwind_ForcedUnwind (struct _Unwind_Exception *exc,
 		      _Unwind_Stop_Fn stop, void * stop_argument)
 {
@@ -219,7 +220,7 @@ _Unwind_ForcedUnwind (struct _Unwind_Exception *exc,
 /* Resume propagation of an existing exception.  This is used after
    e.g. executing cleanup code, and not to implement rethrowing.  */
 
-void
+void LIBGCC2_UNWIND_ATTRIBUTE
 _Unwind_Resume (struct _Unwind_Exception *exc)
 {
   struct _Unwind_Context this_context, cur_context;
@@ -235,8 +236,7 @@ _Unwind_Resume (struct _Unwind_Exception *exc)
   else
     code = _Unwind_ForcedUnwind_Phase2 (exc, &cur_context);
 
-  if (code != _URC_INSTALL_CONTEXT)
-    abort ();
+  gcc_assert (code == _URC_INSTALL_CONTEXT);
 
   uw_install_context (&this_context, &cur_context);
 }
@@ -245,7 +245,7 @@ _Unwind_Resume (struct _Unwind_Exception *exc)
 /* Resume propagation of an FORCE_UNWIND exception, or to rethrow
    a normal exception that was handled.  */
 
-_Unwind_Reason_Code
+_Unwind_Reason_Code LIBGCC2_UNWIND_ATTRIBUTE
 _Unwind_Resume_or_Rethrow (struct _Unwind_Exception *exc)
 {
   struct _Unwind_Context this_context, cur_context;
@@ -261,8 +261,7 @@ _Unwind_Resume_or_Rethrow (struct _Unwind_Exception *exc)
 
   code = _Unwind_ForcedUnwind_Phase2 (exc, &cur_context);
 
-  if (code != _URC_INSTALL_CONTEXT)
-    abort ();
+  gcc_assert (code == _URC_INSTALL_CONTEXT);
 
   uw_install_context (&this_context, &cur_context);
 }
@@ -280,7 +279,7 @@ _Unwind_DeleteException (struct _Unwind_Exception *exc)
 
 /* Perform stack backtrace through unwind data.  */
 
-_Unwind_Reason_Code
+_Unwind_Reason_Code LIBGCC2_UNWIND_ATTRIBUTE
 _Unwind_Backtrace(_Unwind_Trace_Fn trace, void * trace_argument)
 {
   struct _Unwind_Context context;

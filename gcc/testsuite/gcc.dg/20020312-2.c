@@ -44,8 +44,6 @@ extern void abort (void);
 /* No pic register.  */
 #elif defined(__mn10300__)
 /* No pic register.  */
-#elif #cpu(ns32k)
-/* No pic register.  */
 #elif defined(__hppa__)
 /* PIC register is %r27 or %r19, but is used even without -fpic.  */
 #elif defined(__pdp11__)
@@ -72,6 +70,16 @@ extern void abort (void);
 # define PIC_REG  "r12"
 #elif defined(__x86_64__)
 /* No pic register.  */
+#elif defined(__m32c__)
+/* No pic register.  */
+#elif defined(__SPU__)
+#  define PIC_REG  "126"
+#elif defined (__frv__)
+# ifdef __FRV_FDPIC__
+#  define PIC_REG "gr15"
+# else
+#  define PIC_REG "gr17"
+#endif
 #else
 # error "Modify the test for your target."
 #endif

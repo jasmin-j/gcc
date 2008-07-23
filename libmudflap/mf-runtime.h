@@ -27,8 +27,8 @@ for more details.
 
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301, USA.  */
 
 /* Public libmudflap declarations -*- C -*- */
 
@@ -55,8 +55,12 @@ extern unsigned char __mf_lc_shift;
 /* Multithreading support.  */
 #ifdef _MUDFLAPTH
 /* extern pthread_mutex_t __mf_biglock; */
+#ifndef _REENTRANT
 #define _REENTRANT
+#endif
+#ifndef _THREAD_SAFE
 #define _THREAD_SAFE
+#endif
 #endif
 
 /* Codes to describe the type of access to check: __mf_check arg 3 */

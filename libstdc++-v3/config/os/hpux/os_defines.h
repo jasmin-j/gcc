@@ -1,6 +1,6 @@
 // Specific definitions for HPUX  -*- C++ -*-
 
-// Copyright (C) 2000, 2002, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2000, 2002, 2004, 2005, 2008 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -27,15 +27,16 @@
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
 
+/** @file os_defines.h
+ *  This is an internal header file, included by other library headers.
+ *  You should not attempt to use it directly.
+ */
+
 #ifndef _GLIBCXX_OS_DEFINES
 #define _GLIBCXX_OS_DEFINES 1
 
 // System-specific #define, typedefs, corrections, etc, go here.  This
 // file will come before all others.
-
-#define __off_t off_t
-#define __off64_t off64_t
-#define __ssize_t ssize_t
 
 // Use macro form of ctype functions to ensure __SB_masks is defined.
 #define _SB_CTYPE_MACROS 1
@@ -60,20 +61,24 @@
 
    We also force _GLIBCXX_USE_LONG_LONG here so that we don't have
    to bastardize configure to deal with this sillyness.  */
-namespace std 
-{
+
+_GLIBCXX_BEGIN_NAMESPACE(std)
+_GLIBCXX_BEGIN_EXTERN_C
+
 #ifndef __LP64__
-  __extension__ extern "C" long long strtoll (const char *, char **, int)
+  __extension__ long long strtoll (const char *, char **, int)
     __asm  ("__strtoll");
-  __extension__ extern "C" unsigned long long strtoull (const char *, char **, int)
+  __extension__ unsigned long long strtoull (const char *, char **, int)
     __asm  ("__strtoull");
 #else
-  __extension__ extern "C" long long strtoll (const char *, char **, int)
+  __extension__ long long strtoll (const char *, char **, int)
     __asm  ("strtol");
-  __extension__ extern "C" unsigned long long strtoull (const char *, char **, int)
+  __extension__ unsigned long long strtoull (const char *, char **, int)
     __asm  ("strtoul");
 #endif
-}
+
+_GLIBCXX_END_EXTERN_C
+_GLIBCXX_END_NAMESPACE
 
 #define _GLIBCXX_USE_LONG_LONG 1
 
@@ -96,4 +101,12 @@ typedef long int __padding_type;
    are weak; gthread relies on such unsatisfied references being resolved
    to null pointers when weak symbol support is on.  */
 #define _GLIBCXX_GTHREAD_USE_WEAK 0
+
+// The strtold function is obsolete and not C99 conformant on PA HP-UX.
+// It returns plus or minus _LDBL_MAX instead of plus or minus HUGE_VALL
+// if the correct value would cause overflow.  It doesn't handle "inf",
+// "infinity" and "nan".  It is not thread safe. 
+#if defined (__hppa__)
+#define _GLIBCXX_HAVE_BROKEN_STRTOLD 1
+#endif
 #endif

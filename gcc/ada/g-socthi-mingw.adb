@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---              Copyright (C) 2001-2004 Ada Core Technologies, Inc.         --
+--                     Copyright (C) 2001-2008, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,32 +35,26 @@
 --  layer for use by the GNAT.Sockets package (g-socket.ads). This package
 --  should not be directly with'ed by an applications program.
 
---  This version is for NT.
+--  This version is for NT
 
-with GNAT.Sockets.Constants; use GNAT.Sockets.Constants;
-with Interfaces.C.Strings;   use Interfaces.C.Strings;
-
-with System; use System;
+with Interfaces.C.Strings; use Interfaces.C.Strings;
+with System;               use System;
+with GNAT.Sockets.Constants;
 
 package body GNAT.Sockets.Thin is
 
    use type C.unsigned;
+   use type C.int;
 
    WSAData_Dummy : array (1 .. 512) of C.int;
 
-   WS_Version  : constant := 16#0101#;
+   WS_Version  : constant := 16#0202#;
    Initialized : Boolean := False;
-
-   SYSNOTREADY          : constant := 10091;
-   VERNOTSUPPORTED      : constant := 10092;
-   NOTINITIALISED       : constant := 10093;
-   EDISCON              : constant := 10101;
 
    function Standard_Connect
      (S       : C.int;
       Name    : System.Address;
-      Namelen : C.int)
-      return    C.int;
+      Namelen : C.int) return C.int;
    pragma Import (Stdcall, Standard_Connect, "connect");
 
    function Standard_Select
@@ -68,8 +62,7 @@ package body GNAT.Sockets.Thin is
       Readfds   : Fd_Set_Access;
       Writefds  : Fd_Set_Access;
       Exceptfds : Fd_Set_Access;
-      Timeout   : Timeval_Access)
-      return      C.int;
+      Timeout   : Timeval_Access) return C.int;
    pragma Import (Stdcall, Standard_Select, "select");
 
    type Error_Type is
@@ -110,10 +103,10 @@ package body GNAT.Sockets.Thin is
       N_ENAMETOOLONG,
       N_EHOSTDOWN,
       N_EHOSTUNREACH,
-      N_SYSNOTREADY,
-      N_VERNOTSUPPORTED,
-      N_NOTINITIALISED,
-      N_EDISCON,
+      N_WSASYSNOTREADY,
+      N_WSAVERNOTSUPPORTED,
+      N_WSANOTINITIALISED,
+      N_WSAEDISCON,
       N_HOST_NOT_FOUND,
       N_TRY_AGAIN,
       N_NO_RECOVERY,
@@ -201,20 +194,20 @@ package body GNAT.Sockets.Thin is
         New_String ("Host is down"),
       N_EHOSTUNREACH =>
         New_String ("No route to host"),
-      N_SYSNOTREADY =>
+      N_WSASYSNOTREADY =>
         New_String ("Returned by WSAStartup(), indicating that "
                     & "the network subsystem is unusable"),
-      N_VERNOTSUPPORTED =>
+      N_WSAVERNOTSUPPORTED =>
         New_String ("Returned by WSAStartup(), indicating that "
                     & "the Windows Sockets DLL cannot support "
                     & "this application"),
-      N_NOTINITIALISED =>
+      N_WSANOTINITIALISED =>
         New_String ("Winsock not initialized. This message is "
                     & "returned by any function except WSAStartup(), "
                     & "indicating that a successful WSAStartup() has "
                     & "not yet been performed"),
-      N_EDISCON =>
-        New_String ("Disconnect"),
+      N_WSAEDISCON =>
+        New_String ("Disconnected"),
       N_HOST_NOT_FOUND =>
         New_String ("Host not found. This message indicates "
                     & "that the key (name, address, and so on) was not found"),
@@ -239,8 +232,7 @@ package body GNAT.Sockets.Thin is
    function C_Connect
      (S       : C.int;
       Name    : System.Address;
-      Namelen : C.int)
-      return    C.int
+      Namelen : C.int) return C.int
    is
       Res : C.int;
 
@@ -248,8 +240,8 @@ package body GNAT.Sockets.Thin is
       Res := Standard_Connect (S, Name, Namelen);
 
       if Res = -1 then
-         if Socket_Errno = EWOULDBLOCK then
-            Set_Socket_Errno (EINPROGRESS);
+         if Socket_Errno = Constants.EWOULDBLOCK then
+            Set_Socket_Errno (Constants.EINPROGRESS);
          end if;
       end if;
 
@@ -261,12 +253,11 @@ package body GNAT.Sockets.Thin is
    -------------
 
    function C_Readv
-     (Socket : C.int;
+     (Fd     : C.int;
       Iov    : System.Address;
-      Iovcnt : C.int)
-      return  C.int
+      Iovcnt : C.int) return C.int
    is
-      Res : C.int;
+      Res   : C.int;
       Count : C.int := 0;
 
       Iovec : array (0 .. Iovcnt - 1) of Vector_Element;
@@ -276,7 +267,7 @@ package body GNAT.Sockets.Thin is
    begin
       for J in Iovec'Range loop
          Res := C_Recv
-           (Socket,
+           (Fd,
             Iovec (J).Base.all'Address,
             C.int (Iovec (J).Length),
             0);
@@ -299,14 +290,13 @@ package body GNAT.Sockets.Thin is
       Readfds   : Fd_Set_Access;
       Writefds  : Fd_Set_Access;
       Exceptfds : Fd_Set_Access;
-      Timeout   : Timeval_Access)
-      return      C.int
+      Timeout   : Timeval_Access) return C.int
    is
       pragma Warnings (Off, Exceptfds);
 
       RFS  : constant Fd_Set_Access := Readfds;
       WFS  : constant Fd_Set_Access := Writefds;
-      WFSC : Fd_Set_Access := No_Fd_Set;
+      WFSC : Fd_Set_Access := No_Fd_Set_Access;
       EFS  : Fd_Set_Access := Exceptfds;
       Res  : C.int;
       S    : aliased C.int;
@@ -315,17 +305,17 @@ package body GNAT.Sockets.Thin is
    begin
       --  Asynchronous connection failures are notified in the
       --  exception fd set instead of the write fd set. To ensure
-      --  POSIX compatitibility, copy write fd set into exception fd
+      --  POSIX compatibility, copy write fd set into exception fd
       --  set. Once select() returns, check any socket present in the
       --  exception fd set and peek at incoming out-of-band data. If
       --  the test is not successful, and the socket is present in
       --  the initial write fd set, then move the socket from the
       --  exception fd set to the write fd set.
 
-      if WFS /= No_Fd_Set then
+      if WFS /= No_Fd_Set_Access then
          --  Add any socket present in write fd set into exception fd set
 
-         if EFS = No_Fd_Set then
+         if EFS = No_Fd_Set_Access then
             EFS := New_Socket_Set (WFS);
 
          else
@@ -349,10 +339,10 @@ package body GNAT.Sockets.Thin is
 
       Res := Standard_Select (Nfds, RFS, WFS, EFS, Timeout);
 
-      if EFS /= No_Fd_Set then
+      if EFS /= No_Fd_Set_Access then
          declare
             EFSC    : constant Fd_Set_Access := New_Socket_Set (EFS);
-            Flag    : constant C.int := MSG_PEEK + MSG_OOB;
+            Flag    : constant C.int := Constants.MSG_PEEK + Constants.MSG_OOB;
             Buffer  : Character;
             Length  : C.int;
             Fromlen : aliased C.int;
@@ -384,7 +374,7 @@ package body GNAT.Sockets.Thin is
                   --  set. Otherwise, ignore this event since the user
                   --  is not watching for it.
 
-                  if WFSC /= No_Fd_Set
+                  if WFSC /= No_Fd_Set_Access
                     and then (Is_Socket_In_Set (WFSC, S) /= 0)
                   then
                      Insert_Socket_In_Set (WFS, S);
@@ -395,14 +385,14 @@ package body GNAT.Sockets.Thin is
             Free_Socket_Set (EFSC);
          end;
 
-         if Exceptfds = No_Fd_Set then
+         if Exceptfds = No_Fd_Set_Access then
             Free_Socket_Set (EFS);
          end if;
       end if;
 
       --  Free any copy of write fd set
 
-      if WFSC /= No_Fd_Set then
+      if WFSC /= No_Fd_Set_Access then
          Free_Socket_Set (WFSC);
       end if;
 
@@ -414,12 +404,11 @@ package body GNAT.Sockets.Thin is
    --------------
 
    function C_Writev
-     (Socket : C.int;
+     (Fd     : C.int;
       Iov    : System.Address;
-      Iovcnt : C.int)
-      return   C.int
+      Iovcnt : C.int) return C.int
    is
-      Res : C.int;
+      Res   : C.int;
       Count : C.int := 0;
 
       Iovec : array (0 .. Iovcnt - 1) of Vector_Element;
@@ -429,7 +418,7 @@ package body GNAT.Sockets.Thin is
    begin
       for J in Iovec'Range loop
          Res := C_Send
-           (Socket,
+           (Fd,
             Iovec (J).Base.all'Address,
             C.int (Iovec (J).Length),
             0);
@@ -455,84 +444,51 @@ package body GNAT.Sockets.Thin is
       end if;
    end Finalize;
 
+   -------------------------
+   -- Host_Error_Messages --
+   -------------------------
+
+   package body Host_Error_Messages is
+
+      --  On Windows, socket and host errors share the same code space, and
+      --  error messages are provided by Socket_Error_Message. The default
+      --  separate body for Host_Error_Messages is therefore not used in
+      --  this case.
+
+      function Host_Error_Message
+        (H_Errno : Integer) return C.Strings.chars_ptr
+        renames Socket_Error_Message;
+
+   end Host_Error_Messages;
+
    ----------------
    -- Initialize --
    ----------------
 
-   procedure Initialize (Process_Blocking_IO : Boolean := False) is
-      pragma Unreferenced (Process_Blocking_IO);
-
+   procedure Initialize is
       Return_Value : Interfaces.C.int;
-
    begin
       if not Initialized then
          Return_Value := WSAStartup (WS_Version, WSAData_Dummy'Address);
-         pragma Assert (Interfaces.C."=" (Return_Value, 0));
+         pragma Assert (Return_Value = 0);
          Initialized := True;
       end if;
    end Initialize;
 
-   -----------------
-   -- Set_Address --
-   -----------------
+   --------------------
+   -- Signalling_Fds --
+   --------------------
 
-   procedure Set_Address
-     (Sin     : Sockaddr_In_Access;
-      Address : In_Addr)
-   is
-   begin
-      Sin.Sin_Addr := Address;
-   end Set_Address;
-
-   ----------------
-   -- Set_Family --
-   ----------------
-
-   procedure Set_Family
-     (Sin    : Sockaddr_In_Access;
-      Family : C.int)
-   is
-   begin
-      Sin.Sin_Family := C.unsigned_short (Family);
-   end Set_Family;
-
-   ----------------
-   -- Set_Length --
-   ----------------
-
-   procedure Set_Length
-     (Sin : Sockaddr_In_Access;
-      Len : C.int)
-   is
-      pragma Unreferenced (Sin);
-      pragma Unreferenced (Len);
-
-   begin
-      null;
-   end Set_Length;
-
-   --------------
-   -- Set_Port --
-   --------------
-
-   procedure Set_Port
-     (Sin  : Sockaddr_In_Access;
-      Port : C.unsigned_short)
-   is
-   begin
-      Sin.Sin_Port := Port;
-   end Set_Port;
+   package body Signalling_Fds is separate;
 
    --------------------------
    -- Socket_Error_Message --
    --------------------------
 
    function Socket_Error_Message
-     (Errno : Integer)
-     return  C.Strings.chars_ptr
+     (Errno : Integer) return C.Strings.chars_ptr
    is
       use GNAT.Sockets.Constants;
-
    begin
       case Errno is
          when EINTR =>           return Error_Messages (N_EINTR);
@@ -572,14 +528,23 @@ package body GNAT.Sockets.Thin is
          when ENAMETOOLONG =>    return Error_Messages (N_ENAMETOOLONG);
          when EHOSTDOWN =>       return Error_Messages (N_EHOSTDOWN);
          when EHOSTUNREACH =>    return Error_Messages (N_EHOSTUNREACH);
-         when SYSNOTREADY =>     return Error_Messages (N_SYSNOTREADY);
-         when VERNOTSUPPORTED => return Error_Messages (N_VERNOTSUPPORTED);
-         when NOTINITIALISED =>  return Error_Messages (N_NOTINITIALISED);
-         when EDISCON =>         return Error_Messages (N_EDISCON);
+
+         --  Windows-specific error codes
+
+         when WSASYSNOTREADY =>  return Error_Messages (N_WSASYSNOTREADY);
+         when WSAVERNOTSUPPORTED =>
+                                 return Error_Messages (N_WSAVERNOTSUPPORTED);
+         when WSANOTINITIALISED =>
+                                 return Error_Messages (N_WSANOTINITIALISED);
+         when WSAEDISCON =>      return Error_Messages (N_WSAEDISCON);
+
+         --  h_errno values
+
          when HOST_NOT_FOUND =>  return Error_Messages (N_HOST_NOT_FOUND);
          when TRY_AGAIN =>       return Error_Messages (N_TRY_AGAIN);
          when NO_RECOVERY =>     return Error_Messages (N_NO_RECOVERY);
          when NO_DATA =>         return Error_Messages (N_NO_DATA);
+
          when others =>          return Error_Messages (N_OTHERS);
       end case;
    end Socket_Error_Message;

@@ -1,7 +1,6 @@
 // Debug-mode error formatting implementation -*- C++ -*-
 
-// Copyright (C) 2003, 2004
-// Free Software Foundation, Inc.
+// Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -16,7 +15,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -27,6 +26,10 @@
 // the GNU General Public License.  This exception does not however
 // invalidate any other reasons why the executable file might be covered by
 // the GNU General Public License.
+
+/** @file debug/formatter.h
+ *  This file is a GNU debug extension to the Standard C++ Library.
+ */
 
 #ifndef _GLIBCXX_DEBUG_FORMATTER_H
 #define _GLIBCXX_DEBUG_FORMATTER_H 1
@@ -310,7 +313,7 @@ namespace __gnu_debug
       const _Error_formatter&
       _M_iterator(const _Iterator& __it, const char* __name = 0)  const
       {
-	if (_M_num_parameters < __max_parameters)
+	if (_M_num_parameters < size_t(__max_parameters))
 	  _M_parameters[_M_num_parameters++] = _Parameter(__it, __name,
 							  _Is_iterator());
 	return *this;
@@ -319,7 +322,7 @@ namespace __gnu_debug
     const _Error_formatter&
     _M_integer(long __value, const char* __name = 0) const
     {
-      if (_M_num_parameters < __max_parameters)
+      if (_M_num_parameters < size_t(__max_parameters))
 	_M_parameters[_M_num_parameters++] = _Parameter(__value, __name);
       return *this;
     }
@@ -327,7 +330,7 @@ namespace __gnu_debug
     const _Error_formatter&
     _M_string(const char* __value, const char* __name = 0) const
     {
-      if (_M_num_parameters < __max_parameters)
+      if (_M_num_parameters < size_t(__max_parameters))
 	_M_parameters[_M_num_parameters++] = _Parameter(__value, __name);
       return *this;
     }
@@ -336,7 +339,7 @@ namespace __gnu_debug
       const _Error_formatter&
       _M_sequence(const _Sequence& __seq, const char* __name = 0) const
       {
-	if (_M_num_parameters < __max_parameters)
+	if (_M_num_parameters < size_t(__max_parameters))
 	  _M_parameters[_M_num_parameters++] = _Parameter(__seq, __name,
 							  _Is_sequence());
 	return *this;
@@ -356,7 +359,7 @@ namespace __gnu_debug
     _Error_formatter(const char* __file, size_t __line)
     : _M_file(__file), _M_line(__line), _M_num_parameters(0), _M_text(0),
       _M_max_length(78), _M_column(1), _M_first_line(true), _M_wordwrap(false)
-    { }
+    { _M_get_max_length(); }
 
     template<typename _Tp>
       void
@@ -367,6 +370,9 @@ namespace __gnu_debug
 
     void
     _M_print_string(const char* __string) const;
+
+    void
+    _M_get_max_length() const;
 
     enum { __max_parameters = 9 };
 

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -46,25 +46,28 @@
 --  package and the packages it references are included in all Ada programs,
 --  together with the included data.
 
+pragma Warnings (Off);
+pragma Compiler_Unit;
+pragma Warnings (On);
+
 pragma Polling (Off);
 --  We must turn polling off for this unit, because otherwise we get
 --  elaboration circularities with Ada.Exceptions if polling is on.
 
 with System;
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package System.Standard_Library is
-
-   pragma Suppress (All_Checks);
-   --  Suppress explicitely all the checks to work around the Solaris linker
-   --  bug when using gnatmake -f -a (but without -gnatp). This is not needed
-   --  with Solaris 2.6, so eventually can be removed ???
+   pragma Warnings (Off);
+   pragma Preelaborate_05;
+   pragma Warnings (On);
 
    type Big_String_Ptr is access all String (Positive);
+   for Big_String_Ptr'Storage_Size use 0;
    --  A non-fat pointer type for null terminated strings
 
    function To_Ptr is
-     new Unchecked_Conversion (System.Address, Big_String_Ptr);
+     new Ada.Unchecked_Conversion (System.Address, Big_String_Ptr);
 
    ---------------------------------------------
    -- Type For Enumeration Image Index Tables --
@@ -113,7 +116,7 @@ package System.Standard_Library is
 
    --  The following record defines the underlying representation of exceptions
 
-   --  WARNING! Any changes to this may need to be reflectd in the following
+   --  WARNING! Any changes to this may need to be reflected in the following
    --  locations in the compiler and runtime code:
 
    --    1. The Internal_Exception routine in s-exctab.adb
@@ -137,8 +140,9 @@ package System.Standard_Library is
       Name_Length : Natural;
       --  Length of fully expanded name of exception
 
-      Full_Name : Big_String_Ptr;
+      Full_Name : System.Address;
       --  Fully expanded name of exception, null terminated
+      --  You can use To_Ptr to convert this to a string.
 
       HTable_Ptr : Exception_Data_Ptr;
       --  Hash table pointer used to link entries together in the hash table
@@ -157,12 +161,11 @@ package System.Standard_Library is
       --  whenever the exception is raised. This call occurs immediately,
       --  before any other actions taken by the raise (and in particular
       --  before any unwinding of the stack occurs).
-
    end record;
 
    --  Definitions for standard predefined exceptions defined in Standard,
 
-   --  Why are the Nul's necessary here, seems like they should not be
+   --  Why are the NULs necessary here, seems like they should not be
    --  required, since Gigi is supposed to add a Nul to each name ???
 
    Constraint_Error_Name : constant String := "CONSTRAINT_ERROR" & ASCII.NUL;
@@ -179,7 +182,7 @@ package System.Standard_Library is
      (Not_Handled_By_Others => False,
       Lang                  => 'A',
       Name_Length           => Constraint_Error_Name'Length,
-      Full_Name             => To_Ptr (Constraint_Error_Name'Address),
+      Full_Name             => Constraint_Error_Name'Address,
       HTable_Ptr            => null,
       Import_Code           => 0,
       Raise_Hook            => null);
@@ -188,7 +191,7 @@ package System.Standard_Library is
      (Not_Handled_By_Others => False,
       Lang                  => 'A',
       Name_Length           => Numeric_Error_Name'Length,
-      Full_Name             => To_Ptr (Numeric_Error_Name'Address),
+      Full_Name             => Numeric_Error_Name'Address,
       HTable_Ptr            => null,
       Import_Code           => 0,
       Raise_Hook            => null);
@@ -197,7 +200,7 @@ package System.Standard_Library is
      (Not_Handled_By_Others => False,
       Lang                  => 'A',
       Name_Length           => Program_Error_Name'Length,
-      Full_Name             => To_Ptr (Program_Error_Name'Address),
+      Full_Name             => Program_Error_Name'Address,
       HTable_Ptr            => null,
       Import_Code           => 0,
       Raise_Hook            => null);
@@ -206,7 +209,7 @@ package System.Standard_Library is
      (Not_Handled_By_Others => False,
       Lang                  => 'A',
       Name_Length           => Storage_Error_Name'Length,
-      Full_Name             => To_Ptr (Storage_Error_Name'Address),
+      Full_Name             => Storage_Error_Name'Address,
       HTable_Ptr            => null,
       Import_Code           => 0,
       Raise_Hook            => null);
@@ -215,7 +218,7 @@ package System.Standard_Library is
      (Not_Handled_By_Others => False,
       Lang                  => 'A',
       Name_Length           => Tasking_Error_Name'Length,
-      Full_Name             => To_Ptr (Tasking_Error_Name'Address),
+      Full_Name             => Tasking_Error_Name'Address,
       HTable_Ptr            => null,
       Import_Code           => 0,
       Raise_Hook            => null);
@@ -224,7 +227,7 @@ package System.Standard_Library is
      (Not_Handled_By_Others => True,
       Lang                  => 'A',
       Name_Length           => Abort_Signal_Name'Length,
-      Full_Name             => To_Ptr (Abort_Signal_Name'Address),
+      Full_Name             => Abort_Signal_Name'Address,
       HTable_Ptr            => null,
       Import_Code           => 0,
       Raise_Hook            => null);
@@ -260,7 +263,7 @@ package System.Standard_Library is
 
    Exception_Trace : Exception_Trace_Kind := RM_Convention;
    pragma Atomic (Exception_Trace);
-   --  By default, follow the RM convention.
+   --  By default, follow the RM convention
 
    -----------------
    -- Subprograms --

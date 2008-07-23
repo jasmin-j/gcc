@@ -1,6 +1,6 @@
 // natClass.cc - Implementation of java.lang.Class native methods.
 
-/* Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005  
+/* Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
    Free Software Foundation
 
    This file is part of libgcj.
@@ -29,6 +29,7 @@ details.  */
 #include <java/lang/reflect/Member.h>
 #include <java/lang/reflect/Method.h>
 #include <java/lang/reflect/Field.h>
+#include <java/lang/reflect/Proxy.h>
 #include <java/lang/reflect/Constructor.h>
 #include <java/lang/AbstractMethodError.h>
 #include <java/lang/ArrayStoreException.h>
@@ -50,12 +51,28 @@ details.  */
 #include <java/lang/NullPointerException.h>
 #include <java/lang/RuntimePermission.h>
 #include <java/lang/System.h>
+#include <java/lang/SecurityException.h>
 #include <java/lang/SecurityManager.h>
 #include <java/lang/StringBuffer.h>
 #include <java/lang/VMClassLoader.h>
 #include <gcj/method.h>
 #include <gnu/gcj/RawData.h>
 #include <java/lang/VerifyError.h>
+#include <java/lang/InternalError.h>
+#include <java/lang/TypeNotPresentException.h>
+#include <java/lang/Byte.h>
+#include <java/lang/Short.h>
+#include <java/lang/Integer.h>
+#include <java/lang/Float.h>
+#include <java/lang/Double.h>
+#include <java/lang/Long.h>
+#include <java/lang/Character.h>
+#include <java/lang/Boolean.h>
+#include <java/lang/annotation/Annotation.h>
+#include <java/util/HashMap.h>
+#include <java/util/Map.h>
+#include <sun/reflect/annotation/AnnotationInvocationHandler.h>
+#include <java/lang/Enum.h>
 
 #include <java-cpool.h>
 #include <java-interp.h>
@@ -115,9 +132,19 @@ java::lang::Class::getClassLoader (void)
   if (s != NULL)
     {
       jclass caller = _Jv_StackTrace::GetCallingClass (&Class::class$);
-      ClassLoader *caller_loader = NULL;
-      if (caller)
-	caller_loader = caller->getClassLoaderInternal();
+      return getClassLoader (caller);
+   }
+
+  return loader;
+}
+
+java::lang::ClassLoader *
+java::lang::Class::getClassLoader (jclass caller)
+{
+  java::lang::SecurityManager *s = java::lang::System::getSecurityManager();
+  if (s != NULL)
+    {
+      ClassLoader *caller_loader = caller->getClassLoaderInternal();
 
       // If the caller has a non-null class loader, and that loader
       // is not this class' loader or an ancestor thereof, then do a
@@ -126,15 +153,6 @@ java::lang::Class::getClassLoader (void)
 	s->checkPermission (new RuntimePermission (JvNewStringLatin1 ("getClassLoader")));
     }
 
-  // This particular 'return' has been changed a couple of times over
-  // libgcj's history.  This particular approach is a little weird,
-  // because it means that all classes linked into the application
-  // will see NULL for their class loader.  This may confuse some
-  // applications that aren't expecting this; the solution is to use a
-  // different linking model for these applications.  In the past we
-  // returned the system class loader in this case, but that is
-  // incorrect.  Also, back then we didn't have other linkage models
-  // to fall back on.
   return loader;
 }
 
@@ -167,10 +185,8 @@ java::lang::Class::getConstructor (JArray<jclass> *param_types)
 }
 
 JArray<java::lang::reflect::Constructor *> *
-java::lang::Class::_getConstructors (jboolean declared)
+java::lang::Class::getDeclaredConstructors (jboolean publicOnly)
 {
-  memberAccessCheck(java::lang::reflect::Member::PUBLIC);
-
   int numConstructors = 0;
   int max = isPrimitive () ? 0 : method_count;
   int i;
@@ -180,7 +196,7 @@ java::lang::Class::_getConstructors (jboolean declared)
       if (method->name == NULL
 	  || ! _Jv_equalUtf8Consts (method->name, init_name))
 	continue;
-      if (! declared
+      if (publicOnly
 	  && ! java::lang::reflect::Modifier::isPublic(method->accflags))
 	continue;
       numConstructors++;
@@ -197,7 +213,7 @@ java::lang::Class::_getConstructors (jboolean declared)
       if (method->name == NULL
 	  || ! _Jv_equalUtf8Consts (method->name, init_name))
 	continue;
-      if (! declared
+      if (publicOnly
 	  && ! java::lang::reflect::Modifier::isPublic(method->accflags))
 	continue;
       java::lang::reflect::Constructor *cons
@@ -427,39 +443,6 @@ java::lang::Class::getName (void)
 }
 
 JArray<jclass> *
-java::lang::Class::getClasses (void)
-{
-  // FIXME: security checking.
-
-  // Until we have inner classes, it always makes sense to return an
-  // empty array.
-  JArray<jclass> *result
-    = (JArray<jclass> *) JvNewObjectArray (0, &java::lang::Class::class$,
-					   NULL);
-  return result;
-}
-
-JArray<jclass> *
-java::lang::Class::getDeclaredClasses (void)
-{
-  memberAccessCheck (java::lang::reflect::Member::DECLARED);
-  // Until we have inner classes, it always makes sense to return an
-  // empty array.
-  JArray<jclass> *result
-    = (JArray<jclass> *) JvNewObjectArray (0, &java::lang::Class::class$,
-					   NULL);
-  return result;
-}
-
-jclass
-java::lang::Class::getDeclaringClass (void)
-{
-  // Until we have inner classes, it makes sense to always return
-  // NULL.
-  return NULL;
-}
-
-JArray<jclass> *
 java::lang::Class::getInterfaces (void)
 {
   jobjectArray r = JvNewObjectArray (interface_count, getClass (), NULL);
@@ -646,9 +629,10 @@ jboolean
 java::lang::Class::isAssignableFrom (jclass klass)
 {
   // Arguments may not have been initialized, given ".class" syntax.
-  _Jv_InitClass (this);
-  _Jv_InitClass (klass);
-  return _Jv_IsAssignableFrom (this, klass);
+  // This ensures we can at least look at their superclasses.
+  _Jv_Linker::wait_for_state (this, JV_STATE_LOADING);
+  _Jv_Linker::wait_for_state (klass, JV_STATE_LOADING);
+  return _Jv_IsAssignableFrom (klass, this);
 }
 
 jboolean
@@ -656,8 +640,7 @@ java::lang::Class::isInstance (jobject obj)
 {
   if (! obj)
     return false;
-  _Jv_InitClass (this);
-  return _Jv_IsAssignableFrom (this, JV_CLASS (obj));
+  return _Jv_IsAssignableFrom (JV_CLASS (obj), this);
 }
 
 jobject
@@ -688,13 +671,38 @@ java::lang::Class::finalize (void)
   engine->unregister(this);
 }
 
+#ifdef INTERPRETER
+void
+_Jv_ClosureList::releaseClosures (_Jv_ClosureList **closures)
+{
+  if (!closures)
+    return;
+
+  while (_Jv_ClosureList *current = *closures)
+    {
+      *closures = current->next;
+      ffi_closure_free (current->ptr);
+    }
+}
+
+void
+_Jv_ClosureList::registerClosure (jclass klass, void *ptr)
+{
+  _Jv_ClosureList **closures = klass->engine->get_closure_list (klass);
+  this->ptr = ptr;
+  this->next = *closures;
+  *closures = this;
+}
+#endif
+
 // This implements the initialization process for a class.  From Spec
 // section 12.4.2.
 void
 java::lang::Class::initializeClass (void)
 {
-  // Short-circuit to avoid needless locking.
-  if (state == JV_STATE_DONE)
+  // Short-circuit to avoid needless locking (expression includes
+  // JV_STATE_PHANTOM and JV_STATE_DONE).
+  if (state >= JV_STATE_PHANTOM)
     return;
 
   // Step 1.  We introduce a new scope so we can synchronize more
@@ -707,6 +715,10 @@ java::lang::Class::initializeClass (void)
 	try
 	  {
 	    _Jv_Linker::wait_for_state(this, JV_STATE_LINKED);
+	  }
+	catch (java::lang::SecurityException *x)
+	  {
+	    throw x;
 	  }
 	catch (java::lang::Throwable *x)
 	  {
@@ -745,6 +757,10 @@ java::lang::Class::initializeClass (void)
 	{
 	  _Jv_InitClass (superclass);
 	}
+      catch (java::lang::SecurityException *x)
+	{
+	  throw x;
+	}
       catch (java::lang::Throwable *except)
 	{
 	  // Caught an exception.
@@ -762,6 +778,10 @@ java::lang::Class::initializeClass (void)
 					     void_signature);
       if (meth)
 	((void (*) (void)) meth->ncode) ();
+    }
+  catch (java::lang::SecurityException *x)
+    {
+      throw x;
     }
   catch (java::lang::Throwable *except)
     {
@@ -865,6 +885,738 @@ java::lang::Class::setSigners(JArray<jobject> *s)
 
 
 
+static unsigned char
+read_u1 (unsigned char *&p)
+{
+  return *p++;
+}
+
+static unsigned char
+read_u1 (unsigned char *&p, unsigned char *next)
+{
+  if (next - p < 1)
+    throw new java::lang::InternalError();
+  return *p++;
+}
+
+static unsigned int
+read_u2 (unsigned char *&p)
+{
+  unsigned int b1 = *p++;
+  unsigned int b2 = *p++;
+  return (b1 << 8) | b2;
+}
+
+static unsigned int
+read_u2 (unsigned char *&p, unsigned char *next)
+{
+  if (next - p < 2)
+    throw new java::lang::InternalError();
+  return read_u2 (p);
+}
+
+static int
+read_4 (unsigned char *&p)
+{
+  int b1 = *p++;
+  int b2 = *p++;
+  int b3 = *p++;
+  int b4 = *p++;
+  return (b1 << 24) | (b2 << 16) | (b3 << 8) | b4;
+}
+
+jstring
+java::lang::Class::getReflectionSignature (jint /*jv_attr_type*/ type,
+					   jint obj_index)
+{
+  // We just re-parse the bytecode for this data each time.  If
+  // necessary we can cache results, but I suspect this is not
+  // performance sensitive.
+  unsigned char *bytes = reflection_data;
+  if (bytes == NULL)
+    return NULL;
+  while (true)
+    {
+      int kind = read_u1 (bytes);
+      if (kind == JV_DONE_ATTR)
+	return NULL;
+      int len = read_4 (bytes);
+      unsigned char *next = bytes + len;
+      if (kind != type)
+	{
+	  bytes = next;
+	  continue;
+	}
+      if (type != JV_CLASS_ATTR)
+	{
+	  unsigned short index = read_u2 (bytes, next);
+	  if (index != obj_index)
+	    {
+	      bytes = next;
+	      continue;
+	    }
+	}
+      int nt = read_u1 (bytes, next);
+      if (nt != JV_SIGNATURE_KIND)
+	{
+	  bytes = next;
+	  continue;
+	}
+      unsigned int cpool_idx = read_u2 (bytes, next);
+      if (cpool_idx >= (unsigned int) constants.size
+	  || constants.tags[cpool_idx] != JV_CONSTANT_Utf8)
+	{
+	  // We just ignore errors for now.  It isn't clear what is
+	  // best to do here, as an encoding error here means a bug
+	  // either in the compiler or in defineclass.cc.
+	  return NULL;
+	}
+      return _Jv_NewStringUtf8Const (constants.data[cpool_idx].utf8);
+    }
+}
+
+jstring
+java::lang::Class::getReflectionSignature (::java::lang::reflect::Constructor *c)
+{
+  _Jv_Method *meth = _Jv_FromReflectedConstructor (c);
+  unsigned short meth_index = meth - methods;
+  return getReflectionSignature (JV_METHOD_ATTR, meth_index);
+}
+
+jstring
+java::lang::Class::getReflectionSignature (::java::lang::reflect::Method *m)
+{
+  _Jv_Method *meth = _Jv_FromReflectedMethod (m);
+  unsigned short meth_index = meth - methods;
+  return getReflectionSignature (JV_METHOD_ATTR, meth_index);
+}
+
+jstring
+java::lang::Class::getReflectionSignature (::java::lang::reflect::Field *f)
+{
+  _Jv_Field *fld = _Jv_FromReflectedField (f);
+  unsigned short fld_index = fld - fields;
+  return getReflectionSignature (JV_FIELD_ATTR, fld_index);
+}
+
+jstring
+java::lang::Class::getClassSignature()
+{
+  return getReflectionSignature (JV_CLASS_ATTR, 0);
+}
+
+jint
+java::lang::Class::getEnclosingMethodData()
+{
+  unsigned char *bytes = reflection_data;
+  if (bytes == NULL)
+    return 0;
+  while (true)
+    {
+      int kind = read_u1 (bytes);
+      if (kind == JV_DONE_ATTR)
+	return 0;
+      int len = read_4 (bytes);
+      unsigned char *next = bytes + len;
+      if (kind != JV_CLASS_ATTR)
+	{
+	  bytes = next;
+	  continue;
+	}
+      int type = read_u1 (bytes, next);
+      if (type != JV_ENCLOSING_METHOD_KIND)
+	{
+	  bytes = next;
+	  continue;
+	}
+      int class_index = read_u2 (bytes, next);
+      int method_index = read_u2 (bytes, next);
+      _Jv_word result;
+      _Jv_storeIndexes (&result, class_index, method_index);
+      return result.i;
+    }
+}
+
+jclass
+java::lang::Class::getEnclosingClass()
+{
+  _Jv_word indexes;
+  indexes.i = getEnclosingMethodData();
+  if (indexes.i == 0)
+    // No enclosing method, but perhaps a member or anonymous class
+    return getDeclaringClass();
+  _Jv_ushort class_index, method_index;
+  _Jv_loadIndexes (&indexes, class_index, method_index);
+  return _Jv_Linker::resolve_pool_entry (this, class_index).clazz;
+}
+
+::java::lang::reflect::Method *
+java::lang::Class::getEnclosingMethod()
+{
+  _Jv_word indexes;
+  indexes.i = getEnclosingMethodData();
+  if (indexes.i == 0)
+    return NULL;
+  _Jv_ushort class_index, method_index;
+  _Jv_loadIndexes (&indexes, class_index, method_index);
+  jclass found_class;
+  _Jv_Method *method = _Jv_Linker::resolve_method_entry (this, found_class,
+							 class_index,
+							 method_index,
+							 false, false);
+  using namespace java::lang::reflect;
+  Method *rmethod = new Method ();
+  rmethod->offset = (char *) method - (char *) found_class->methods;
+  rmethod->declaringClass = found_class;
+  return rmethod;
+}
+
+::java::lang::reflect::Constructor *
+java::lang::Class::getEnclosingConstructor()
+{
+  _Jv_word indexes;
+  indexes.i = getEnclosingMethodData();
+  if (indexes.i == 0)
+    return NULL;
+  _Jv_ushort class_index, method_index;
+  _Jv_loadIndexes (&indexes, class_index, method_index);
+  jclass found_class;
+  _Jv_Method *method = _Jv_Linker::resolve_method_entry (this, found_class,
+							 class_index,
+							 method_index,
+							 false, false);
+  using namespace java::lang::reflect;
+  Constructor *cons = new Constructor ();
+  cons->offset = (char *) method - (char *) found_class->methods;
+  cons->declaringClass = this;
+  return cons;
+}
+
+static void
+check_constant (_Jv_Constants *pool, jint cpool_index, jint type)
+{
+  if (cpool_index <= 0 || cpool_index >= pool->size)
+    throw new InternalError(JvNewStringLatin1("invalid constant pool index"));
+  if ((pool->tags[cpool_index] & 
+	~(JV_CONSTANT_ResolvedFlag|JV_CONSTANT_LazyFlag)) != type)
+    {
+      ::java::lang::StringBuffer *sb = new ::java::lang::StringBuffer();
+      sb->append(JvNewStringLatin1("expected pool constant "));
+      sb->append(type);
+      sb->append(JvNewStringLatin1(" but got "));
+      sb->append(jint (pool->tags[cpool_index]));
+      throw new InternalError(sb->toString());
+    }
+}
+
+// Forward declaration
+static ::java::lang::annotation::Annotation *
+parseAnnotation(jclass klass, _Jv_Constants *pool,
+		unsigned char *&bytes, unsigned char *last);
+
+static jobject
+parseAnnotationElement(jclass klass, _Jv_Constants *pool,
+		       unsigned char *&bytes, unsigned char *last)
+{
+  int tag = read_u1 (bytes, last);
+  jobject result;
+  switch (tag)
+    {
+    case 'B':
+      {
+	int cindex = read_u2 (bytes, last);
+	check_constant (pool, cindex, JV_CONSTANT_Integer);
+	result = Byte::valueOf (pool->data[cindex].i);
+      }
+      break;
+    case 'C':
+      {
+	int cindex = read_u2 (bytes, last);
+	check_constant (pool, cindex, JV_CONSTANT_Integer);
+	result = Character::valueOf (pool->data[cindex].i);
+      }
+      break;
+    case 'S':
+      {
+	int cindex = read_u2 (bytes, last);
+	check_constant (pool, cindex, JV_CONSTANT_Integer);
+	result = Short::valueOf (pool->data[cindex].i);
+      }
+      break;
+    case 'Z':
+      {
+	int cindex = read_u2 (bytes, last);
+	check_constant (pool, cindex, JV_CONSTANT_Integer);
+	result = Boolean::valueOf (jboolean (pool->data[cindex].i));
+      }
+      break;
+    case 'I':
+      {
+	int cindex = read_u2 (bytes, last);
+	check_constant (pool, cindex, JV_CONSTANT_Integer);
+	result = Integer::valueOf (pool->data[cindex].i);
+      }
+      break;
+    case 'D':
+      {
+	int cindex = read_u2 (bytes, last);
+	check_constant (pool, cindex, JV_CONSTANT_Double);
+	_Jv_word2 word;
+	memcpy (&word, &pool->data[cindex], 2 * sizeof (_Jv_word));
+	result = Double::valueOf (word.d);
+      }
+      break;
+    case 'F':
+      {
+	int cindex = read_u2 (bytes, last);
+	check_constant (pool, cindex, JV_CONSTANT_Float);
+	result = Float::valueOf (pool->data[cindex].f);
+      }
+      break;
+    case 'J':
+      {
+	int cindex = read_u2 (bytes, last);
+	check_constant (pool, cindex, JV_CONSTANT_Long);
+	_Jv_word2 word;
+	memcpy (&word, &pool->data[cindex], 2 * sizeof (_Jv_word));
+	result = Long::valueOf (word.l);
+      }
+      break;
+    case 's':
+      {
+	int cindex = read_u2 (bytes, last);
+	// Despite what the JVM spec says, compilers generate a Utf8
+	// constant here, not a String.
+	check_constant (pool, cindex, JV_CONSTANT_Utf8);
+	result = pool->data[cindex].utf8->toString();
+      }
+      break;
+    case 'e':
+      {
+	int type_name_index = read_u2 (bytes, last);
+	check_constant (pool, type_name_index, JV_CONSTANT_Utf8);
+ 	int const_name_index = read_u2 (bytes, last);
+	check_constant (pool, const_name_index, JV_CONSTANT_Utf8);
+
+	_Jv_Utf8Const *u_name = pool->data[type_name_index].utf8;
+	_Jv_Utf8Const *e_name = pool->data[const_name_index].utf8;
+
+	// FIXME: throw correct exceptions at the correct times.
+	jclass e_class = _Jv_FindClassFromSignature(u_name->chars(),
+						    klass->getClassLoaderInternal());
+	result = ::java::lang::Enum::valueOf(e_class, e_name->toString());
+      }
+      break;
+    case 'c':
+      {
+	int cindex = read_u2 (bytes, last);
+	check_constant (pool, cindex, JV_CONSTANT_Utf8);
+	_Jv_Utf8Const *u_name = pool->data[cindex].utf8;
+	jclass anno_class
+	  = _Jv_FindClassFromSignatureNoException(u_name->chars(),
+						  klass->getClassLoaderInternal());
+	// FIXME: not correct: we should lazily do this when trying to
+	// read the element.  This means that
+	// AnnotationInvocationHandler needs to have a special case.
+	if (! anno_class)
+	  // FIXME: original exception...
+	  throw new TypeNotPresentException(u_name->toString(), NULL);
+	result = anno_class;
+      }
+      break;
+    case '@':
+      result = parseAnnotation (klass, pool, bytes, last);
+      break;
+    case '[':
+      {
+	int n_array_elts = read_u2 (bytes, last);
+	jobjectArray aresult = _Jv_NewObjectArray (n_array_elts,
+						   &Object::class$, NULL);
+	jobject *elts = elements (aresult);
+	for (int i = 0; i < n_array_elts; ++i)
+	  elts[i] = parseAnnotationElement(klass, pool, bytes, last);
+	result = aresult;
+      }
+      break;
+    default:
+      throw new java::lang::InternalError();
+    }
+  return result;
+}
+
+static ::java::lang::annotation::Annotation *
+parseAnnotation(jclass klass, _Jv_Constants *pool,
+		unsigned char *&bytes, unsigned char *last)
+{
+  int type_index = read_u2 (bytes, last);
+  check_constant (pool, type_index, JV_CONSTANT_Utf8);
+
+  _Jv_Utf8Const *u_name = pool->data[type_index].utf8;
+  jclass anno_class = _Jv_FindClassFromSignatureNoException(u_name->chars(),
+							    klass->getClassLoaderInternal());
+  // FIXME: what to do if anno_class==NULL?
+
+  ::java::util::HashMap *hmap = new ::java::util::HashMap();
+  int npairs = read_u2 (bytes, last);
+  for (int i = 0; i < npairs; ++i)
+    {
+      int name_index = read_u2 (bytes, last);
+      check_constant (pool, name_index, JV_CONSTANT_Utf8);
+      jstring name = _Jv_NewStringUtf8Const (pool->data[name_index].utf8);
+      jobject value = parseAnnotationElement (klass, pool, bytes, last);
+      // FIXME: any checks needed for name?
+      hmap->put(name, value);
+    }
+  using namespace ::sun::reflect::annotation;
+  return AnnotationInvocationHandler::create (anno_class,
+					      (::java::util::Map *) hmap);
+}
+
+static jobjectArray
+parseAnnotations(jclass klass, _Jv_Constants *pool,
+		 unsigned char *&bytes, unsigned char *last)
+{
+  int num = read_u2 (bytes, last);
+  jobjectArray result = _Jv_NewObjectArray (num,
+					    &::java::lang::annotation::Annotation::class$,
+					    NULL);
+  jobject *elts = elements (result);
+  for (int i = 0; i < num; ++i)
+    elts[i] = parseAnnotation(klass, pool, bytes, last);
+  return result;
+}
+
+static jobjectArray
+parseParameterAnnotations(jclass klass, _Jv_Constants *pool,
+			  unsigned char *&bytes, unsigned char *last)
+{
+  jclass anno = &::java::lang::annotation::Annotation::class$;
+  jclass annoary = _Jv_GetArrayClass (anno, anno->getClassLoaderInternal());
+
+  // FIXME: something should check the number of params versus the
+  // method
+  int n_params = read_u1 (bytes, last);
+  jobjectArray result = _Jv_NewObjectArray (n_params, annoary, NULL);
+  jobject *elts = elements (result);
+  for (int i = 0; i < n_params; ++i)
+    elts[i] = parseAnnotations(klass, pool, bytes, last);
+  return result;
+}
+
+jobject
+java::lang::Class::getMethodDefaultValue(::java::lang::reflect::Method *meth)
+{
+  // FIXME: could cache the value here...
+
+  unsigned char *bytes = reflection_data;
+  if (bytes == NULL)
+    return 0;
+
+  unsigned short meth_index = _Jv_FromReflectedMethod (meth) - methods;
+
+  while (true)
+    {
+      int type = read_u1 (bytes);
+      if (type == JV_DONE_ATTR)
+	return NULL;
+      int len = read_4 (bytes);
+      unsigned char *next = bytes + len;
+      if (type != JV_METHOD_ATTR)
+	{
+	  bytes = next;
+	  continue;
+	}
+      int kind = read_u1 (bytes, next);
+      if (kind != JV_ANNOTATION_DEFAULT_KIND)
+	{
+	  bytes = next;
+	  continue;
+	}
+      int index = read_u2 (bytes, next);
+      if (meth_index != index)
+	{
+	  bytes = next;
+	  continue;
+	}
+
+      // FIXME: could cache here.  If we do then we have to clone any
+      // array result.
+      return parseAnnotationElement(this, &this->constants, bytes, next);
+    }
+}
+
+jobjectArray
+java::lang::Class::getDeclaredAnnotations(jint /* jv_attr_type */ member_type,
+					  jint member_index,
+					  jint /* jv_attr_kind */ kind_req)
+{
+  using namespace java::lang::annotation;
+  jobjectArray result;
+
+  unsigned char *bytes = reflection_data;
+  if (bytes == NULL)
+    return 0;
+
+  if (loader == NULL)
+    loader = (ClassLoader *)VMClassLoader::bootLoader;
+
+  result = (loader->getDeclaredAnnotations
+	    (this, member_type, member_index, kind_req));
+  if (result)
+    return result;
+
+  for (;;)
+    {
+      int type = read_u1 (bytes);
+      if (type == JV_DONE_ATTR)
+	return NULL;
+      int len = read_4 (bytes);
+      unsigned char *next = bytes + len;
+      if (type != member_type)
+	{
+	  bytes = next;
+	  continue;
+	}
+      int kind = read_u1 (bytes, next);
+      if (kind != kind_req)
+	{
+	  bytes = next;
+	  continue;
+	}
+      if (member_type != JV_CLASS_ATTR)
+	{
+	  int index = read_u2 (bytes, next);
+	  if (member_index != index)
+	    {
+	      bytes = next;
+	      continue;
+	    }
+	}
+
+      if (kind_req == JV_PARAMETER_ANNOTATIONS_KIND)
+	result = ((parseParameterAnnotations 
+		   (this, &this->constants, bytes, next)));
+      else
+	result = ((parseAnnotations (this, &this->constants, bytes, next)));
+      break;
+    }
+
+  return (loader->putDeclaredAnnotations
+	  (this, member_type, member_index, kind_req, result));
+}
+
+jobjectArray
+java::lang::Class::getDeclaredAnnotations(::java::lang::reflect::Method *meth,
+					  jboolean is_param)
+{
+  unsigned short meth_index = _Jv_FromReflectedMethod (meth) - methods;
+  return getDeclaredAnnotations(JV_METHOD_ATTR, meth_index,
+				(is_param
+				 ? JV_PARAMETER_ANNOTATIONS_KIND
+				 : JV_ANNOTATIONS_KIND));
+}
+
+jobjectArray
+java::lang::Class::getDeclaredAnnotations(::java::lang::reflect::Constructor *cons,
+					  jboolean is_param)
+{
+  unsigned short meth_index = _Jv_FromReflectedConstructor (cons) - methods;
+  return getDeclaredAnnotations(JV_METHOD_ATTR, meth_index,
+				(is_param
+				 ? JV_PARAMETER_ANNOTATIONS_KIND
+				 : JV_ANNOTATIONS_KIND));
+}
+
+jobjectArray
+java::lang::Class::getDeclaredAnnotations(::java::lang::reflect::Field *fld)
+{
+  unsigned short field_index = _Jv_FromReflectedField (fld) - fields;
+  return getDeclaredAnnotations(JV_FIELD_ATTR, field_index,
+				JV_ANNOTATIONS_KIND);
+}
+
+JArray< ::java::lang::annotation::Annotation *> *
+java::lang::Class::getDeclaredAnnotationsInternal()
+{
+  return (JArray< ::java::lang::annotation::Annotation *> *) getDeclaredAnnotations(JV_CLASS_ATTR, 0, JV_ANNOTATIONS_KIND);
+}
+
+static jclass
+resolve_class_constant (jclass klass, _Jv_Constants *pool, int cpool_index)
+{
+  check_constant (pool, cpool_index, JV_CONSTANT_Class);
+  // FIXME: what is the correct thing to do with an exception here?
+  return _Jv_Linker::resolve_pool_entry (klass, cpool_index, false).clazz;
+}
+
+jint
+java::lang::Class::findInnerClassAttribute()
+{
+  unsigned char *bytes = reflection_data;
+  if (bytes == NULL)
+    return -1;
+  while (true)
+    {
+      int type = read_u1 (bytes);
+      if (type == JV_DONE_ATTR)
+	break;
+      // After the type but before the length.
+      unsigned char *save = bytes;
+      int len = read_4 (bytes);
+      unsigned char *next = bytes + len;
+      if (type != JV_CLASS_ATTR)
+	{
+	  bytes = next;
+	  continue;
+	}
+      int kind = read_u1 (bytes, next);
+      if (kind != JV_INNER_CLASSES_KIND)
+	{
+	  bytes = next;
+	  continue;
+	}
+      return save - reflection_data;
+    }
+  return -1;
+}
+
+jint
+java::lang::Class::findDeclaredClasses(JArray<jclass> *result,
+				       jboolean publicOnly,
+				       jint offset)
+{
+  unsigned char *bytes = reflection_data + offset;
+  int len = read_4 (bytes);
+  unsigned char *next = bytes + len;
+  // Skip a byte.
+  read_u1 (bytes, next);
+  int n_classes = read_u2 (bytes, next);
+  int count = 0;
+  for (int i = 0; i < n_classes; ++i)
+    {
+      int inner_class_index = read_u2 (bytes, next);
+      int outer_class_index = read_u2 (bytes, next);
+      /*int inner_name_index = */ read_u2 (bytes, next);
+      int inner_flags = read_u2 (bytes, next);
+
+      if (inner_class_index == 0 || outer_class_index == 0)
+	continue;
+      if (resolve_class_constant (this, &constants, outer_class_index) == this)
+	{
+	  jclass inner = resolve_class_constant (this, &constants,
+						 inner_class_index);
+	  if (! publicOnly
+	      || ((inner_flags
+		   & java::lang::reflect::Modifier::PUBLIC) != 0))
+	    {
+	      if (result)
+		{
+		  jclass *elts = elements (result);
+		  elts[count] = inner;
+		}
+	      ++count;
+	    }
+	}
+    }
+
+  return count;
+}
+
+JArray<jclass> *
+java::lang::Class::getDeclaredClasses (jboolean publicOnly)
+{
+  int offset = findInnerClassAttribute();
+  int count;
+  if (offset == -1)
+    {
+      // No InnerClasses attribute, so no declared classes.
+      count = 0;
+    }
+  else
+    count = findDeclaredClasses(NULL, publicOnly, offset);
+  JArray<jclass> *result
+    = (JArray<jclass> *) JvNewObjectArray (count, &java::lang::Class::class$,
+					   NULL);
+  if (count > 0)
+    findDeclaredClasses(result, publicOnly, offset);
+  return result;
+}
+
+jclass
+java::lang::Class::getDeclaringClass (void)
+{
+  int offset = findInnerClassAttribute();
+  if (offset == -1)
+    return NULL;
+
+  unsigned char *bytes = reflection_data + offset;
+  int len = read_4 (bytes);
+  unsigned char *next = bytes + len;
+  // Skip a byte.
+  read_u1 (bytes, next);
+  int n_classes = read_u2 (bytes, next);
+  for (int i = 0; i < n_classes; ++i)
+    {
+      int inner_class_index = read_u2 (bytes, next);
+      int outer_class_index = read_u2 (bytes, next);
+      /*int inner_name_index = */read_u2 (bytes, next);
+      /*int inner_flags = */read_u2 (bytes, next);
+
+      if (inner_class_index == 0 || outer_class_index == 0)
+	continue;
+      if (resolve_class_constant (this, &constants, inner_class_index) == this)
+	return resolve_class_constant (this, &constants, outer_class_index);
+    }
+
+  return NULL;
+}
+
+jboolean
+java::lang::Class::isAnonymousClass()
+{
+  int offset = findInnerClassAttribute();
+  if (offset == -1)
+    return false;
+
+  unsigned char *bytes = reflection_data + offset;
+  int len = read_4 (bytes);
+  unsigned char *next = bytes + len;
+  // Skip a byte.
+  read_u1 (bytes, next);
+  int n_classes = read_u2 (bytes, next);
+  for (int i = 0; i < n_classes; ++i)
+    {
+      int inner_class_index = read_u2 (bytes, next);
+      /*int outer_class_index = */read_u2 (bytes, next);
+      int inner_name_index = read_u2 (bytes, next);
+      /*int inner_flags = */read_u2 (bytes, next);
+
+      if (inner_class_index == 0)
+	continue;
+      if (resolve_class_constant (this, &constants, inner_class_index) == this)
+	return inner_name_index == 0;
+    }
+
+  return false;
+}
+
+jboolean
+java::lang::Class::isLocalClass()
+{
+  _Jv_word indexes;
+  indexes.i = getEnclosingMethodData();
+  return indexes.i != 0;
+}
+
+jboolean
+java::lang::Class::isMemberClass()
+{
+  // FIXME: is this correct?
+  return !isLocalClass() && getDeclaringClass() != NULL;
+}
+
+
+
 //
 // Some class-related convenience functions.
 //
@@ -904,8 +1656,30 @@ _Jv_LookupDeclaredMethod (jclass klass, _Jv_Utf8Const *name,
   return NULL;
 }
 
+java::lang::reflect::Method *
+_Jv_GetReflectedMethod (jclass klass, _Jv_Utf8Const *name,
+		       _Jv_Utf8Const *signature)
+{
+  for (; klass; klass = klass->getSuperclass())
+    {
+      _Jv_Method *meth = _Jv_GetMethodLocal (klass, name, signature);
+      if (meth)
+	{
+	  using namespace java::lang::reflect;
+	  Method *rmethod = new Method ();
+	  rmethod->offset = (char*) meth - (char*) klass->methods;
+	  rmethod->declaringClass = klass;
+	  return rmethod;
+	}
+    }
+  
+  return NULL;
+}
+
+#ifdef HAVE_TLS
+
 // NOTE: MCACHE_SIZE should be a power of 2 minus one.
-#define MCACHE_SIZE 1023
+#define MCACHE_SIZE 31
 
 struct _Jv_mcache
 {
@@ -913,37 +1687,61 @@ struct _Jv_mcache
   _Jv_Method *method;
 };
 
-static _Jv_mcache method_cache[MCACHE_SIZE + 1];
+static __thread _Jv_mcache *method_cache;
+#endif // HAVE_TLS
 
 static void *
-_Jv_FindMethodInCache (jclass klass,
-                       _Jv_Utf8Const *name,
-                       _Jv_Utf8Const *signature)
+_Jv_FindMethodInCache (jclass klass MAYBE_UNUSED,
+		       _Jv_Utf8Const *name MAYBE_UNUSED,
+		       _Jv_Utf8Const *signature MAYBE_UNUSED)
 {
-  int index = name->hash16 () & MCACHE_SIZE;
-  _Jv_mcache *mc = method_cache + index;
-  _Jv_Method *m = mc->method;
+#ifdef HAVE_TLS
+  _Jv_mcache *cache = method_cache;
+  if (cache)
+    {
+      int index = name->hash16 () & MCACHE_SIZE;
+      _Jv_mcache *mc = &cache[index];
+      _Jv_Method *m = mc->method;
 
-  if (mc->klass == klass
-      && m != NULL             // thread safe check
-      && _Jv_equalUtf8Consts (m->name, name)
-      && _Jv_equalUtf8Consts (m->signature, signature))
-    return mc->method->ncode;
+      if (mc->klass == klass
+	  && _Jv_equalUtf8Consts (m->name, name)
+	  && _Jv_equalUtf8Consts (m->signature, signature))
+	return mc->method->ncode;
+    }
+#endif // HAVE_TLS
   return NULL;
 }
 
 static void
-_Jv_AddMethodToCache (jclass klass,
-                       _Jv_Method *method)
+_Jv_AddMethodToCache (jclass klass MAYBE_UNUSED,
+		      _Jv_Method *method MAYBE_UNUSED)
 {
-  _Jv_MonitorEnter (&java::lang::Class::class$); 
+#ifdef HAVE_TLS
+  if (method_cache == NULL)
+    method_cache = (_Jv_mcache *) _Jv_MallocUnchecked((MCACHE_SIZE + 1)
+						      * sizeof (_Jv_mcache));
+  // If the allocation failed, just keep going.
+  if (method_cache != NULL)
+    {
+      int index = method->name->hash16 () & MCACHE_SIZE;
+      method_cache[index].method = method;
+      method_cache[index].klass = klass;
+    }
+#endif // HAVE_TLS
+}
 
-  int index = method->name->hash16 () & MCACHE_SIZE;
-
-  method_cache[index].method = method;
-  method_cache[index].klass = klass;
-
-  _Jv_MonitorExit (&java::lang::Class::class$);
+// Free this thread's method cache.  We explicitly manage this memory
+// as the GC does not yet know how to scan TLS on all platforms.
+void
+_Jv_FreeMethodCache ()
+{
+#ifdef HAVE_TLS
+  if (method_cache != NULL)
+    {
+      _Jv_Free(method_cache);
+      method_cache = NULL;
+    }
+#endif // HAVE_TLS
 }
 
 void *
@@ -984,12 +1782,12 @@ void *
 _Jv_LookupInterfaceMethodIdx (jclass klass, jclass iface, int method_idx)
 {
   _Jv_IDispatchTable *cldt = klass->idt;
-  int idx = iface->idt->iface.ioffsets[cldt->cls.iindex] + method_idx;
-  return cldt->cls.itable[idx];
+  int idx = iface->ioffsets[cldt->iindex] + method_idx;
+  return cldt->itable[idx];
 }
 
 jboolean
-_Jv_IsAssignableFrom (jclass target, jclass source)
+_Jv_IsAssignableFrom (jclass source, jclass target)
 {
   if (source == target)
     return true;
@@ -1009,19 +1807,18 @@ _Jv_IsAssignableFrom (jclass target, jclass source)
       // two interfaces for assignability.
       if (__builtin_expect 
           (source->idt == NULL || source->isInterface(), false))
-        return _Jv_InterfaceAssignableFrom (target, source);
+        return _Jv_InterfaceAssignableFrom (source, target);
 
       _Jv_IDispatchTable *cl_idt = source->idt;
-      _Jv_IDispatchTable *if_idt = target->idt;
 
-      if (__builtin_expect ((if_idt == NULL), false))
+      if (__builtin_expect ((target->ioffsets == NULL), false))
 	return false; // No class implementing TARGET has been loaded.    
-      jshort cl_iindex = cl_idt->cls.iindex;
-      if (cl_iindex < if_idt->iface.ioffsets[0])
+      jshort cl_iindex = cl_idt->iindex;
+      if (cl_iindex < target->ioffsets[0])
         {
-	  jshort offset = if_idt->iface.ioffsets[cl_iindex];
-	  if (offset != -1 && offset < cl_idt->cls.itable_length
-	      && cl_idt->cls.itable[offset] == target)
+	  jshort offset = target->ioffsets[cl_iindex];
+	  if (offset != -1 && offset < cl_idt->itable_length
+	      && cl_idt->itable[offset] == target)
 	    return true;
 	}
       return false;
@@ -1058,19 +1855,19 @@ _Jv_IsAssignableFrom (jclass target, jclass source)
 // superinterface of SOURCE. This is used when SOURCE is also an interface,
 // or a class with no interface dispatch table.
 jboolean
-_Jv_InterfaceAssignableFrom (jclass iface, jclass source)
+_Jv_InterfaceAssignableFrom (jclass source, jclass iface)
 {
   for (int i = 0; i < source->interface_count; i++)
     {
       jclass interface = source->interfaces[i];
       if (iface == interface
-          || _Jv_InterfaceAssignableFrom (iface, interface))
+          || _Jv_InterfaceAssignableFrom (interface, iface))
         return true;      
     }
     
   if (!source->isInterface()
       && source->superclass 
-      && _Jv_InterfaceAssignableFrom (iface, source->superclass))
+      && _Jv_InterfaceAssignableFrom (source->superclass, iface))
     return true;
         
   return false;
@@ -1081,14 +1878,14 @@ _Jv_IsInstanceOf(jobject obj, jclass cl)
 {
   if (__builtin_expect (!obj, false))
     return false;
-  return (_Jv_IsAssignableFrom (cl, JV_CLASS (obj)));
+  return _Jv_IsAssignableFrom (JV_CLASS (obj), cl);
 }
 
 void *
 _Jv_CheckCast (jclass c, jobject obj)
 {
   if (__builtin_expect 
-       (obj != NULL && ! _Jv_IsAssignableFrom(c, JV_CLASS (obj)), false))
+      (obj != NULL && ! _Jv_IsAssignableFrom(JV_CLASS (obj), c), false))
     throw new java::lang::ClassCastException
       ((new java::lang::StringBuffer
 	(obj->getClass()->getName()))->append
@@ -1109,7 +1906,7 @@ _Jv_CheckArrayStore (jobject arr, jobject obj)
 	return;
       jclass obj_class = JV_CLASS (obj);
       if (__builtin_expect 
-          (! _Jv_IsAssignableFrom (elt_class, obj_class), false))
+          (! _Jv_IsAssignableFrom (obj_class, elt_class), false))
 	throw new java::lang::ArrayStoreException
 		((new java::lang::StringBuffer
 		 (JvNewStringUTF("Cannot store ")))->append
@@ -1120,7 +1917,7 @@ _Jv_CheckArrayStore (jobject arr, jobject obj)
 }
 
 jboolean
-_Jv_IsAssignableFromSlow (jclass target, jclass source)
+_Jv_IsAssignableFromSlow (jclass source, jclass target)
 {
   // First, strip arrays.
   while (target->isArray ())
@@ -1154,7 +1951,7 @@ _Jv_IsAssignableFromSlow (jclass target, jclass source)
            {
              // We use a recursive call because we also need to
              // check superinterfaces.
-             if (_Jv_IsAssignableFromSlow (target, source->getInterface (i)))
+             if (_Jv_IsAssignableFromSlow (source->getInterface (i), target))
                return true;
            }
        }
@@ -1182,9 +1979,14 @@ _Jv_getInterfaceMethod (jclass search_class, jclass &found_class, int &index,
       if (!klass->isInterface ())
 	return false;
       
-      int i = klass->method_count;
-      while (--i >= 0)
+      int max = klass->method_count;
+      int offset = 0;
+      for (int i = 0; i < max; ++i)
 	{
+	  // Skip <clinit> here, as it will not be in the IDT.
+	  if (klass->methods[i].name->first() == '<')
+	    continue;
+
 	  if (_Jv_equalUtf8Consts (klass->methods[i].name, utf_name)
 	      && _Jv_equalUtf8Consts (klass->methods[i].signature, utf_sig))
 	    {
@@ -1197,9 +1999,11 @@ _Jv_getInterfaceMethod (jclass search_class, jclass &found_class, int &index,
 
 	      found_class = klass;
 	      // Interface method indexes count from 1.
-	      index = i+1;
+	      index = offset + 1;
 	      return true;
 	    }
+
+	  ++offset;
 	}
     }
 
@@ -1211,8 +2015,8 @@ _Jv_getInterfaceMethod (jclass search_class, jclass &found_class, int &index,
 	{
 	  using namespace java::lang::reflect;
 	  bool found = _Jv_getInterfaceMethod (search_class->interfaces[i], 
-					   found_class, index,
-					   utf_name, utf_sig);
+					       found_class, index,
+					       utf_name, utf_sig);
 	  if (found)
 	    return true;
 	}
@@ -1220,3 +2024,61 @@ _Jv_getInterfaceMethod (jclass search_class, jclass &found_class, int &index,
 
   return false;
 }
+
+#ifdef INTERPRETER
+_Jv_MethodBase *
+_Jv_FindInterpreterMethod (jclass klass, jmethodID desired_method)
+{
+  using namespace java::lang::reflect;
+
+  _Jv_InterpClass *iclass
+    = reinterpret_cast<_Jv_InterpClass *> (klass->aux_info);
+  _Jv_MethodBase **imethods = _Jv_GetFirstMethod (iclass);
+
+  for (int i = 0; i < JvNumMethods (klass); ++i)
+    {
+      _Jv_MethodBase *imeth = imethods[i];
+      if (imeth->get_method () == desired_method)
+	return imeth;
+    }
+
+  return NULL;
+}
+#endif
+
+// Return Utf8 name of a class. This function is here for code that
+// can't access klass->name directly.
+_Jv_Utf8Const*
+_Jv_GetClassNameUtf8 (jclass klass)
+{
+  return klass->name;
+}
+
+jclass
+_Jv_GetMethodDeclaringClass (jmethodID method)
+{
+  _Jv_StackTrace::UpdateNCodeMap ();
+  jobject obj = reinterpret_cast<jobject> (method->ncode);
+  return reinterpret_cast<jclass> (_Jv_StackTrace::ncodeMap->get (obj));
+}
+
+jbyte
+_Jv_GetClassState (jclass klass)
+{
+  return klass->state;
+}
+
+#ifdef INTERPRETER
+jstring
+_Jv_GetInterpClassSourceFile (jclass klass)
+{
+  if (_Jv_IsInterpretedClass (klass))
+    {
+      _Jv_InterpClass *iclass =
+	reinterpret_cast<_Jv_InterpClass *> (klass->aux_info);
+      return iclass->source_file_name;
+    }
+
+  return NULL;
+}
+#endif

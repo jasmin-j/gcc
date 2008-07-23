@@ -18,8 +18,8 @@ for more details.
 
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301, USA.  */
 
 /* As a special exception, if you link this library with other files,
    some of which are compiled with GCC, to produce an executable,
@@ -38,7 +38,6 @@ extern "C" {
 #define __GTHREADS 1
 
 #define __GTHREAD_ONCE_INIT  0
-#define __GTHREAD_MUTEX_INIT 0
 #define __GTHREAD_MUTEX_INIT_FUNCTION  rtems_gxx_mutex_init
 #define __GTHREAD_RECURSIVE_MUTEX_INIT_FUNCTION  rtems_gxx_recursive_mutex_init
 
@@ -63,6 +62,7 @@ extern int rtems_gxx_setspecific (__gthread_key_t key, const void *ptr);
 
 /* mutex support */
 extern void rtems_gxx_mutex_init (__gthread_mutex_t *mutex);
+extern int rtems_gxx_mutex_destroy (__gthread_mutex_t *mutex);
 extern int rtems_gxx_mutex_lock (__gthread_mutex_t *mutex);
 extern int rtems_gxx_mutex_trylock (__gthread_mutex_t *mutex);
 extern int rtems_gxx_mutex_unlock (__gthread_mutex_t *mutex);
@@ -109,6 +109,12 @@ static inline int
 __gthread_setspecific (__gthread_key_t key, const void *ptr)
 {
   return rtems_gxx_setspecific (key, ptr);
+}
+
+static inline int
+__gthread_mutex_destroy (__gthread_mutex_t *mutex)
+{
+  return rtems_gxx_mutex_destroy (mutex);
 }
 
 static inline int

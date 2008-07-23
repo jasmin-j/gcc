@@ -15,7 +15,7 @@
 //
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // 3.6 function object binders
@@ -30,13 +30,12 @@ bool test __attribute__((unused)) = true;
 // Operations on empty function<> objects
 void test01()
 {
-  using std::tr1::bind;
   using namespace std::tr1::placeholders;
 
   int five = 5;
   int seven = 7;
-  VERIFY( bind(std::multiplies<int>(), _1, bind(std::minus<int>(), 6, _2))(five, seven) == -5 );
-  VERIFY( bind(std::multiplies<int>(), _1, bind(std::minus<int>(), 6, _2))(seven, five) == 7 );
+  VERIFY( std::tr1::bind(std::multiplies<int>(), _1, std::tr1::bind(std::minus<int>(), 6, _2))(five, seven) == -5 );
+  VERIFY( std::tr1::bind(std::multiplies<int>(), _1, std::tr1::bind(std::minus<int>(), 6, _2))(seven, five) == 7 );
 }
 
 int main()

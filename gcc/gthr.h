@@ -16,8 +16,8 @@ for more details.
 
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301, USA.  */
 
 /* As a special exception, if you link this library with other files,
    some of which are compiled with GCC, to produce an executable,
@@ -73,6 +73,8 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
      void *__gthread_getspecific (__gthread_key_t key)
      int __gthread_setspecific (__gthread_key_t key, const void *ptr)
 
+     int __gthread_mutex_destroy (__gthread_mutex_t *mutex);
+
      int __gthread_mutex_lock (__gthread_mutex_t *mutex);
      int __gthread_mutex_trylock (__gthread_mutex_t *mutex);
      int __gthread_mutex_unlock (__gthread_mutex_t *mutex);
@@ -80,6 +82,24 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
      int __gthread_recursive_mutex_lock (__gthread_recursive_mutex_t *mutex);
      int __gthread_recursive_mutex_trylock (__gthread_recursive_mutex_t *mutex);
      int __gthread_recursive_mutex_unlock (__gthread_recursive_mutex_t *mutex);
+
+   The following are supported in POSIX threads only. They are required to
+   fix a deadlock in static initialization inside libsupc++. The header file
+   gthr-posix.h defines a symbol __GTHREAD_HAS_COND to signify that these extra
+   features are supported.
+
+   Types:
+     __gthread_cond_t
+
+   Macros:
+     __GTHREAD_COND_INIT
+     __GTHREAD_COND_INIT_FUNCTION
+
+   Interface:
+     int __gthread_cond_broadcast (__gthread_cond_t *cond);
+     int __gthread_cond_wait (__gthread_cond_t *cond, __gthread_mutex_t *mutex);
+     int __gthread_cond_wait_recursive (__gthread_cond_t *cond,
+					__gthread_recursive_mutex_t *mutex);
 
    All functions returning int should return zero on success or the error
    number.  If the operation is not supported, -1 is returned.

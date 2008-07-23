@@ -1,13 +1,14 @@
 /* Separate lexical analyzer for GNU C++.
    Copyright (C) 1987, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004 Free Software Foundation, Inc.
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
+   Free Software Foundation, Inc.
    Hacked by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +17,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 /* This file is the lexical analyzer for GNU C++.  */
@@ -89,9 +89,9 @@ cxx_finish (void)
 }
 
 /* A mapping from tree codes to operator name information.  */
-operator_name_info_t operator_name_info[(int) LAST_CPLUS_TREE_CODE];
+operator_name_info_t operator_name_info[(int) MAX_TREE_CODES];
 /* Similar, but for assignment operators.  */
-operator_name_info_t assignment_operator_name_info[(int) LAST_CPLUS_TREE_CODE];
+operator_name_info_t assignment_operator_name_info[(int) MAX_TREE_CODES];
 
 /* Initialize data structures that keep track of operator names.  */
 
@@ -117,7 +117,7 @@ init_operators (void)
 	 : &operator_name_info[(int) CODE]);				    \
   oni->identifier = identifier;						    \
   oni->name = NAME;							    \
-  oni->mangled_name = MANGLING;                                             \
+  oni->mangled_name = MANGLING;						    \
   oni->arity = ARITY;
 
 #include "operators.def"
@@ -145,7 +145,7 @@ init_operators (void)
   operator_name_info [(int) TRUTH_AND_EXPR].name = "strict &&";
   operator_name_info [(int) TRUTH_OR_EXPR].name = "strict ||";
   operator_name_info [(int) RANGE_EXPR].name = "...";
-  operator_name_info [(int) CONVERT_EXPR].name = "+";
+  operator_name_info [(int) UNARY_PLUS_EXPR].name = "+";
 
   assignment_operator_name_info [(int) EXACT_DIV_EXPR].name
     = "(exact /=)";
@@ -163,139 +163,33 @@ init_operators (void)
     = "(round %=)";
 }
 
-/* The reserved keyword table.  */
-struct resword
-{
-  const char *const word;
-  ENUM_BITFIELD(rid) const rid : 16;
-  const unsigned int disable   : 16;
-};
-
-/* Disable mask.  Keywords are disabled if (reswords[i].disable & mask) is
-   _true_.  */
-#define D_EXT		0x01	/* GCC extension */
-#define D_ASM		0x02	/* in C99, but has a switch to turn it off */
-
-CONSTRAINT(ridbits_fit, RID_LAST_MODIFIER < sizeof(unsigned long) * CHAR_BIT);
-
-static const struct resword reswords[] =
-{
-  { "_Complex",		RID_COMPLEX,	0 },
-  { "__FUNCTION__",	RID_FUNCTION_NAME, 0 },
-  { "__PRETTY_FUNCTION__", RID_PRETTY_FUNCTION_NAME, 0 },
-  { "__alignof", 	RID_ALIGNOF,	0 },
-  { "__alignof__",	RID_ALIGNOF,	0 },
-  { "__asm",		RID_ASM,	0 },
-  { "__asm__",		RID_ASM,	0 },
-  { "__attribute",	RID_ATTRIBUTE,	0 },
-  { "__attribute__",	RID_ATTRIBUTE,	0 },
-  { "__builtin_offsetof", RID_OFFSETOF, 0 },
-  { "__builtin_va_arg",	RID_VA_ARG,	0 },
-  { "__complex",	RID_COMPLEX,	0 },
-  { "__complex__",	RID_COMPLEX,	0 },
-  { "__const",		RID_CONST,	0 },
-  { "__const__",	RID_CONST,	0 },
-  { "__extension__",	RID_EXTENSION,	0 },
-  { "__func__",		RID_C99_FUNCTION_NAME,	0 },
-  { "__imag",		RID_IMAGPART,	0 },
-  { "__imag__",		RID_IMAGPART,	0 },
-  { "__inline",		RID_INLINE,	0 },
-  { "__inline__",	RID_INLINE,	0 },
-  { "__label__",	RID_LABEL,	0 },
-  { "__null",		RID_NULL,	0 },
-  { "__real",		RID_REALPART,	0 },
-  { "__real__",		RID_REALPART,	0 },
-  { "__restrict",	RID_RESTRICT,	0 },
-  { "__restrict__",	RID_RESTRICT,	0 },
-  { "__signed",		RID_SIGNED,	0 },
-  { "__signed__",	RID_SIGNED,	0 },
-  { "__thread",		RID_THREAD,	0 },
-  { "__typeof",		RID_TYPEOF,	0 },
-  { "__typeof__",	RID_TYPEOF,	0 },
-  { "__volatile",	RID_VOLATILE,	0 },
-  { "__volatile__",	RID_VOLATILE,	0 },
-  { "asm",		RID_ASM,	D_ASM },
-  { "auto",		RID_AUTO,	0 },
-  { "bool",		RID_BOOL,	0 },
-  { "break",		RID_BREAK,	0 },
-  { "case",		RID_CASE,	0 },
-  { "catch",		RID_CATCH,	0 },
-  { "char",		RID_CHAR,	0 },
-  { "class",		RID_CLASS,	0 },
-  { "const",		RID_CONST,	0 },
-  { "const_cast",	RID_CONSTCAST,	0 },
-  { "continue",		RID_CONTINUE,	0 },
-  { "default",		RID_DEFAULT,	0 },
-  { "delete",		RID_DELETE,	0 },
-  { "do",		RID_DO,		0 },
-  { "double",		RID_DOUBLE,	0 },
-  { "dynamic_cast",	RID_DYNCAST,	0 },
-  { "else",		RID_ELSE,	0 },
-  { "enum",		RID_ENUM,	0 },
-  { "explicit",		RID_EXPLICIT,	0 },
-  { "export",		RID_EXPORT,	0 },
-  { "extern",		RID_EXTERN,	0 },
-  { "false",		RID_FALSE,	0 },
-  { "float",		RID_FLOAT,	0 },
-  { "for",		RID_FOR,	0 },
-  { "friend",		RID_FRIEND,	0 },
-  { "goto",		RID_GOTO,	0 },
-  { "if",		RID_IF,		0 },
-  { "inline",		RID_INLINE,	0 },
-  { "int",		RID_INT,	0 },
-  { "long",		RID_LONG,	0 },
-  { "mutable",		RID_MUTABLE,	0 },
-  { "namespace",	RID_NAMESPACE,	0 },
-  { "new",		RID_NEW,	0 },
-  { "operator",		RID_OPERATOR,	0 },
-  { "private",		RID_PRIVATE,	0 },
-  { "protected",	RID_PROTECTED,	0 },
-  { "public",		RID_PUBLIC,	0 },
-  { "register",		RID_REGISTER,	0 },
-  { "reinterpret_cast",	RID_REINTCAST,	0 },
-  { "return",		RID_RETURN,	0 },
-  { "short",		RID_SHORT,	0 },
-  { "signed",		RID_SIGNED,	0 },
-  { "sizeof",		RID_SIZEOF,	0 },
-  { "static",		RID_STATIC,	0 },
-  { "static_cast",	RID_STATCAST,	0 },
-  { "struct",		RID_STRUCT,	0 },
-  { "switch",		RID_SWITCH,	0 },
-  { "template",		RID_TEMPLATE,	0 },
-  { "this",		RID_THIS,	0 },
-  { "throw",		RID_THROW,	0 },
-  { "true",		RID_TRUE,	0 },
-  { "try",		RID_TRY,	0 },
-  { "typedef",		RID_TYPEDEF,	0 },
-  { "typename",		RID_TYPENAME,	0 },
-  { "typeid",		RID_TYPEID,	0 },
-  { "typeof",		RID_TYPEOF,	D_ASM|D_EXT },
-  { "union",		RID_UNION,	0 },
-  { "unsigned",		RID_UNSIGNED,	0 },
-  { "using",		RID_USING,	0 },
-  { "virtual",		RID_VIRTUAL,	0 },
-  { "void",		RID_VOID,	0 },
-  { "volatile",		RID_VOLATILE,	0 },
-  { "wchar_t",          RID_WCHAR,	0 },
-  { "while",		RID_WHILE,	0 },
-
-};
+/* Initialize the reserved words.  */
 
 void
 init_reswords (void)
 {
   unsigned int i;
   tree id;
-  int mask = ((flag_no_asm ? D_ASM : 0)
-	      | (flag_no_gnu_keywords ? D_EXT : 0));
+  int mask = 0;
 
-  ridpointers = ggc_calloc ((int) RID_MAX, sizeof (tree));
-  for (i = 0; i < ARRAY_SIZE (reswords); i++)
+  mask |= D_CONLY;
+  if (cxx_dialect != cxx0x)
+    mask |= D_CXX0X;
+  if (flag_no_asm)
+    mask |= D_ASM | D_EXT;
+  if (flag_no_gnu_keywords)
+    mask |= D_EXT;
+
+  /* The Objective-C keywords are all context-dependent.  */
+  mask |= D_OBJC;
+
+  ridpointers = GGC_CNEWVEC (tree, (int) RID_MAX);
+  for (i = 0; i < num_c_common_reswords; i++)
     {
-      id = get_identifier (reswords[i].word);
-      C_RID_CODE (id) = reswords[i].rid;
-      ridpointers [(int) reswords[i].rid] = id;
-      if (! (reswords[i].disable & mask))
+      id = get_identifier (c_common_reswords[i].word);
+      C_SET_RID_CODE (id, c_common_reswords[i].rid);
+      ridpointers [(int) c_common_reswords[i].rid] = id;
+      if (! (c_common_reswords[i].disable & mask))
 	C_IS_RESERVED_WORD (id) = 1;
     }
 }
@@ -312,6 +206,10 @@ init_cp_pragma (void)
   c_register_pragma ("GCC", "java_exceptions", handle_pragma_java_exceptions);
 }
 
+/* TRUE if a code represents a statement.  */
+
+bool statement_code_p[MAX_TREE_CODES];
+
 /* Initialize the C++ front end.  This function is very sensitive to
    the exact order that things are done here.  It would be nice if the
    initialization done by this routine were moved to its subroutines,
@@ -319,21 +217,22 @@ init_cp_pragma (void)
 bool
 cxx_init (void)
 {
+  location_t saved_loc;
+  unsigned int i;
   static const enum tree_code stmt_codes[] = {
-    c_common_stmt_codes,
-    cp_stmt_codes
+   CTOR_INITIALIZER,	TRY_BLOCK,	HANDLER,
+   EH_SPEC_BLOCK,	USING_STMT,	TAG_DEFN,
+   IF_STMT,		CLEANUP_STMT,	FOR_STMT,
+   WHILE_STMT,		DO_STMT,	BREAK_STMT,
+   CONTINUE_STMT,	SWITCH_STMT,	EXPR_STMT
   };
 
-  INIT_STATEMENT_CODES (stmt_codes);
+  memset (&statement_code_p, 0, sizeof (statement_code_p));
+  for (i = 0; i < ARRAY_SIZE (stmt_codes); i++)
+    statement_code_p[stmt_codes[i]] = true;
 
-  /* We cannot just assign to input_filename because it has already
-     been initialized and will be used later as an N_BINCL for stabs+
-     debugging.  */
-#ifdef USE_MAPPED_LOCATION
-  push_srcloc (BUILTINS_LOCATION);
-#else
-  push_srcloc ("<built-in>", 0);
-#endif
+  saved_loc = input_location;
+  input_location = BUILTINS_LOCATION;
 
   init_reswords ();
   init_tree ();
@@ -348,11 +247,6 @@ cxx_init (void)
 
   cxx_init_decl_processing ();
 
-  /* Create the built-in __null node.  It is important that this is
-     not shared.  */
-  null_node = make_node (INTEGER_CST);
-  TREE_TYPE (null_node) = c_common_type_for_size (POINTER_SIZE, 0);
-
   /* The fact that G++ uses COMDAT for many entities (inline
      functions, template instantiations, virtual tables, etc.) mean
      that it is fundamentally unreliable to try to make decisions
@@ -366,7 +260,7 @@ cxx_init (void)
 
   if (c_common_init () == false)
     {
-      pop_srcloc();
+      input_location = saved_loc;
       return false;
     }
 
@@ -374,7 +268,7 @@ cxx_init (void)
 
   init_repo ();
 
-  pop_srcloc();
+  input_location = saved_loc;
   return true;
 }
 
@@ -428,20 +322,19 @@ parse_strconst_pragma (const char* name, int opt)
   tree result, x;
   enum cpp_ttype t;
 
-  t = c_lex (&x);
+  t = pragma_lex (&result);
   if (t == CPP_STRING)
     {
-      result = x;
-      if (c_lex (&x) != CPP_EOF)
-	warning ("junk at end of #pragma %s", name);
+      if (pragma_lex (&x) != CPP_EOF)
+	warning (0, "junk at end of #pragma %s", name);
       return result;
     }
 
   if (t == CPP_EOF && opt)
-    return 0;
+    return NULL_TREE;
 
   error ("invalid #pragma %s", name);
-  return (tree)-1;
+  return error_mark_node;
 }
 
 static void
@@ -465,14 +358,14 @@ handle_pragma_interface (cpp_reader* dfile ATTRIBUTE_UNUSED )
   struct c_fileinfo *finfo;
   const char *filename;
 
-  if (fname == (tree)-1)
+  if (fname == error_mark_node)
     return;
   else if (fname == 0)
     filename = lbasename (input_filename);
   else
-    filename = ggc_strdup (TREE_STRING_POINTER (fname));
+    filename = TREE_STRING_POINTER (fname);
 
-  finfo = get_fileinfo (filename);
+  finfo = get_fileinfo (input_filename);
 
   if (impl_file_chain == 0)
     {
@@ -505,7 +398,7 @@ handle_pragma_implementation (cpp_reader* dfile ATTRIBUTE_UNUSED )
   const char *filename;
   struct impl_files *ifiles = impl_file_chain;
 
-  if (fname == (tree)-1)
+  if (fname == error_mark_node)
     return;
 
   if (fname == 0)
@@ -518,18 +411,10 @@ handle_pragma_implementation (cpp_reader* dfile ATTRIBUTE_UNUSED )
     }
   else
     {
-      filename = ggc_strdup (TREE_STRING_POINTER (fname));
-#if 0
-      /* We currently cannot give this diagnostic, as we reach this point
-         only after cpplib has scanned the entire translation unit, so
-	 cpp_included always returns true.  A plausible fix is to compare
-	 the current source-location cookie with the first source-location
-	 cookie (if any) of the filename, but this requires completing the
-	 --enable-mapped-location project first.  See PR 17577.  */
-      if (cpp_included (parse_in, filename))
-	warning ("#pragma implementation for %qs appears after "
+      filename = TREE_STRING_POINTER (fname);
+      if (cpp_included_before (parse_in, filename, input_location))
+	warning (0, "#pragma implementation for %qs appears after "
 		 "file is included", filename);
-#endif
     }
 
   for (; ifiles; ifiles = ifiles->next)
@@ -539,8 +424,8 @@ handle_pragma_implementation (cpp_reader* dfile ATTRIBUTE_UNUSED )
     }
   if (ifiles == 0)
     {
-      ifiles = xmalloc (sizeof (struct impl_files));
-      ifiles->filename = filename;
+      ifiles = XNEW (struct impl_files);
+      ifiles->filename = xstrdup (filename);
       ifiles->next = impl_file_chain;
       impl_file_chain = ifiles;
     }
@@ -548,11 +433,11 @@ handle_pragma_implementation (cpp_reader* dfile ATTRIBUTE_UNUSED )
 
 /* Indicate that this file uses Java-personality exception handling.  */
 static void
-handle_pragma_java_exceptions (cpp_reader* dfile ATTRIBUTE_UNUSED )
+handle_pragma_java_exceptions (cpp_reader* dfile ATTRIBUTE_UNUSED)
 {
   tree x;
-  if (c_lex (&x) != CPP_EOF)
-    warning ("junk at end of #pragma GCC java_exceptions");
+  if (pragma_lex (&x) != CPP_EOF)
+    warning (0, "junk at end of #pragma GCC java_exceptions");
 
   choose_personality_routine (lang_java);
 }
@@ -601,22 +486,22 @@ unqualified_fn_lookup_error (tree name)
 	 declaration of "f" is available.  Historically, G++ and most
 	 other compilers accepted that usage since they deferred all name
 	 lookup until instantiation time rather than doing unqualified
-	 name lookup at template definition time; explain to the user what 
+	 name lookup at template definition time; explain to the user what
 	 is going wrong.
 
 	 Note that we have the exact wording of the following message in
 	 the manual (trouble.texi, node "Name lookup"), so they need to
 	 be kept in synch.  */
-      pedwarn ("there are no arguments to %qD that depend on a template "
-	       "parameter, so a declaration of %qD must be available", 
-	       name, name);
-      
+      permerror ("there are no arguments to %qD that depend on a template "
+		 "parameter, so a declaration of %qD must be available",
+		 name, name);
+
       if (!flag_permissive)
 	{
 	  static bool hint;
 	  if (!hint)
 	    {
-	      error ("(if you use %<-fpermissive%>, G++ will accept your "
+	      inform ("(if you use %<-fpermissive%>, G++ will accept your "
 		     "code, but allowing the use of an undeclared name is "
 		     "deprecated)");
 	      hint = true;
@@ -638,14 +523,14 @@ build_lang_decl (enum tree_code code, tree name, tree type)
 
   /* All nesting of C++ functions is lexical; there is never a "static
      chain" in the sense of GNU C nested functions.  */
-  if (code == FUNCTION_DECL) 
+  if (code == FUNCTION_DECL)
     DECL_NO_STATIC_CHAIN (t) = 1;
 
   return t;
 }
 
 /* Add DECL_LANG_SPECIFIC info to T.  Called from build_lang_decl
-   and pushdecl (for functions generated by the backend).  */
+   and pushdecl (for functions generated by the back end).  */
 
 void
 retrofit_lang_decl (tree t)
@@ -761,7 +646,7 @@ cxx_make_type (enum tree_code code)
   tree t = make_node (code);
 
   /* Create lang_type structure.  */
-  if (IS_AGGR_TYPE_CODE (code)
+  if (RECORD_OR_UNION_CODE_P (code)
       || code == BOUND_TEMPLATE_TEMPLATE_PARM)
     {
       struct lang_type *pi = GGC_CNEW (struct lang_type);
@@ -776,9 +661,9 @@ cxx_make_type (enum tree_code code)
     }
 
   /* Set up some flags that give proper default behavior.  */
-  if (IS_AGGR_TYPE_CODE (code))
+  if (RECORD_OR_UNION_CODE_P (code))
     {
-      struct c_fileinfo *finfo = get_fileinfo (lbasename (input_filename));
+      struct c_fileinfo *finfo = get_fileinfo (input_filename);
       SET_CLASSTYPE_INTERFACE_UNKNOWN_X (t, finfo->interface_unknown);
       CLASSTYPE_INTERFACE_ONLY (t) = finfo->interface_only;
     }
@@ -787,12 +672,24 @@ cxx_make_type (enum tree_code code)
 }
 
 tree
-make_aggr_type (enum tree_code code)
+make_class_type (enum tree_code code)
 {
   tree t = cxx_make_type (code);
-
-  if (IS_AGGR_TYPE_CODE (code))
-    SET_IS_AGGR_TYPE (t, 1);
-
+  SET_CLASS_TYPE_P (t, 1);
   return t;
+}
+
+/* Returns true if we are currently in the main source file, or in a
+   template instantiation started from the main source file.  */
+
+bool
+in_main_input_context (void)
+{
+  struct tinst_level *tl = outermost_tinst_level();
+
+  if (tl)
+    return strcmp (main_input_filename,
+                  LOCATION_FILE (tl->locus)) == 0;
+  else
+    return strcmp (main_input_filename, input_filename) == 0;
 }

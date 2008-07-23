@@ -1,6 +1,7 @@
 // Allocator that wraps "C" malloc -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2003, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -37,9 +38,13 @@
 #include <cstdlib>
 #include <new>
 #include <bits/functexcept.h>
+#include <bits/move.h>
 
-namespace __gnu_cxx
-{
+_GLIBCXX_BEGIN_NAMESPACE(__gnu_cxx)
+
+  using std::size_t;
+  using std::ptrdiff_t;
+
   /**
    *  @brief  An allocator that uses malloc.
    *
@@ -86,7 +91,7 @@ namespace __gnu_cxx
 	if (__builtin_expect(__n > this->max_size(), false))
 	  std::__throw_bad_alloc();
 
-	pointer __ret = static_cast<_Tp*>(malloc(__n * sizeof(_Tp)));
+	pointer __ret = static_cast<_Tp*>(std::malloc(__n * sizeof(_Tp)));
 	if (!__ret)
 	  std::__throw_bad_alloc();
 	return __ret;
@@ -95,7 +100,7 @@ namespace __gnu_cxx
       // __p is not permitted to be a null pointer.
       void
       deallocate(pointer __p, size_type)
-      { free(static_cast<void*>(__p)); }
+      { std::free(static_cast<void*>(__p)); }
 
       size_type
       max_size() const throw() 
@@ -105,7 +110,14 @@ namespace __gnu_cxx
       // 402. wrong new expression in [some_] allocator::construct
       void 
       construct(pointer __p, const _Tp& __val) 
-      { ::new(__p) value_type(__val); }
+      { ::new((void *)__p) value_type(__val); }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      template<typename... _Args>
+        void
+        construct(pointer __p, _Args&&... __args) 
+	{ ::new((void *)__p) _Tp(std::forward<_Args>(__args)...); }
+#endif
 
       void 
       destroy(pointer __p) { __p->~_Tp(); }
@@ -120,6 +132,7 @@ namespace __gnu_cxx
     inline bool
     operator!=(const malloc_allocator<_Tp>&, const malloc_allocator<_Tp>&)
     { return false; }
-} // namespace __gnu_cxx
+
+_GLIBCXX_END_NAMESPACE
 
 #endif

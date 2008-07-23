@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -34,8 +34,6 @@
 with Interfaces; use Interfaces;
 
 with System.Img_Char; use System.Img_Char;
-with System.WCh_Con;  use System.WCh_Con;
-with System.WCh_WtS;  use System.WCh_WtS;
 
 package body System.Img_WChar is
 
@@ -43,42 +41,33 @@ package body System.Img_WChar is
    -- Image_Wide_Character --
    --------------------------
 
-   function Image_Wide_Character
-     (V  : Wide_Character;
-      EM : WC_Encoding_Method) return String
+   procedure Image_Wide_Character
+     (V        : Wide_Character;
+      S        : in out String;
+      P        : out Natural;
+      Ada_2005 : Boolean)
    is
-      Val : constant Unsigned_16 := Wide_Character'Pos (V);
-      WS  : Wide_String (1 .. 3);
+      pragma Assert (S'First = 1);
 
    begin
-      --  If in range of standard character, use standard character routine
+      --  Annoying Ada 95 incompatibility with FFFE/FFFF
 
-      if Val < 16#80#
-        or else (Val <= 16#FF#
-                  and then EM not in WC_Upper_Half_Encoding_Method)
+      if V >= Wide_Character'Val (16#FFFE#)
+        and then not Ada_2005
       then
-         return Image_Character (Character'Val (Val));
+         if V = Wide_Character'Val (16#FFFE#) then
+            S (1 .. 4) := "FFFE";
+         else
+            S (1 .. 4) := "FFFF";
+         end if;
 
-      --  if the value is one of the last two characters in the type, use
-      --  their language-defined names (3.5.2(3)).
+         P := 4;
 
-      elsif Val = 16#FFFE# then
-         return "FFFE";
-
-      elsif Val = 16#FFFF# then
-         return "FFFF";
-
-      --  Otherwise return an appropriate escape sequence (i.e. one matching
-      --  the convention implemented by Scn.Wide_Char). The easiest thing is
-      --  to build a wide string for the result, and then use the Wide_Value
-      --  function to build the resulting String.
+      --  Normal case, same as Wide_Wide_Character
 
       else
-         WS (1) := ''';
-         WS (2) := V;
-         WS (3) := ''';
-
-         return Wide_String_To_String (WS, EM);
+         Image_Wide_Wide_Character
+           (Wide_Wide_Character'Val (Wide_Character'Pos (V)), S, P);
       end if;
    end Image_Wide_Character;
 
@@ -86,31 +75,38 @@ package body System.Img_WChar is
    -- Image_Wide_Wide_Character --
    -------------------------------
 
-   function Image_Wide_Wide_Character
-     (V  : Wide_Wide_Character;
-      EM : WC_Encoding_Method) return String
+   procedure Image_Wide_Wide_Character
+     (V : Wide_Wide_Character;
+      S : in out String;
+      P : out Natural)
    is
-      Val : constant Unsigned_32 := Wide_Wide_Character'Pos (V);
-      WS  : Wide_Wide_String (1 .. 3);
+      pragma Assert (S'First = 1);
+
+      Val : Unsigned_32 := Wide_Wide_Character'Pos (V);
 
    begin
-      --  If in range of standard Wide_Character, then we use the
-      --  Wide_Character routine
+      --  If in range of standard Character, use Character routine
 
-      if Val <= 16#FFFF# then
-         return Image_Wide_Character (Wide_Character'Val (Val), EM);
+      if Val <= 16#FF# then
+         Image_Character (Character'Val (Wide_Wide_Character'Pos (V)), S, P);
 
-      --  Otherwise return an appropriate escape sequence (i.e. one matching
-      --  the convention implemented by Scn.Wide_Wide_Char). The easiest thing
-      --  is to build a wide string for the result, and then use the
-      --  Wide_Wide_Value function to build the resulting String.
+      --  Otherwise value returned is Hex_hhhhhhhh
 
       else
-         WS (1) := ''';
-         WS (2) := V;
-         WS (3) := ''';
+         declare
+            Hex : constant array (Unsigned_32 range 0 .. 15) of Character :=
+                    "0123456789ABCDEF";
 
-         return Wide_Wide_String_To_String (WS, EM);
+         begin
+            S (1 .. 4) := "Hex_";
+
+            for J in reverse 5 .. 12 loop
+               S (J) := Hex (Val mod 16);
+               Val := Val / 16;
+            end loop;
+
+            P := 12;
+         end;
       end if;
    end Image_Wide_Wide_Character;
 

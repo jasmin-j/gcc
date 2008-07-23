@@ -1,5 +1,5 @@
 /* Implementation of the CPU_TIME intrinsic.
-   Copyright (C) 2003 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2007 Free Software Foundation, Inc.
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
 
@@ -24,49 +24,23 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
-#include "config.h"
-#include <sys/types.h>
 #include "libgfortran.h"
-
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
-/* The CPU_TIME intrinsic to "compare different algorithms on the same
-   computer or discover which parts are the most expensive", so we
-   need a way to get the CPU time with the finest resolution possible.
-   We can only be accurate up to microseconds.
-
-   As usual with UNIX systems, unfortunately no single way is
-   available for all systems.  */
-
-#ifdef TIME_WITH_SYS_TIME
-#  include <sys/time.h>
-#  include <time.h>
-#else
-#  if HAVE_SYS_TIME_H
-#    include <sys/time.h>
-#  else
-#    ifdef HAVE_TIME_H
-#      include <time.h>
-#    endif
-#  endif
-#endif
+#include "time_1.h"
 
 /* The most accurate way to get the CPU time is getrusage ().
    If we have times(), that's good enough, too.  */
-#if defined (HAVE_GETRUSAGE) && defined (HAVE_SYS_RESOURCE_H)
-#  include <sys/resource.h>
-#else
+#if !defined (HAVE_GETRUSAGE) || !defined (HAVE_SYS_RESOURCE_H)
 /* For times(), we _must_ know the number of clock ticks per second.  */
 #  if defined (HAVE_TIMES) && (defined (HZ) || defined (_SC_CLK_TCK) || defined (CLK_TCK))
 #    ifdef HAVE_SYS_PARAM_H
 #      include <sys/param.h>
 #    endif
-#    include <sys/times.h>
+#    if defined (HAVE_SYS_TIMES_H)
+#      include <sys/times.h>
+#    endif
 #    ifndef HZ
 #      if defined _SC_CLK_TCK
 #        define HZ  sysconf(_SC_CLK_TCK)
@@ -75,27 +49,18 @@ Boston, MA 02111-1307, USA.  */
 #      endif
 #    endif
 #  endif  /* HAVE_TIMES etc.  */
-#endif  /* HAVE_GETRUSAGE && HAVE_SYS_RESOURCE_H  */
-
-#if defined (__GNUC__) && (__GNUC__ >= 3)
-#  define ATTRIBUTE_ALWAYS_INLINE __attribute__ ((__always_inline__))
-#else
-#  define ATTRIBUTE_ALWAYS_INLINE
-#endif
+#endif  /* !HAVE_GETRUSAGE || !HAVE_SYS_RESOURCE_H  */
 
 static inline void __cpu_time_1 (long *, long *) ATTRIBUTE_ALWAYS_INLINE;
 
-/* Helper function for the actual implementation of the CPU_TIME
-   intrnsic.  Returns a CPU time in microseconds or -1 if no CPU time
-   could be computed.  */
 static inline void
 __cpu_time_1 (long *sec, long *usec)
 {
-#if defined (HAVE_GETRUSAGE) && defined (HAVE_SYS_RESOURCE_H)
-  struct rusage usage;
-  getrusage (0, &usage);
-  *sec = usage.ru_utime.tv_sec + usage.ru_stime.tv_sec;
-  *usec = usage.ru_utime.tv_usec + usage.ru_stime.tv_usec;
+#if defined(__MINGW32__) || defined (HAVE_GETRUSAGE) && defined (HAVE_SYS_RESOURCE_H)
+  long user_sec, user_usec, system_sec, system_usec;
+  __time_1 (&user_sec, &user_usec, &system_sec, &system_usec);
+  *sec = user_sec + system_sec;
+  *usec = user_usec + system_usec;
 #else /* ! HAVE_GETRUSAGE || ! HAVE_SYS_RESOURCE_H  */
 #ifdef HAVE_TIMES
   struct tms buf;
@@ -107,8 +72,9 @@ __cpu_time_1 (long *sec, long *usec)
   *sec = -1;
   *usec = 0;
 #endif  /* HAVE_TIMES */
-#endif  /* HAVE_GETRUSAGE */
+#endif  /* __MINGW32__ || HAVE_GETRUSAGE */
 }
+
 
 extern void cpu_time_4 (GFC_REAL_4 *);
 iexport_proto(cpu_time_4);
@@ -130,6 +96,30 @@ void cpu_time_8 (GFC_REAL_8 *time)
   __cpu_time_1 (&sec, &usec);
   *time = sec + usec * (GFC_REAL_8)1.e-6;
 }
+
+#ifdef HAVE_GFC_REAL_10
+extern void cpu_time_10 (GFC_REAL_10 *);
+export_proto(cpu_time_10);
+
+void cpu_time_10 (GFC_REAL_10 *time)
+{
+  long sec, usec;
+  __cpu_time_1 (&sec, &usec);
+  *time = sec + usec * (GFC_REAL_10)1.e-6;
+}
+#endif
+
+#ifdef HAVE_GFC_REAL_16
+extern void cpu_time_16 (GFC_REAL_16 *);
+export_proto(cpu_time_16);
+
+void cpu_time_16 (GFC_REAL_16 *time)
+{
+  long sec, usec;
+  __cpu_time_1 (&sec, &usec);
+  *time = sec + usec * (GFC_REAL_16)1.e-6;
+}
+#endif
 
 extern void second_sub (GFC_REAL_4 *);
 export_proto(second_sub);

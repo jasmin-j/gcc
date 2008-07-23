@@ -1,5 +1,5 @@
 /* Definitions for 64-bit SPARC running Linux-based GNU systems with ELF.
-   Copyright 1996, 1997, 1998, 2000, 2002, 2003, 2004, 2005
+   Copyright 1996, 1997, 1998, 2000, 2002, 2003, 2004, 2005, 2006, 2007
    Free Software Foundation, Inc.
    Contributed by David S. Miller (davem@caip.rutgers.edu)
 
@@ -7,7 +7,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,37 +16,26 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #define TARGET_OS_CPP_BUILTINS()		\
   do						\
     {						\
-	builtin_define_std ("unix");		\
-	builtin_define_std ("linux");		\
-	builtin_define ("_LONGLONG");		\
-	builtin_define ("__gnu_linux__");	\
-	builtin_assert ("system=linux");	\
-	builtin_assert ("system=unix");		\
-	builtin_assert ("system=posix");	\
-	if (flag_pic)				\
-	  {					\
-		builtin_define ("__PIC__");	\
-		builtin_define ("__pic__");	\
-	  }					\
+      LINUX_TARGET_OS_CPP_BUILTINS();		\
+      if (TARGET_ARCH64)			\
+        builtin_define ("_LONGLONG");		\
+      if (TARGET_ARCH32				\
+          && TARGET_LONG_DOUBLE_128)		\
+	builtin_define ("__LONG_DOUBLE_128__");	\
     }						\
   while (0)
 
-/* Don't assume anything about the header files.  */
-#define NO_IMPLICIT_EXTERN_C
-
-#undef MD_EXEC_PREFIX
-#undef MD_STARTFILE_PREFIX
-
 #if TARGET_CPU_DEFAULT == TARGET_CPU_v9 \
     || TARGET_CPU_DEFAULT == TARGET_CPU_ultrasparc \
-    || TARGET_CPU_DEFAULT == TARGET_CPU_ultrasparc3
+    || TARGET_CPU_DEFAULT == TARGET_CPU_ultrasparc3 \
+    || TARGET_CPU_DEFAULT == TARGET_CPU_niagara \
+    || TARGET_CPU_DEFAULT == TARGET_CPU_niagara2
 /* A 64 bit v9 compiler with stack-bias,
    in a Medium/Low code model environment.  */
 
@@ -56,32 +45,10 @@ Boston, MA 02111-1307, USA.  */
    + MASK_STACK_BIAS + MASK_APP_REGS + MASK_FPU + MASK_LONG_DOUBLE_128)
 #endif
 
-#undef ASM_CPU_DEFAULT_SPEC
-#define ASM_CPU_DEFAULT_SPEC "-Av9a"
-
-#ifdef SPARC_BI_ARCH
-
-#undef CPP_ARCH32_SPEC
-#define CPP_ARCH32_SPEC "%{mlong-double-128:-D__LONG_DOUBLE_128__}"
-
-#endif
-
-/* Provide a STARTFILE_SPEC appropriate for GNU/Linux.  Here we add
-   the GNU/Linux magical crtbegin.o file (see crtstuff.c) which
-   provides part of the support for getting C++ file-scope static
-   object constructed before entering `main'.  */
-   
-#undef  STARTFILE_SPEC
-
-#ifdef HAVE_LD_PIE
-#define STARTFILE_SPEC \
-  "%{!shared:%{pg|p:gcrt1.o%s;pie:Scrt1.o%s;:crt1.o%s}}\
-   crti.o%s %{static:crtbeginT.o%s;shared|pie:crtbeginS.o%s;:crtbeginS.o%s}"
-#else
-#define STARTFILE_SPEC \
-  "%{!shared:%{pg|p:gcrt1.o%s;:crt1.o%s}}\
-   crti.o%s %{static:crtbeginT.o%s;shared|pie:crtbeginS.o%s;:crtbeginS.o%s}"
-#endif
+/* This must be v9a not just v9 because by default we enable
+   -mvis.  */
+#undef ASM_CPU64_DEFAULT_SPEC
+#define ASM_CPU64_DEFAULT_SPEC "-Av9a"
 
 /* Provide a ENDFILE_SPEC appropriate for GNU/Linux.  Here we tack on
    the GNU/Linux magical crtend.o file (see crtstuff.c) which
@@ -89,15 +56,10 @@ Boston, MA 02111-1307, USA.  */
    object constructed before entering `main', followed by a normal
    GNU/Linux "finalizer" file, `crtn.o'.  */
 
-#undef  ENDFILE_SPEC
-
+#undef	ENDFILE_SPEC
 #define ENDFILE_SPEC \
   "%{shared|pie:crtendS.o%s;:crtend.o%s} crtn.o%s\
    %{ffast-math|funsafe-math-optimizations:crtfastmath.o%s}"
-
-/* The GNU C++ standard library requires that these macros be defined.  */
-#undef CPLUSPLUS_CPP_SPEC
-#define CPLUSPLUS_CPP_SPEC "-D_GNU_SOURCE %(cpp)"
 
 #undef TARGET_VERSION
 #define TARGET_VERSION fprintf (stderr, " (sparc64 GNU/Linux with ELF)");
@@ -131,12 +93,6 @@ Boston, MA 02111-1307, USA.  */
 %{pthread:-D_REENTRANT} \
 "
 
-#undef LIB_SPEC
-#define LIB_SPEC \
-  "%{pthread:-lpthread} \
-   %{shared:-lc} \
-   %{!shared: %{mieee-fp:-lieee} %{profile:-lc_p}%{!profile:-lc}}"
-
 /* Provide a LINK_SPEC appropriate for GNU/Linux.  Here we provide support
    for the special GCC options -static and -shared, which allow us to
    link things in one of these three modes by applying the appropriate
@@ -153,6 +109,9 @@ Boston, MA 02111-1307, USA.  */
 
 /* If ELF is the default format, we should not use /lib/elf.  */
 
+#define GLIBC_DYNAMIC_LINKER32 "/lib/ld-linux.so.2"
+#define GLIBC_DYNAMIC_LINKER64 "/lib64/ld-linux.so.2"
+
 #ifdef SPARC_BI_ARCH
 
 #undef SUBTARGET_EXTRA_SPECS
@@ -161,13 +120,13 @@ Boston, MA 02111-1307, USA.  */
   { "link_arch64",       LINK_ARCH64_SPEC },              \
   { "link_arch_default", LINK_ARCH_DEFAULT_SPEC },	  \
   { "link_arch",	 LINK_ARCH_SPEC },
-    
+
 #define LINK_ARCH32_SPEC "-m elf32_sparc -Y P,/usr/lib %{shared:-shared} \
   %{!shared: \
     %{!ibcs: \
       %{!static: \
         %{rdynamic:-export-dynamic} \
-        %{!dynamic-linker:-dynamic-linker /lib/ld-linux.so.2}} \
+        %{!dynamic-linker:-dynamic-linker " LINUX_DYNAMIC_LINKER32 "}} \
         %{static:-static}}} \
 "
 
@@ -176,7 +135,7 @@ Boston, MA 02111-1307, USA.  */
     %{!ibcs: \
       %{!static: \
         %{rdynamic:-export-dynamic} \
-        %{!dynamic-linker:-dynamic-linker /lib64/ld-linux.so.2}} \
+        %{!dynamic-linker:-dynamic-linker " LINUX_DYNAMIC_LINKER64 "}} \
         %{static:-static}}} \
 "
 
@@ -198,7 +157,7 @@ Boston, MA 02111-1307, USA.  */
 
 #undef	CC1_SPEC
 #if DEFAULT_ARCH32_P
-#define CC1_SPEC "\
+#define CC1_SPEC "%{profile:-p} \
 %{sun4:} %{target:} \
 %{mcypress:-mcpu=cypress} \
 %{msparclite:-mcpu=sparclite} %{mf930:-mcpu=f930} %{mf934:-mcpu=f934} \
@@ -209,7 +168,7 @@ Boston, MA 02111-1307, USA.  */
   %{!mno-vis:%{!mcpu=v9:-mvis}}} \
 "
 #else
-#define CC1_SPEC "\
+#define CC1_SPEC "%{profile:-p} \
 %{sun4:} %{target:} \
 %{mcypress:-mcpu=cypress} \
 %{msparclite:-mcpu=sparclite} %{mf930:-mcpu=f930} %{mf934:-mcpu=f934} \
@@ -257,7 +216,7 @@ Boston, MA 02111-1307, USA.  */
     %{!ibcs: \
       %{!static: \
         %{rdynamic:-export-dynamic} \
-        %{!dynamic-linker:-dynamic-linker /lib64/ld-linux.so.2}} \
+        %{!dynamic-linker:-dynamic-linker " LINUX_DYNAMIC_LINKER64 "}} \
         %{static:-static}}} \
 %{mlittle-endian:-EL} \
 %{!mno-relax:%{!r:-relax}} \
@@ -319,10 +278,6 @@ do {									\
 
 #undef DITF_CONVERSION_LIBFUNCS
 #define DITF_CONVERSION_LIBFUNCS 1
-
-#if defined(HAVE_LD_EH_FRAME_HDR)
-#define LINK_EH_SPEC "%{!static:--eh-frame-hdr} "
-#endif
 
 #ifdef HAVE_AS_TLS
 #undef TARGET_SUN_TLS
@@ -331,27 +286,9 @@ do {									\
 #define TARGET_GNU_TLS 1
 #endif
 
-/* Don't be different from other Linux platforms in this regard.  */
-#define HANDLE_PRAGMA_PACK_PUSH_POP
-
 /* We use GNU ld so undefine this so that attribute((init_priority)) works.  */
 #undef CTORS_SECTION_ASM_OP
 #undef DTORS_SECTION_ASM_OP
-
-/* Determine whether the the entire c99 runtime is present in the
-   runtime library.  */
-#define TARGET_C99_FUNCTIONS 1
-
-#define TARGET_HAS_F_SETLKW
-
-#undef LINK_GCC_C_SEQUENCE_SPEC
-#define LINK_GCC_C_SEQUENCE_SPEC \
-  "%{static:--start-group} %G %L %{static:--end-group}%{!static:%G}"
-
-/* Use --as-needed -lgcc_s for eh support.  */
-#ifdef HAVE_LD_AS_NEEDED
-#define USE_LD_AS_NEEDED 1
-#endif
 
 #define MD_UNWIND_SUPPORT "config/sparc/linux-unwind.h"
 
@@ -363,3 +300,16 @@ do {									\
 
 #undef NEED_INDICATE_EXEC_STACK
 #define NEED_INDICATE_EXEC_STACK 1
+
+#ifdef TARGET_LIBC_PROVIDES_SSP
+/* sparc glibc provides __stack_chk_guard in [%g7 + 0x14],
+   sparc64 glibc provides it at [%g7 + 0x28].  */
+#define TARGET_THREAD_SSP_OFFSET	(TARGET_ARCH64 ? 0x28 : 0x14)
+#endif
+
+/* Define if long doubles should be mangled as 'g'.  */
+#define TARGET_ALTERNATE_LONG_DOUBLE_MANGLING
+
+/* We use glibc _mcount for profiling.  */
+#undef NO_PROFILE_COUNTERS
+#define NO_PROFILE_COUNTERS	1

@@ -1,12 +1,13 @@
 /* Expression parser.
-   Copyright (C) 2000, 2001, 2002, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2000, 2001, 2002, 2004, 2005, 2006, 2007, 2008
+   Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,10 +16,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
-
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -26,7 +25,7 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 #include "arith.h"
 #include "match.h"
 
-static char expression_syntax[] = "Syntax error in expression at %C";
+static char expression_syntax[] = N_("Syntax error in expression at %C");
 
 
 /* Match a user-defined operator name.  This is a normal name with a
@@ -90,7 +89,7 @@ error:
    operator already.  */
 
 static match
-match_defined_operator (gfc_user_op ** result)
+match_defined_operator (gfc_user_op **result)
 {
   char name[GFC_MAX_SYMBOL_LEN + 1];
   match m;
@@ -122,12 +121,35 @@ next_operator (gfc_intrinsic_op t)
 }
 
 
+/* Call the INTRINSIC_PARENTHESES function.  This is both
+   used explicitly, as below, or by resolve.c to generate
+   temporaries.  */
+
+gfc_expr *
+gfc_get_parentheses (gfc_expr *e)
+{
+  gfc_expr *e2;
+
+  e2 = gfc_get_expr();
+  e2->expr_type = EXPR_OP;
+  e2->ts = e->ts;
+  e2->rank = e->rank;
+  e2->where = e->where;
+  e2->value.op.op = INTRINSIC_PARENTHESES;
+  e2->value.op.op1 = e;
+  e2->value.op.op2 = NULL;
+  return e2;
+}
+
+
 /* Match a primary expression.  */
 
 static match
-match_primary (gfc_expr ** result)
+match_primary (gfc_expr **result)
 {
   match m;
+  gfc_expr *e;
+  locus where;
 
   m = gfc_match_literal_constant (result, 0);
   if (m != MATCH_NO)
@@ -141,11 +163,13 @@ match_primary (gfc_expr ** result)
   if (m != MATCH_NO)
     return m;
 
-  /* Match an expression in parenthesis.  */
+  /* Match an expression in parentheses.  */
+  where = gfc_current_locus;
+
   if (gfc_match_char ('(') != MATCH_YES)
     return MATCH_NO;
 
-  m = gfc_match_expr (result);
+  m = gfc_match_expr (&e);
   if (m == MATCH_NO)
     goto syntax;
   if (m == MATCH_ERROR)
@@ -154,6 +178,11 @@ match_primary (gfc_expr ** result)
   m = gfc_match_char (')');
   if (m == MATCH_NO)
     gfc_error ("Expected a right parenthesis in expression at %C");
+
+  /* Now we have the expression inside the parentheses, build the
+     expression pointing to it. By 7.1.7.2, any expression in
+     parentheses shall be treated as a data entity.  */
+  *result = gfc_get_parentheses (e);
 
   if (m != MATCH_YES)
     {
@@ -172,27 +201,27 @@ syntax:
 /* Build an operator expression node.  */
 
 static gfc_expr *
-build_node (gfc_intrinsic_op operator, locus * where,
-	    gfc_expr * op1, gfc_expr * op2)
+build_node (gfc_intrinsic_op op, locus *where,
+	    gfc_expr *op1, gfc_expr *op2)
 {
-  gfc_expr *new;
+  gfc_expr *new_expr;
 
-  new = gfc_get_expr ();
-  new->expr_type = EXPR_OP;
-  new->value.op.operator = operator;
-  new->where = *where;
+  new_expr = gfc_get_expr ();
+  new_expr->expr_type = EXPR_OP;
+  new_expr->value.op.op = op;
+  new_expr->where = *where;
 
-  new->value.op.op1 = op1;
-  new->value.op.op2 = op2;
+  new_expr->value.op.op1 = op1;
+  new_expr->value.op.op2 = op2;
 
-  return new;
+  return new_expr;
 }
 
 
 /* Match a level 1 expression.  */
 
 static match
-match_level_1 (gfc_expr ** result)
+match_level_1 (gfc_expr **result)
 {
   gfc_user_op *uop;
   gfc_expr *e, *f;
@@ -225,7 +254,7 @@ match_level_1 (gfc_expr ** result)
 /* As a GNU extension we support an expanded level-2 expression syntax.
    Via this extension we support (arbitrary) nesting of unary plus and
    minus operations following unary and binary operators, such as **.
-   The grammar of section 7.1.1.3 is effectively rewitten as:
+   The grammar of section 7.1.1.3 is effectively rewritten as:
 
 	R704  mult-operand     is level-1-expr [ power-op ext-mult-operand ]
 	R704' ext-mult-operand is add-op ext-mult-operand
@@ -238,14 +267,12 @@ match_level_1 (gfc_expr ** result)
 			       or add-operand
  */
 
-static match match_ext_mult_operand (gfc_expr ** result);
-static match match_ext_add_operand (gfc_expr ** result);
-
+static match match_ext_mult_operand (gfc_expr **result);
+static match match_ext_add_operand (gfc_expr **result);
 
 static int
 match_add_op (void)
 {
-
   if (next_operator (INTRINSIC_MINUS))
     return -1;
   if (next_operator (INTRINSIC_PLUS))
@@ -255,7 +282,7 @@ match_add_op (void)
 
 
 static match
-match_mult_operand (gfc_expr ** result)
+match_mult_operand (gfc_expr **result)
 {
   gfc_expr *e, *exp, *r;
   locus where;
@@ -298,7 +325,7 @@ match_mult_operand (gfc_expr ** result)
 
 
 static match
-match_ext_mult_operand (gfc_expr ** result)
+match_ext_mult_operand (gfc_expr **result)
 {
   gfc_expr *all, *e;
   locus where;
@@ -311,10 +338,15 @@ match_ext_mult_operand (gfc_expr ** result)
   if (i == 0)
     return match_mult_operand (result);
 
-  if (gfc_notify_std (GFC_STD_GNU, "Extension: Unary operator following"
-		      " arithmetic operator (use parentheses) at %C")
-      == FAILURE)
-    return MATCH_ERROR;
+  if (gfc_notification_std (GFC_STD_GNU) == ERROR)
+    {
+      gfc_error ("Extension: Unary operator following "
+		 "arithmetic operator (use parentheses) at %C");
+      return MATCH_ERROR;
+    }
+  else
+    gfc_warning ("Extension: Unary operator following "
+		 "arithmetic operator (use parentheses) at %C");
 
   m = match_ext_mult_operand (&e);
   if (m != MATCH_YES)
@@ -338,7 +370,7 @@ match_ext_mult_operand (gfc_expr ** result)
 
 
 static match
-match_add_operand (gfc_expr ** result)
+match_add_operand (gfc_expr **result)
 {
   gfc_expr *all, *e, *total;
   locus where, old_loc;
@@ -402,7 +434,7 @@ match_add_operand (gfc_expr ** result)
 
 
 static match
-match_ext_add_operand (gfc_expr ** result)
+match_ext_add_operand (gfc_expr **result)
 {
   gfc_expr *all, *e;
   locus where;
@@ -415,10 +447,15 @@ match_ext_add_operand (gfc_expr ** result)
   if (i == 0)
     return match_add_operand (result);
 
-  if (gfc_notify_std (GFC_STD_GNU, "Extension: Unary operator following"
-		      " arithmetic operator (use parentheses) at %C")
-      == FAILURE)
-    return MATCH_ERROR;
+  if (gfc_notification_std (GFC_STD_GNU) == ERROR)
+    {
+      gfc_error ("Extension: Unary operator following "
+		 "arithmetic operator (use parentheses) at %C");
+      return MATCH_ERROR;
+    }
+  else
+    gfc_warning ("Extension: Unary operator following "
+		"arithmetic operator (use parentheses) at %C");
 
   m = match_ext_add_operand (&e);
   if (m != MATCH_YES)
@@ -444,7 +481,7 @@ match_ext_add_operand (gfc_expr ** result)
 /* Match a level 2 expression.  */
 
 static match
-match_level_2 (gfc_expr ** result)
+match_level_2 (gfc_expr **result)
 {
   gfc_expr *all, *e, *total;
   locus where;
@@ -487,7 +524,7 @@ match_level_2 (gfc_expr ** result)
 
   all->where = where;
 
-/* Append add-operands to the sum */
+  /* Append add-operands to the sum.  */
 
   for (;;)
     {
@@ -529,7 +566,7 @@ match_level_2 (gfc_expr ** result)
 /* Match a level three expression.  */
 
 static match
-match_level_3 (gfc_expr ** result)
+match_level_3 (gfc_expr **result)
 {
   gfc_expr *all, *e, *total;
   locus where;
@@ -575,7 +612,7 @@ match_level_3 (gfc_expr ** result)
 /* Match a level 4 expression.  */
 
 static match
-match_level_4 (gfc_expr ** result)
+match_level_4 (gfc_expr **result)
 {
   gfc_expr *left, *right, *r;
   gfc_intrinsic_op i;
@@ -596,7 +633,9 @@ match_level_4 (gfc_expr ** result)
     }
 
   if (i != INTRINSIC_EQ && i != INTRINSIC_NE && i != INTRINSIC_GE
-      && i != INTRINSIC_LE && i != INTRINSIC_LT && i != INTRINSIC_GT)
+      && i != INTRINSIC_LE && i != INTRINSIC_LT && i != INTRINSIC_GT
+      && i != INTRINSIC_EQ_OS && i != INTRINSIC_NE_OS && i != INTRINSIC_GE_OS
+      && i != INTRINSIC_LE_OS && i != INTRINSIC_LT_OS && i != INTRINSIC_GT_OS)
     {
       gfc_current_locus = old_loc;
       *result = left;
@@ -617,27 +656,33 @@ match_level_4 (gfc_expr ** result)
   switch (i)
     {
     case INTRINSIC_EQ:
-      r = gfc_eq (left, right);
+    case INTRINSIC_EQ_OS:
+      r = gfc_eq (left, right, i);
       break;
 
     case INTRINSIC_NE:
-      r = gfc_ne (left, right);
+    case INTRINSIC_NE_OS:
+      r = gfc_ne (left, right, i);
       break;
 
     case INTRINSIC_LT:
-      r = gfc_lt (left, right);
+    case INTRINSIC_LT_OS:
+      r = gfc_lt (left, right, i);
       break;
 
     case INTRINSIC_LE:
-      r = gfc_le (left, right);
+    case INTRINSIC_LE_OS:
+      r = gfc_le (left, right, i);
       break;
 
     case INTRINSIC_GT:
-      r = gfc_gt (left, right);
+    case INTRINSIC_GT_OS:
+      r = gfc_gt (left, right, i);
       break;
 
     case INTRINSIC_GE:
-      r = gfc_ge (left, right);
+    case INTRINSIC_GE_OS:
+      r = gfc_ge (left, right, i);
       break;
 
     default:
@@ -659,7 +704,7 @@ match_level_4 (gfc_expr ** result)
 
 
 static match
-match_and_operand (gfc_expr ** result)
+match_and_operand (gfc_expr **result)
 {
   gfc_expr *e, *r;
   locus where;
@@ -692,7 +737,7 @@ match_and_operand (gfc_expr ** result)
 
 
 static match
-match_or_operand (gfc_expr ** result)
+match_or_operand (gfc_expr **result)
 {
   gfc_expr *all, *e, *total;
   locus where;
@@ -735,7 +780,7 @@ match_or_operand (gfc_expr ** result)
 
 
 static match
-match_equiv_operand (gfc_expr ** result)
+match_equiv_operand (gfc_expr **result)
 {
   gfc_expr *all, *e, *total;
   locus where;
@@ -780,7 +825,7 @@ match_equiv_operand (gfc_expr ** result)
 /* Match a level 5 expression.  */
 
 static match
-match_level_5 (gfc_expr ** result)
+match_level_5 (gfc_expr **result)
 {
   gfc_expr *all, *e, *total;
   locus where;
@@ -839,7 +884,7 @@ match_level_5 (gfc_expr ** result)
    level 5 expressions separated by binary operators.  */
 
 match
-gfc_match_expr (gfc_expr ** result)
+gfc_match_expr (gfc_expr **result)
 {
   gfc_expr *all, *e;
   gfc_user_op *uop;
@@ -852,6 +897,7 @@ gfc_match_expr (gfc_expr ** result)
 
   for (;;)
     {
+      uop = NULL;
       m = match_defined_operator (&uop);
       if (m == MATCH_NO)
 	break;

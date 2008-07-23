@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2004, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -42,10 +41,10 @@ procedure Labl is
    --  Next label node to process
 
    function Find_Enclosing_Body_Or_Block (N : Node_Id) return Node_Id;
-   --  Find the innermost body or block that encloses N.
+   --  Find the innermost body or block that encloses N
 
    function Find_Enclosing_Body (N : Node_Id) return Node_Id;
-   --  Find the innermost body that encloses N.
+   --  Find the innermost body that encloses N
 
    procedure Check_Distinct_Labels;
    --  Checks the rule in RM-5.1(11), which requires distinct identifiers
@@ -134,7 +133,7 @@ procedure Labl is
       Result : Node_Id := Parent (N);
 
    begin
-      --  Climb up the parent chain until we find a body or block.
+      --  Climb up the parent chain until we find a body or block
 
       while Present (Result)
         and then Nkind (Result) /= N_Accept_Statement
@@ -160,7 +159,7 @@ procedure Labl is
       Succ      : Elmt_Id;
 
       function Goto_Id (Goto_Node : Node_Id) return Name_Id;
-      --  Find Name_Id of goto statement, which may be an expanded name.
+      --  Find Name_Id of goto statement, which may be an expanded name
 
       function Matches
         (Label_Node : Node_Id;
@@ -178,10 +177,10 @@ procedure Labl is
 
       procedure No_Header (N : Elmt_Id);
       --  The label N is known not to be a loop header. Scan forward and
-      --  remove all subsequent goto's that may have this node as a target.
+      --  remove all subsequent gotos that may have this node as a target.
 
       procedure Process_Goto (N : Elmt_Id);
-      --  N is a forward jump. Scan forward and remove all subsequent goto's
+      --  N is a forward jump. Scan forward and remove all subsequent gotos
       --  that may have the same target, to preclude spurious loops.
 
       procedure Rewrite_As_Loop
@@ -477,7 +476,6 @@ procedure Labl is
 
 begin
    Next_Label_Elmt := First_Elmt (Label_List);
-
    while Present (Next_Label_Elmt) loop
       Label_Node := Node (Next_Label_Elmt);
 
@@ -521,7 +519,7 @@ begin
          --  Now attach the implicit label declaration to the appropriate
          --  declarative region, creating a declaration list if none exists
 
-         if not Present (Declarations (Enclosing_Body_Or_Block)) then
+         if No (Declarations (Enclosing_Body_Or_Block)) then
             Set_Declarations (Enclosing_Body_Or_Block, New_List);
          end if;
 

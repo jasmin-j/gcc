@@ -1,6 +1,6 @@
 ## Makefile for the testsuite subdirectory of the GNU C++ Standard library.
 ##
-## Copyright (C) 2001, 2002, 2003, 2005 Free Software Foundation, Inc.
+## Copyright (C) 2001, 2002, 2003, 2005, 2007 Free Software Foundation, Inc.
 ##
 ## This file is part of the libstdc++ version 3 distribution.
 ## Process this file with automake to produce Makefile.in.
@@ -18,33 +18,12 @@
 
 ## You should have received a copy of the GNU General Public License along
 ## with this library; see the file COPYING.  If not, write to the Free
-## Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+## Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 ## USA.
 
 AUTOMAKE_OPTIONS = dejagnu nostdinc
 
 include $(top_srcdir)/fragment.am
-
-AM_MAKEFLAGS = -j1
-AM_RUNTESTFLAGS =
-
-all-local: stamp_wchar stamp_thread
-
-# Enable wchar_t tests if capable.
-if GLIBCXX_TEST_WCHAR_T
-stamp_wchar:
-	touch testsuite_wchar_t
-else
-stamp_wchar:
-endif
-
-# Enable thread tests if capable.
-if GLIBCXX_TEST_THREAD
-stamp_thread:
-	touch testsuite_thread
-else
-stamp_thread:
-endif
 
 # Generated lists of files to run.  All of these names are valid make
 # targets, if you wish to generate a list manually.
@@ -107,14 +86,10 @@ new-abi-baseline:
 	  fi; \
 	  ${extract_symvers} ../src/.libs/libstdc++.so $${output})
 
-if GLIBCXX_TEST_ABI
 # Use 'new-abi-baseline' to create an initial symbol file.  Then run
 # 'check-abi' to test for changes against that file.
-check-abi: baseline_symbols site.exp
+check-abi: site.exp baseline_symbols 
 	-@runtest --tool libstdc++ abi.exp
-else
-check-abi:
-endif
 
 # Runs the testsuite, but in compile only mode.
 # Can be used to test sources with non-GNU FE's at various warning
@@ -130,15 +105,48 @@ check-compile: testsuite_files ${compile_script}
 # Some of these tests create large (~75MB) files, allocate huge
 # ammounts of memory, or otherwise tie up machine resources. Thus,
 # running this is off by default.
-performance_script=${glibcxx_srcdir}/scripts/check_performance
+# XXX Need to add dependency on libtestc++.a
+check_performance_script=${glibcxx_srcdir}/scripts/check_performance
 check-performance: testsuite_files_performance ${performance_script}
-	-@(chmod + ${performance_script}; \
-	  ${performance_script} ${glibcxx_srcdir} ${glibcxx_builddir})
+	-@(chmod + ${check_performance_script}; \
+	  ${check_performance_script} ${glibcxx_srcdir} ${glibcxx_builddir})
 
+
+# Runs the testsuite in parallel mode.
+libgomp_dir=${glibcxx_builddir}/../libgomp
+libgomp_flags=-B${glibcxx_builddir}/../libgomp \
+              -I${glibcxx_builddir}/../libgomp \
+	      -L${glibcxx_builddir}/../libgomp/.libs -lgomp
+
+atomic_flags=$(ATOMIC_FLAGS)
+parallel_flags="unix/-D_GLIBCXX_PARALLEL/-fopenmp"
+
+check-parallel: site.exp
+	-@(if test ! -d $${libgomp_dir}; then \
+	  echo "Testing parallel mode failed as libgomp not present."; \
+	  exit 1; \
+	fi; \
+	outputdir=parallel; export outputdir; \
+	if test ! -d $${outputdir}; then \
+	  mkdir $${outputdir}; \
+	fi; \
+	srcdir=`$(am__cd) $(srcdir) && pwd`; export srcdir; \
+	EXPECT=$(EXPECT); export EXPECT; \
+	$(MAKE) CXXFLAGS="$(atomic_flags) $(libgomp_flags)" RUNTESTFLAGS="$(RUNTESTFLAGS) conformance.exp --outdir $${outputdir} --objdir $${outputdir} --target_board=$(parallel_flags)" check-DEJAGNU; )
+
+check-performance-parallel: testsuite_files_performance ${performance_script}
+	-@(chmod + ${check_performance_script}; \
+	CXXFLAGS="-D_GLIBCXX_PARALLEL -fopenmp $(atomic_flags) $(libgomp_flags)"; export CXXFLAGS; \
+	${check_performance_script} ${glibcxx_srcdir} ${glibcxx_builddir})
 
 .PHONY: baseline_symbols new-abi-baseline \
-	check-abi check-compile check-performance
+	check-abi check-compile check-performance check-parallel
 
 # By adding these files here, automake will remove them for 'make clean'
 CLEANFILES = *.txt *.tst *.exe core* filebuf_* tmp* ostream_* *.log *.sum \
-	     testsuite_* site.exp abi_check baseline_symbols *TEST*
+	     testsuite_* site.exp abi_check baseline_symbols *TEST* *.dat \
+	     *.s *.o *.cc *.a *.so *.xml 
+
+# To remove directories.
+clean-local:
+	rm -rf parallel

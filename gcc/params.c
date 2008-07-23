@@ -1,12 +1,12 @@
 /* params.c - Run-time parameters.
-   Copyright (C) 2001, 2003, 2004 Free Software Foundation, Inc.
+   Copyright (C) 2001, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
    Written by Mark Mitchell <mark@codesourcery.com>.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,11 +15,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.
-
-*/
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -43,8 +40,8 @@ void
 add_params (const param_info params[], size_t n)
 {
   /* Allocate enough space for the new parameters.  */
-  compiler_params = xrealloc (compiler_params,
-			      (num_compiler_params + n) * sizeof (param_info));
+  compiler_params = XRESIZEVEC (param_info, compiler_params,
+				num_compiler_params + n);
   /* Copy them into the table.  */
   memcpy (compiler_params + num_compiler_params,
 	  params,
@@ -77,7 +74,10 @@ set_param_value (const char *name, int value)
 		 compiler_params[i].option,
 		 compiler_params[i].max_value);
 	else
-	  compiler_params[i].value = value;
+	  {
+	    compiler_params[i].value = value;
+	    compiler_params[i].set = true;
+	  }
 	return;
       }
 

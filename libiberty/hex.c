@@ -14,8 +14,8 @@ Library General Public License for more details.
 
 You should have received a copy of the GNU Library General Public
 License along with libiberty; see the file COPYING.LIB.  If
-not, write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+not, write to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+Boston, MA 02110-1301, USA.  */
 
 #include <stdio.h>  /* for EOF */
 #ifdef HAVE_CONFIG_H
@@ -50,7 +50,7 @@ or zero if it is not.  Note that the value you pass will be cast to
 @deftypefn Extension {unsigned int} hex_value (int @var{c})
 
 Returns the numeric equivalent of the given character when interpreted
-as a hexidecimal digit.  The result is undefined if you pass an
+as a hexadecimal digit.  The result is undefined if you pass an
 invalid hex digit.  Note that the value you pass will be cast to
 @code{unsigned char} within the macro.
 

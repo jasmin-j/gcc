@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                   GNU ADA RUNTIME LIBRARY COMPONENTS                     --
+--                    GNAT RUN-TIME LIBRARY COMPONENTS                      --
 --                                                                          --
 --        S Y S T E M . C O M P A R E _ A R R A Y _ S I G N E D _ 3 2       --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2002-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 2002-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -33,7 +33,7 @@
 
 with System.Address_Operations; use System.Address_Operations;
 
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package body System.Compare_Array_Signed_32 is
 
@@ -41,18 +41,15 @@ package body System.Compare_Array_Signed_32 is
    for Word'Size use 32;
    --  Used to process operands by words
 
-   type Uword is record
-      W : Word;
-   end record;
-   pragma Pack (Uword);
+   type Uword is new Word;
    for Uword'Alignment use 1;
    --  Used to process operands when unaligned
 
    type WP is access Word;
    type UP is access Uword;
 
-   function W is new Unchecked_Conversion (Address, WP);
-   function U is new Unchecked_Conversion (Address, UP);
+   function W is new Ada.Unchecked_Conversion (Address, WP);
+   function U is new Ada.Unchecked_Conversion (Address, UP);
 
    -----------------------
    -- Compare_Array_S32 --
@@ -93,8 +90,8 @@ package body System.Compare_Array_Signed_32 is
 
       else
          while Clen /= 0 loop
-            if U (L).W /= U (R).W then
-               if U (L).W > U (R).W then
+            if U (L).all /= U (R).all then
+               if U (L).all > U (R).all then
                   return +1;
                else
                   return -1;

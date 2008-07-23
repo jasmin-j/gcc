@@ -1,4 +1,4 @@
-# Copyright (c) 1999, 2000, 2001, 2002, 2003 by Red Hat, Inc. All rights reserved.
+# Copyright (c) 1999, 2000, 2001, 2002, 2003, 2006 by Red Hat, Inc. All rights reserved.
 # Copyright 2004 Nathanael Nerode
 # 
 # THIS MATERIAL IS PROVIDED AS IS, WITH ABSOLUTELY NO WARRANTY EXPRESSED
@@ -36,7 +36,7 @@ ACX_NONCANONICAL_TARGET
 mkinstalldirs="`cd $ac_aux_dir && ${PWDCMD-pwd}`/mkinstalldirs"
 AC_SUBST(mkinstalldirs)
 
-AM_INIT_AUTOMAKE(gc, 6.3, no-define)
+AM_INIT_AUTOMAKE(gc, 6.6, no-define)
 
 # The autoconf 2.5x version of the no-executables hack.
 GCC_NO_EXECUTABLES
@@ -140,8 +140,8 @@ case "$THREADS" in
 	AC_DEFINE(GC_AIX_THREADS,1,[support AIX threads])
 	AC_DEFINE(_REENTRANT,1)
 	;;
-     *-*-hpux*)
-	AC_MSG_WARN("Only HP/UX 11 threads are supported.")
+     *-*-hpux11*)
+	AC_MSG_WARN("Only HP-UX 11 POSIX threads are supported.")
 	AC_DEFINE(GC_HPUX_THREADS,1,[enables support for HP/UX 11 pthreads])
 	AC_DEFINE(_POSIX_C_SOURCE,199506L,[POSIX version of C Source])
 	if test "${enable_parallel_mark}" = yes; then
@@ -149,7 +149,23 @@ case "$THREADS" in
 	fi
 	AC_DEFINE(THREAD_LOCAL_ALLOC,1)
 	THREADLIBS="-lpthread -lrt"
+	# HPUX needs REENTRANT for the _r calls.
+	AC_DEFINE(_REENTRANT, 1, [Required define if using POSIX threads])
 	;;
+     *-*-hpux10*)
+	AC_MSG_WARN("Only HP-UX 11 POSIX threads are supported.")
+	;;
+      *-*-kfreebsd*-gnu)
+       AC_DEFINE(GC_FREEBSD_THREADS)
+       INCLUDES="$INCLUDES -pthread"
+       THREADDLLIBS=-pthread
+       AC_DEFINE(_REENTRANT)
+         if test "${enable_parallel_mark}" = yes; then
+         AC_DEFINE(PARALLEL_MARK)
+       fi
+       AC_DEFINE(THREAD_LOCAL_ALLOC)
+       AC_DEFINE(USE_COMPILER_TLS, 1,[use tls for boehm])
+               ;;
      *-*-freebsd*)
 	AC_MSG_WARN("FreeBSD does not yet fully support threads with Boehm GC.")
 	AC_DEFINE(GC_FREEBSD_THREADS,1,[support FreeBSD threads])
@@ -157,8 +173,12 @@ case "$THREADS" in
 	THREADLIBS=-pthread
       	;;
      *-*-solaris*)
-	AC_DEFINE(GC_SOLARIS_THREADS,1,[support for Solaris (thr_) threads])
 	AC_DEFINE(GC_SOLARIS_PTHREADS,1,[support for Solaris pthreads])
+	# Need to use alternate thread library, otherwise gctest hangs
+	# on Solaris 8.
+	multi_os_directory=`$CC -print-multi-os-directory`
+	THREADLIBS="-L/usr/lib/lwp/$multi_os_directory \
+		    -R/usr/lib/lwp/$multi_os_directory -lpthread -lthread -lrt"
 	;;
      *-*-irix*)
 	AC_DEFINE(GC_IRIX_THREADS,1,[support for Irix pthreads])
@@ -227,6 +247,54 @@ case "$host" in
 esac
 AM_CONDITIONAL(POWERPC_DARWIN,test x$powerpc_darwin = xtrue)
 
+# Darwin needs a few extra special tests to deal with variation in the
+# system headers.
+case "$host" in
+  powerpc*-*-darwin*)
+    AC_CHECK_MEMBER(ppc_thread_state_t.r0,
+      AC_DEFINE(HAS_PPC_THREAD_STATE_R0,1,
+	[ppc_thread_state_t has field r0]),,
+      [#include <mach/thread_status.h>])
+    AC_CHECK_MEMBER(ppc_thread_state_t.__r0,
+      AC_DEFINE(HAS_PPC_THREAD_STATE___R0,1,dnl
+	[ppc_thread_state_t has field __r0]),,
+      [#include <mach/thread_status.h>])
+    AC_CHECK_MEMBER(ppc_thread_state64_t.r0,
+      AC_DEFINE(HAS_PPC_THREAD_STATE64_R0,1,dnl
+	[ppc_thread_state64_t has field r0]),,
+      [#include <mach/thread_status.h>])
+    AC_CHECK_MEMBER(ppc_thread_state64_t.__r0,
+      AC_DEFINE(HAS_PPC_THREAD_STATE64___R0,1,dnl
+	[ppc_thread_state64_t has field __r0]),,
+      [#include <mach/thread_status.h>])
+    ;;
+  i?86*-*-darwin*)
+    AC_CHECK_MEMBER(x86_thread_state32_t.eax,
+      AC_DEFINE(HAS_X86_THREAD_STATE32_EAX,1,dnl
+	[x86_thread_state32_t has field eax]),,
+      [#include <sys/cdefs.h>
+      #include <mach/thread_status.h>])
+    AC_CHECK_MEMBER(x86_thread_state32_t.__eax,
+      AC_DEFINE(HAS_X86_THREAD_STATE32___EAX,1,dnl
+	[x86_thread_state32_t has field __eax]),,
+      [#include <sys/cdefs.h>
+      #include <mach/thread_status.h>])
+    ;;
+  x86_64-*-darwin*)
+    AC_CHECK_MEMBER(x86_thread_state64_t.rax,
+      AC_DEFINE(HAS_X86_THREAD_STATE64_RAX,1,dnl
+	[x86_thread_state64_t has field rax]),,
+      [#include <sys/cdefs.h>
+      #include <mach/thread_status.h>])
+    AC_CHECK_MEMBER(x86_thread_state64_t.__rax,
+      AC_DEFINE(HAS_X86_THREAD_STATE64___RAX,1,dnl
+	[x86_thread_state64_t has field __rax]),,
+      [#include <sys/cdefs.h>
+      #include <mach/thread_status.h>])
+     ;;
+  *) ;;
+esac
+
 # We never want libdl on darwin. It is a fake libdl that just ends up making
 # dyld calls anyway
 case "$host" in
@@ -235,6 +303,14 @@ case "$host" in
     AC_CHECK_LIB(dl, dlopen, EXTRA_TEST_LIBS="$EXTRA_TEST_LIBS -ldl")
     ;;
 esac
+
+# extra LD Flags which are required for targets
+case "${host}" in
+  *-*-darwin*)
+    extra_ldflags_libgc=-Wl,-single_module
+    ;;
+esac
+AC_SUBST(extra_ldflags_libgc)
 
 AC_SUBST(EXTRA_TEST_LIBS)
 
@@ -291,13 +367,18 @@ case "$host" in
      ;;
 esac
 
+# Checks for pthreads functions
+#
+oldLIBS="$LIBS"
+LIBS="$LIBS $THREADLIBS"
+AC_CHECK_FUNCS([pthread_getattr_np])
+LIBS="$oldLIBS"
+
 # Configuration of machine-dependent code
 #
-# We don't set NO_EXECUTE_PERMISSION by default because gcj (and
-# anything else that creates trampolines in gc-allocated memory)
-# always needs exec permission.  The exceptions to this are IA-64 and
-# some variations of Power PC, where trampolines don't contain
-# executable code.
+# Set NO_EXECUTE_PERMISSION by default because gcj already uses
+# ffi_closure_{alloc,free} which takes care of allocating trampolines
+# in executable memory.
 #
 AC_MSG_CHECKING(which machine-dependent code should be used)
 machdep=
@@ -340,10 +421,10 @@ case "$host" in
     machdep="sparc_mach_dep.lo"
     ;;
  ia64-*-*)
-    AC_DEFINE(NO_EXECUTE_PERMISSION,1,[cause some or all of the heap to not have execute permission])
     machdep="mach_dep.lo ia64_save_regs_in_stack.lo"
     ;;
 esac
+AC_DEFINE(NO_EXECUTE_PERMISSION,1,[cause some or all of the heap to not have execute permission])
 if test x"$machdep" = x; then
 AC_MSG_RESULT($machdep)
    machdep="mach_dep.lo"
@@ -417,14 +498,6 @@ AC_DEFINE(JAVA_FINALIZATION,1,[make it somewhat safer to finalize objects out of
 AC_DEFINE(GC_GCJ_SUPPORT,1,[include support for gcj])
 AC_DEFINE(ATOMIC_UNCOLLECTABLE,1,[include code for GC_malloc_atomic_uncollectable])
 
-dnl This is something of a hack.  When cross-compiling we turn off
-dnl some functionality. These is only correct when targetting an
-dnl embedded system.  FIXME.
-if test -n "${with_cross_host}"; then
-   AC_DEFINE(NO_SIGSET,1,[use empty GC_disable_signals and GC_enable_signals])
-   AC_DEFINE(NO_DEBUGGING,1,[removes GC_dump])
-fi
-
 AC_ARG_ENABLE(gc-debug,
 [  --enable-gc-debug	include full support for pointer backtracing etc.],
 [ if test "$enable_gc_debug" = "yes"; then
@@ -474,5 +547,5 @@ fi
 
 AC_CONFIG_HEADERS([include/gc_config.h include/gc_ext_config.h])
 
-AC_CONFIG_FILES(Makefile include/Makefile)
+AC_CONFIG_FILES(Makefile include/Makefile threads.mk)
 AC_OUTPUT

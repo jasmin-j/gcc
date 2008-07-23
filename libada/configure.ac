@@ -15,10 +15,24 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
+sinclude(../config/acx.m4)
+sinclude(../config/override.m4)
+
 AC_INIT
 AC_PREREQ([2.59])
 
 AC_CONFIG_SRCDIR([Makefile.in])
+
+# Determine the host, build, and target systems
+AC_CANONICAL_BUILD
+AC_CANONICAL_HOST
+AC_CANONICAL_TARGET
+
+# Determine the noncanonical target name, for directory use.
+ACX_NONCANONICAL_TARGET
+
+# Determine the target- and build-specific subdirectories
+GCC_TOPLEV_SUBDIRS
 
 # Command-line options.
 # Very limited version of AC_MAINTAINER_MODE.
@@ -55,12 +69,6 @@ case $enable_shared in
 esac
 ], [enable_shared=yes])
 AC_SUBST([enable_shared])
-
-# Start of actual configure tests
-
-AC_CANONICAL_BUILD
-AC_CANONICAL_HOST
-AC_CANONICAL_TARGET
 
 # Need to pass this down for now :-P
 AC_PROG_LN_S

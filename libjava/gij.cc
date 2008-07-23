@@ -1,4 +1,4 @@
-/* Copyright (C) 1999-2005  Free Software Foundation
+/* Copyright (C) 1999-2007  Free Software Foundation
 
    This file is part of libgcj.
 
@@ -42,7 +42,7 @@ version ()
 {
   printf ("java version \"" JV_VERSION "\"\n");
   printf ("gij (GNU libgcj) version %s\n\n", __VERSION__);
-  printf ("Copyright (C) 2005 Free Software Foundation, Inc.\n");
+  printf ("Copyright (C) 2007 Free Software Foundation, Inc.\n");
   printf ("This is free software; see the source for copying conditions.  There is NO\n");
   printf ("warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n");
 }
@@ -52,6 +52,7 @@ nonstandard_opts_help ()
 {
   printf ("  -Xms<size>         set initial heap size\n");
   printf ("  -Xmx<size>         set maximum heap size\n");
+  printf ("  -Xss<size>         set thread stack size\n");
   exit (0);
 }
 
@@ -120,11 +121,11 @@ main (int argc, char const** argv)
         continue;
       else if (! strcmp (arg, "-jrockit"))
         continue;
-      // Ignore JVM Tool Interface options
+      // JVM Tool Interface options.
       else if (! strncmp (arg, "-agentlib:", sizeof ("-agentlib:") - 1))
-        continue;
+        add_option (vm_args, arg, NULL);
       else if (! strncmp (arg, "-agentpath:", sizeof ("-agentpath:") - 1))
-        continue;
+        add_option (vm_args, arg, NULL);
       else if (! strcmp (arg, "-classpath") || ! strcmp (arg, "-cp"))
         {
           if (i >= argc - 1)
@@ -155,20 +156,16 @@ main (int argc, char const** argv)
       // Ignore 32/64-bit JIT options
       else if (! strcmp (arg, "-d32") || ! strcmp (arg, "-d64"))
         continue;
-      else if (! strcmp (arg, "-enableassertions") || ! strcmp (arg, "-ea"))
+      else if (! strncmp (arg, "-enableassertions", sizeof ("-enableassertions") - 1)
+               || ! strncmp (arg, "-ea", sizeof ("-ea") - 1))
         {
-          if (i >= argc - 1)
-            goto no_arg;
           // FIXME: hook up assertion support
-          ++i;
           continue;
         }
-      else if (! strcmp (arg, "-disableassertions") || ! strcmp (arg, "-da"))
+      else if (! strncmp (arg, "-disableassertions", sizeof ("-disableassertions") - 1)
+               || ! strncmp (arg, "-da", sizeof ("-da") - 1))
         {
-          if (i >= argc - 1)
-            goto no_arg;
-          // FIXME
-          ++i;
+          // FIXME: hook up assertion support
           continue;
         }
       else if (! strcmp (arg, "-enablesystemassertions")
@@ -296,6 +293,14 @@ main (int argc, char const** argv)
         nonstandard_opts_help ();
       else if (! strncmp (arg, "-X", 2))
         add_option (vm_args, arg, NULL);
+      // Obsolete options recognized for backwards-compatibility.
+      else if (! strcmp (arg, "-verify")
+               || ! strcmp (arg, "-verifyremote"))
+	continue;
+      else if (! strcmp (arg, "-noverify"))
+        {
+	  gcj::verifyClasses = false;
+	}
       else
 	{
 	  fprintf (stderr, "gij: unrecognized option -- `%s'\n", argv[i]);

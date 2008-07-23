@@ -1,10 +1,16 @@
 # Multilibs for VxWorks.
 
-MULTILIB_OPTIONS  = t403/t405/t440/t603/t604/t860
-MULTILIB_DIRNAMES = PPC403gnu PPC405gnu PPC440gnu \
-		    PPC603gnu PPC604gnu PPC860gnu
+# The base multilib is -mhard-float.
+MULTILIB_OPTIONS = mrtp fPIC msoft-float
+MULTILIB_DIRNAMES =
+MULTILIB_MATCHES = fPIC=fpic
+MULTILIB_EXCEPTIONS = fPIC*
 
-MULTILIB_MATCHES  = t604=
+# This is set from the common config/t-vxworks but clobbered by t-ppccomm
+# on this target.
+EXTRA_MULTILIB_PARTS = 
 
-# Put vxlib.c back in LIB2FUNCS_EXTRA (t-ppccomm clobbers it).
-LIB2FUNCS_EXTRA += $(srcdir)/config/vxlib.c
+# Similarily, LIB2FUNCS_EXTRA is set from config/t-vxworks and
+# t-ppccomm *adds* to it, but the common contents are useful to us.
+# In particular the base trampoline_setup bits are expected to be
+# provided there.

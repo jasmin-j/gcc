@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUNTIME LIBRARY (GNARL) COMPONENTS                --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --      S Y S T E M . G E N E R I C _ V E C T O R _ O P E R A T I O N S     --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2002-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 2002-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -35,7 +35,7 @@ with System;                    use System;
 with System.Address_Operations; use System.Address_Operations;
 with System.Storage_Elements;   use System.Storage_Elements;
 
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package body System.Generic_Vector_Operations is
 
@@ -65,8 +65,8 @@ package body System.Generic_Vector_Operations is
       type Vector_Ptr is access all Vectors.Vector;
       type Element_Ptr is access all Element;
 
-      function VP is new Unchecked_Conversion (Address, Vector_Ptr);
-      function EP is new Unchecked_Conversion (Address, Element_Ptr);
+      function VP is new Ada.Unchecked_Conversion (Address, Vector_Ptr);
+      function EP is new Ada.Unchecked_Conversion (Address, Element_Ptr);
 
       SA : constant Address :=
              AddA (XA, To_Address
@@ -110,8 +110,8 @@ package body System.Generic_Vector_Operations is
       type Vector_Ptr is access all Vectors.Vector;
       type Element_Ptr is access all Element;
 
-      function VP is new Unchecked_Conversion (Address, Vector_Ptr);
-      function EP is new Unchecked_Conversion (Address, Element_Ptr);
+      function VP is new Ada.Unchecked_Conversion (Address, Vector_Ptr);
+      function EP is new Ada.Unchecked_Conversion (Address, Element_Ptr);
 
       SA : constant Address :=
              AddA (XA, To_Address

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -34,21 +34,20 @@
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package body Interfaces.C.Strings is
 
-   --  Note that the type chars_ptr has a pragma No_Strict_Aliasing in
-   --  the spec, to prevent any assumptions about aliasing for values
-   --  of this type, since arbitrary addresses can be converted, and it
-   --  is quite likely that this type will in fact be used for aliasing
-   --  values of other types.
+   --  Note that the type chars_ptr has a pragma No_Strict_Aliasing in the
+   --  spec, to prevent any assumptions about aliasing for values of this type,
+   --  since arbitrary addresses can be converted, and it is quite likely that
+   --  this type will in fact be used for aliasing values of other types.
 
    function To_chars_ptr is
-      new Unchecked_Conversion (Address, chars_ptr);
+      new Ada.Unchecked_Conversion (Address, chars_ptr);
 
    function To_Address is
-      new Unchecked_Conversion (chars_ptr, Address);
+      new Ada.Unchecked_Conversion (chars_ptr, Address);
 
    -----------------------
    -- Local Subprograms --
@@ -110,13 +109,13 @@ package body Interfaces.C.Strings is
       Pointer : chars_ptr;
 
    begin
-      --  Get index of position of null. If Index > Chars'last,
+      --  Get index of position of null. If Index > Chars'Last,
       --  nul is absent and must be added explicitly.
 
       Index := Position_Of_Nul (Into => Chars);
       Pointer := Memory_Alloc ((Index - Chars'First + 1));
 
-      --  If nul is present, transfer string up to and including it.
+      --  If nul is present, transfer string up to and including nul
 
       if Index <= Chars'Last then
          Update (Item   => Pointer,
@@ -131,7 +130,7 @@ package body Interfaces.C.Strings is
                  Offset => 0,
                  Chars  => Chars,
                  Check  => False);
-         Poke (nul, into => Pointer + size_t'(Chars'Length));
+         Poke (nul, Into => Pointer + size_t'(Chars'Length));
       end if;
 
       return Pointer;
@@ -322,8 +321,9 @@ package body Interfaces.C.Strings is
       Result : char_array (0 .. Length);
 
    begin
-      --  As per AI-00177, this is equivalent to
-      --          To_Ada (Value (Item, Length) & nul);
+      --  As per AI-00177, this is equivalent to:
+
+      --    To_Ada (Value (Item, Length) & nul);
 
       if Item = Null_Ptr then
          raise Dereference_Error;

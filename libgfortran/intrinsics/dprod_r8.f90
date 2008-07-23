@@ -15,13 +15,14 @@
 !
 !You should have received a copy of the GNU Lesser General Public
 !License along with libgfor; see the file COPYING.  If not,
-!write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-!Boston, MA 02111-1307, USA.
+!write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+!Boston, MA 02110-1301, USA.
 
 
-elemental function specific__dprod_r8 (p1, p2)
+elemental function _gfortran_specific__dprod_r8 (p1, p2)
+   implicit none
    real (kind=4), intent (in) :: p1, p2
-   real (kind=8) :: specific__dprod_r8
+   real (kind=8) :: _gfortran_specific__dprod_r8
 
-   specific__dprod_r8 = dprod (p1, p2)
+   _gfortran_specific__dprod_r8 = dprod (p1, p2)
 end function

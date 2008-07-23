@@ -1,13 +1,13 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                   S Y S T E M . O S _ I N T E R F A C E                  --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
 --             Copyright (C) 1991-1994, Florida State University            --
---             Copyright (C) 1995-2004, Free Software Foundation, Inc.      --
+--          Copyright (C) 1995-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -17,8 +17,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,16 +32,16 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This is Darwin pthreads version of this package.
+--  This is Darwin pthreads version of this package
 
---  This package includes all direct interfaces to OS services
---  that are needed by children of System.
+--  This package includes all direct interfaces to OS services that are needed
+--  by the tasking run-time (libgnarl).
 
---  PLEASE DO NOT add any with-clauses to this package
---  or remove the pragma Elaborate_Body.
---  It is designed to be a bottom-level (leaf) package.
+--  PLEASE DO NOT add any with-clauses to this package or remove the pragma
+--  Elaborate_Body. It is designed to be a bottom-level (leaf) package.
 
 with Interfaces.C;
+
 package System.OS_Interface is
    pragma Preelaborate;
 
@@ -115,10 +115,10 @@ package System.OS_Interface is
 
    type Signal_Set is array (Natural range <>) of Signal;
 
-   Unmasked    : constant Signal_Set :=
+   Unmasked : constant Signal_Set :=
      (SIGTTIN, SIGTTOU, SIGSTOP, SIGTSTP);
 
-   Reserved    : constant Signal_Set :=
+   Reserved : constant Signal_Set :=
      (SIGKILL, SIGSTOP);
 
    type sigset_t is private;
@@ -162,6 +162,7 @@ package System.OS_Interface is
    SIG_IGN : constant := 1;
 
    SA_SIGINFO : constant := 16#0040#;
+   SA_ONSTACK : constant := 16#0001#;
 
    function sigaction
      (sig  : Signal;
@@ -174,7 +175,7 @@ package System.OS_Interface is
    ----------
 
    Time_Slice_Supported : constant Boolean := True;
-   --  Indicates wether time slicing is supported.
+   --  Indicates whether time slicing is supported
 
    type timespec is private;
 
@@ -208,6 +209,10 @@ package System.OS_Interface is
    SCHED_RR    : constant := 2;
    SCHED_FIFO  : constant := 4;
 
+   function To_Target_Priority
+     (Prio : System.Any_Priority) return Interfaces.C.int;
+   --  Maps System.Any_Priority to a POSIX priority
+
    -------------
    -- Process --
    -------------
@@ -225,10 +230,10 @@ package System.OS_Interface is
    ---------
 
    function lwp_self return System.Address;
+   pragma Import (C, lwp_self, "pthread_self");
    --  lwp_self does not exist on this thread library, revert to pthread_self
    --  which is the closest approximation (with getpid). This function is
    --  needed to share 7staprop.adb across POSIX-like targets.
-   pragma Import (C, lwp_self, "pthread_self");
 
    -------------
    -- Threads --
@@ -236,6 +241,8 @@ package System.OS_Interface is
 
    type Thread_Body is access
      function (arg : System.Address) return System.Address;
+   pragma Convention (C, Thread_Body);
+
    type pthread_t           is private;
    subtype Thread_Id        is pthread_t;
 
@@ -251,26 +258,46 @@ package System.OS_Interface is
 
    PTHREAD_CREATE_DETACHED : constant := 2;
 
+   PTHREAD_SCOPE_PROCESS : constant := 2;
+   PTHREAD_SCOPE_SYSTEM  : constant := 1;
+
    -----------
    -- Stack --
    -----------
 
+   type stack_t is record
+      ss_sp    : System.Address;
+      ss_size  : size_t;
+      ss_flags : int;
+   end record;
+   pragma Convention (C, stack_t);
+
+   function sigaltstack
+     (ss  : not null access stack_t;
+      oss : access stack_t) return int;
+   pragma Import (C, sigaltstack, "sigaltstack");
+
+   Alternate_Stack : aliased System.Address;
+   --  This is a dummy definition, never used (Alternate_Stack_Size is null)
+
+   Alternate_Stack_Size : constant := 0;
+   --  No alternate signal stack is used on this platform
+
    Stack_Base_Available : constant Boolean := False;
-   --  Indicates wether the stack base is available on this target.
-   --  This allows us to share s-osinte.adb between all the FSU run time.
-   --  Note that this value can only be true if pthread_t has a complete
-   --  definition that corresponds exactly to the C header files.
+   --  Indicates whether the stack base is available on this target. This
+   --  allows us to share s-osinte.adb between all the FSU run time. Note that
+   --  this value can only be true if pthread_t has a complete definition that
+   --  corresponds exactly to the C header files.
 
    function Get_Stack_Base (thread : pthread_t) return System.Address;
    pragma Inline (Get_Stack_Base);
-   --  returns the stack base of the specified thread.
-   --  Only call this function when Stack_Base_Available is True.
+   --  returns the stack base of the specified thread. Only call this function
+   --  when Stack_Base_Available is True.
 
    function Get_Page_Size return size_t;
    function Get_Page_Size return System.Address;
    pragma Import (C, Get_Page_Size, "getpagesize");
-   --  returns the size of a page, or 0 if this is not relevant on this
-   --  target
+   --  Returns the size of a page, or 0 if this is not relevant on this target
 
    PROT_NONE  : constant := 0;
    PROT_READ  : constant := 1;
@@ -281,9 +308,10 @@ package System.OS_Interface is
    PROT_ON    : constant := PROT_NONE;
    PROT_OFF   : constant := PROT_ALL;
 
-   function mprotect (addr : System.Address;
-                      len : size_t;
-                      prot : int) return int;
+   function mprotect
+     (addr : System.Address;
+      len  : size_t;
+      prot : int) return int;
    pragma Import (C, mprotect);
 
    ---------------------------------------
@@ -302,12 +330,10 @@ package System.OS_Interface is
    function pthread_kill (thread : pthread_t; sig : Signal) return int;
    pragma Import (C, pthread_kill, "pthread_kill");
 
-   type sigset_t_ptr is access all sigset_t;
-
    function pthread_sigmask
      (how  : int;
-      set  : sigset_t_ptr;
-      oset : sigset_t_ptr) return int;
+      set  : access sigset_t;
+      oset : access sigset_t) return int;
    pragma Import (C, pthread_sigmask, "pthread_sigmask");
 
    --------------------------
@@ -471,6 +497,7 @@ package System.OS_Interface is
    pragma Import (C, pthread_getspecific, "pthread_getspecific");
 
    type destructor_pointer is access procedure (arg : System.Address);
+   pragma Convention (C, destructor_pointer);
 
    function pthread_key_create
      (key        : access pthread_key_t;
@@ -519,13 +546,6 @@ private
       pad       : Pad_Type;          --  RFU
    end record;
    pragma Convention (C, siginfo_t);
-
-   type stack_t is record
-      ss_sp    : System.Address;
-      ss_size  : int;
-      ss_flags : int;
-   end record;
-   pragma Convention (C, stack_t);
 
    type mcontext_t is new System.Address;
 

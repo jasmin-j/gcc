@@ -1,5 +1,5 @@
 /* Routines for GCC for ARM/pe.
-   Copyright (C) 1995, 1996, 2000, 2001, 2002, 2004
+   Copyright (C) 1995, 1996, 2000, 2001, 2002, 2004, 2005, 2007
    Free Software Foundation, Inc.
    Contributed by Doug Evans (dje@cygnus.com).
 
@@ -7,7 +7,7 @@
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -16,9 +16,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to
-   the Free Software Foundation, 59 Temple Place - Suite 330,
-   Boston, MA 02111-1307, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -40,8 +39,7 @@ extern int current_function_anonymous_args;
 tree current_class_type; /* FIXME */
 
 int
-arm_dllexport_p (decl)
-     tree decl;
+arm_dllexport_p (tree decl)
 {
   tree exp;
 
@@ -58,8 +56,7 @@ arm_dllexport_p (decl)
 /* Return nonzero if DECL is a dllimport'd object.  */
 
 int
-arm_dllimport_p (decl)
-     tree decl;
+arm_dllimport_p (tree decl)
 {
   tree imp;
 
@@ -80,8 +77,7 @@ arm_dllimport_p (decl)
 /* Return nonzero if SYMBOL is marked as being dllexport'd.  */
 
 int
-arm_dllexport_name_p (symbol)
-     const char * symbol;
+arm_dllexport_name_p (const char *symbol)
 {
   return symbol[0] == ARM_PE_FLAG_CHAR && symbol[1] == 'e' && symbol[2] == '.';
 }
@@ -89,8 +85,7 @@ arm_dllexport_name_p (symbol)
 /* Return nonzero if SYMBOL is marked as being dllimport'd.  */
 
 int
-arm_dllimport_name_p (symbol)
-     const char * symbol;
+arm_dllimport_name_p (const char *symbol)
 {
   return symbol[0] == ARM_PE_FLAG_CHAR && symbol[1] == 'i' && symbol[2] == '.';
 }
@@ -99,8 +94,7 @@ arm_dllimport_name_p (symbol)
    Note that we override the previous setting (e.g.: dllimport).  */
 
 void
-arm_mark_dllexport (decl)
-     tree decl;
+arm_mark_dllexport (tree decl)
 {
   const char * oldname;
   char * newname;
@@ -108,19 +102,17 @@ arm_mark_dllexport (decl)
   tree idp;
 
   rtlname = XEXP (DECL_RTL (decl), 0);
-  if (GET_CODE (rtlname) == SYMBOL_REF)
-    oldname = XSTR (rtlname, 0);
-  else if (GET_CODE (rtlname) == MEM
-	   && GET_CODE (XEXP (rtlname, 0)) == SYMBOL_REF)
-    oldname = XSTR (XEXP (rtlname, 0), 0);
-  else
-    abort ();
+  if (GET_CODE (rtlname) == MEM)
+    rtlname = XEXP (rtlname, 0);
+  gcc_assert (GET_CODE (rtlname) == SYMBOL_REF);
+  oldname = XSTR (rtlname, 0);
+  
   if (arm_dllimport_name_p (oldname))
     oldname += 9;
   else if (arm_dllexport_name_p (oldname))
     return; /* already done */
 
-  newname = alloca (strlen (oldname) + 4);
+  newname = XALLOCAVEC (char, strlen (oldname) + 4);
   sprintf (newname, "%ce.%s", ARM_PE_FLAG_CHAR, oldname);
 
   /* We pass newname through get_identifier to ensure it has a unique
@@ -137,8 +129,7 @@ arm_mark_dllexport (decl)
 /* Mark a DECL as being dllimport'd.  */
 
 void
-arm_mark_dllimport (decl)
-     tree decl;
+arm_mark_dllimport (tree decl)
 {
   const char * oldname;
   char * newname;
@@ -147,17 +138,13 @@ arm_mark_dllimport (decl)
 
   rtlname = XEXP (DECL_RTL (decl), 0);
   
-  if (GET_CODE (rtlname) == SYMBOL_REF)
-    oldname = XSTR (rtlname, 0);
-  else if (GET_CODE (rtlname) == MEM
-	   && GET_CODE (XEXP (rtlname, 0)) == SYMBOL_REF)
-    oldname = XSTR (XEXP (rtlname, 0), 0);
-  else
-    abort ();
+  if (GET_CODE (rtlname) == MEM)
+    rtlname = XEXP (rtlname, 0);
+  gcc_assert (GET_CODE (rtlname) == SYMBOL_REF);
+  oldname = XSTR (rtlname, 0);
   
-  if (arm_dllexport_name_p (oldname))
-    abort (); /* this shouldn't happen */
-  else if (arm_dllimport_name_p (oldname))
+  gcc_assert (!arm_dllexport_name_p (oldname));
+  if (arm_dllimport_name_p (oldname))
     return; /* already done */
 
   /* ??? One can well ask why we're making these checks here,
@@ -168,7 +155,7 @@ arm_mark_dllimport (decl)
       && !DECL_VIRTUAL_P (decl)
       && DECL_INITIAL (decl))
     {
-      error ("%Jinitialized variable '%D' is marked dllimport", decl, decl);
+      error ("initialized variable %q+D is marked dllimport", decl);
       return;
     }
   /* Nor can they be static.  */
@@ -177,7 +164,7 @@ arm_mark_dllimport (decl)
       && !DECL_VIRTUAL_P (decl)
       && 0 /*???*/)
     {
-      error ("%Jstatic variable '%D' is marked dllimport", decl, decl);
+      error ("static variable %q+D is marked dllimport", decl);
       return;
     }
 
@@ -191,7 +178,7 @@ arm_mark_dllimport (decl)
       TREE_PUBLIC (decl) = 1;
     }
 
-  newname = alloca (strlen (oldname) + 11);
+  newname = XALLOCAVEC (char, strlen (oldname) + 11);
   sprintf (newname, "%ci.__imp_%s", ARM_PE_FLAG_CHAR, oldname);
 
   /* We pass newname through get_identifier to ensure it has a unique
@@ -208,10 +195,7 @@ arm_mark_dllimport (decl)
 }
 
 void
-arm_pe_encode_section_info (decl, rtl, first)
-     tree decl;
-     rtx rtl;
-     int first ATTRIBUTE_UNUSED;
+arm_pe_encode_section_info (tree decl, rtx rtl, int first ATTRIBUTE_UNUSED)
 {
   /* This bit is copied from arm_encode_section_info.  */
   if (optimize > 0 && TREE_CONSTANT (decl))
@@ -246,9 +230,7 @@ arm_pe_encode_section_info (decl, rtl, first)
 }
 
 void
-arm_pe_unique_section (decl, reloc)
-     tree decl;
-     int reloc;
+arm_pe_unique_section (tree decl, int reloc)
 {
   int len;
   const char * name;
@@ -268,7 +250,7 @@ arm_pe_unique_section (decl, reloc)
   else
     prefix = ".data$";
   len = strlen (name) + strlen (prefix);
-  string = alloca (len + 1);
+  string = XALLOCAVEC (char, len + 1);
   sprintf (string, "%s%s", prefix, name);
 
   DECL_SECTION_NAME (decl) = build_string (len, string);

@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUNTIME LIBRARY (GNARL) COMPONENTS                --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                       S Y S T E M . B I T _ O P S                        --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---         Copyright (C) 1996-2005 Free Software Foundation, Inc.           --
+--         Copyright (C) 1996-2007, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,25 +32,25 @@
 ------------------------------------------------------------------------------
 
 with System;                 use System;
-with System.Pure_Exceptions; use System.Pure_Exceptions;
 with System.Unsigned_Types;  use System.Unsigned_Types;
 
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package body System.Bit_Ops is
 
    subtype Bits_Array is System.Unsigned_Types.Packed_Bytes1 (Positive);
-   --  Unconstrained array used to interprete the address values. We use the
+   --  Dummy array type used to interpret the address values. We use the
    --  unaligned version always, since this will handle both the aligned and
    --  unaligned cases, and we always do these operations by bytes anyway.
    --  Note: we use a ones origin array here so that the computations of the
    --  length in bytes work correctly (give a non-negative value) for the
-   --  case of zero length bit strings).
+   --  case of zero length bit strings). Note that we never allocate any
+   --  objects of this type (we can't because they would be absurdly big).
 
    type Bits is access Bits_Array;
    --  This is the actual type into which address values are converted
 
-   function To_Bits is new Unchecked_Conversion (Address, Bits);
+   function To_Bits is new Ada.Unchecked_Conversion (Address, Bits);
 
    LE : constant := Standard'Default_Bit_Order;
    --  Static constant set to 0 for big-endian, 1 for little-endian
@@ -211,7 +211,7 @@ package body System.Bit_Ops is
 
    procedure Raise_Error is
    begin
-      Raise_Exception (CE, "unequal lengths in logical operation");
+      raise Constraint_Error with "unequal lengths in logical operation";
    end Raise_Error;
 
 end System.Bit_Ops;

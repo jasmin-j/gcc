@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
---                   SYSTEM.TASK_PRIMITIVES.OPERATIONS.DEC                  --
+--                  SYSTEM.TASK_PRIMITIVES.OPERATIONS.DEC                   --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---           Copyright (C) 2000-2005 Free Software Foundation, Inc.         --
+--          Copyright (C) 2000-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -36,7 +36,7 @@
 with System.OS_Interface;
 with System.Parameters;
 with System.Tasking;
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 with System.Soft_Links;
 
 package body System.Task_Primitives.Operations.DEC is
@@ -69,19 +69,14 @@ package body System.Task_Primitives.Operations.DEC is
    -- Local Subprograms --
    -----------------------
 
-   pragma Warnings (Off);
-   --  Task_Id is 64 bits wide (but only 32 bits significant) on Integrity/VMS
-
    function To_Unsigned_Longword is new
-     Unchecked_Conversion (Task_Id, Unsigned_Longword);
+     Ada.Unchecked_Conversion (Task_Id, Unsigned_Longword);
 
    function To_Task_Id is new
-     Unchecked_Conversion (Unsigned_Longword, Task_Id);
-
-   pragma Warnings (On);
+     Ada.Unchecked_Conversion (Unsigned_Longword, Task_Id);
 
    function To_FAB_RAB is new
-     Unchecked_Conversion (Address, FAB_RAB_Access_Type);
+     Ada.Unchecked_Conversion (Address, FAB_RAB_Access_Type);
 
    ---------------------------
    -- Interrupt_AST_Handler --

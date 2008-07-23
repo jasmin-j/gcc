@@ -6,26 +6,26 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2002, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Stringt; use Stringt;
-with Uintp;   use Uintp;
+with Namet.Sp; use Namet.Sp;
+with Stringt;  use Stringt;
+with Uintp;    use Uintp;
 
 with GNAT.Spelling_Checker; use GNAT.Spelling_Checker;
 
@@ -87,7 +87,7 @@ package body Endh is
    --  child unit or a node with a Chars field identifying the actual label.
 
    End_Labl_Present : Boolean;
-   --  Indicates that the value in End_Labl was for an explicit label.
+   --  Indicates that the value in End_Labl was for an explicit label
 
    Syntax_OK : Boolean;
    --  Set True if the entry is syntactically correct
@@ -219,6 +219,10 @@ package body Endh is
             End_Type := E_Record;
             Scan; -- past RECORD
 
+         elsif Token = Tok_Return then
+            End_Type := E_Return;
+            Scan; -- past RETURN
+
          elsif Token = Tok_Select then
             End_Type := E_Select;
             Scan; -- past SELECT
@@ -298,7 +302,7 @@ package body Endh is
                   --  opening label, with the components all marked as not
                   --  from source, and Is_End_Label set in the identifier
                   --  or operator symbol. The location for all components
-                  --  is the curent token location.
+                  --  is the current token location.
 
                   --  Case of child unit name
 
@@ -708,25 +712,15 @@ package body Endh is
               and then Chars (End_Labl) > Error_Name
               and then Chars (Nam) > Error_Name
             then
-               Get_Name_String (Chars (End_Labl));
                Error_Msg_Name_1 := Chars (Nam);
 
                if Error_Msg_Name_1 > Error_Name then
-                  declare
-                     S : constant String (1 .. Name_Len) :=
-                           Name_Buffer (1 .. Name_Len);
-
-                  begin
-                     Get_Name_String (Error_Msg_Name_1);
-
-                     if Is_Bad_Spelling_Of
-                         (Name_Buffer (1 .. Name_Len), S)
-                     then
-                        Error_Msg_N ("misspelling of %", End_Labl);
-                        Syntax_OK := True;
-                        return;
-                     end if;
-                  end;
+                  if Is_Bad_Spelling_Of (Chars (Nam), Chars (End_Labl)) then
+                     Error_Msg_Name_1 := Chars (Nam);
+                     Error_Msg_N ("misspelling of %", End_Labl);
+                     Syntax_OK := True;
+                     return;
+                  end if;
                end if;
             end if;
          end;
@@ -759,12 +753,22 @@ package body Endh is
    --------------------------
 
    function Explicit_Start_Label (SS_Index : Nat) return Boolean is
-      L : constant Node_Id := Scope.Table (SS_Index).Labl;
+      L    : constant Node_Id := Scope.Table (SS_Index).Labl;
+      Etyp : constant SS_End_Type := Scope.Table (SS_Index).Etyp;
 
    begin
       if No (L) then
          return False;
-      elsif Comes_From_Source (L) then
+
+      --  In the following test we protect the call to Comes_From_Source
+      --  against lines containing previously reported syntax errors.
+
+      elsif (Etyp = E_Loop
+         or else Etyp = E_Name
+         or else Etyp = E_Suspicious_Is
+         or else Etyp = E_Bad_Is)
+         and then Comes_From_Source (L)
+      then
          return True;
       else
          return False;
@@ -789,6 +793,9 @@ package body Endh is
 
       elsif End_Type = E_Record then
          Error_Msg_SC ("no RECORD for this `END RECORD`!");
+
+      elsif End_Type = E_Return then
+         Error_Msg_SC ("no RETURN for this `END RETURN`!");
 
       elsif End_Type = E_Select then
          Error_Msg_SC ("no SELECT for this `END SELECT`!");
@@ -848,6 +855,10 @@ package body Endh is
       elsif End_Type = E_Record then
          Error_Msg_SC
            ("`END RECORD;` expected@ for RECORD#!");
+
+      elsif End_Type = E_Return then
+         Error_Msg_SC
+           ("`END RETURN;` expected@ for RETURN#!");
 
       elsif End_Type = E_Select then
          Error_Msg_SC
@@ -914,6 +925,10 @@ package body Endh is
          Error_Msg_SC
            ("missing `END RECORD;` for RECORD#!");
 
+      elsif End_Type = E_Return then
+         Error_Msg_SC
+           ("missing `END RETURN;` for RETURN#!");
+
       elsif End_Type = E_Select then
          Error_Msg_BC
            ("missing `END SELECT;` for SELECT#!");
@@ -960,7 +975,7 @@ package body Endh is
       else
          --  A special check. If we have END; followed by an end of file,
          --  WITH or SEPARATE, then if we are not at the outer level, then
-         --  we have a sytax error. Consider the example:
+         --  we have a syntax error. Consider the example:
 
          --   ...
          --      declare
@@ -1017,6 +1032,13 @@ package body Endh is
             if Style.RM_Column_Check then
                if End_Column /= Scope.Table (Scope.Last).Ecol
                  and then Current_Line_Start > Scope.Table (Scope.Last).Sloc
+
+               --  A special case, for END RECORD, we are also allowed to
+               --  line up with the TYPE keyword opening the declaration.
+
+                 and then (Scope.Table (Scope.Last).Etyp /= E_Record
+                            or else Get_Column_Number (End_Sloc) /=
+                                    Get_Column_Number (Type_Token_Location))
                then
                   Error_Msg_Col := Scope.Table (Scope.Last).Ecol;
                   Error_Msg
@@ -1106,7 +1128,7 @@ package body Endh is
 
          --  First we see how good the current END entry is with respect to
          --  what we expect. It is considered pretty good if the token is OK,
-         --  and either the label or the column matches. an END for RECORD is
+         --  and either the label or the column matches. An END for RECORD is
          --  always considered to be pretty good in the record case. This is
          --  because not only does a record disallow a nested structure, but
          --  also it is unlikely that such nesting could occur by accident.

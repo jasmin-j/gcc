@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                 GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS              --
+--                  GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                --
 --                                                                          --
 --                 A D A . D Y N A M I C _ P R I O R I T I E S              --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---          Copyright (C) 1992-2004, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -31,43 +31,23 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.Task_Identification;
---  used for Task_Id
---           Current_Task
---           Null_Task_Id
---           Is_Terminated
-
 with System.Task_Primitives.Operations;
---  used for Write_Lock
---           Unlock
---           Set_Priority
---           Wakeup
---           Self
-
 with System.Tasking;
---  used for Task_Id
-
-with Ada.Exceptions;
---  used for Raise_Exception
-
-with System.Tasking.Initialization;
---  used for Defer/Undefer_Abort
-
 with System.Parameters;
---  used for Single_Lock
+with System.Soft_Links;
 
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package body Ada.Dynamic_Priorities is
 
    package STPO renames System.Task_Primitives.Operations;
+   package SSL renames System.Soft_Links;
 
    use System.Parameters;
    use System.Tasking;
-   use Ada.Exceptions;
 
    function Convert_Ids is new
-     Unchecked_Conversion
+     Ada.Unchecked_Conversion
        (Task_Identification.Task_Id, System.Tasking.Task_Id);
 
    ------------------
@@ -85,13 +65,11 @@ package body Ada.Dynamic_Priorities is
 
    begin
       if Target = Convert_Ids (Ada.Task_Identification.Null_Task_Id) then
-         Raise_Exception (Program_Error'Identity,
-           Error_Message & "null task");
+         raise Program_Error with Error_Message & "null task";
       end if;
 
       if Task_Identification.Is_Terminated (T) then
-         Raise_Exception (Tasking_Error'Identity,
-           Error_Message & "null task");
+         raise Tasking_Error with Error_Message & "null task";
       end if;
 
       return Target.Common.Base_Priority;
@@ -108,22 +86,20 @@ package body Ada.Dynamic_Priorities is
       T        : Ada.Task_Identification.Task_Id :=
                    Ada.Task_Identification.Current_Task)
    is
-      Target  : constant Task_Id := Convert_Ids (T);
-      Self_ID : constant Task_Id := STPO.Self;
+      Target        : constant Task_Id := Convert_Ids (T);
       Error_Message : constant String := "Trying to set the priority of a ";
+      Yield_Needed  : Boolean;
 
    begin
       if Target = Convert_Ids (Ada.Task_Identification.Null_Task_Id) then
-         Raise_Exception (Program_Error'Identity,
-           Error_Message & "null task");
+         raise Program_Error with Error_Message & "null task";
       end if;
 
       if Task_Identification.Is_Terminated (T) then
-         Raise_Exception (Tasking_Error'Identity,
-           Error_Message & "terminated task");
+         raise Tasking_Error with Error_Message & "terminated task";
       end if;
 
-      Initialization.Defer_Abort (Self_ID);
+      SSL.Abort_Defer.all;
 
       if Single_Lock then
          STPO.Lock_RTS;
@@ -131,44 +107,56 @@ package body Ada.Dynamic_Priorities is
 
       STPO.Write_Lock (Target);
 
-      if Self_ID = Target then
-         Target.Common.Base_Priority := Priority;
-         STPO.Set_Priority (Target, Priority);
+      Target.Common.Base_Priority := Priority;
 
-         STPO.Unlock (Target);
+      if Target.Common.Call /= null
+        and then
+          Target.Common.Call.Acceptor_Prev_Priority /= Priority_Not_Boosted
+      then
+         --  Target is within a rendezvous, so ensure the correct priority
+         --  will be reset when finishing the rendezvous, and only change the
+         --  priority immediately if the new priority is greater than the
+         --  current (inherited) priority.
 
-         if Single_Lock then
-            STPO.Unlock_RTS;
+         Target.Common.Call.Acceptor_Prev_Priority := Priority;
+
+         if Priority >= Target.Common.Current_Priority then
+            Yield_Needed := True;
+            STPO.Set_Priority (Target, Priority);
+         else
+            Yield_Needed := False;
          end if;
 
-         --  Yield is needed to enforce FIFO task dispatching.
-
-         --  LL Set_Priority is made while holding the RTS lock so that it
-         --  is inheriting high priority until it release all the RTS locks.
-
-         --  If this is used in a system where Ceiling Locking is
-         --  not enforced we may end up getting two Yield effects.
-
-         STPO.Yield;
-
       else
-         Target.New_Base_Priority := Priority;
-         Target.Pending_Priority_Change := True;
-         Target.Pending_Action := True;
+         Yield_Needed := True;
+         STPO.Set_Priority (Target, Priority);
 
-         STPO.Wakeup (Target, Target.Common.State);
-
-         --  If the task is suspended, wake it up to perform the change.
-         --  check for ceiling violations ???
-
-         STPO.Unlock (Target);
-
-         if Single_Lock then
-            STPO.Unlock_RTS;
+         if Target.Common.State = Entry_Caller_Sleep then
+            Target.Pending_Priority_Change := True;
+            STPO.Wakeup (Target, Target.Common.State);
          end if;
       end if;
 
-      Initialization.Undefer_Abort (Self_ID);
+      STPO.Unlock (Target);
+
+      if Single_Lock then
+         STPO.Unlock_RTS;
+      end if;
+
+      if STPO.Self = Target and then Yield_Needed then
+
+         --  Yield is needed to enforce FIFO task dispatching
+
+         --  LL Set_Priority is made while holding the RTS lock so that it is
+         --  inheriting high priority until it release all the RTS locks.
+
+         --  If this is used in a system where Ceiling Locking is not enforced
+         --  we may end up getting two Yield effects.
+
+         STPO.Yield;
+      end if;
+
+      SSL.Abort_Undefer.all;
    end Set_Priority;
 
 end Ada.Dynamic_Priorities;

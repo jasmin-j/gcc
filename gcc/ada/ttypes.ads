@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -143,7 +142,7 @@ package Ttypes is
 
    Standard_Wide_Character_Size        : constant Pos := 16;
    Standard_Wide_Wide_Character_Size   : constant Pos := 32;
-   --  Standard wide character sizes.
+   --  Standard wide character sizes
 
    --  Note: there is no specific control over the representation of
    --  enumeration types. The convention used is that if an enumeration
@@ -161,11 +160,10 @@ package Ttypes is
    System_Address_Size : constant Pos := Get_Pointer_Size;
    --  System.Address'Size (also size of all thin pointers)
 
-   System_Max_Binary_Modulus_Power    : constant Pos :=
-                                          Standard_Long_Long_Integer_Size;
+   System_Max_Binary_Modulus_Power : constant Pos :=
+                                       Standard_Long_Long_Integer_Size;
 
-   System_Max_Nonbinary_Modulus_Power : constant Pos :=
-                                          Standard_Integer_Size - 1;
+   System_Max_Nonbinary_Modulus_Power : constant Pos := Standard_Integer_Size;
 
    System_Storage_Unit : constant Pos := Get_Bits_Per_Unit;
    System_Word_Size    : constant Pos := Get_Bits_Per_Word;

@@ -1,12 +1,12 @@
 /* Operating system specific defines to be used when targeting GCC for any
    Solaris 2 system.
-   Copyright 2002, 2003, 2004 Free Software Foundation, Inc.
+   Copyright 2002, 2003, 2004, 2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* We use stabs-in-elf for debugging, because that is what the native
    toolchain uses.  */
@@ -47,8 +46,8 @@ Boston, MA 02111-1307, USA.  */
 
 #undef CPP_SUBTARGET_SPEC
 #define CPP_SUBTARGET_SPEC "\
-%{pthreads:-D_REENTRANT -D_PTHREADS} \
-%{!pthreads:%{threads:-D_REENTRANT -D_SOLARIS_THREADS}} \
+%{pthreads|pthread:-D_REENTRANT -D_PTHREADS} \
+%{!pthreads:%{!pthread:%{threads:-D_REENTRANT -D_SOLARIS_THREADS}}} \
 %{compat-bsd:-iwithprefixbefore ucbinclude -I/usr/ucbinclude} \
 "
 
@@ -72,11 +71,6 @@ Boston, MA 02111-1307, USA.  */
 	    builtin_define ("_LARGEFILE64_SOURCE=1");	\
 	    builtin_define ("__EXTENSIONS__");		\
 	  }						\
-	if (flag_pic)					\
-	  {						\
-	    builtin_define ("__PIC__");			\
-	    builtin_define ("__pic__");			\
-	  }						\
 	TARGET_SUB_OS_CPP_BUILTINS();			\
     } while (0)
 
@@ -98,8 +92,8 @@ Boston, MA 02111-1307, USA.  */
   "%{compat-bsd:-lucb -lsocket -lnsl -lelf -laio} \
    %{!shared:\
      %{!symbolic:\
-       %{pthreads:-lpthread} \
-       %{!pthreads:%{threads:-lthread}} \
+       %{pthreads|pthread:-lpthread} \
+       %{!pthreads:%{!pthread:%{threads:-lthread}}} \
        %{p|pg:-ldl} -lc}}"
 
 #undef  ENDFILE_SPEC
@@ -146,7 +140,7 @@ Boston, MA 02111-1307, USA.  */
 #undef  LINK_SPEC
 #define LINK_SPEC \
   "%{h*} %{v:-V} \
-   %{b} %{Wl,*:%*} \
+   %{b} \
    %{static:-dn -Bstatic} \
    %{shared:-G -dy %{!mimpure-text:-z text}} \
    %{symbolic:-Bsymbolic -G -dy -z text} \

@@ -1,13 +1,13 @@
 /* Operating system specific defines to be used when targeting GCC for
    hosting on Windows32, using GNU tools and the Windows32 API Library.
-   Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004
+   Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2007
    Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,14 +16,18 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #undef TARGET_VERSION
-#define TARGET_VERSION fprintf (stderr, " (x86 MinGW)"); 
+#if TARGET_64BIT_DEFAULT
+#define TARGET_VERSION fprintf (stderr,"(x86_64 MinGW");
+#else
+#define TARGET_VERSION fprintf (stderr," (x86 MinGW)");
+#endif
 
-/* See i386/crtdll.h for an alternative definition.  */
+/* See i386/crtdll.h for an alternative definition. _INTEGRAL_MAX_BITS
+   is for compatibility with native compiler.  */
 #define EXTRA_OS_CPP_BUILTINS()					\
   do								\
     {								\
@@ -32,13 +36,25 @@ Boston, MA 02111-1307, USA.  */
       builtin_define ("_WIN32");				\
       builtin_define_std ("WIN32");				\
       builtin_define_std ("WINNT");				\
+      builtin_define_with_int_value ("_INTEGRAL_MAX_BITS",	\
+				     TYPE_PRECISION (intmax_type_node));\
+      if (TARGET_64BIT && DEFAULT_ABI == MS_ABI)			\
+	{							\
+	  builtin_define ("__MINGW64__");			\
+	  builtin_define_std ("WIN64");				\
+	  builtin_define_std ("_WIN64");			\
+	}							\
     }								\
   while (0)
 
 /* Override the standard choice of /usr/include as the default prefix
    to try when searching for header files.  */
 #undef STANDARD_INCLUDE_DIR
+#if TARGET_64BIT_DEFAULT
+#define STANDARD_INCLUDE_DIR "/mingw/include64"
+#else
 #define STANDARD_INCLUDE_DIR "/mingw/include"
+#endif
 #undef STANDARD_INCLUDE_COMPONENT
 #define STANDARD_INCLUDE_COMPONENT "MINGW"
 
@@ -67,11 +83,21 @@ Boston, MA 02111-1307, USA.  */
 
 #undef STARTFILE_SPEC
 #define STARTFILE_SPEC "%{shared|mdll:dllcrt2%O%s} \
-  %{!shared:%{!mdll:crt2%O%s}} %{pg:gcrt2%O%s}"
+  %{!shared:%{!mdll:crt2%O%s}} %{pg:gcrt2%O%s} \
+  crtbegin.o%s"
+
+#undef ENDFILE_SPEC
+#define ENDFILE_SPEC \
+  "%{ffast-math|funsafe-math-optimizations:crtfastmath.o%s} \
+  crtend.o%s"
 
 /* Override startfile prefix defaults.  */
 #ifndef STANDARD_STARTFILE_PREFIX_1
+#if TARGET_64BIT_DEFAULT
+#define STANDARD_STARTFILE_PREFIX_1 "/mingw/lib64/"
+#else
 #define STANDARD_STARTFILE_PREFIX_1 "/mingw/lib/"
+#endif
 #endif
 #ifndef STANDARD_STARTFILE_PREFIX_2
 #define STANDARD_STARTFILE_PREFIX_2 ""
@@ -108,3 +134,55 @@ do {						         \
 /* Define as short unsigned for compatibility with MS runtime.  */
 #undef WINT_TYPE
 #define WINT_TYPE "short unsigned int"
+
+/* mingw32 uses the  -mthreads option to enable thread support.  */
+#undef GOMP_SELF_SPECS
+#define GOMP_SELF_SPECS "%{fopenmp: -mthreads}"
+
+/* mingw32 atexit function is safe to use in shared libraries.  Use it
+   to register C++ static destructors.  */
+#define TARGET_CXX_USE_ATEXIT_FOR_CXA_ATEXIT hook_bool_void_true
+
+/* Contains a pointer to type target_ovr_attr defining the target specific
+   overrides of format attributes.  See c-format.h for structure
+   definition.  */
+#undef TARGET_OVERRIDES_FORMAT_ATTRIBUTES
+#define TARGET_OVERRIDES_FORMAT_ATTRIBUTES mingw_format_attribute_overrides
+
+/* Specify the count of elements in TARGET_OVERRIDES_ATTRIBUTE.  */
+#undef TARGET_OVERRIDES_FORMAT_ATTRIBUTES_COUNT
+#define TARGET_OVERRIDES_FORMAT_ATTRIBUTES_COUNT 3
+
+/* MS specific format attributes for ms_printf, ms_scanf, ms_strftime.  */
+#undef TARGET_FORMAT_TYPES
+#define TARGET_FORMAT_TYPES mingw_format_attributes
+
+#undef TARGET_N_FORMAT_TYPES
+#define TARGET_N_FORMAT_TYPES 3
+
+/* Let defaults.h definition of TARGET_USE_JCR_SECTION apply. */
+#undef TARGET_USE_JCR_SECTION
+
+#undef MINGW_ENABLE_EXECUTE_STACK
+#define MINGW_ENABLE_EXECUTE_STACK     \
+extern void __enable_execute_stack (void *);    \
+void         \
+__enable_execute_stack (void *addr)					\
+{									\
+  MEMORY_BASIC_INFORMATION b;						\
+  if (!VirtualQuery (addr, &b, sizeof(b)))				\
+    abort ();								\
+  VirtualProtect (b.BaseAddress, b.RegionSize, PAGE_EXECUTE_READWRITE,	\
+		  &b.Protect);						\
+}
+
+#undef ENABLE_EXECUTE_STACK
+#define ENABLE_EXECUTE_STACK MINGW_ENABLE_EXECUTE_STACK
+
+#ifdef IN_LIBGCC2
+#include <windows.h>
+#endif
+
+#if !TARGET_64BIT
+#define MD_UNWIND_SUPPORT "config/i386/w32-unwind.h"
+#endif

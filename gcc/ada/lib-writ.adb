@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -33,7 +32,6 @@ with Fname;    use Fname;
 with Fname.UF; use Fname.UF;
 with Lib.Util; use Lib.Util;
 with Lib.Xref; use Lib.Xref;
-with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Gnatvsn;  use Gnatvsn;
 with Opt;      use Opt;
@@ -45,11 +43,13 @@ with Rident;   use Rident;
 with Scn;      use Scn;
 with Sinfo;    use Sinfo;
 with Sinput;   use Sinput;
+with Snames;   use Snames;
 with Stringt;  use Stringt;
 with Tbuild;   use Tbuild;
 with Uname;    use Uname;
 
-with System.WCh_Con; use System.WCh_Con;
+with System.Case_Util; use System.Case_Util;
+with System.WCh_Con;   use System.WCh_Con;
 
 package body Lib.Writ is
 
@@ -69,24 +69,26 @@ package body Lib.Writ is
    begin
       Units.Increment_Last;
       Units.Table (Units.Last) :=
-        (Unit_File_Name  => File_Name (S),
-         Unit_Name       => No_Name,
-         Expected_Unit   => No_Name,
-         Source_Index    => S,
-         Cunit           => Empty,
-         Cunit_Entity    => Empty,
-         Dependency_Num  => 0,
-         Dynamic_Elab    => False,
-         Fatal_Error     => False,
-         Generate_Code   => False,
-         Has_RACW        => False,
-         Ident_String    => Empty,
-         Loading         => False,
-         Main_Priority   => -1,
-         Munit_Index     => 0,
-         Serial_Number   => 0,
-         Version         => 0,
-         Error_Location  => No_Location);
+        (Unit_File_Name   => File_Name (S),
+         Unit_Name        => No_Unit_Name,
+         Expected_Unit    => No_Unit_Name,
+         Source_Index     => S,
+         Cunit            => Empty,
+         Cunit_Entity     => Empty,
+         Dependency_Num   => 0,
+         Dynamic_Elab     => False,
+         Fatal_Error      => False,
+         Generate_Code    => False,
+         Has_RACW         => False,
+         Is_Compiler_Unit => False,
+         Ident_String     => Empty,
+         Loading          => False,
+         Main_Priority    => -1,
+         Munit_Index      => 0,
+         Serial_Number    => 0,
+         Version          => 0,
+         Error_Location   => No_Location,
+         OA_Setting       => 'O');
    end Add_Preprocessing_Dependency;
 
    ------------------------------
@@ -122,24 +124,26 @@ package body Lib.Writ is
 
       Units.Increment_Last;
       Units.Table (Units.Last) := (
-        Unit_File_Name  => System_Fname,
-        Unit_Name       => System_Uname,
-        Expected_Unit   => System_Uname,
-        Source_Index    => System_Source_File_Index,
-        Cunit           => Empty,
-        Cunit_Entity    => Empty,
-        Dependency_Num  => 0,
-        Dynamic_Elab    => False,
-        Fatal_Error     => False,
-        Generate_Code   => False,
-        Has_RACW        => False,
-        Ident_String    => Empty,
-        Loading         => False,
-        Main_Priority   => -1,
-        Munit_Index     => 0,
-        Serial_Number   => 0,
-        Version         => 0,
-        Error_Location  => No_Location);
+        Unit_File_Name   => System_Fname,
+        Unit_Name        => System_Uname,
+        Expected_Unit    => System_Uname,
+        Source_Index     => System_Source_File_Index,
+        Cunit            => Empty,
+        Cunit_Entity     => Empty,
+        Dependency_Num   => 0,
+        Dynamic_Elab     => False,
+        Fatal_Error      => False,
+        Generate_Code    => False,
+        Has_RACW         => False,
+        Is_Compiler_Unit => False,
+        Ident_String     => Empty,
+        Loading          => False,
+        Main_Priority    => -1,
+        Munit_Index      => 0,
+        Serial_Number    => 0,
+        Version          => 0,
+        Error_Location   => No_Location,
+        OA_Setting       => 'O');
 
       --  Parse system.ads so that the checksum is set right
       --  Style checks are not applied.
@@ -181,6 +185,9 @@ package body Lib.Writ is
       --  Array of flags to show which units have pragma Elaborate All set
 
       Elab_Des_Flags : array (Units.First .. Last_Unit) of Boolean;
+      --  Array of flags to show which units have Elaborate_Desirable set
+
+      Elab_All_Des_Flags : array (Units.First .. Last_Unit) of Boolean;
       --  Array of flags to show which units have Elaborate_All_Desirable set
 
       Sdep_Table : Unit_Ref_Table (1 .. Pos (Last_Unit - Units.First + 2));
@@ -228,25 +235,36 @@ package body Lib.Writ is
          Item := First (Context_Items (Cunit));
          while Present (Item) loop
 
-            --  Ada 2005 (AI-50217): limited with_clauses do not create
-            --  dependencies
+            --  Process with clause
 
-            if Nkind (Item) = N_With_Clause
-               and then not (Limited_Present (Item))
-            then
+            --  Ada 2005 (AI-50217): limited with_clauses do not create
+            --  dependencies, but must be recorded as components of the
+            --  partition, in case there is no regular with_clause for
+            --  the unit anywhere else.
+
+            if Nkind (Item) = N_With_Clause then
                Unum := Get_Cunit_Unit_Number (Library_Unit (Item));
                With_Flags (Unum) := True;
 
-               if Elaborate_Present (Item) then
-                  Elab_Flags (Unum) := True;
-               end if;
+               if not Limited_Present (Item) then
+                  if Elaborate_Present (Item) then
+                     Elab_Flags (Unum) := True;
+                  end if;
 
-               if Elaborate_All_Present (Item) then
-                  Elab_All_Flags (Unum) := True;
-               end if;
+                  if Elaborate_All_Present (Item) then
+                     Elab_All_Flags (Unum) := True;
+                  end if;
 
-               if Elaborate_All_Desirable (Cunit_Entity (Unum)) then
-                  Elab_Des_Flags (Unum) := True;
+                  if Elaborate_All_Desirable (Item) then
+                     Elab_All_Des_Flags (Unum) := True;
+                  end if;
+
+                  if Elaborate_Desirable (Item) then
+                     Elab_Des_Flags (Unum) := True;
+                  end if;
+
+               else
+                  Set_From_With_Type (Cunit_Entity (Unum));
                end if;
             end if;
 
@@ -344,6 +362,16 @@ package body Lib.Writ is
          Write_Info_Tab (49);
          Write_Info_Str (Version_Get (Unit_Num));
 
+         --  Add BD parameter if Elaborate_Body pragma desirable
+
+         if Ekind (Uent) = E_Package
+           and then Elaborate_Body_Desirable (Uent)
+         then
+            Write_Info_Str (" BD");
+         end if;
+
+         --  Add BN parameter if body needed for SAL
+
          if (Is_Subprogram (Uent)
               or else Ekind (Uent) = E_Package
               or else Is_Generic_Unit (Uent))
@@ -356,11 +384,8 @@ package body Lib.Writ is
             Write_Info_Str (" DE");
          end if;
 
-         --  We set the Elaborate_Body indication if either an explicit pragma
-         --  was present, or if this is an instantiation. RM 12.3(20) requires
-         --  that the body be immediately elaborated after the spec. We would
-         --  normally do that anyway, but the EB we generate here ensures that
-         --  this gets done even when we use the -p gnatbind switch.
+         --  Set the Elaborate_Body indication if either an explicit pragma
+         --  was present, or if this is an instantiation.
 
          if Has_Pragma_Elaborate_Body (Uent)
            or else (Ukind = N_Package_Declaration
@@ -371,8 +396,8 @@ package body Lib.Writ is
          end if;
 
          --  Now see if we should tell the binder that an elaboration entity
-         --  is present, which must be reset to true during elaboration. We
-         --  generate the indication if the following condition is met:
+         --  is present, which must be set to true during elaboration.
+         --  We generate the indication if the following condition is met:
 
          --  If this is a spec ...
 
@@ -407,12 +432,24 @@ package body Lib.Writ is
                              (Declaration_Node
                                (Body_Entity (Uent))))))
          then
-            Write_Info_Str (" EE");
+            if Convention (Uent) = Convention_CIL then
+
+               --  Special case for generic CIL packages which never have
+               --  elaboration code
+
+               Write_Info_Str (" NE");
+
+            else
+               Write_Info_Str (" EE");
+            end if;
          end if;
 
          if Has_No_Elaboration_Code (Unode) then
             Write_Info_Str (" NE");
          end if;
+
+         Write_Info_Str (" O");
+         Write_Info_Char (OA_Setting (Unit_Num));
 
          if Is_Preelaborated (Uent) then
             Write_Info_Str (" PR");
@@ -485,7 +522,7 @@ package body Lib.Writ is
             end case;
          end if;
 
-         if Initialize_Scalars then
+         if Initialize_Scalars or else Invalid_Value_Used then
             Write_Info_Str (" IS");
          end if;
 
@@ -494,10 +531,11 @@ package body Lib.Writ is
          --  Generate with lines, first those that are directly with'ed
 
          for J in With_Flags'Range loop
-            With_Flags (J) := False;
-            Elab_Flags (J) := False;
-            Elab_All_Flags (J) := False;
-            Elab_Des_Flags (J) := False;
+            With_Flags         (J) := False;
+            Elab_Flags         (J) := False;
+            Elab_All_Flags     (J) := False;
+            Elab_Des_Flags     (J) := False;
+            Elab_All_Des_Flags (J) := False;
          end loop;
 
          Collect_Withs (Unode);
@@ -600,7 +638,6 @@ package body Lib.Writ is
          Num_Withs  : Int := 0;
          Unum       : Unit_Number_Type;
          Cunit      : Node_Id;
-         Cunite     : Entity_Id;
          Uname      : Unit_Name_Type;
          Fname      : File_Name_Type;
          Pname      : constant Unit_Name_Type :=
@@ -608,11 +645,39 @@ package body Lib.Writ is
          Body_Fname : File_Name_Type;
          Body_Index : Nat;
 
+         procedure Write_With_File_Names
+           (Nam : in out File_Name_Type;
+            Idx : Nat);
+         --  Write source file name Nam and ALI file name for unit index Idx.
+         --  Possibly change Nam to lowercase (generating a new file name).
+
+         --------------------------
+         -- Write_With_File_Name --
+         --------------------------
+
+         procedure Write_With_File_Names
+           (Nam : in out File_Name_Type;
+            Idx : Nat)
+         is
+         begin
+            if not File_Names_Case_Sensitive then
+               Get_Name_String (Nam);
+               To_Lower (Name_Buffer (1 .. Name_Len));
+               Nam := Name_Find;
+            end if;
+
+            Write_Info_Name (Nam);
+            Write_Info_Tab (49);
+            Write_Info_Name (Lib_File_Name (Nam, Idx));
+         end Write_With_File_Names;
+
+      --  Start of processing for Write_With_Lines
+
       begin
          --  Loop to build the with table. A with on the main unit itself
          --  is ignored (AARM 10.2(14a)). Such a with-clause can occur if
          --  the main unit is a subprogram with no spec, and a subunit of
-         --  it unecessarily withs the parent.
+         --  it unnecessarily withs the parent.
 
          for J in Units.First + 1 .. Last_Unit loop
 
@@ -623,7 +688,7 @@ package body Lib.Writ is
             --  For preproc. data and def. files, there is no Unit_Name,
             --  check for that first.
 
-            if Unit_Name (J) /= No_Name
+            if Unit_Name (J) /= No_Unit_Name
               and then (With_Flags (J) or else Unit_Name (J) = Pname)
             then
                Num_Withs := Num_Withs + 1;
@@ -638,22 +703,35 @@ package body Lib.Writ is
          for J in 1 .. Num_Withs loop
             Unum   := With_Table (J);
             Cunit  := Units.Table (Unum).Cunit;
-            Cunite := Units.Table (Unum).Cunit_Entity;
             Uname  := Units.Table (Unum).Unit_Name;
             Fname  := Units.Table (Unum).Unit_File_Name;
 
-            Write_Info_Initiate ('W');
+            if Ekind (Cunit_Entity (Unum)) = E_Package
+              and then From_With_Type (Cunit_Entity (Unum))
+            then
+               Write_Info_Initiate ('Y');
+            else
+               Write_Info_Initiate ('W');
+            end if;
+
             Write_Info_Char (' ');
             Write_Info_Name (Uname);
 
             --  Now we need to figure out the names of the files that contain
             --  the with'ed unit. These will usually be the files for the body,
-            --  except in the case of a package that has no body.
+            --  except in the case of a package that has no body. Note that we
+            --  have a specific exemption here for predefined library generics
+            --  (see comments for Generic_May_Lack_ALI). We do not generate
+            --  dependency upon the ALI file for such units. Older compilers
+            --  used to not support generating code (and ALI) for generics, and
+            --  we want to avoid having different processing (namely, different
+            --  lists of files to be compiled) for different stages of the
+            --  bootstrap.
 
-            if (Nkind (Unit (Cunit)) not in N_Generic_Declaration
-                  and then
-                Nkind (Unit (Cunit)) not in N_Generic_Renaming_Declaration)
-              or else Generic_Separately_Compiled (Cunite)
+            if not ((Nkind (Unit (Cunit)) in N_Generic_Declaration
+                      or else
+                     Nkind (Unit (Cunit)) in N_Generic_Renaming_Declaration)
+                    and then Generic_May_Lack_ALI (Fname))
             then
                Write_Info_Tab (25);
 
@@ -684,27 +762,31 @@ package body Lib.Writ is
                  or else (Ada_Version = Ada_83
                            and then Full_Source_Name (Body_Fname) /= No_File)
                then
-                  Write_Info_Name (Body_Fname);
-                  Write_Info_Tab (49);
-                  Write_Info_Name
-                    (Lib_File_Name (Body_Fname, Body_Index));
+                  Write_With_File_Names (Body_Fname, Body_Index);
                else
-                  Write_Info_Name (Fname);
-                  Write_Info_Tab (49);
-                  Write_Info_Name
-                    (Lib_File_Name (Fname, Munit_Index (Unum)));
+                  Write_With_File_Names (Fname, Munit_Index (Unum));
                end if;
 
-               if Elab_Flags (Unum) then
-                  Write_Info_Str ("  E");
-               end if;
+               if Ekind (Cunit_Entity (Unum)) = E_Package
+                  and then From_With_Type (Cunit_Entity (Unum))
+               then
+                  null;
+               else
+                  if Elab_Flags (Unum) then
+                     Write_Info_Str ("  E");
+                  end if;
 
-               if Elab_All_Flags (Unum) then
-                  Write_Info_Str ("  EA");
-               end if;
+                  if Elab_All_Flags (Unum) then
+                     Write_Info_Str ("  EA");
+                  end if;
 
-               if Elab_Des_Flags (Unum) then
-                  Write_Info_Str ("  ED");
+                  if Elab_Des_Flags (Unum) then
+                     Write_Info_Str ("  ED");
+                  end if;
+
+                  if Elab_All_Des_Flags (Unum) then
+                     Write_Info_Str ("  AD");
+                  end if;
                end if;
             end if;
 
@@ -799,12 +881,10 @@ package body Lib.Writ is
 
       begin
          if Nkind (U) = N_Subprogram_Body
-           or else (Nkind (U) = N_Package_Body
-                      and then
-                        (Nkind (Original_Node (U)) = N_Function_Instantiation
-                           or else
-                         Nkind (Original_Node (U)) =
-                                                  N_Procedure_Instantiation))
+           or else
+             (Nkind (U) = N_Package_Body
+               and then
+                 Nkind (Original_Node (U)) in N_Subprogram_Instantiation)
          then
             --  If the unit is a subprogram instance, the entity for the
             --  subprogram is the alias of the visible entity, which is the
@@ -819,7 +899,7 @@ package body Lib.Writ is
 
             S := Specification (U);
 
-            if not Present (Parameter_Specifications (S)) then
+            if No (Parameter_Specifications (S)) then
                if Nkind (S) = N_Procedure_Specification then
                   Write_Info_Initiate ('M');
                   Write_Info_Str (" P");
@@ -830,7 +910,7 @@ package body Lib.Writ is
                      Nam : Node_Id := Defining_Unit_Name (S);
 
                   begin
-                     --  If it is a child unit, get its simple name.
+                     --  If it is a child unit, get its simple name
 
                      if Nkind (Nam) = N_Defining_Program_Unit_Name then
                         Nam := Defining_Identifier (Nam);
@@ -847,7 +927,7 @@ package body Lib.Writ is
          end if;
       end Output_Main_Program_Line;
 
-      --  Write command argmument ('A') lines
+      --  Write command argument ('A') lines
 
       for A in 1 .. Compilation_Switches.Last loop
          Write_Info_Initiate ('A');
@@ -922,11 +1002,7 @@ package body Lib.Writ is
          Write_Info_Str (" UA");
       end if;
 
-      if Exception_Mechanism /= Front_End_Setjmp_Longjmp_Exceptions then
-         if Unit_Exception_Table_Present then
-            Write_Info_Str (" UX");
-         end if;
-
+      if Exception_Mechanism = Back_End_Exceptions then
          Write_Info_Str (" ZX");
       end if;
 
@@ -1023,6 +1099,23 @@ package body Lib.Writ is
          Write_Info_EOL;
       end loop;
 
+      --  Output priority specific dispatching lines
+
+      for J in Specific_Dispatching.First .. Specific_Dispatching.Last loop
+         Write_Info_Initiate ('S');
+         Write_Info_Char (' ');
+         Write_Info_Char (Specific_Dispatching.Table (J).Dispatching_Policy);
+         Write_Info_Char (' ');
+         Write_Info_Nat (Specific_Dispatching.Table (J).First_Priority);
+         Write_Info_Char (' ');
+         Write_Info_Nat (Specific_Dispatching.Table (J).Last_Priority);
+         Write_Info_Char (' ');
+         Write_Info_Nat
+           (Nat (Get_Logical_Line_Number
+                   (Specific_Dispatching.Table (J).Pragma_Loc)));
+         Write_Info_EOL;
+      end loop;
+
       --  Loop through file table to output information for all units for which
       --  we have generated code, as marked by the Generate_Code flag.
 
@@ -1059,6 +1152,8 @@ package body Lib.Writ is
          Sind : Source_File_Index;
          --  Index of corresponding source file
 
+         Fname : File_Name_Type;
+
       begin
          for J in 1 .. Num_Sdep loop
             Unum := Sdep_Table (J);
@@ -1071,7 +1166,18 @@ package body Lib.Writ is
             --  Normal case of a unit entry with a source index
 
             if Sind /= No_Source_File then
-               Write_Info_Name (File_Name (Sind));
+               Fname := File_Name (Sind);
+
+               --  Ensure that on platforms where the file names are not
+               --  case sensitive, the recorded file name is in lower case.
+
+               if not File_Names_Case_Sensitive then
+                  Get_Name_String (Fname);
+                  To_Lower (Name_Buffer (1 .. Name_Len));
+                  Fname := Name_Find;
+               end if;
+
+               Write_Info_Name (Fname);
                Write_Info_Tab (25);
                Write_Info_Str (String (Time_Stamp (Sind)));
                Write_Info_Char (' ');

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -32,13 +32,18 @@
 ------------------------------------------------------------------------------
 
 with Hostparm;
+
 procedure Krunch
-  (Buffer    : in out String;
-   Len       : in out Natural;
-   Maxlen    : Natural;
-   No_Predef : Boolean)
+  (Buffer        : in out String;
+   Len           : in out Natural;
+   Maxlen        : Natural;
+   No_Predef     : Boolean;
+   VMS_On_Target : Boolean := False)
 
 is
+   pragma Assert (Buffer'First = 1);
+   --  This is a documented requirement; the assert turns off index warnings
+
    B1       : Character renames Buffer (1);
    Curlen   : Natural;
    Krlen    : Natural;
@@ -118,20 +123,35 @@ begin
    --  is A, G, I, or S. In order to prevent confusion with krunched names
    --  of predefined units use a tilde rather than a minus as the second
    --  character of the file name.  On VMS a tilde is an illegal character
-   --  in a file name, so a dollar_sign is used instead.
+   --  in a file name, two consecutive underlines ("__") are used instead.
 
    elsif Len > 1
      and then Buffer (2) = '-'
      and then (B1 = 'a' or else B1 = 'g' or else B1 = 'i' or else B1 = 's')
      and then Len <= Maxlen
    then
-      if Hostparm.OpenVMS then
-         Buffer (2) := '$';
+      --  When VMS is the host, it is always also the target
+
+      if Hostparm.OpenVMS or else VMS_On_Target then
+         Len := Len + 1;
+         Buffer (4 .. Len) := Buffer (3 .. Len - 1);
+         Buffer (2) := '_';
+         Buffer (3) := '_';
       else
          Buffer (2) := '~';
       end if;
 
-      return;
+      if Len <= Maxlen then
+         return;
+
+      else
+         --  Case of VMS when the buffer had exactly the length Maxlen and now
+         --  has the length Maxlen + 1: krunching after "__" is needed.
+
+         Startloc := 4;
+         Curlen   := Len;
+         Krlen    := Maxlen;
+      end if;
 
    --  Normal case, not a predefined file
 

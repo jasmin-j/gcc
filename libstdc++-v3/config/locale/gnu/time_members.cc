@@ -1,6 +1,7 @@
 // std::time_get, std::time_put implementation, GNU version -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2003, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +16,7 @@
 
 // You should have received a copy of the GNU General Public License along
 // with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
 // As a special exception, you may use this file as part of a free software
@@ -37,8 +38,8 @@
 #include <locale>
 #include <bits/c++locale_internal.h>
 
-namespace std
-{
+_GLIBCXX_BEGIN_NAMESPACE(std)
+
   template<>
     void
     __timepunct<char>::
@@ -49,11 +50,14 @@ namespace std
       const size_t __len = __strftime_l(__s, __maxlen, __format, __tm,
 					_M_c_locale_timepunct);
 #else
-      char* __old = strdup(setlocale(LC_ALL, NULL));
+      char* __old = setlocale(LC_ALL, NULL);
+      const size_t __llen = strlen(__old) + 1;  
+      char* __sav = new char[__llen];
+      memcpy(__sav, __old, __llen);
       setlocale(LC_ALL, _M_name_timepunct);
       const size_t __len = strftime(__s, __maxlen, __format, __tm);
-      setlocale(LC_ALL, __old);
-      free(__old);
+      setlocale(LC_ALL, __sav);
+      delete [] __sav;
 #endif
       // Make sure __s is null terminated.
       if (__len == 0)
@@ -202,11 +206,14 @@ namespace std
       const size_t __len = __wcsftime_l(__s, __maxlen, __format, __tm,
 					_M_c_locale_timepunct);
 #else
-      char* __old = strdup(setlocale(LC_ALL, NULL));
+      char* __old = setlocale(LC_ALL, NULL);
+      const size_t __llen = strlen(__old) + 1;
+      char* __sav = new char[__llen];
+      memcpy(__sav, __old, __llen);
       setlocale(LC_ALL, _M_name_timepunct);
       const size_t __len = wcsftime(__s, __maxlen, __format, __tm);
-      setlocale(LC_ALL, __old);
-      free(__old);
+      setlocale(LC_ALL, __sav);
+      delete [] __sav;
 #endif
       // Make sure __s is null terminated.
       if (__len == 0)
@@ -392,4 +399,5 @@ namespace std
 	}
     }
 #endif
-}
+
+_GLIBCXX_END_NAMESPACE

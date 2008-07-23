@@ -17,8 +17,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -33,7 +33,7 @@
 ------------------------------------------------------------------------------
 
 --  This unit defines the packed decimal format used by GNAT in response to
---  a specication of Machine_Radix 10 for a decimal fixed-point type. The
+--  a specification of Machine_Radix 10 for a decimal fixed-point type. The
 --  format and operations are completely encapsulated in this unit, so all
 --  that is necessary to compile using different packed decimal formats is
 --  to replace this single unit.

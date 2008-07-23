@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -52,20 +52,35 @@ package body Widechar is
    is
    begin
       case Wide_Character_Encoding_Method is
+
+         --  For Hex mode, just test for an ESC character. The ESC character
+         --  cannot appear in any other context in a legal Ada program.
+
          when WCEM_Hex =>
             return S (P) = ASCII.ESC;
+
+         --  For brackets, just test ["x where x is a hex character. This is
+         --  sufficient test, since this sequence cannot otherwise appear in a
+         --  legal Ada program.
+
+         when WCEM_Brackets =>
+            return P <= S'Last - 2
+              and then S (P) = '['
+              and then S (P + 1) = '"'
+              and then (S (P + 2) in '0' .. '9'
+                            or else
+                           S (P + 2) in 'a' .. 'f'
+                            or else
+                        S (P + 2) in 'A' .. 'F');
+
+         --  All other encoding methods use the upper bit set in the first
+         --  character to uniquely represent a wide character.
 
          when WCEM_Upper     |
               WCEM_Shift_JIS |
               WCEM_EUC       |
               WCEM_UTF8      =>
             return S (P) >= Character'Val (16#80#);
-
-         when WCEM_Brackets =>
-            return P <= S'Last - 2
-              and then S (P) = '['
-              and then S (P + 1) = '"'
-              and then S (P + 2) /= '"';
       end case;
    end Is_Start_Of_Wide_Char;
 
@@ -88,6 +103,9 @@ package body Widechar is
       C   : out Char_Code;
       Err : out Boolean)
    is
+      P_Init : constant Source_Ptr := P;
+      Chr    : Character;
+
       function In_Char return Character;
       --  Function to obtain characters of wide character escape sequence
 
@@ -103,11 +121,23 @@ package body Widechar is
 
       function WC_In is new Char_Sequence_To_UTF_32 (In_Char);
 
-   --  Start of processingf for Scan_Wide
+   --  Start of processing for Scan_Wide
 
    begin
-      C := Char_Code (WC_In (In_Char, Wide_Character_Encoding_Method));
+      Chr := In_Char;
+
+      --  Scan out the wide character. If the first character is a bracket,
+      --  we allow brackets encoding regardless of the standard encoding
+      --  method being used, but otherwise we use this standard method.
+
+      if Chr = '[' then
+         C := Char_Code (WC_In (Chr, WCEM_Brackets));
+      else
+         C := Char_Code (WC_In (Chr, Wide_Character_Encoding_Method));
+      end if;
+
       Err := False;
+      Wide_Char_Byte_Count := Wide_Char_Byte_Count + Nat (P - P_Init - 1);
 
    exception
       when Constraint_Error =>
@@ -151,6 +181,8 @@ package body Widechar is
    ---------------
 
    procedure Skip_Wide (S : String; P : in out Natural) is
+      P_Init : constant Natural := P;
+
       function Skip_Char return Character;
       --  Function to skip one character of wide character escape sequence
 
@@ -173,6 +205,7 @@ package body Widechar is
 
    begin
       Discard := WC_Skip (Skip_Char, Wide_Character_Encoding_Method);
+      Wide_Char_Byte_Count := Wide_Char_Byte_Count + Nat (P - P_Init - 1);
    end Skip_Wide;
 
    ---------------
@@ -180,6 +213,8 @@ package body Widechar is
    ---------------
 
    procedure Skip_Wide (S : Source_Buffer_Ptr; P : in out Source_Ptr) is
+      P_Init : constant Source_Ptr := P;
+
       function Skip_Char return Character;
       --  Function to skip one character of wide character escape sequence
 
@@ -202,6 +237,7 @@ package body Widechar is
 
    begin
       Discard := WC_Skip (Skip_Char, Wide_Character_Encoding_Method);
+      Wide_Char_Byte_Count := Wide_Char_Byte_Count + Nat (P - P_Init - 1);
    end Skip_Wide;
 
 end Widechar;

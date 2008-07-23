@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -20,8 +20,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -39,7 +39,7 @@ with Ada.Strings.Maps;
 with Ada.Strings.Superbounded;
 
 package Ada.Strings.Bounded is
-pragma Preelaborate (Bounded);
+   pragma Preelaborate;
 
    generic
       Max : Positive;
@@ -50,6 +50,7 @@ pragma Preelaborate (Bounded);
       Max_Length : constant Positive := Max;
 
       type Bounded_String is private;
+      pragma Preelaborable_Initialization (Bounded_String);
 
       Null_Bounded_String : constant Bounded_String;
 
@@ -455,7 +456,7 @@ pragma Preelaborate (Bounded);
       --  is at least one Bounded_String argument from which the maximum
       --  length can be obtained. For all such routines, the implementation
       --  in this private part is simply a renaming of the corresponding
-      --  routine in the super bouded package.
+      --  routine in the superbounded package.
 
       --  The five exceptions are the * and Replicate routines operating on
       --  character values. For these cases, we have a routine in the body
@@ -467,6 +468,12 @@ pragma Preelaborate (Bounded);
       --  real trick, it ensures that the type Bounded_String declared in
       --  the generic instantiation is compatible with the Super_String
       --  type declared in the Superbounded package.
+
+      function From_String (Source : String) return Bounded_String;
+      --  Private routine used only by Stream_Convert
+
+      pragma Stream_Convert (Bounded_String, From_String, To_String);
+      --  Provide stream routines without dragging in Ada.Streams
 
       Null_Bounded_String : constant Bounded_String :=
                               (Max_Length     => Max_Length,

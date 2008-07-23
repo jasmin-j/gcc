@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --     S Y S T E M . T A S K I N G . R E S T R I C T E D . S T A G E S      --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---          Copyright (C) 1992-2004, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -46,10 +46,7 @@
 --  System.Protected_Objects.Single_Entry
 
 with System.Task_Info;
---  used for Task_Info_Type
-
 with System.Parameters;
---  used for Size_Type
 
 package System.Tasking.Restricted.Stages is
    pragma Elaborate_Body;
@@ -144,10 +141,10 @@ package System.Tasking.Restricted.Stages is
    --  Priority is the task's priority (assumed to be in the
    --  System.Any_Priority'Range)
    --
-   --  Stack_Address is the start address of the stack associated to the
-   --  task, in case it has been preallocated by the compiler; it is equal
-   --  to Null_Address when the stack needs to be allocated by the
-   --  underlying operating system.
+   --  Stack_Address is the start address of the stack associated to the task,
+   --  in case it has been preallocated by the compiler; it is equal to
+   --  Null_Address when the stack needs to be allocated by the underlying
+   --  operating system.
    --
    --  Size is the stack size of the task to create
    --
@@ -156,21 +153,19 @@ package System.Tasking.Restricted.Stages is
    --
    --  State is the compiler generated task's procedure body
    --
-   --  Discriminants is a pointer to a limited record whose discriminants
-   --  are those of the task to create. This parameter should be passed as
-   --  the single argument to State.
+   --  Discriminants is a pointer to a limited record whose discriminants are
+   --  those of the task to create. This parameter should be passed as the
+   --  single argument to State.
    --
    --  Elaborated is a pointer to a Boolean that must be set to true on exit
-   --  if the task could be sucessfully elaborated.
+   --  if the task could be successfully elaborated.
    --
    --  Chain is a linked list of task that needs to be created. On exit,
-   --  Created_Task.Activation_Link will be Chain.T_ID, and Chain.T_ID
-   --  will be Created_Task (e.g the created task will be linked at the front
-   --  of Chain).
+   --  Created_Task.Activation_Link will be Chain.T_ID, and Chain.T_ID will be
+   --  Created_Task (the created task will be linked at the front of Chain).
    --
-   --  Task_Image is a string created by the compiler that the
-   --  run time can store to ease the debugging and the
-   --  Ada.Task_Identification facility.
+   --  Task_Image is a string created by the compiler that the run time can
+   --  store to ease the debugging and the Ada.Task_Identification facility.
    --
    --  Created_Task is the resulting task.
    --
@@ -188,29 +183,28 @@ package System.Tasking.Restricted.Stages is
    --  version of this procedure had code to reverse the chain, so as to
    --  activate the tasks in the order of declaration. This might be nice, but
    --  it is not needed if priority-based scheduling is supported, since all
-   --  the activated tasks synchronize on the activators lock before they
-   --  start activating and so they should start activating in priority order.
+   --  the activated tasks synchronize on the activators lock before they start
+   --  activating and so they should start activating in priority order.
 
    procedure Complete_Restricted_Activation;
-   --  Compiler interface only. Do not call from within the RTS.
-   --  This should be called from the task body at the end of
-   --  the elaboration code for its declarative part.
-   --  Decrement the count of tasks to be activated by the activator and
-   --  wake it up so it can check to see if all tasks have been activated.
-   --  Except for the environment task, which should never call this procedure,
-   --  T.Activator should only be null iff T has completed activation.
+   --  Compiler interface only. Do not call from within the RTS. This should be
+   --  called from the task body at the end of the elaboration code for its
+   --  declarative part. Decrement the count of tasks to be activated by the
+   --  activator and wake it up so it can check to see if all tasks have been
+   --  activated. Except for the environment task, which should never call this
+   --  procedure, T.Activator should only be null iff T has completed
+   --  activation.
 
    procedure Complete_Restricted_Task;
-   --  Compiler interface only. Do not call from within the RTS.
-   --  This should be called from an implicit at-end handler
-   --  associated with the task body, when it completes.
-   --  From this point, the current task will become not callable.
-   --  If the current task have not completed activation, this should be done
-   --  now in order to wake up the activator (the environment task).
+   --  Compiler interface only. Do not call from within the RTS. This should be
+   --  called from an implicit at-end handler associated with the task body,
+   --  when it completes. From this point, the current task will become not
+   --  callable. If the current task have not completed activation, this should
+   --  be done now in order to wake up the activator (the environment task).
 
    function Restricted_Terminated (T : Task_Id) return Boolean;
-   --  Compiler interface only. Do not call from within the RTS.
-   --  This is called by the compiler to implement the 'Terminated attribute.
+   --  Compiler interface only. Do not call from within the RTS. This is called
+   --  by the compiler to implement the 'Terminated attribute.
    --
    --  source code:
    --     T1'Terminated

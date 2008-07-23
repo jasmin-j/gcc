@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                     S Y S T E M . I N T E R R U P T S                    --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---              Copyright (C) 1998-2005 Free Software Fundation             --
+--          Copyright (C) 1998-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -16,8 +16,8 @@
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
 -- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
+-- Boston, MA 02110-1301, USA.                                              --
 --                                                                          --
 -- As a special exception,  if other files  instantiate  generics from this --
 -- unit, or you link  this unit with other files  to produce an executable, --
@@ -34,50 +34,22 @@
 --  This is the IRIX & NT version of this package
 
 with Ada.Task_Identification;
---  used for Task_Id
-
-with Ada.Exceptions;
---  used for Raise_Exception
-
-with System.OS_Interface;
---  used for intr_attach
-
-with System.Storage_Elements;
---  used for To_Address
---           To_Integer
-
-with System.Task_Primitives.Operations;
---  used for Self
---           Sleep
---           Wakeup
---           Write_Lock
---           Unlock
-
-with System.Tasking.Utilities;
---  used for Make_Independent
-
-with System.Tasking.Rendezvous;
---  used for Call_Simple
-
-with System.Tasking.Initialization;
---  used for Defer_Abort
---           Undefer_Abort
-
-with System.Interrupt_Management;
-
-with System.Parameters;
---  used for Single_Lock
+with Ada.Unchecked_Conversion;
 
 with Interfaces.C;
---  used for int
 
-with Unchecked_Conversion;
+with System.Storage_Elements;
+with System.Task_Primitives.Operations;
+with System.Tasking.Utilities;
+with System.Tasking.Rendezvous;
+with System.Tasking.Initialization;
+with System.Interrupt_Management;
+with System.Parameters;
 
 package body System.Interrupts is
 
    use Parameters;
    use Tasking;
-   use Ada.Exceptions;
    use System.OS_Interface;
    use Interfaces.C;
 
@@ -86,7 +58,7 @@ package body System.Interrupts is
 
    subtype int is Interfaces.C.int;
 
-   function To_System is new Unchecked_Conversion
+   function To_System is new Ada.Unchecked_Conversion
      (Ada.Task_Identification.Task_Id, Task_Id);
 
    type Handler_Kind is (Unknown, Task_Entry, Protected_Procedure);
@@ -120,6 +92,7 @@ package body System.Interrupts is
    --  that contain interrupt handlers.
 
    procedure Signal_Handler (Sig : Interrupt_ID);
+   pragma Convention (C, Signal_Handler);
    --  This procedure is used to handle all the signals
 
    --  Type and Head, Tail of the list containing Registered Interrupt
@@ -145,8 +118,9 @@ package body System.Interrupts is
    --  Always consider a null handler as registered.
 
    type Handler_Ptr is access procedure (Sig : Interrupt_ID);
+   pragma Convention (C, Handler_Ptr);
 
-   function TISR is new Unchecked_Conversion (Handler_Ptr, isr_address);
+   function TISR is new Ada.Unchecked_Conversion (Handler_Ptr, isr_address);
 
    --------------------
    -- Signal_Handler --
@@ -184,8 +158,8 @@ package body System.Interrupts is
    function Is_Entry_Attached (Interrupt : Interrupt_ID) return Boolean is
    begin
       if Is_Reserved (Interrupt) then
-         Raise_Exception (Program_Error'Identity, "Interrupt" &
-           Interrupt_ID'Image (Interrupt) & " is reserved");
+         raise Program_Error with
+           "Interrupt" & Interrupt_ID'Image (Interrupt) & " is reserved";
       end if;
 
       return Descriptors (Interrupt).T /= Null_Task;
@@ -198,11 +172,11 @@ package body System.Interrupts is
    function Is_Handler_Attached (Interrupt : Interrupt_ID) return Boolean is
    begin
       if Is_Reserved (Interrupt) then
-         Raise_Exception (Program_Error'Identity, "Interrupt" &
-           Interrupt_ID'Image (Interrupt) & " is reserved");
+         raise Program_Error with
+           "Interrupt" & Interrupt_ID'Image (Interrupt) & " is reserved";
+      else
+         return Descriptors (Interrupt).Kind /= Unknown;
       end if;
-
-      return Descriptors (Interrupt).Kind /= Unknown;
    end Is_Handler_Attached;
 
    ----------------
@@ -316,6 +290,17 @@ package body System.Interrupts is
       end loop;
    end Install_Handlers;
 
+   ---------------------------------
+   -- Install_Restricted_Handlers --
+   ---------------------------------
+
+   procedure Install_Restricted_Handlers (Handlers : New_Handler_Array) is
+   begin
+      for N in Handlers'Range loop
+         Attach_Handler (Handlers (N).Handler, Handlers (N).Interrupt, True);
+      end loop;
+   end Install_Restricted_Handlers;
+
    ---------------------
    -- Current_Handler --
    ---------------------
@@ -371,9 +356,9 @@ package body System.Interrupts is
 
              or else not Is_Registered (New_Handler))
       then
-         Raise_Exception (Program_Error'Identity,
+         raise Program_Error with
            "Trying to overwrite a static Interrupt Handler with a " &
-           "dynamic Handler");
+           "dynamic Handler";
       end if;
 
       if Handlers (Interrupt) = null then
@@ -421,12 +406,12 @@ package body System.Interrupts is
          --  In case we have an Interrupt Entry already installed.
          --  raise a program error. (propagate it to the caller).
 
-         Raise_Exception (Program_Error'Identity,
-           "An interrupt is already installed");
-      end if;
+         raise Program_Error with "An interrupt is already installed";
 
-      Old_Handler := Current_Handler (Interrupt);
-      Attach_Handler (New_Handler, Interrupt, Static);
+      else
+         Old_Handler := Current_Handler (Interrupt);
+         Attach_Handler (New_Handler, Interrupt, Static);
+      end if;
    end Exchange_Handler;
 
    --------------------
@@ -443,13 +428,12 @@ package body System.Interrupts is
       end if;
 
       if Descriptors (Interrupt).Kind = Task_Entry then
-         Raise_Exception (Program_Error'Identity,
-           "Trying to detach an Interrupt Entry");
+         raise Program_Error with "Trying to detach an Interrupt Entry";
       end if;
 
       if not Static and then Descriptors (Interrupt).Static then
-         Raise_Exception (Program_Error'Identity,
-           "Trying to detach a static Interrupt Handler");
+         raise Program_Error with
+           "Trying to detach a static Interrupt Handler";
       end if;
 
       Descriptors (Interrupt) :=
@@ -505,7 +489,7 @@ package body System.Interrupts is
          Handler_Addr : System.Address;
       end record;
 
-      function To_Fat_Ptr is new Unchecked_Conversion
+      function To_Fat_Ptr is new Ada.Unchecked_Conversion
         (Parameterless_Handler, Fat_Ptr);
 
       Fat : Fat_Ptr;
@@ -549,8 +533,8 @@ package body System.Interrupts is
       end if;
 
       if Descriptors (Interrupt).Kind /= Unknown then
-         Raise_Exception (Program_Error'Identity,
-           "A binding for this interrupt is already present");
+         raise Program_Error with
+           "A binding for this interrupt is already present";
       end if;
 
       if Handlers (Interrupt) = null then

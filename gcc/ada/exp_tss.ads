@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -26,6 +25,7 @@
 
 --  Type Support Subprogram (TSS) handling
 
+with Namet; use Namet;
 with Types; use Types;
 
 package Exp_Tss is
@@ -50,9 +50,9 @@ package Exp_Tss is
    -------------------------
 
    --  In the current version of this package, only the case of generating a
-   --  TSS at the point of declaration of the type is accomodated. A clear
+   --  TSS at the point of declaration of the type is accommodated. A clear
    --  improvement would be to follow through with the full implementation
-   --  as described above, and also accomodate the requirement of generating
+   --  as described above, and also accommodate the requirement of generating
    --  only one copy in a given object file.
 
    --  For now, we deal with the local case by generating duplicate versions
@@ -64,9 +64,13 @@ package Exp_Tss is
    -- TSS Naming --
    ----------------
 
-   --  A TSS is identified by its Chars name. The name has the form typXY,
-   --  where typ is the type name, and XY are two characters that identify
-   --  the particular TSS routine, using the following codes:
+   --  A TSS is identified by its Chars name. The name has the form typXY or
+   --  typ_<serial>XY, where typ is the type name, and XY are two characters
+   --  that identify the particular TSS routine. A unique serial number is
+   --  included for the case where several local instances of the same TSS
+   --  must be generated (see discussion under Make_TSS_Name_Local).
+
+   --  The following codes are used to denote TSSs:
 
    --  Note: When making additions to this list, update the list in snames.adb
 
@@ -126,10 +130,11 @@ package Exp_Tss is
    function Make_TSS_Name_Local
      (Typ : Entity_Id;
       Nam : TSS_Name_Type) return Name_Id;
-   --  Similar to the above call, but a string of the form _nnn is appended
-   --  to the name, where nnn is a unique serial number. This is used when
-   --  multiple instances of the same TSS routine may be generated in the
-   --  same scope (see also discussion above of current limitations).
+   --  Similar to the above call, but a string of the form _nnn is inserted
+   --  before the TSS code suffix, where nnn is a unique serial number. This
+   --  is used when multiple instances of the same TSS routine may be
+   --  generated in the same scope (see also discussion above of current
+   --  limitations).
 
    function Make_Init_Proc_Name (Typ : Entity_Id) return Name_Id;
    --  Version for init procs, same as Make_TSS_Name (Typ, TSS_Init_Proc)
@@ -167,20 +172,20 @@ package Exp_Tss is
 
    procedure Set_TSS (Typ : Entity_Id; TSS : Entity_Id);
    --  This procedure is used to install a newly created TSS. The second
-   --  argument is the entity for such a new TSS. This entity is placed in
-   --  the TSS list for the type given as the first argument, replacing an
-   --  old entry of the same name if one was present. The tree for the body
-   --  of this TSS, which is not analyzed yet, is placed in the actions field
-   --  of the freeze node for the type. All such bodies are inserted into the
-   --  main tree and analyzed at the point at which the freeze node itself is
-   --  is expanded.
+   --  argument is the entity for such a new TSS. This entity is placed in the
+   --  TSS list for the type given as the first argument, replacing an old
+   --  entry of the same name if one was present. The tree for the body of this
+   --  TSS, which is not analyzed yet, is placed in the actions field of the
+   --  freeze node for the type. All such bodies are inserted into the main
+   --  tree and analyzed at the point at which the freeze node itself is
+   --  expanded.
 
    procedure Copy_TSS (TSS : Entity_Id; Typ : Entity_Id);
    --  Given an existing TSS for another type (which is already installed,
    --  analyzed and expanded), install it as the corresponding TSS for Typ.
-   --  Note that this just copies a reference, not the tree. This can also
-   --  be used to initially install a TSS in the case where the subprogram
-   --  for the TSS has already been created and its declaration processed.
+   --  Note that this just copies a reference, not the tree. This can also be
+   --  used to initially install a TSS in the case where the subprogram for the
+   --  TSS has already been created and its declaration processed.
 
    function Init_Proc (Typ : Entity_Id) return Entity_Id;
    pragma Inline (Init_Proc);
@@ -193,7 +198,7 @@ package Exp_Tss is
    --  the corresponding base type (see Base_Init_Proc function). A special
    --  case arises for concurrent types. Such types do not themselves have an
    --  init proc TSS, but initialization is required. The init proc used is
-   --  the one fot the corresponding record type (see Base_Init_Proc).
+   --  the one for the corresponding record type (see Base_Init_Proc).
 
    function Base_Init_Proc (Typ : Entity_Id) return Entity_Id;
    --  Obtains the _Init TSS entry from the base type of the entity, and also
@@ -210,7 +215,7 @@ package Exp_Tss is
    function Has_Non_Null_Base_Init_Proc (Typ : Entity_Id) return Boolean;
    --  Returns true if the given type has a defined Base_Init_Proc and
    --  this init proc is not a null init proc (null init procs occur as
-   --  a result of the processing for Initialize_Scalars. This function
+   --  a result of the processing for Initialize_Scalars). This function
    --  is used to test for the presence of an init proc in cases where
    --  a null init proc is considered equivalent to no init proc.
 

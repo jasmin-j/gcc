@@ -1,12 +1,12 @@
 /* Prototypes for m32r.c functions used in the md file & elsewhere.
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005
+   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
    Free Software Foundation, Inc.
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful,
@@ -15,21 +15,18 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to
-   the Free Software Foundation, 59 Temple Place - Suite 330,
-   Boston, MA 02111-1307, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 /* Function prototypes that cannot exist in v850.h due to dependency
    complications.  */
 #define Mmode enum machine_mode
 
-extern void   sbss_section (void);
-extern void   sdata_section (void);
 extern void   m32r_init (void);
 extern void   m32r_init_expanders (void);
 extern unsigned m32r_compute_frame_size (int);
 extern void   m32r_expand_prologue (void);
-extern void   m32r_finalize_pic (void);
+extern void   m32r_expand_epilogue (void);
 extern int    direct_return (void);
 extern void   m32r_load_pic_register (void);
 
@@ -47,7 +44,7 @@ extern void   m32r_initialize_trampoline (rtx, rtx, rtx);
 extern int    zero_and_one (rtx, rtx);
 extern char * emit_cond_move (rtx *, rtx);
 extern void   m32r_output_block_move (rtx, rtx *);
-extern void   m32r_expand_block_move (rtx *);
+extern int    m32r_expand_block_move (rtx *);
 extern void   m32r_print_operand (FILE *, rtx, int);
 extern void   m32r_print_operand_address (FILE *, rtx);
 extern int    m32r_not_same_reg (rtx, rtx);

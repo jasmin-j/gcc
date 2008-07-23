@@ -1,5 +1,5 @@
 /* CPP Library - traditional lexical analysis and macro expansion.
-   Copyright (C) 2002, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
    Contributed by Neil Booth, May 2002
 
 This program is free software; you can redistribute it and/or modify it
@@ -14,7 +14,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
-Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.  */
 
 #include "config.h"
 #include "system.h"
@@ -60,7 +60,7 @@ struct fun_macro
   size_t offset;
 
   /* The line the macro name appeared on.  */
-  unsigned int line;
+  source_location line;
 
   /* Zero-based index of argument being currently lexed.  */
   unsigned int argc;
@@ -107,7 +107,7 @@ check_output_buffer (cpp_reader *pfile, size_t n)
       size_t size = pfile->out.cur - pfile->out.base;
       size_t new_size = (size + n) * 3 / 2;
 
-      pfile->out.base = xrealloc (pfile->out.base, new_size);
+      pfile->out.base = XRESIZEVEC (unsigned char, pfile->out.base, new_size);
       pfile->out.limit = pfile->out.base + new_size;
       pfile->out.cur = pfile->out.base + size;
     }
@@ -253,8 +253,8 @@ lex_identifier (cpp_reader *pfile, const uchar *cur)
 
   CUR (pfile->context) = cur;
   len = out - pfile->out.cur;
-  result = (cpp_hashnode *) ht_lookup (pfile->hash_table, pfile->out.cur,
-				       len, HT_ALLOC);
+  result = CPP_HASHNODE (ht_lookup (pfile->hash_table, pfile->out.cur,
+				    len, HT_ALLOC));
   pfile->out.cur = out;
   return result;
 }
@@ -353,6 +353,11 @@ _cpp_scan_out_logical_line (cpp_reader *pfile, cpp_macro *macro)
   const uchar *start_of_input_line;
 
   fmacro.buff = NULL;
+  fmacro.args = NULL;
+  fmacro.node = NULL;
+  fmacro.offset = 0;
+  fmacro.line = 0;
+  fmacro.argc = 0;
 
   quote = 0;
   header_ok = pfile->state.angled_headers;
@@ -827,8 +832,11 @@ replace_args_and_push (cpp_reader *pfile, struct fun_macro *fmacro)
       uchar *p;
       _cpp_buff *buff;
       size_t len = 0;
+      int cxtquote = 0;
 
-      /* Calculate the length of the argument-replaced text.  */
+      /* Get an estimate of the length of the argument-replaced text.
+	 This is a worst case estimate, assuming that every replacement
+	 text character needs quoting.  */
       for (exp = macro->exp.text;;)
 	{
 	  struct block *b = (struct block *) exp;
@@ -836,8 +844,8 @@ replace_args_and_push (cpp_reader *pfile, struct fun_macro *fmacro)
 	  len += b->text_len;
 	  if (b->arg_index == 0)
 	    break;
-	  len += (fmacro->args[b->arg_index]
-		  - fmacro->args[b->arg_index - 1] - 1);
+	  len += 2 * (fmacro->args[b->arg_index]
+		      - fmacro->args[b->arg_index - 1] - 1);
 	  exp += BLOCK_LEN (b->text_len);
 	}
 
@@ -845,21 +853,69 @@ replace_args_and_push (cpp_reader *pfile, struct fun_macro *fmacro)
       buff = _cpp_get_buff (pfile, len + 1);
 
       /* Copy the expansion and replace arguments.  */
+      /* Accumulate actual length, including quoting as necessary */
       p = BUFF_FRONT (buff);
+      len = 0;
       for (exp = macro->exp.text;;)
 	{
 	  struct block *b = (struct block *) exp;
 	  size_t arglen;
+	  int argquote;
+	  uchar *base;
+	  uchar *in;
 
-	  memcpy (p, b->text, b->text_len);
-	  p += b->text_len;
+	  len += b->text_len;
+	  /* Copy the non-argument text literally, keeping
+	     track of whether matching quotes have been seen. */
+	  for (arglen = b->text_len, in = b->text; arglen > 0; arglen--)
+	    {
+	      if (*in == '"')
+		cxtquote = ! cxtquote;
+	      *p++ = *in++;
+	    }
+	  /* Done if no more arguments */
 	  if (b->arg_index == 0)
 	    break;
 	  arglen = (fmacro->args[b->arg_index]
 		    - fmacro->args[b->arg_index - 1] - 1);
-	  memcpy (p, pfile->out.base + fmacro->args[b->arg_index - 1],
-		  arglen);
-	  p += arglen;
+	  base = pfile->out.base + fmacro->args[b->arg_index - 1];
+	  in = base;
+#if 0
+	  /* Skip leading whitespace in the text for the argument to
+	     be substituted. To be compatible with gcc 2.95, we would
+	     also need to trim trailing whitespace. Gcc 2.95 trims
+	     leading and trailing whitespace, which may be a bug.  The
+	     current gcc testsuite explicitly checks that this leading
+	     and trailing whitespace in actual arguments is
+	     preserved. */
+	  while (arglen > 0 && is_space (*in))
+	    {
+	      in++;
+	      arglen--;
+	    }
+#endif
+	  for (argquote = 0; arglen > 0; arglen--)
+	    {
+	      if (cxtquote && *in == '"')
+		{
+		  if (in > base && *(in-1) != '\\')
+		    argquote = ! argquote;
+		  /* Always add backslash before double quote if argument
+		     is expanded in a quoted context */
+		  *p++ = '\\';
+		  len++;
+		}
+	      else if (cxtquote && argquote && *in == '\\')
+		{
+		  /* Always add backslash before a backslash in an argument
+		     that is expanded in a quoted context and also in the
+		     range of a quoted context in the argument itself. */
+		  *p++ = '\\';
+		  len++;
+		}
+	      *p++ = *in++;
+	      len++;
+	    }
 	  exp += BLOCK_LEN (b->text_len);
 	}
 
@@ -1069,7 +1125,7 @@ bool
 _cpp_expansions_different_trad (const cpp_macro *macro1,
 				const cpp_macro *macro2)
 {
-  uchar *p1 = xmalloc (macro1->count + macro2->count);
+  uchar *p1 = XNEWVEC (uchar, macro1->count + macro2->count);
   uchar *p2 = p1 + macro1->count;
   uchar quote1 = 0, quote2 = 0;
   bool mismatch;
