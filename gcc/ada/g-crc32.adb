@@ -6,32 +6,30 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---            Copyright (C) 2001-2002 Ada Core Technologies, Inc.           --
+--                     Copyright (C) 2001-2010, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Unchecked_Conversion;
+with Ada.Unchecked_Conversion;
 
 package body GNAT.CRC32 is
 
@@ -47,11 +45,9 @@ package body GNAT.CRC32 is
    end Update;
 
    procedure Update (C : in out CRC32; Value : Ada.Streams.Stream_Element) is
-      function To_Char is new Unchecked_Conversion
+      function To_Char is new Ada.Unchecked_Conversion
         (Ada.Streams.Stream_Element, Character);
-
       V : constant Character := To_Char (Value);
-
    begin
       Update (C, V);
    end Update;
@@ -72,10 +68,8 @@ package body GNAT.CRC32 is
 
    procedure Wide_Update (C : in out CRC32; Value : Wide_Character) is
       subtype S2 is String (1 .. 2);
-      function To_S2 is new Unchecked_Conversion (Wide_Character, S2);
-
+      function To_S2 is new Ada.Unchecked_Conversion (Wide_Character, S2);
       VS : constant S2 := To_S2 (Value);
-
    begin
       Update (C, VS (1));
       Update (C, VS (2));

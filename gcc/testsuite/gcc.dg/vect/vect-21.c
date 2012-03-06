@@ -5,10 +5,6 @@
 
 #define N 64
 
-int
-main1 ()
-{
-  int i;
   int ia[N];
   int ib[N]= 
     {1,1,0,0,1,0,1,0,
@@ -71,6 +67,10 @@ main1 ()
      1,1,0,0,1,0,1,0,
      1,1,0,0,1,0,1,0};
 
+__attribute__ ((noinline)) int
+main1 ()
+{
+  int i;
   /* Check ints.  */
 
   for (i = 0; i < N; i++)
@@ -123,7 +123,7 @@ int main (void)
   return main1 ();
 }
 
-/* { dg-final { scan-tree-dump-times "vectorized 3 loops" 1 "vect" { xfail *-*-* } } } */
+/* { dg-final { scan-tree-dump-times "vectorized 3 loops" 1 "vect" { target vect_condition } } } */
 /* { dg-final { scan-tree-dump-times "Vectorizing an unaligned access" 0 "vect" } } */
 
 /* { dg-final { cleanup-tree-dump "vect" } } */

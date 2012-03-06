@@ -1,12 +1,12 @@
 /* Generate code from machine description to perform peephole optimizations.
-   Copyright (C) 1987, 1989, 1992, 1997, 1998,
-   1999, 2000, 2003, 2004 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1989, 1992, 1997, 1998, 1999, 2000, 2003, 2004,
+   2007, 2010  Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,9 +15,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 #include "bconfig.h"
@@ -359,7 +358,7 @@ main (int argc, char **argv)
 
   progname = "genpeep";
 
-  if (init_md_reader_args (argc, argv) != SUCCESS_EXIT_CODE)
+  if (!init_rtx_reader_args (argc, argv))
     return (FATAL_EXIT_CODE);
 
   printf ("/* Generated automatically by the program `genpeep'\n\
@@ -374,10 +373,12 @@ from the machine description file `md'.  */\n\n");
   printf ("#include \"tm_p.h\"\n");
   printf ("#include \"regs.h\"\n");
   printf ("#include \"output.h\"\n");
-  printf ("#include \"real.h\"\n");
   printf ("#include \"recog.h\"\n");
-  printf ("#include \"except.h\"\n\n");
-  printf ("#include \"function.h\"\n\n");
+  printf ("#include \"except.h\"\n");
+  printf ("#include \"function.h\"\n");
+  printf ("#include \"diagnostic-core.h\"\n");
+  printf ("#include \"flags.h\"\n");
+  printf ("#include \"tm-constrs.h\"\n\n");
 
   printf ("#ifdef HAVE_peephole\n");
   printf ("extern rtx peep_operand[];\n\n");
@@ -425,11 +426,4 @@ from the machine description file `md'.  */\n\n");
 
   fflush (stdout);
   return (ferror (stdout) != 0 ? FATAL_EXIT_CODE : SUCCESS_EXIT_CODE);
-}
-
-/* Define this so we can link with print-rtl.o to get debug_rtx function.  */
-const char *
-get_insn_name (int code ATTRIBUTE_UNUSED)
-{
-  return NULL;
 }

@@ -1,12 +1,13 @@
 # Process this file with autoconf to produce a configure script, like so:
-# aclocal && autoconf && autoheader && automake
+# aclocal -I .. -I ../config && autoconf && autoheader && automake
 
-AC_PREREQ(2.59)
+AC_PREREQ(2.64)
 AC_INIT(libmudflap, 1.0)
 AC_CONFIG_SRCDIR(mf-runtime.c)
 AC_CANONICAL_SYSTEM
+ACX_NONCANONICAL_TARGET
 
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE([no-dist])
 
 AC_MSG_CHECKING([for --enable-version-specific-runtime-libs])
 AC_ARG_ENABLE(version-specific-runtime-libs,
@@ -38,7 +39,7 @@ AC_LANG_C
 m4_rename([_AC_ARG_VAR_PRECIOUS],[real_PRECIOUS])
 m4_define([_AC_ARG_VAR_PRECIOUS],[])
 AC_PROG_CC
-m4_rename([real_PRECIOUS],[_AC_ARG_VAR_PRECIOUS])
+m4_rename_force([real_PRECIOUS],[_AC_ARG_VAR_PRECIOUS])
 
 AC_SUBST(CFLAGS)
 
@@ -61,7 +62,7 @@ enable_shared=no])
 
 AC_CHECK_HEADERS(stdint.h execinfo.h signal.h dlfcn.h dirent.h pwd.h grp.h \
   netdb.h sys/ipc.h sys/sem.h sys/shm.h sys/wait.h ctype.h mntent.h \
-  sys/socket.h netinet/in.h arpa/inet.h dlfcn.h sys/mman.h)
+  sys/mnttab.h sys/socket.h netinet/in.h arpa/inet.h dlfcn.h sys/mman.h)
 
 AC_CHECK_FUNCS(backtrace backtrace_symbols gettimeofday signal)
 AC_CHECK_FUNCS(fopen64 fseeko64 ftello64 stat64 freopen64)
@@ -74,6 +75,9 @@ AC_CHECK_FUNCS(getservent getservbyname getservbyport getaddrinfo gai_strerror)
 AC_CHECK_FUNCS(getprotoent getprotobyname getprotobynumber)
 AC_CHECK_FUNCS(getmntent setmntent addmntent)
 AC_CHECK_FUNCS(inet_ntoa mmap munmap)
+AC_CHECK_FUNCS(mmap64)
+AC_CHECK_FUNCS(__libc_freeres)
+AC_CHECK_FUNCS(rawmemchr stpcpy mempcpy)
 
 AC_TRY_COMPILE([#include <sys/types.h>
 #include <sys/ipc.h>
@@ -108,21 +112,28 @@ else
 fi
 AC_SUBST(MF_HAVE_UINTPTR_T)
 
-if test ! -d pth
-then
-  # libmudflapth objects are built in this subdirectory
-  mkdir pth
-fi
+AC_CHECK_HEADERS(pthread.h)
 
-pthread_create_version='""'
-AC_CHECK_HEADER(pthread.h,[
-AC_DEFINE_UNQUOTED(HAVE_PTHREAD_H, 1, [define if you have <pthread.h>])
-ac_have_pthread_h=yes
-],[
-ac_have_pthread_h=
-])
-AM_CONDITIONAL(LIBMUDFLAPTH, [test "x$ac_have_pthread_h" != "x"])
-if test "x$ac_have_pthread_h" != "x"
+AC_MSG_CHECKING([for thread model used by GCC])
+target_thread_file=`$CC -v 2>&1 | sed -n 's/^Thread model: //p'`
+AC_MSG_RESULT([$target_thread_file])
+
+# We only support posix threads, or no threads at all.
+posix_threads=
+case ${target_thread_file} in
+  posix)
+    posix_threads=yes
+    ;;
+  single)
+    ;;
+  *)
+    echo "${target_thread_file} is an unsupported thread package" 1>&2
+    exit 1
+    ;;
+esac
+
+AM_CONDITIONAL(LIBMUDFLAPTH, [test "x$posix_threads" != "x"])
+if test "x$posix_threads" != "x"
 then
         build_libmudflapth=1
 else
@@ -131,6 +142,9 @@ fi
 AC_SUBST(build_libmudflapth)
 
 AC_CHECK_LIB(dl, dlsym)
+
+AC_CHECK_FUNC(connect,, AC_CHECK_LIB(socket, connect))
+AC_CHECK_FUNC(sched_yield,, AC_CHECK_LIB(rt, sched_yield))
 
 # Calculate toolexeclibdir
 # Also toolexecdir, though it's only used in toolexeclibdir
@@ -162,7 +176,11 @@ esac
 AC_SUBST(toolexecdir)
 AC_SUBST(toolexeclibdir)
 
-if test "x$enable_shared" = "xyes" && test "x$ac_have_pthread_h" != "x"; then
+includedir=${toolexecdir}/include
+AC_SUBST(includedir)
+
+pthread_create_version='""'
+if test "x$enable_shared" = "xyes" && test "x$posix_threads" != "x"; then
   # NB: don't check for -lpthread here, because then it would be
   # added to LIBS.  For the thread-unaware libmudflap.la, we don't
   # want it there.
@@ -223,11 +241,30 @@ AC_MSG_RESULT($ac_fdsections)
 AC_SUBST(SECTION_FLAGS)
 
 
+# Check for the name of the symbol used for the entry point.
+AC_CACHE_CHECK([for the name of the symbol used for the entry point],
+  [mudflap_cv_entry_point], [
+for name in _start __start unknown; do
+  AC_LINK_IFELSE([AC_LANG_PROGRAM([extern char $name@<:@@:>@;], [$name@<:@0@:>@ = 0;])],
+		 [break])
+done
+mudflap_cv_entry_point="$name"])
+if test "$mudflap_cv_entry_point" = unknown; then
+  AC_MSG_ERROR([none of the known symbol names works])
+fi
+AC_DEFINE_UNQUOTED([ENTRY_POINT], [$mudflap_cv_entry_point],
+  [Define to the name of the symbol used for the entry point.])
+
+
 if test ${multilib} = yes; then
   multilib_arg="--enable-multilib"
 else
   multilib_arg=
 fi
+
+# See if we support thread-local storage.
+GCC_CHECK_TLS
+GCC_CHECK_EMUTLS
 
 AC_CONFIG_FILES([Makefile testsuite/Makefile testsuite/mfconfig.exp])
 AC_OUTPUT

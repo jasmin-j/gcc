@@ -1,30 +1,28 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                 GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS              --
+--                  GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                --
 --                                                                          --
 --                      I N T E R F A C E S . V X W O R K S                 --
 --                                                                          --
 --                                   S p e c                                --
 --                                                                          --
---             Copyright (C) 1999-2003 Ada Core Technologies, Inc.          --
+--                     Copyright (C) 1999-2010, AdaCore                     --
 --                                                                          --
--- GNARL is free software; you can  redistribute it  and/or modify it under --
+-- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
@@ -45,10 +43,15 @@
 --  For complete documentation of the operations in this package, please
 --  consult the VxWorks Programmer's Manual and VxWorks Reference Manual.
 
+pragma Warnings (Off, "*foreign convention*");
+pragma Warnings (Off, "*add Convention pragma*");
+--  These are temporary pragmas to suppress warnings about mismatching
+--  conventions, which will be a problem when we get rid of trampolines ???
+
 with System.VxWorks;
 
 package Interfaces.VxWorks is
-   pragma Preelaborate (VxWorks);
+   pragma Preelaborate;
 
    ------------------------------------------------------------------------
    --  Here is a complete example that shows how to handle the Interrupt 0x14
@@ -75,7 +78,7 @@ package Interfaces.VxWorks is
    --        S : STATUS;
    --     begin
    --        Count := Count + 1;
-   --        logMsg ("received an interrupt" & ASCII.LF & ASCII.Nul);
+   --        logMsg ("received an interrupt" & ASCII.LF & ASCII.NUL);
    --
    --        --  Acknowledge VME interrupt
    --        S := sysBusIntAck (intLevel => Level);
@@ -138,6 +141,10 @@ package Interfaces.VxWorks is
    --  user handler. The routine generates a wrapper around the user
    --  handler to save and restore context
 
+   function intContext return int;
+   --  Binding to the C routine intContext. This function returns 1 only
+   --  if the current execution state is in interrupt context.
+
    function intVecGet
      (Vector : Interrupt_Vector) return VOIDFUNCPTR;
    --  Binding to the C routine intVecGet. Use this to get the
@@ -166,7 +173,7 @@ package Interfaces.VxWorks is
    --  Binding to the C routine sysBusIntGen. Note that the T2
    --  documentation implies that a vector address is the proper
    --  argument - it's not. The interrupt number in the range
-   --  0 .. 255 (for 68K and PPC) is the correct agument.
+   --  0 .. 255 (for 68K and PPC) is the correct argument.
 
    procedure logMsg
      (fmt : String; arg1, arg2, arg3, arg4, arg5, arg6 : int := 0);
@@ -192,6 +199,7 @@ private
    --  Target-dependent floating point context type
 
    pragma Import (C, intConnect, "intConnect");
+   pragma Import (C, intContext, "intContext");
    pragma Import (C, intVecGet, "intVecGet");
    pragma Import (C, intVecSet, "intVecSet");
    pragma Import (C, INUM_TO_IVEC, "__gnat_inum_to_ivec");

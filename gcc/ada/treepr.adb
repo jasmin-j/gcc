@@ -6,24 +6,24 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Aspects;  use Aspects;
 with Atree;    use Atree;
 with Csets;    use Csets;
 with Debug;    use Debug;
@@ -39,6 +39,7 @@ with Snames;   use Snames;
 with Sinput;   use Sinput;
 with Stand;    use Stand;
 with Stringt;  use Stringt;
+with SCIL_LL;  use SCIL_LL;
 with Treeprs;  use Treeprs;
 with Uintp;    use Uintp;
 with Urealp;   use Urealp;
@@ -137,6 +138,9 @@ package body Treepr is
    --  Print name from names table if currently in print phase, noop if in
    --  marking phase. Note that the name is output in mixed case mode.
 
+   procedure Print_Node_Header (N : Node_Id);
+   --  Print header line used by Print_Node and Print_Node_Briefly
+
    procedure Print_Node_Kind (N : Node_Id);
    --  Print node kind name in mixed case if in print phase, noop if in
    --  marking phase.
@@ -224,19 +228,88 @@ package body Treepr is
    -- pl --
    --------
 
-   procedure pl (L : List_Id) is
+   procedure pl (L : Int) is
+      Lid : Int;
+
    begin
-      Print_Tree_List (L);
+      if L < 0 then
+         Lid := L;
+
+      --  This is the case where we transform e.g. +36 to -99999936
+
+      else
+         if L <= 9 then
+            Lid := -(99999990 + L);
+         elsif L <= 99 then
+            Lid := -(99999900 + L);
+         elsif L <= 999 then
+            Lid := -(99999000 + L);
+         elsif L <= 9999 then
+            Lid := -(99990000 + L);
+         elsif L <= 99999 then
+            Lid := -(99900000 + L);
+         elsif L <= 999999 then
+            Lid := -(99000000 + L);
+         elsif L <= 9999999 then
+            Lid := -(90000000 + L);
+         else
+            Lid := -L;
+         end if;
+      end if;
+
+      --  Now output the list
+
+      Print_Tree_List (List_Id (Lid));
    end pl;
 
    --------
    -- pn --
    --------
 
-   procedure pn (N : Node_Id) is
+   procedure pn (N : Union_Id) is
    begin
-      Print_Tree_Node (N);
+      case N is
+         when List_Low_Bound .. List_High_Bound - 1 =>
+            pl (Int (N));
+         when Node_Range =>
+            Print_Tree_Node (Node_Id (N));
+         when Elist_Range =>
+            Print_Tree_Elist (Elist_Id (N));
+         when Elmt_Range =>
+            declare
+               Id : constant Elmt_Id := Elmt_Id (N);
+            begin
+               if No (Id) then
+                  Write_Str ("No_Elmt");
+                  Write_Eol;
+               else
+                  Write_Str ("Elmt_Id --> ");
+                  Print_Tree_Node (Node (Id));
+               end if;
+            end;
+         when Names_Range =>
+            Namet.wn (Name_Id (N));
+         when Strings_Range =>
+            Write_String_Table_Entry (String_Id (N));
+         when Uint_Range =>
+            Uintp.pid (From_Union (N));
+         when Ureal_Range =>
+            Urealp.pr (From_Union (N));
+         when others =>
+            Write_Str ("Invalid Union_Id: ");
+            Write_Int (Int (N));
+            Write_Eol;
+      end case;
    end pn;
+
+   --------
+   -- pp --
+   --------
+
+   procedure pp (N : Union_Id) is
+   begin
+      pn (N);
+   end pp;
 
    ----------------
    -- Print_Char --
@@ -503,17 +576,44 @@ package body Treepr is
 
             begin
                case M is
-                  when Default_Mechanism  => Write_Str ("Default");
-                  when By_Copy            => Write_Str ("By_Copy");
-                  when By_Reference       => Write_Str ("By_Reference");
-                  when By_Descriptor      => Write_Str ("By_Descriptor");
-                  when By_Descriptor_UBS  => Write_Str ("By_Descriptor_UBS");
-                  when By_Descriptor_UBSB => Write_Str ("By_Descriptor_UBSB");
-                  when By_Descriptor_UBA  => Write_Str ("By_Descriptor_UBA");
-                  when By_Descriptor_S    => Write_Str ("By_Descriptor_S");
-                  when By_Descriptor_SB   => Write_Str ("By_Descriptor_SB");
-                  when By_Descriptor_A    => Write_Str ("By_Descriptor_A");
-                  when By_Descriptor_NCA  => Write_Str ("By_Descriptor_NCA");
+                  when Default_Mechanism
+                                    => Write_Str ("Default");
+                  when By_Copy
+                                    => Write_Str ("By_Copy");
+                  when By_Reference
+                                    => Write_Str ("By_Reference");
+                  when By_Descriptor
+                                    => Write_Str ("By_Descriptor");
+                  when By_Descriptor_UBS
+                                    => Write_Str ("By_Descriptor_UBS");
+                  when By_Descriptor_UBSB
+                                    => Write_Str ("By_Descriptor_UBSB");
+                  when By_Descriptor_UBA
+                                    => Write_Str ("By_Descriptor_UBA");
+                  when By_Descriptor_S
+                                    => Write_Str ("By_Descriptor_S");
+                  when By_Descriptor_SB
+                                    => Write_Str ("By_Descriptor_SB");
+                  when By_Descriptor_A
+                                    => Write_Str ("By_Descriptor_A");
+                  when By_Descriptor_NCA
+                                    => Write_Str ("By_Descriptor_NCA");
+                  when By_Short_Descriptor
+                                    => Write_Str ("By_Short_Descriptor");
+                  when By_Short_Descriptor_UBS
+                                    => Write_Str ("By_Short_Descriptor_UBS");
+                  when By_Short_Descriptor_UBSB
+                                    => Write_Str ("By_Short_Descriptor_UBSB");
+                  when By_Short_Descriptor_UBA
+                                    => Write_Str ("By_Short_Descriptor_UBA");
+                  when By_Short_Descriptor_S
+                                    => Write_Str ("By_Short_Descriptor_S");
+                  when By_Short_Descriptor_SB
+                                    => Write_Str ("By_Short_Descriptor_SB");
+                  when By_Short_Descriptor_A
+                                    => Write_Str ("By_Short_Descriptor_A");
+                  when By_Short_Descriptor_NCA
+                                    => Write_Str ("By_Short_Descriptor_NCA");
 
                   when 1 .. Mechanism_Type'Last =>
                      Write_Str ("By_Copy if size <= ");
@@ -568,6 +668,22 @@ package body Treepr is
          Write_Field27_Name (Ent);
          Write_Str (" = ");
          Print_Field (Field27 (Ent));
+         Print_Eol;
+      end if;
+
+      if Field_Present (Field28 (Ent)) then
+         Print_Str (Prefix);
+         Write_Field28_Name (Ent);
+         Write_Str (" = ");
+         Print_Field (Field28 (Ent));
+         Print_Eol;
+      end if;
+
+      if Field_Present (Field29 (Ent)) then
+         Print_Str (Prefix);
+         Write_Field29_Name (Ent);
+         Write_Str (" = ");
+         Print_Field (Field29 (Ent));
          Print_Eol;
       end if;
 
@@ -744,11 +860,14 @@ package body Treepr is
          elsif N = Error_Name then
             Print_Str ("<Error_Name>");
 
-         else
+         elsif Is_Valid_Name (N) then
             Get_Name_String (N);
             Print_Char ('"');
             Write_Name (N);
             Print_Char ('"');
+
+         else
+            Print_Str ("<invalid name ???>");
          end if;
       end if;
    end Print_Name;
@@ -769,7 +888,6 @@ package body Treepr is
       Prefix_Str_Char     : String (Prefix_Str'First .. Prefix_Str'Last + 1);
 
       Sfile : Source_File_Index;
-      Notes : Boolean;
       Fmt   : UI_Format;
 
    begin
@@ -789,42 +907,7 @@ package body Treepr is
       --  Print header line
 
       Print_Str (Prefix_Str);
-      Print_Node_Ref (N);
-
-      Notes := False;
-
-      if Comes_From_Source (N) then
-         Notes := True;
-         Print_Str (" (source");
-      end if;
-
-      if Analyzed (N) then
-         if not Notes then
-            Notes := True;
-            Print_Str (" (");
-         else
-            Print_Str (",");
-         end if;
-
-         Print_Str ("analyzed");
-      end if;
-
-      if Error_Posted (N) then
-         if not Notes then
-            Notes := True;
-            Print_Str (" (");
-         else
-            Print_Str (",");
-         end if;
-
-         Print_Str ("posted");
-      end if;
-
-      if Notes then
-         Print_Char (')');
-      end if;
-
-      Print_Eol;
+      Print_Node_Header (N);
 
       if Is_Rewrite_Substitution (N) then
          Print_Str (Prefix_Str);
@@ -885,10 +968,8 @@ package body Treepr is
          --  Deal with Left_Opnd and Right_Opnd fields
 
          if Nkind (N) in N_Op
-           or else Nkind (N) = N_And_Then
-           or else Nkind (N) = N_In
-           or else Nkind (N) = N_Not_In
-           or else Nkind (N) = N_Or_Else
+           or else Nkind (N) in N_Short_Circuit
+           or else Nkind (N) in N_Membership_Test
          then
             --  Print Left_Opnd if present
 
@@ -936,6 +1017,12 @@ package body Treepr is
             if Has_Dynamic_Length_Check (N) then
                Print_Str (Prefix_Str_Char);
                Print_Str ("Has_Dynamic_Length_Check = True");
+               Print_Eol;
+            end if;
+
+            if Has_Aspects (N) then
+               Print_Str (Prefix_Str_Char);
+               Print_Str ("Has_Aspects = True");
                Print_Eol;
             end if;
 
@@ -995,9 +1082,7 @@ package body Treepr is
          --  Print Etype field if present (printing of this field for entities
          --  is handled by the Print_Entity_Info procedure).
 
-         if Nkind (N) in N_Has_Etype
-           and then Present (Etype (N))
-         then
+         if Nkind (N) in N_Has_Etype and then Present (Etype (N)) then
             Print_Str (Prefix_Str_Char);
             Print_Str ("Etype = ");
             Print_Node_Ref (Etype (N));
@@ -1030,6 +1115,10 @@ package body Treepr is
             when F_Field5 =>
                Field_To_Be_Printed := Field5 (N) /= Union_Id (Empty);
 
+            --  Flag3 is obsolete, so this probably gets removed ???
+
+            when F_Flag3 => Field_To_Be_Printed := Has_Aspects (N);
+
             when F_Flag4  => Field_To_Be_Printed := Flag4  (N);
             when F_Flag5  => Field_To_Be_Printed := Flag5  (N);
             when F_Flag6  => Field_To_Be_Printed := Flag6  (N);
@@ -1046,12 +1135,10 @@ package body Treepr is
             when F_Flag17 => Field_To_Be_Printed := Flag17 (N);
             when F_Flag18 => Field_To_Be_Printed := Flag18 (N);
 
-            --  Flag1,2,3 are no longer used
+            --  Flag1,2 are no longer used
 
             when F_Flag1  => raise Program_Error;
             when F_Flag2  => raise Program_Error;
-            when F_Flag3  => raise Program_Error;
-
          end case;
 
          --  Print field if it is to be printed
@@ -1101,11 +1188,14 @@ package body Treepr is
                when F_Flag17 => Print_Flag  (Flag17 (N));
                when F_Flag18 => Print_Flag  (Flag18 (N));
 
-               --  Flag1,2,3 are no longer used
+               --  Flag1,2 are no longer used
 
                when F_Flag1  => raise Program_Error;
                when F_Flag2  => raise Program_Error;
-               when F_Flag3  => raise Program_Error;
+
+               --  Not clear why we need the following ???
+
+               when F_Flag3  => Print_Flag (Has_Aspects (N));
             end case;
 
             Print_Eol;
@@ -1119,8 +1209,16 @@ package body Treepr is
                P := P + 1;
             end loop;
          end if;
-
       end loop;
+
+      --  Print aspects if present
+
+      if Has_Aspects (N) then
+         Print_Str (Prefix_Str_Char);
+         Print_Str ("Aspect_Specifications = ");
+         Print_Field (Union_Id (Aspect_Specifications (N)));
+         Print_Eol;
+      end if;
 
       --  Print entity information for entities
 
@@ -1128,7 +1226,76 @@ package body Treepr is
          Print_Entity_Info (N, Prefix_Str_Char);
       end if;
 
+      --  Print the SCIL node (if available)
+
+      if Present (Get_SCIL_Node (N)) then
+         Print_Str (Prefix_Str_Char);
+         Print_Str ("SCIL_Node = ");
+         Print_Node_Ref (Get_SCIL_Node (N));
+         Print_Eol;
+      end if;
    end Print_Node;
+
+   ------------------------
+   -- Print_Node_Briefly --
+   ------------------------
+
+   procedure Print_Node_Briefly (N : Node_Id) is
+   begin
+      Printing_Descendants := False;
+      Phase := Printing;
+      Print_Node_Header (N);
+   end Print_Node_Briefly;
+
+   -----------------------
+   -- Print_Node_Header --
+   -----------------------
+
+   procedure Print_Node_Header (N : Node_Id) is
+      Notes : Boolean := False;
+
+   begin
+      Print_Node_Ref (N);
+
+      if N > Atree_Private_Part.Nodes.Last then
+         Print_Str (" (no such node)");
+         Print_Eol;
+         return;
+      end if;
+
+      if Comes_From_Source (N) then
+         Notes := True;
+         Print_Str (" (source");
+      end if;
+
+      if Analyzed (N) then
+         if not Notes then
+            Notes := True;
+            Print_Str (" (");
+         else
+            Print_Str (",");
+         end if;
+
+         Print_Str ("analyzed");
+      end if;
+
+      if Error_Posted (N) then
+         if not Notes then
+            Notes := True;
+            Print_Str (" (");
+         else
+            Print_Str (",");
+         end if;
+
+         Print_Str ("posted");
+      end if;
+
+      if Notes then
+         Print_Char (')');
+      end if;
+
+      Print_Eol;
+   end Print_Node_Header;
 
    ---------------------
    -- Print_Node_Kind --
@@ -1365,6 +1532,15 @@ package body Treepr is
    begin
       Print_Node_Subtree (N);
    end pt;
+
+   ---------
+   -- ppp --
+   ---------
+
+   procedure ppp (N : Node_Id) is
+   begin
+      pt (N);
+   end ppp;
 
    -------------------
    -- Serial_Number --
@@ -1620,7 +1796,7 @@ package body Treepr is
          No_Indent : Boolean := False);
       --  This procedure tests the given value of one of the Fields referenced
       --  by the current node to determine whether to visit it recursively.
-      --  Normally No_Indent is false, which means tha the visited node will
+      --  Normally No_Indent is false, which means that the visited node will
       --  be indented using New_Prefix. If No_Indent is set to True, then
       --  this indentation is skipped, and Prefix_Str is used for the call
       --  to print the descendent. No_Indent is effective only if the
@@ -1829,6 +2005,10 @@ package body Treepr is
          Visit_Descendent (Field3 (N));
          Visit_Descendent (Field4 (N));
          Visit_Descendent (Field5 (N));
+
+         if Has_Aspects (N) then
+            Visit_Descendent (Union_Id (Aspect_Specifications (N)));
+         end if;
 
       --  Entity case
 

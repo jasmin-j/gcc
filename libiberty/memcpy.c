@@ -3,7 +3,8 @@
 
 /*
 
-@deftypefn Supplemental void* memcpy (void *@var{out}, const void *@var{in}, size_t @var{length})
+@deftypefn Supplemental void* memcpy (void *@var{out}, const void *@var{in}, @
+  size_t @var{length})
 
 Copies @var{length} bytes from memory region @var{in} to region
 @var{out}.  Returns a pointer to @var{out}.
@@ -13,11 +14,7 @@ Copies @var{length} bytes from memory region @var{in} to region
 */
 
 #include <ansidecl.h>
-#ifdef ANSI_PROTOTYPES
 #include <stddef.h>
-#else
-#define size_t unsigned long
-#endif
 
 void bcopy (const void*, void*, size_t);
 

@@ -20,13 +20,13 @@ int resync_parser_2;
 
 void g1 ()
 {
-HASH define X 1 /* { dg-error "stray|undeclared|parse|syntax|expected|for each" "# from macro" } */
+HASH define X 1 /* { dg-error "stray|unknown|expected" "# from macro" } */
   int resync_parser_3;
 }
 
 void g2 ()
 {
-HASHDEFINE  Y 1 /* { dg-error "stray|undeclared|parse|syntax|expected|for each" "#define from macro" } */
+HASHDEFINE  Y 1 /* { dg-error "stray|unknown|expected" "#define from macro" } */
   int resync_parser_4;
 }
 
@@ -43,4 +43,4 @@ void f ()
 #define starslash *##/
 
 slashstar starslash /* { dg-error "parse error|syntax error|expected" "not a comment" } */
-/* { dg-warning "does not give" "paste warning(s)" { target *-*-* } 45 } */
+/* { dg-error "does not give" "paste warning(s)" { target *-*-* } 45 } */

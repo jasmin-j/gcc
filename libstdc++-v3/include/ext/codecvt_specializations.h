@@ -1,12 +1,13 @@
 // Locale support (codecvt) -*- C++ -*-
 
-// Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005
-//  Free Software Foundation, Inc.
+// Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
+// 2008, 2009, 2010
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -14,19 +15,14 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 
-// You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// Under Section 7 of GPL version 3, you are granted additional
+// permissions described in the GCC Runtime Library Exception, version
+// 3.1, as published by the Free Software Foundation.
 
-// As a special exception, you may use this file as part of a free software
-// library without restriction.  Specifically, if other files instantiate
-// templates or use macros or inline functions from this file, or you compile
-// this file and link it with other files to produce an executable, this
-// file does not by itself cause the resulting executable to be covered by
-// the GNU General Public License.  This exception does not however
-// invalidate any other reasons why the executable file might be covered by
-// the GNU General Public License.
+// You should have received a copy of the GNU General Public License and
+// a copy of the GCC Runtime Library Exception along with this program;
+// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+// <http://www.gnu.org/licenses/>.
 
 //
 // ISO C++ 14882: 22.2.1.5 Template class codecvt
@@ -34,17 +30,22 @@
 
 // Written by Benjamin Kosnik <bkoz@redhat.com>
 
-/** @file bits/codecvt_specializations.h
+/** @file ext/codecvt_specializations.h
  *  This file is a GNU extension to the Standard C++ Library.
  */
 
-  // XXX
-  // Define this here so codecvt.cc can have _S_max_size definition.
-#define _GLIBCXX_USE_ENCODING_STATE 1
+#ifndef _EXT_CODECVT_SPECIALIZATIONS_H
+#define _EXT_CODECVT_SPECIALIZATIONS_H 1
 
-namespace __gnu_cxx
+#include <bits/c++config.h>
+#include <locale>
+#include <iconv.h>
+
+namespace __gnu_cxx _GLIBCXX_VISIBILITY(default)
 {
-  /// @brief  Extension to use icov for dealing with character encodings.
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+
+  /// Extension to use iconv for dealing with character encodings.
   // This includes conversions and comparisons between various character
   // sets.  This object encapsulates data that may need to be shared between
   // char_traits, codecvt and ctype.
@@ -98,7 +99,7 @@ namespace __gnu_cxx
     // typedef STATE_T state_type
     // requires: state_type shall meet the requirements of
     // CopyConstructible types (20.1.3)
-    // NB: This does not preseve the actual state of the conversion
+    // NB: This does not preserve the actual state of the conversion
     // descriptor member, but it does duplicate the encoding
     // information.
     encoding_state(const encoding_state& __obj) : _M_in_desc(0), _M_out_desc(0)
@@ -118,7 +119,7 @@ namespace __gnu_cxx
     bool
     good() const throw()
     { 
-      const descriptor_type __err = reinterpret_cast<iconv_t>(-1);
+      const descriptor_type __err = (iconv_t)(-1);
       bool __test = _M_in_desc && _M_in_desc != __err; 
       __test &=  _M_out_desc && _M_out_desc != __err;
       return __test;
@@ -156,7 +157,7 @@ namespace __gnu_cxx
     void
     init()
     {
-      const descriptor_type __err = reinterpret_cast<iconv_t>(-1);
+      const descriptor_type __err = (iconv_t)(-1);
       const bool __have_encodings = _M_int_enc.size() && _M_ext_enc.size();
       if (!_M_in_desc && __have_encodings)
 	{
@@ -189,7 +190,7 @@ namespace __gnu_cxx
     void
     destroy() throw()
     {
-      const descriptor_type __err = reinterpret_cast<iconv_t>(-1);
+      const descriptor_type __err = (iconv_t)(-1);
       if (_M_in_desc && _M_in_desc != __err) 
 	{
 	  iconv_close(_M_in_desc);
@@ -203,7 +204,7 @@ namespace __gnu_cxx
     }
   };
 
-  /// @brief  encoding_char_traits.
+  /// encoding_char_traits
   // Custom traits type with encoding_state for the state type, and the
   // associated fpos<encoding_state> for the position type, all other
   // bits equivalent to the required char_traits instantiations.
@@ -213,13 +214,18 @@ namespace __gnu_cxx
       typedef encoding_state				state_type;
       typedef typename std::fpos<state_type>		pos_type;
     };
-} // namespace __gnu_cxx
 
-namespace std
+_GLIBCXX_END_NAMESPACE_VERSION
+} // namespace
+
+
+namespace std _GLIBCXX_VISIBILITY(default)
 {
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+
   using __gnu_cxx::encoding_state;
 
-  /// @brief  codecvt<InternT, _ExternT, encoding_state> specialization.
+  /// codecvt<InternT, _ExternT, encoding_state> specialization.
   // This partial specialization takes advantage of iconv to provide
   // code conversions between a large number of character encodings.
   template<typename _InternT, typename _ExternT>
@@ -289,12 +295,12 @@ namespace std
   // argument to iconv():  SUSv2 and others use 'const char**', but glibc 2.2
   // uses 'char**', which matches the POSIX 1003.1-2001 standard.
   // Using this adaptor, g++ will do the work for us.
-  template<typename _T>
+  template<typename _Tp>
     inline size_t
-    __iconv_adaptor(size_t(*__func)(iconv_t, _T, size_t*, char**, size_t*),
+    __iconv_adaptor(size_t(*__func)(iconv_t, _Tp, size_t*, char**, size_t*),
                     iconv_t __cd, char** __inbuf, size_t* __inbytes,
                     char** __outbuf, size_t* __outbytes)
-    { return __func(__cd, (_T)__inbuf, __inbytes, __outbuf, __outbytes); }
+    { return __func(__cd, (_Tp)__inbuf, __inbytes, __outbuf, __outbytes); }
 
   template<typename _InternT, typename _ExternT>
     codecvt_base::result
@@ -381,7 +387,7 @@ namespace std
 	  // Argument list for iconv specifies a byte sequence. Thus,
 	  // all to/from arrays must be brutally casted to char*.
 	  char* __cto = reinterpret_cast<char*>(__to);
-	  size_t __conv = __iconv_adaptor(iconv,__desc, NULL, NULL,
+	  size_t __conv = __iconv_adaptor(iconv,__desc, 0, 0,
                                           &__cto, &__tlen); 
 	  
 	  if (__conv != size_t(-1))
@@ -501,5 +507,8 @@ namespace std
     codecvt<_InternT, _ExternT, encoding_state>::
     do_max_length() const throw()
     { return 1; }
-} // namespace std
 
+_GLIBCXX_END_NAMESPACE_VERSION
+} // namespace
+
+#endif

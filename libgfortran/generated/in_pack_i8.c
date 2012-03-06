@@ -1,5 +1,5 @@
 /* Helper function for repacking arrays.
-   Copyright 2003 Free Software Foundation, Inc.
+   Copyright 2003, 2006, 2007, 2009 Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -7,31 +7,28 @@ This file is part of the GNU Fortran 95 runtime library (libgfortran).
 Libgfortran is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public
 License as published by the Free Software Foundation; either
-version 2 of the License, or (at your option) any later version.
-
-In addition to the permissions in the GNU General Public License, the
-Free Software Foundation gives you unlimited permission to link the
-compiled version of this file into combinations with other programs,
-and to distribute those combinations without any restriction coming
-from the use of this file.  (The General Public License restrictions
-do apply in other respects; for example, they cover modification of
-the file, and distribution when not linked into a combine
-executable.)
+version 3 of the License, or (at your option) any later version.
 
 Libgfortran is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public
-License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+Under Section 7 of GPL version 3, you are granted additional
+permissions described in the GCC Runtime Library Exception, version
+3.1, as published by the Free Software Foundation.
 
-#include "config.h"
+You should have received a copy of the GNU General Public License and
+a copy of the GCC Runtime Library Exception along with this program;
+see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+<http://www.gnu.org/licenses/>.  */
+
+#include "libgfortran.h"
 #include <stdlib.h>
 #include <assert.h>
-#include "libgfortran.h"
+
+
+#if defined (HAVE_GFC_INTEGER_8)
 
 /* Allocates a block of memory with internal_malloc if the array needs
    repacking.  */
@@ -46,16 +43,13 @@ internal_pack_8 (gfc_array_i8 * source)
   index_type dim;
   index_type ssize;
   const GFC_INTEGER_8 *src;
-  GFC_INTEGER_8 *dest;
+  GFC_INTEGER_8 * restrict dest;
   GFC_INTEGER_8 *destptr;
   int n;
   int packed;
 
-  if (source->dim[0].stride == 0)
-    {
-      source->dim[0].stride = 1;
-      return source->data;
-    }
+  /* TODO: Investigate how we can figure out if this is a temporary
+     since the stride=0 thing has been removed from the frontend.  */
 
   dim = GFC_DESCRIPTOR_RANK (source);
   ssize = 1;
@@ -63,8 +57,8 @@ internal_pack_8 (gfc_array_i8 * source)
   for (n = 0; n < dim; n++)
     {
       count[n] = 0;
-      stride[n] = source->dim[n].stride;
-      extent[n] = source->dim[n].ubound + 1 - source->dim[n].lbound;
+      stride[n] = GFC_DESCRIPTOR_STRIDE(source,n);
+      extent[n] = GFC_DESCRIPTOR_EXTENT(source,n);
       if (extent[n] <= 0)
         {
           /* Do nothing.  */
@@ -82,7 +76,7 @@ internal_pack_8 (gfc_array_i8 * source)
     return source->data;
 
   /* Allocate storage for the destination.  */
-  destptr = (GFC_INTEGER_8 *)internal_malloc_size (ssize * 8);
+  destptr = (GFC_INTEGER_8 *)internal_malloc_size (ssize * sizeof (GFC_INTEGER_8));
   dest = destptr;
   src = source->data;
   stride0 = stride[0];
@@ -103,7 +97,7 @@ internal_pack_8 (gfc_array_i8 * source)
              the next dimension.  */
           count[n] = 0;
           /* We could precalculate these products, but this is a less
-             frequently used path so proabably not worth it.  */
+             frequently used path so probably not worth it.  */
           src -= stride[n] * extent[n];
           n++;
           if (n == dim)
@@ -120,4 +114,6 @@ internal_pack_8 (gfc_array_i8 * source)
     }
   return destptr;
 }
+
+#endif
 

@@ -1,31 +1,28 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
---            S Y S T E M . I N T E R R U P T _ M A N A G E M E N T .       --
---                             O P E R A T I O N S                          --
+--                  SYSTEM.INTERRUPT_MANAGEMENT.OPERATIONS                  --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---          Copyright (C) 1992-2004, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
@@ -63,11 +60,11 @@ package System.Interrupt_Management.Operations is
 
    procedure Install_Default_Action (Interrupt : Interrupt_ID);
    pragma Inline (Install_Default_Action);
-   --  Set the sigaction of the Interrupt to default (SIG_DFL).
+   --  Set the sigaction of the Interrupt to default (SIG_DFL)
 
    procedure Install_Ignore_Action (Interrupt : Interrupt_ID);
    pragma Inline (Install_Ignore_Action);
-   --  Set the sigaction of the Interrupt to ignore (SIG_IGN).
+   --  Set the sigaction of the Interrupt to ignore (SIG_IGN)
 
    procedure Fill_Interrupt_Mask (Mask : access Interrupt_Mask);
    pragma Inline (Fill_Interrupt_Mask);
@@ -97,24 +94,29 @@ package System.Interrupt_Management.Operations is
 
    procedure Copy_Interrupt_Mask (X : out Interrupt_Mask; Y : Interrupt_Mask);
    pragma Inline (Copy_Interrupt_Mask);
-   --  Assigment needed for limited private type Interrupt_Mask.
+   --  Assignment needed for limited private type Interrupt_Mask
 
    procedure Interrupt_Self_Process (Interrupt : Interrupt_ID);
    pragma Inline (Interrupt_Self_Process);
    --  Raise an Interrupt process-level
 
-   --  The following objects serve as constants, but are initialized
-   --  in the body to aid portability.  These actually belong to the
-   --  System.Interrupt_Management but since Interrupt_Mask is a
-   --  private type we can not have them declared there.
+   procedure Setup_Interrupt_Mask;
+   --  Mask Environment task for all signals
+   --  This function should be called by the elaboration of System.Interrupt
+   --  to set up proper signal masking in all tasks.
+
+   --  The following objects serve as constants, but are initialized in the
+   --  body to aid portability. These should be in System.Interrupt_Management
+   --  but since Interrupt_Mask is private type we cannot have them declared
+   --  there.
 
    --  Why not make these deferred constants that are initialized using
    --  function calls in the private part???
 
    Environment_Mask : aliased Interrupt_Mask;
-   --  This mask represents the mask of Environment task when this package
-   --  is being elaborated, except the signals being
-   --  forced to be unmasked by RTS (items in Keep_Unmasked)
+   --  This mask represents the mask of Environment task when this package is
+   --  being elaborated, except the signals being forced to be unmasked by RTS
+   --  (items in Keep_Unmasked)
 
    All_Tasks_Mask : aliased Interrupt_Mask;
    --  This is the mask of all tasks created in RTS. Only one task in RTS

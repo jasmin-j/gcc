@@ -1,30 +1,28 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                  S Y S T E M . O S _ P R I M I T I V E S                 --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---          Copyright (C) 1998-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1998-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
@@ -39,13 +37,15 @@ with System.OS_Interface;
 --  set of C imported routines: using Ada routines from this package would
 --  create a dependency on libgnarl in libgnat, which is not desirable.
 
+with System.OS_Constants;
 with Interfaces.C;
---  used for type int
 
 package body System.OS_Primitives is
 
    use System.OS_Interface;
    use type Interfaces.C.int;
+
+   package OSC renames System.OS_Constants;
 
    ------------------------
    -- Internal functions --
@@ -96,11 +96,8 @@ package body System.OS_Primitives is
    function Clock return Duration is
       TS     : aliased timespec;
       Result : int;
-
-      use type Interfaces.C.int;
-
    begin
-      Result := clock_gettime (CLOCK_REALTIME, TS'Unchecked_Access);
+      Result := clock_gettime (OSC.CLOCK_RT_Ada, TS'Unchecked_Access);
       pragma Assert (Result = 0);
       return Duration (TS.ts_sec) + Duration (TS.ts_nsec) / 10#1#E9;
    end Clock;
@@ -121,7 +118,8 @@ package body System.OS_Primitives is
    is
       Rel_Time   : Duration;
       Abs_Time   : Duration;
-      Check_Time : Duration := Clock;
+      Base_Time  : constant Duration := Clock;
+      Check_Time : Duration := Base_Time;
       Ticks      : int;
 
       Result     : int;
@@ -151,11 +149,20 @@ package body System.OS_Primitives is
             Result := taskDelay (Ticks);
             Check_Time := Clock;
 
-            exit when Abs_Time <= Check_Time;
+            exit when Abs_Time <= Check_Time or else Check_Time < Base_Time;
 
             Rel_Time := Abs_Time - Check_Time;
          end loop;
       end if;
    end Timed_Delay;
+
+   ----------------
+   -- Initialize --
+   ----------------
+
+   procedure Initialize is
+   begin
+      null;
+   end Initialize;
 
 end System.OS_Primitives;

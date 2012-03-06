@@ -1,5 +1,5 @@
 /* VMClassLoader.java -- Reference implementation of compiler interface
-   Copyright (C) 2004, 2005 Free Software Foundation
+   Copyright (C) 2004, 2005, 2006, 2007 Free Software Foundation
 
 This file is part of GNU Classpath.
 
@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -50,6 +50,7 @@ import java.util.StringTokenizer;
 import java.util.Vector;
 import gnu.gcj.runtime.SharedLibHelper;
 import gnu.gcj.runtime.PersistentByteMap;
+import gnu.java.security.hash.MD5;
 
 /**
  * This class is just a per-VM reflection of java.lang.Compiler.
@@ -72,6 +73,11 @@ final class VMCompiler
   // Temporary directory to use.
   public static String gcjJitTmpdir;
 
+  public static boolean precompiles()
+  {
+    return (canUseCompiler & useCompiler);
+  }
+
   // This maps a ClassLoader to a set of SharedLibHelper objects that
   // it has used.  We do things this way to ensure that a
   // SharedLibHelper is collected if and only if the ClassLoader is.
@@ -80,22 +86,18 @@ final class VMCompiler
   private static Vector precompiledMapFiles;
 
   // We create a single MD5 engine and then clone it whenever we want
-  // a new one.  This is simpler than trying to find a new one each
-  // time, and it avoids potential deadlocks due to class loader
-  // oddities.
-  private static final MessageDigest md5Digest;
+  // a new one.
 
-  static
-  {
-    try
-      {
-	md5Digest = MessageDigest.getInstance("MD5");
-      }
-    catch (NoSuchAlgorithmException _)
-      {
-	md5Digest = null;
-      }
-  }
+  // We don't use 
+  //
+  // md5Digest = MessageDigest.getInstance("MD5");
+  //
+  // here because that loads a great deal of security provider code as
+  // interpreted bytecode -- before we're able to use this class to
+  // load precompiled classes.
+
+  private static final MD5 md5Digest
+    = new gnu.java.security.hash.MD5();
 
   static
   {
@@ -189,21 +191,16 @@ final class VMCompiler
 				   int offset, int len,
 				   ProtectionDomain domain)
   {
-    if (precompiledMapFiles == null
-	&& (! useCompiler || ! canUseCompiler))
+    if (precompiledMapFiles == null && !precompiles())
       return null;
 
     byte digest[];
 
     try
       {
-	MessageDigest md = (MessageDigest) md5Digest.clone();
-	digest = md.digest(data);
-      }
-    catch (CloneNotSupportedException _)
-      {
-	// Can't happen.
-	return null;
+	MD5 md = (MD5) md5Digest.clone();
+	md.update(data);
+	digest = md.digest();
       }
     catch (NullPointerException _)
       {
@@ -239,7 +236,7 @@ final class VMCompiler
 	  }
       }
  
-    if (! useCompiler || ! canUseCompiler)
+    if (!precompiles())
       return null;
 
     try
@@ -251,7 +248,12 @@ final class VMCompiler
 	hexBytes.append(File.separatorChar);
 	int digestLength = digest.length;
 	for (int i = 0; i < digestLength; ++i)
-	  hexBytes.append(Integer.toHexString(digest[i] & 0xff));
+	  {
+	    int v = digest[i] & 0xff;
+	    if (v < 16)
+	      hexBytes.append('0');	    
+	    hexBytes.append(Integer.toHexString(v));
+	  }
 
 	// FIXME: use System.mapLibraryName?
 	// I'm thinking we should use that, plus a class specified

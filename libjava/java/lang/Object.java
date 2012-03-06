@@ -1,5 +1,5 @@
 /* java.lang.Object - The universal superclass in Java
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004, 2007
    Free Software Foundation, Inc.
 
 This file is part of GNU Classpath.
@@ -16,8 +16,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -129,7 +129,7 @@ public class Object
    *
    * @return the class of this Object
    */
-  public final native Class getClass();
+  public final native Class<? extends Object> getClass();
 
   /**
    * Get a value that represents this Object, as uniquely as
@@ -505,6 +505,14 @@ public class Object
   // This initializes the sync_info member.  It is here for
   // completeness (some day we'll be able to auto-generate Object.h).
   private final native void sync_init();
+
+  // If we fail to find a method at class loading time we put the
+  // vtable index of this method in its place: any attempt to call
+  // that method will result in an error.
+  void throwNoSuchMethodError()
+  {
+    throw new NoSuchMethodError("in " + getClass());
+  }
 
   // Note that we don't mention the sync_info field here.  If we do,
   // jc1 will not work correctly.

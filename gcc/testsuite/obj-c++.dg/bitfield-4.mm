@@ -1,20 +1,19 @@
 /* Check if the @defs() construct preserves the correct
    layout of bitfields.  */
 /* Contributed by Ziemowit Laski <zlaski@apple.com>.  */
-/* { dg-options "-lobjc -Wpadded" } */
 /* { dg-do run } */
+/* { dg-options "-Wpadded" } */
 
-#include <objc/Object.h>
+#include "../objc-obj-c++-shared/TestsuiteObject.m"
 
-extern "C" {
-  extern void abort(void);
-  extern int strcmp(const char *str1, const char *str2);
-}
+#include <stdlib.h>
+#include <string.h>
+
 #define CHECK_IF(expr) if(!(expr)) abort()
 
 enum Enum { one, two, three, four };
 
-@interface Base: Object {
+@interface Base: TestsuiteObject {
   unsigned a: 2;
   int b: 3;
   enum Enum c: 4;
@@ -49,3 +48,9 @@ int main(void)
 
   return 0;
 }
+
+/* { dg-prune-output "In file included from" }  Ignore this message.  */
+/* { dg-bogus "padding struct to align" "PR23610" { target *-*-* } 0 } */
+
+/* { dg-bogus "padding struct size" "PR23610" { xfail lp64 } 28 } */
+/* { dg-bogus "padding struct size" "PR23610" { xfail lp64 } 34 } */

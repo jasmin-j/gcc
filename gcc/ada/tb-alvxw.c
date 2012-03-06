@@ -1,29 +1,28 @@
 /****************************************************************************
  *                                                                          *
- *                         GNAT COMPILER COMPONENTS                         *
+ *                         GNAT RUN-TIME COMPONENTS                         *
  *                                                                          *
  *                T R A C E B A C K - A l p h a / V x W o r k s             *
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *            Copyright (C) 2000-2003 Ada Core Technologies, Inc            *
+ *                     Copyright (C) 2000-2011, AdaCore                     *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
- * ware  Foundation;  either version 2,  or (at your option) any later ver- *
+ * ware  Foundation;  either version 3,  or (at your option) any later ver- *
  * sion.  GNAT is distributed in the hope that it will be useful, but WITH- *
  * OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY *
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
- * for  more details.  You should have  received  a copy of the GNU General *
- * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * or FITNESS FOR A PARTICULAR PURPOSE.                                     *
  *                                                                          *
- * As a  special  exception,  if you  link  this file  with other  files to *
- * produce an executable,  this file does not by itself cause the resulting *
- * executable to be covered by the GNU General Public License. This except- *
- * ion does not  however invalidate  any other reasons  why the  executable *
- * file might be covered by the  GNU Public License.                        *
+ * As a special exception under Section 7 of GPL version 3, you are granted *
+ * additional permissions described in the GCC Runtime Library Exception,   *
+ * version 3.1, as published by the Free Software Foundation.               *
+ *                                                                          *
+ * You should have received a copy of the GNU General Public License and    *
+ * a copy of the GCC Runtime Library Exception along with this program;     *
+ * see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    *
+ * <http://www.gnu.org/licenses/>.                                          *
  *                                                                          *
  * GNAT was originally developed  by the GNAT team at  New York University. *
  * Extensive contributions were provided by Ada Core Technologies Inc.      *
@@ -564,7 +563,7 @@ heuristic_proc_desc (CORE_ADDR start_pc,
 	     So we recognize only a few registers (t7, t9, ra) within
 	     the procedure prologue as valid return address registers.
 	     If we encounter a return instruction, we extract the
-	     the return address register from it.
+	     return address register from it.
 
 	     FIXME: Rewriting GDB to access the procedure descriptors,
 	     e.g. via the minimal symbol table, might obviate this hack.  */
@@ -630,7 +629,7 @@ find_proc_desc (CORE_ADDR pc,
 {
   CORE_ADDR startaddr;
 
-  /* If heuristic_fence_post is non-zero, determine the procedure
+  /* If heuristic_fence_post is nonzero, determine the procedure
      start address by examining the instructions.
      This allows us to find the start address of static functions which
      have no symbolic information, as startaddr would have been set to

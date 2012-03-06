@@ -6,33 +6,30 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2003 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This is the default version used for all systems for which no special
---  target-specific version of this package is provided.
+--  Default version used when no target-specific version is provided
 
 --  This package defines some system dependent parameters for GNAT. These
 --  are values that are referenced by the runtime library and are therefore
@@ -49,8 +46,10 @@
 --  Note: do not introduce any pragma Inline statements into this unit, since
 --  otherwise the relinking and rebinding capability would be deactivated.
 
+pragma Compiler_Unit;
+
 package System.Parameters is
-pragma Pure (Parameters);
+   pragma Pure;
 
    ---------------------------------------
    -- Task And Stack Allocation Control --
@@ -65,7 +64,7 @@ pragma Pure (Parameters);
    Unspecified_Size : constant Size_Type := Size_Type'First;
    --  Value used to indicate that no size type is set
 
-   subtype Ratio is Size_Type range -1 .. 100;
+   subtype Percentage is Size_Type range -1 .. 100;
    Dynamic : constant Size_Type := -1;
    --  The secondary stack ratio is a constant between 0 and 100 which
    --  determines the percentage of the allocated task stack that is
@@ -73,10 +72,10 @@ pragma Pure (Parameters);
    --  The special value of minus one indicates that the secondary
    --  stack is to be allocated from the heap instead.
 
-   Sec_Stack_Ratio : constant Ratio := Dynamic;
+   Sec_Stack_Percentage : constant Percentage := Dynamic;
    --  This constant defines the handling of the secondary stack
 
-   Sec_Stack_Dynamic : constant Boolean := Sec_Stack_Ratio = Dynamic;
+   Sec_Stack_Dynamic : constant Boolean := Sec_Stack_Percentage = Dynamic;
    --  Convenient Boolean for testing for dynamic secondary stack
 
    function Default_Stack_Size return Size_Type;
@@ -113,6 +112,15 @@ pragma Pure (Parameters);
    --  is that this is the same as type Long_Integer, but this is not true
    --  of all targets. For example, in OpenVMS long /= Long_Integer.
 
+   ptr_bits  : constant := Standard'Address_Size;
+   subtype C_Address is System.Address;
+   --  Number of bits in Interfaces.C pointers, normally a standard address,
+   --  except on 64-bit VMS where they are 32-bit addresses, for compatibility
+   --  with legacy code.
+
+   C_Malloc_Linkname : constant String := "__gnat_malloc";
+   --  Name of runtime function used to allocate such a pointer
+
    ----------------------------------------------
    -- Behavior of Pragma Finalize_Storage_Only --
    ----------------------------------------------
@@ -124,7 +132,7 @@ pragma Pure (Parameters);
 
    --      The system releases all storage on program termination only,
    --      but not other garbage collection occurs, so finalization calls
-   --      are ommitted only for outer level onjects can be omitted if
+   --      are omitted only for outer level objects can be omitted if
    --      pragma Finalize_Storage_Only is used.
 
    --    Garbage_Collected = True
@@ -170,18 +178,6 @@ pragma Pure (Parameters);
    --  pragma Restrictions (No_Abort_Statements);
    --  pragma Restrictions (Max_Asynchronous_Select_Nesting => 0);
 
-   ----------------------
-   -- Dynamic Priority --
-   ----------------------
-
-   Dynamic_Priority_Support : constant Boolean := True;
-   --  This constant indicates whether dynamic changes of task priorities
-   --  are allowed (True means normal RM mode in which such changes are
-   --  allowed). In particular, if this is False, then we do not need to
-   --  poll for pending base priority changes at every abort completion
-   --  point. A value of False for Dynamic_Priority_Support corresponds
-   --  to pragma Restrictions (No_Dynamic_Priorities);
-
    ---------------------
    -- Task Attributes --
    ---------------------
@@ -198,5 +194,20 @@ pragma Pure (Parameters);
    --  This constant indicates whether the runtime outputs traces to a
    --  predefined output or not (True means that traces are output).
    --  See System.Traces for more details.
+
+   -----------------------
+   -- Task Image Length --
+   -----------------------
+
+   Max_Task_Image_Length : constant := 256;
+   --  This constant specifies the maximum length of a task's image
+
+   ------------------------------
+   -- Exception Message Length --
+   ------------------------------
+
+   Default_Exception_Msg_Max_Length : constant := 200;
+   --  This constant specifies the default number of characters to allow
+   --  in an exception message (200 is minimum required by RM 11.4.1(18)).
 
 end System.Parameters;

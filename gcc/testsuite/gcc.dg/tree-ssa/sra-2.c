@@ -1,5 +1,5 @@
-/* { dg-do compile } */ 
-/* { dg-options "-O1 -fdump-tree-optimized" } */
+/* { dg-do compile } */
+/* { dg-options "-O1 -fno-tree-fre -fdump-tree-optimized" } */
 
 /* Test for SRA. */
 

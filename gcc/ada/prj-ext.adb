@@ -6,98 +6,131 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---             Copyright (C) 2000-2004 Free Software Foundation, Inc.       --
+--          Copyright (C) 2000-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Namet;   use Namet;
-with Osint;   use Osint;
-with Sdefault;
-with Types;   use Types;
+with Osint;    use Osint;
 
-with GNAT.HTable;
-with GNAT.OS_Lib; use GNAT.OS_Lib;
+with Ada.Unchecked_Deallocation;
 
 package body Prj.Ext is
 
-   Ada_Project_Path : constant String := "ADA_PROJECT_PATH";
-   --  Name of the env. variable that contains path name(s) of directories
-   --  where project files may reside.
+   ----------------
+   -- Initialize --
+   ----------------
 
-   Prj_Path : constant String_Access := Getenv (Ada_Project_Path);
-   --  The path name(s) of directories where project files may reside.
-   --  May be empty.
+   procedure Initialize
+     (Self      : out External_References;
+      Copy_From : External_References := No_External_Refs)
+   is
+      N  : Name_To_Name_Ptr;
+      N2 : Name_To_Name_Ptr;
+   begin
+      if Self.Refs = null then
+         Self.Refs := new Name_To_Name_HTable.Instance;
 
-   No_Project_Default_Dir : constant String := "-";
-
-   Current_Project_Path : String_Access;
-   --  The project path; initialized during elaboration of package
-   --  Contains at least the current working directory.
-
-   package Htable is new GNAT.HTable.Simple_HTable
-     (Header_Num => Header_Num,
-      Element    => Name_Id,
-      No_Element => No_Name,
-      Key        => Name_Id,
-      Hash       => Hash,
-      Equal      => "=");
-   --  External references are stored in this hash table, either by procedure
-   --  Add (directly or through a call to function Check) or by function
-   --  Value_Of when an environment variable is found non empty. Value_Of
-   --  first for external reference in this table, before checking the
-   --  environment. Htable is emptied (reset) by procedure Reset.
+         if Copy_From.Refs /= null then
+            N := Name_To_Name_HTable.Get_First (Copy_From.Refs.all);
+            while N /= null loop
+               N2 := new Name_To_Name'
+                           (Key    => N.Key,
+                            Value  => N.Value,
+                            Source => N.Source,
+                            Next   => null);
+               Name_To_Name_HTable.Set (Self.Refs.all, N2);
+               N := Name_To_Name_HTable.Get_Next (Copy_From.Refs.all);
+            end loop;
+         end if;
+      end if;
+   end Initialize;
 
    ---------
    -- Add --
    ---------
 
    procedure Add
-     (External_Name : String;
-      Value         : String)
+     (Self          : External_References;
+      External_Name : String;
+      Value         : String;
+      Source        : External_Source := External_Source'First)
    is
-      The_Key   : Name_Id;
-      The_Value : Name_Id;
+      Key : Name_Id;
+      N   : Name_To_Name_Ptr;
 
    begin
-      Name_Len := Value'Length;
-      Name_Buffer (1 .. Name_Len) := Value;
-      The_Value := Name_Find;
       Name_Len := External_Name'Length;
       Name_Buffer (1 .. Name_Len) := External_Name;
-      Canonical_Case_File_Name (Name_Buffer (1 .. Name_Len));
-      The_Key := Name_Find;
-      Htable.Set (The_Key, The_Value);
+      Canonical_Case_Env_Var_Name (Name_Buffer (1 .. Name_Len));
+      Key := Name_Find;
+
+      --  Check whether the value is already defined, to properly respect the
+      --  overriding order.
+
+      if Source /= External_Source'First then
+         N := Name_To_Name_HTable.Get (Self.Refs.all, Key);
+
+         if N /= null then
+            if External_Source'Pos (N.Source) <
+               External_Source'Pos (Source)
+            then
+               if Current_Verbosity = High then
+                  Debug_Output
+                    ("Not overridding existing variable '" & External_Name
+                     & "', value was defined in " & N.Source'Img);
+               end if;
+               return;
+            end if;
+         end if;
+      end if;
+
+      Name_Len := Value'Length;
+      Name_Buffer (1 .. Name_Len) := Value;
+      N := new Name_To_Name'
+                 (Key    => Key,
+                  Source => Source,
+                  Value  => Name_Find,
+                  Next   => null);
+
+      if Current_Verbosity = High then
+         Debug_Output ("Add external (" & External_Name & ") is", N.Value);
+      end if;
+
+      Name_To_Name_HTable.Set (Self.Refs.all, N);
    end Add;
 
    -----------
    -- Check --
    -----------
 
-   function Check (Declaration : String) return Boolean is
+   function Check
+     (Self        : External_References;
+      Declaration : String) return Boolean
+   is
    begin
       for Equal_Pos in Declaration'Range loop
          if Declaration (Equal_Pos) = '=' then
             exit when Equal_Pos = Declaration'First;
-            exit when Equal_Pos = Declaration'Last;
             Add
-              (External_Name =>
+              (Self          => Self,
+               External_Name =>
                  Declaration (Declaration'First .. Equal_Pos - 1),
-               Value =>
-                 Declaration (Equal_Pos + 1 .. Declaration'Last));
+               Value         =>
+                 Declaration (Equal_Pos + 1 .. Declaration'Last),
+               Source        => From_Command_Line);
             return True;
          end if;
       end loop;
@@ -105,58 +138,47 @@ package body Prj.Ext is
       return False;
    end Check;
 
-   ------------------
-   -- Project_Path --
-   ------------------
-
-   function Project_Path return String is
-   begin
-      return Current_Project_Path.all;
-   end Project_Path;
-
    -----------
    -- Reset --
    -----------
 
-   procedure Reset is
+   procedure Reset (Self : External_References) is
    begin
-      Htable.Reset;
+      if Self.Refs /= null then
+         Debug_Output ("Reset external references");
+         Name_To_Name_HTable.Reset (Self.Refs.all);
+      end if;
    end Reset;
-
-   ----------------------
-   -- Set_Project_Path --
-   ----------------------
-
-   procedure Set_Project_Path (New_Path : String) is
-   begin
-      Free (Current_Project_Path);
-      Current_Project_Path := new String'(New_Path);
-   end Set_Project_Path;
 
    --------------
    -- Value_Of --
    --------------
 
    function Value_Of
-     (External_Name : Name_Id;
+     (Self          : External_References;
+      External_Name : Name_Id;
       With_Default  : Name_Id := No_Name)
       return          Name_Id
    is
-      The_Value : Name_Id;
-      Name      : String := Get_Name_String (External_Name);
+      Value : Name_To_Name_Ptr;
+      Val   : Name_Id;
+      Name  : String := Get_Name_String (External_Name);
 
    begin
-      Canonical_Case_File_Name (Name);
-      Name_Len := Name'Length;
-      Name_Buffer (1 .. Name_Len) := Name;
-      The_Value := Htable.Get (Name_Find);
+      Canonical_Case_Env_Var_Name (Name);
 
-      if The_Value /= No_Name then
-         return The_Value;
+      if Self.Refs /= null then
+         Name_Len := Name'Length;
+         Name_Buffer (1 .. Name_Len) := Name;
+         Value := Name_To_Name_HTable.Get (Self.Refs.all, Name_Find);
+
+         if Value /= null then
+            Debug_Output ("Value_Of (" & Name & ") is in cache", Value.Value);
+            return Value.Value;
+         end if;
       end if;
 
-      --  Find if it is an environment.
-      --  If it is, put the value in the hash table.
+      --  Find if it is an environment, if it is, put value in the hash table
 
       declare
          Env_Value : String_Access := Getenv (Name);
@@ -165,89 +187,75 @@ package body Prj.Ext is
          if Env_Value /= null and then Env_Value'Length > 0 then
             Name_Len := Env_Value'Length;
             Name_Buffer (1 .. Name_Len) := Env_Value.all;
-            The_Value := Name_Find;
-            Htable.Set (External_Name, The_Value);
+            Val := Name_Find;
+
+            if Current_Verbosity = High then
+               Debug_Output ("Value_Of (" & Name & ") is", Val);
+            end if;
+
+            if Self.Refs /= null then
+               Value := new Name_To_Name'
+                 (Key    => External_Name,
+                  Value  => Val,
+                  Source => From_Environment,
+                  Next   => null);
+               Name_To_Name_HTable.Set (Self.Refs.all, Value);
+            end if;
+
             Free (Env_Value);
-            return The_Value;
+            return Val;
 
          else
+            if Current_Verbosity = High then
+               Debug_Output
+                 ("Value_Of (" & Name & ") is default", With_Default);
+            end if;
+
             Free (Env_Value);
             return With_Default;
          end if;
       end;
    end Value_Of;
 
-begin
-   --  Initialize Current_Project_Path during package elaboration
+   ----------
+   -- Free --
+   ----------
 
-   declare
-      Add_Default_Dir : Boolean := True;
-      First           : Positive;
-      Last            : Positive;
-
+   procedure Free (Self : in out External_References) is
+      procedure Unchecked_Free is new Ada.Unchecked_Deallocation
+        (Name_To_Name_HTable.Instance, Instance_Access);
    begin
-      --  The current directory is always first
-
-      Name_Len := 1;
-      Name_Buffer (Name_Len) := '.';
-
-      --  If env. var. is defined and not empty, add its content
-
-      if Prj_Path.all /= "" then
-         Name_Len := Name_Len + 1;
-         Name_Buffer (Name_Len) := Path_Separator;
-
-         Add_Str_To_Name_Buffer (Prj_Path.all);
-
-         --  Scan the directory path to see if "-" is one of the directories.
-         --  Remove each occurence of "-" and set Add_Default_Dir to False.
-
-         First := 3;
-         loop
-            while First <= Name_Len
-              and then (Name_Buffer (First) = Path_Separator)
-            loop
-               First := First + 1;
-            end loop;
-
-            exit when First > Name_Len;
-
-            Last := First;
-
-            while Last < Name_Len
-              and then Name_Buffer (Last + 1) /= Path_Separator
-            loop
-               Last := Last + 1;
-            end loop;
-
-            --  If the directory is "-", set Add_Default_Dir to False and
-            --  remove from path.
-
-            if Name_Buffer (First .. Last) = No_Project_Default_Dir then
-               Add_Default_Dir := False;
-
-               for J in Last + 1 .. Name_Len loop
-                  Name_Buffer (J - No_Project_Default_Dir'Length - 1) :=
-                    Name_Buffer (J);
-               end loop;
-
-               Name_Len := Name_Len - No_Project_Default_Dir'Length - 1;
-            end if;
-
-            First := Last + 1;
-         end loop;
+      if Self.Refs /= null then
+         Reset (Self);
+         Unchecked_Free (Self.Refs);
       end if;
+   end Free;
 
-      --  Set the initial value of Current_Project_Path
+   --------------
+   -- Set_Next --
+   --------------
 
-      if Add_Default_Dir then
-         Current_Project_Path :=
-           new String'(Name_Buffer (1 .. Name_Len) & Path_Separator &
-                       Sdefault.Search_Dir_Prefix.all & ".." &
-                       Directory_Separator & ".." & Directory_Separator &
-                       ".." & Directory_Separator & "gnat");
-      else
-         Current_Project_Path := new String'(Name_Buffer (1 .. Name_Len));
-      end if;
-   end;
+   procedure Set_Next (E : Name_To_Name_Ptr; Next : Name_To_Name_Ptr) is
+   begin
+      E.Next := Next;
+   end Set_Next;
+
+   ----------
+   -- Next --
+   ----------
+
+   function Next (E : Name_To_Name_Ptr) return Name_To_Name_Ptr is
+   begin
+      return E.Next;
+   end Next;
+
+   -------------
+   -- Get_Key --
+   -------------
+
+   function Get_Key (E : Name_To_Name_Ptr) return Name_Id is
+   begin
+      return E.Key;
+   end Get_Key;
+
 end Prj.Ext;

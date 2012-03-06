@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -29,7 +28,9 @@ with Atree;    use Atree;
 with Debug;    use Debug;
 with Einfo;    use Einfo;
 with Errout;   use Errout;
-with Namet;    use Namet;
+with Fname;    use Fname;
+with Hostparm;
+with Lib;      use Lib;
 with Opt;      use Opt;
 with Osint;    use Osint;
 with Output;   use Output;
@@ -38,7 +39,10 @@ with Prepcomp; use Prepcomp;
 with Scans;    use Scans;
 with Scn;      use Scn;
 with Sinfo;    use Sinfo;
+with Snames;   use Snames;
 with System;   use System;
+
+with System.OS_Lib; use System.OS_Lib;
 
 with Unchecked_Conversion;
 
@@ -56,7 +60,7 @@ package body Sinput.L is
 
    --  When a file is to be preprocessed and the options to list symbols
    --  has been selected (switch -s), Prep.List_Symbols is called with a
-   --  "foreword", a single line indicationg what source the symbols apply to.
+   --  "foreword", a single line indicating what source the symbols apply to.
    --  The following two constant String are the start and the end of this
    --  foreword.
 
@@ -74,8 +78,7 @@ package body Sinput.L is
    --  Used to initialize the preprocessor.
 
    procedure New_EOL_In_Prep_Buffer;
-   --  Add an LF to Prep_Buffer.
-   --  Used to initialize the preprocessor.
+   --  Add an LF to Prep_Buffer (used to initialize the preprocessor)
 
    function Load_File
      (N : File_Name_Type;
@@ -91,10 +94,10 @@ package body Sinput.L is
       Loc : constant Source_Ptr := Sloc (N);
 
    begin
-      --  We only do the adjustment if the value is between the appropriate
-      --  low and high values. It is not clear that this should ever not be
-      --  the case, but in practice there seem to be some nodes that get
-      --  copied twice, and this is a defence against that happening.
+      --  We only do the adjustment if the value is between the appropriate low
+      --  and high values. It is not clear that this should ever not be the
+      --  case, but in practice there seem to be some nodes that get copied
+      --  twice, and this is a defence against that happening.
 
       if A.Lo <= Loc and then Loc <= A.Hi then
          Set_Sloc (N, Loc + A.Adjust);
@@ -132,10 +135,9 @@ package body Sinput.L is
       A.Lo := Source_File.Table (Xold).Source_First;
       A.Hi := Source_File.Table (Xold).Source_Last;
 
-      Source_File.Increment_Last;
+      Source_File.Append (Source_File.Table (Xold));
       Xnew := Source_File.Last;
 
-      Source_File.Table (Xnew)               := Source_File.Table (Xold);
       Source_File.Table (Xnew).Inlined_Body  := Inlined_Body;
       Source_File.Table (Xnew).Instantiation := Sloc (Inst_Node);
       Source_File.Table (Xnew).Template      := Xold;
@@ -148,6 +150,7 @@ package body Sinput.L is
         Source_File.Table (Xnew - 1).Source_Last + 1;
       A.Adjust := Source_File.Table (Xnew).Source_First - A.Lo;
       Source_File.Table (Xnew).Source_Last := A.Hi + A.Adjust;
+
       Set_Source_File_Index_Table (Xnew);
 
       Source_File.Table (Xnew).Sloc_Adjust :=
@@ -233,19 +236,19 @@ package body Sinput.L is
          Write_Eol;
       end if;
 
-      --  For a given character in the source, a higher subscript will be
-      --  used to access the instantiation, which means that the virtual
-      --  origin must have a corresponding lower value. We compute this
-      --  new origin by taking the address of the appropriate adjusted
-      --  element in the old array. Since this adjusted element will be
-      --  at a negative subscript, we must suppress checks.
+      --  For a given character in the source, a higher subscript will be used
+      --  to access the instantiation, which means that the virtual origin must
+      --  have a corresponding lower value. We compute this new origin by
+      --  taking the address of the appropriate adjusted element in the old
+      --  array. Since this adjusted element will be at a negative subscript,
+      --  we must suppress checks.
 
       declare
          pragma Suppress (All_Checks);
 
          pragma Warnings (Off);
-         --  This unchecked conversion is aliasing safe, since it is never
-         --  used to create improperly aliased pointer values.
+         --  This unchecked conversion is aliasing safe, since it is never used
+         --  to create improperly aliased pointer values.
 
          function To_Source_Buffer_Ptr is new
            Unchecked_Conversion (Address, Source_Buffer_Ptr);
@@ -321,7 +324,7 @@ package body Sinput.L is
       --  source will be the last created, and we will be able to replace it
       --  and modify Hi without stepping on another buffer.
 
-      if T = Osint.Source then
+      if T = Osint.Source and then not Is_Internal_File_Name (N) then
          Prepare_To_Preprocess
            (Source => N, Preprocessing_Needed => Preprocessing_Needed);
       end if;
@@ -362,9 +365,15 @@ package body Sinput.L is
                procedure Wchar (C : Character);
                --  Writes character or ? for control character
 
+               -----------
+               -- Wchar --
+               -----------
+
                procedure Wchar (C : Character) is
                begin
-                  if C < ' ' or C in ASCII.DEL .. Character'Val (16#9F#) then
+                  if C < ' '
+                    or else C in ASCII.DEL .. Character'Val (16#9F#)
+                  then
                      Write_Char ('?');
                   else
                      Write_Char (C);
@@ -441,6 +450,7 @@ package body Sinput.L is
                   Source_Last         => Hi,
                   Source_Text         => Src,
                   Template            => No_Source_File,
+                  Unit                => No_Unit,
                   Time_Stamp          => Osint.Current_Source_File_Stamp);
 
             Alloc_Line_Tables (S, Opt.Table_Factor * Alloc.Lines_Initial);
@@ -450,6 +460,12 @@ package body Sinput.L is
          --  Preprocess the source if it needs to be preprocessed
 
          if Preprocessing_Needed then
+
+            --  Temporarily set the Source_File_Index_Table entries for the
+            --  source, to avoid crash when reporting an error.
+
+            Set_Source_File_Index_Table (X);
+
             if Opt.List_Preprocessing_Symbols then
                Get_Name_String (N);
 
@@ -472,6 +488,12 @@ package body Sinput.L is
                T : constant Nat := Total_Errors_Detected;
                --  Used to check if there were errors during preprocessing
 
+               Save_Style_Check : Boolean;
+               --  Saved state of the Style_Check flag (which needs to be
+               --  temporarily set to False during preprocessing, see below).
+
+               Modified : Boolean;
+
             begin
                --  If this is the first time we preprocess a source, allocate
                --  the preprocessing buffer.
@@ -485,34 +507,44 @@ package body Sinput.L is
 
                Prep_Buffer_Last := 0;
 
-               --  Initialize the preprocessor
+               --  Initialize the preprocessor hooks
 
-               Prep.Initialize
+               Prep.Setup_Hooks
                  (Error_Msg         => Errout.Error_Msg'Access,
                   Scan              => Scn.Scanner.Scan'Access,
                   Set_Ignore_Errors => Errout.Set_Ignore_Errors'Access,
                   Put_Char          => Put_Char_In_Prep_Buffer'Access,
                   New_EOL           => New_EOL_In_Prep_Buffer'Access);
 
-               --  Initialize the scanner and set its behavior for
-               --  preprocessing, then preprocess.
+               --  Initialize scanner and set its behavior for preprocessing,
+               --  then preprocess. Also disable style checks, since some of
+               --  them are done in the scanner (specifically, those dealing
+               --  with line length and line termination), and cannot be done
+               --  during preprocessing (because the source file index table
+               --  has not been set yet).
 
-               Scn.Scanner.Initialize_Scanner (No_Unit, X);
+               Scn.Scanner.Initialize_Scanner (X);
 
                Scn.Scanner.Set_Special_Character ('#');
                Scn.Scanner.Set_Special_Character ('$');
                Scn.Scanner.Set_End_Of_Line_As_Token (True);
+               Save_Style_Check := Opt.Style_Check;
+               Opt.Style_Check := False;
 
-               Preprocess;
+               --  The actual preprocessing step
 
-               --  Reset the scanner to its standard behavior
+               Preprocess (Modified);
+
+               --  Reset the scanner to its standard behavior, and restore the
+               --  Style_Checks flag.
 
                Scn.Scanner.Reset_Special_Characters;
                Scn.Scanner.Set_End_Of_Line_As_Token (False);
+               Opt.Style_Check := Save_Style_Check;
 
-               --  If there were errors during preprocessing, record an
-               --  error at the start of the file, and do not change the
-               --  source buffer.
+               --  If there were errors during preprocessing, record an error
+               --  at the start of the file, and do not change the source
+               --  buffer.
 
                if T /= Total_Errors_Detected then
                   Errout.Error_Msg
@@ -520,6 +552,62 @@ package body Sinput.L is
                   return No_Source_File;
 
                else
+                  --  Output the result of the preprocessing, if requested and
+                  --  the source has been modified by the preprocessing. Only
+                  --  do that for the main unit (spec, body and subunits).
+
+                  if Generate_Processed_File
+                    and then Modified
+                    and then
+                     ((Compiler_State = Parsing
+                        and then Parsing_Main_Extended_Source)
+                       or else
+                        (Compiler_State = Analyzing
+                          and then Analysing_Subunit_Of_Main))
+                  then
+                     declare
+                        FD     : File_Descriptor;
+                        NB     : Integer;
+                        Status : Boolean;
+
+                     begin
+                        Get_Name_String (N);
+
+                        if Hostparm.OpenVMS then
+                           Add_Str_To_Name_Buffer ("_prep");
+                        else
+                           Add_Str_To_Name_Buffer (".prep");
+                        end if;
+
+                        Delete_File (Name_Buffer (1 .. Name_Len), Status);
+
+                        FD :=
+                          Create_New_File (Name_Buffer (1 .. Name_Len), Text);
+
+                        Status := FD /= Invalid_FD;
+
+                        if Status then
+                           NB :=
+                             Write
+                               (FD,
+                                Prep_Buffer (1)'Address,
+                                Integer (Prep_Buffer_Last));
+                           Status := NB = Integer (Prep_Buffer_Last);
+                        end if;
+
+                        if Status then
+                           Close (FD, Status);
+                        end if;
+
+                        if not Status then
+                           Errout.Error_Msg
+                             ("?could not write processed file """ &
+                              Name_Buffer (1 .. Name_Len) & '"',
+                              Lo);
+                        end if;
+                     end;
+                  end if;
+
                   --  Set the new value of Hi
 
                   Hi := Lo + Source_Ptr (Prep_Buffer_Last);
@@ -531,12 +619,11 @@ package body Sinput.L is
                      --  Physical buffer allocated
 
                      type Actual_Source_Ptr is access Actual_Source_Buffer;
-                     --  This is the pointer type for the physical buffer
-                     --  allocated.
+                     --  Pointer type for the physical buffer allocated
 
                      Actual_Ptr : constant Actual_Source_Ptr :=
                                     new Actual_Source_Buffer;
-                     --  And this is the actual physical buffer
+                     --  Actual physical buffer
 
                   begin
                      Actual_Ptr (Lo .. Hi - 1) :=
@@ -544,9 +631,9 @@ package body Sinput.L is
                      Actual_Ptr (Hi) := EOF;
 
                      --  Now we need to work out the proper virtual origin
-                     --  pointer to return. This is exactly
-                     --  Actual_Ptr (0)'Address, but we have to be careful to
-                     --  suppress checks to compute this address.
+                     --  pointer to return. This is Actual_Ptr (0)'Address, but
+                     --  we have to be careful to suppress checks to compute
+                     --  this address.
 
                      declare
                         pragma Suppress (All_Checks);
@@ -571,7 +658,7 @@ package body Sinput.L is
                         Source_File.Table (X).Source_Last := Hi;
 
                         --  Reset Last_Line to 1, because the lines do not
-                        --  have neccessarily the same starts and lengths.
+                        --  have necessarily the same starts and lengths.
 
                         Source_File.Table (X).Last_Source_Line := 1;
                      end;
@@ -640,6 +727,37 @@ package body Sinput.L is
       Prep_Buffer (Prep_Buffer_Last) := C;
    end Put_Char_In_Prep_Buffer;
 
+   -----------------------------------
+   -- Source_File_Is_Pragma_No_Body --
+   -----------------------------------
+
+   function Source_File_Is_No_Body (X : Source_File_Index) return Boolean is
+   begin
+      Initialize_Scanner (No_Unit, X);
+
+      if Token /= Tok_Pragma then
+         return False;
+      end if;
+
+      Scan; -- past pragma
+
+      if Token /= Tok_Identifier
+        or else Chars (Token_Node) /= Name_No_Body
+      then
+         return False;
+      end if;
+
+      Scan; -- past No_Body
+
+      if Token /= Tok_Semicolon then
+         return False;
+      end if;
+
+      Scan; -- past semicolon
+
+      return Token = Tok_EOF;
+   end Source_File_Is_No_Body;
+
    ----------------------------
    -- Source_File_Is_Subunit --
    ----------------------------
@@ -648,11 +766,10 @@ package body Sinput.L is
    begin
       Initialize_Scanner (No_Unit, X);
 
-      --  We scan past junk to the first interesting compilation unit
-      --  token, to see if it is SEPARATE. We ignore WITH keywords during
-      --  this and also PRIVATE. The reason for ignoring PRIVATE is that
-      --  it handles some error situations, and also it is possible that
-      --  a PRIVATE WITH feature might be approved some time in the future.
+      --  We scan past junk to the first interesting compilation unit token, to
+      --  see if it is SEPARATE. We ignore WITH keywords during this and also
+      --  PRIVATE. The reason for ignoring PRIVATE is that it handles some
+      --  error situations, and also to handle PRIVATE WITH in Ada 2005 mode.
 
       while Token = Tok_With
         or else Token = Tok_Private

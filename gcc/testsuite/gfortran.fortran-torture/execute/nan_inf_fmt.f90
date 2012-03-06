@@ -1,4 +1,5 @@
 !pr 12839- F2003 formatting of Inf /Nan 
+! Modified for PR47434
        implicit none
        character*40 l
        character*12 fmt
@@ -12,6 +13,14 @@
        neg_inf = -1.0/zero
        nan = zero/zero
 
+! check a field width = 0
+       fmt = '(F0.0)'
+       write(l,fmt=fmt)pos_inf
+       if (l.ne.'Inf') call abort
+       write(l,fmt=fmt)neg_inf
+       if (l.ne.'-Inf') call abort
+       write(l,fmt=fmt)nan
+       if (l.ne.'NaN') call abort
 
 ! check a field width < 3
        fmt = '(F2.0)'
@@ -27,14 +36,14 @@
        write(l,fmt=fmt)pos_inf
        if (l.ne.'Inf') call abort
        write(l,fmt=fmt)neg_inf
-       if (l.ne.'Inf') call abort
+       if (l.ne.'***') call abort
        write(l,fmt=fmt)nan
        if (l.ne.'NaN') call abort
 
 ! check a field width > 3
        fmt = '(F4.0)'
        write(l,fmt=fmt)pos_inf
-       if (l.ne.'+Inf') call abort
+       if (l.ne.' Inf') call abort
        write(l,fmt=fmt)neg_inf
        if (l.ne.'-Inf') call abort
        write(l,fmt=fmt)nan
@@ -43,7 +52,7 @@
 ! check a field width = 7
        fmt = '(F7.0)'
        write(l,fmt=fmt)pos_inf
-       if (l.ne.'   +Inf') call abort
+       if (l.ne.'    Inf') call abort
        write(l,fmt=fmt)neg_inf
        if (l.ne.'   -Inf') call abort
        write(l,fmt=fmt)nan
@@ -54,14 +63,14 @@
        write(l,fmt=fmt)pos_inf
        if (l.ne.'Infinity') call abort
        write(l,fmt=fmt)neg_inf
-       if (l.ne.'Infinity') call abort
+       if (l.ne.'    -Inf') call abort
        write(l,fmt=fmt)nan
        if (l.ne.'     NaN') call abort
 
 ! check a field width = 9
        fmt = '(F9.0)'
        write(l,fmt=fmt)pos_inf
-       if (l.ne.'+Infinity') call abort
+       if (l.ne.' Infinity') call abort
        write(l,fmt=fmt)neg_inf
        if (l.ne.'-Infinity') call abort
        write(l,fmt=fmt)nan
@@ -70,7 +79,7 @@
 ! check a field width = 14
        fmt = '(F14.0)'
        write(l,fmt=fmt)pos_inf
-       if (l.ne.'     +Infinity') call abort
+       if (l.ne.'      Infinity') call abort
        write(l,fmt=fmt)neg_inf
        if (l.ne.'     -Infinity') call abort
        write(l,fmt=fmt)nan

@@ -5,11 +5,13 @@
 
 #define N 128
 
+short sa[N];
+short sb[N];
+
+__attribute__ ((noinline))
 int main1 ()
 {
   int i;
-  short sa[N];
-  short sb[N];
   
   for (i = 0; i < N; i++)
     {
@@ -45,7 +47,6 @@ int main (void)
   return main1 ();
 }
 
-/* Fails for 32-bit targets that don't vectorize PLUS.  */
 /* { dg-final { scan-tree-dump-times "vectorized 2 loops" 1 "vect" } } */
 /* { dg-final { scan-tree-dump-times "Vectorizing an unaligned access" 0 "vect" } } */
 /* { dg-final { cleanup-tree-dump "vect" } } */

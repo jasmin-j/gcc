@@ -1,5 +1,6 @@
 /* An expandable hash tables datatype.  
-   Copyright (C) 1999, 2000, 2002, 2003, 2004 Free Software Foundation, Inc.
+   Copyright (C) 1999, 2000, 2002, 2003, 2004, 2005, 2009, 2010
+   Free Software Foundation, Inc.
    Contributed by Vladimir Makarov (vmakarov@cygnus.com).
 
 This program is free software; you can redistribute it and/or modify
@@ -81,14 +82,22 @@ typedef void (*htab_free) (void *);
 typedef void *(*htab_alloc_with_arg) (void *, size_t, size_t);
 typedef void (*htab_free_with_arg) (void *, void *);
 
+/* This macro defines reserved value for empty table entry.  */
+
+#define HTAB_EMPTY_ENTRY    ((PTR) 0)
+
+/* This macro defines reserved value for table entry which contained
+   a deleted element. */
+
+#define HTAB_DELETED_ENTRY  ((PTR) 1)
+
 /* Hash tables are of the following type.  The structure
    (implementation) of this type is not needed for using the hash
    tables.  All work with hash table should be executed only through
    functions mentioned below.  The size of this structure is subject to
    change.  */
 
-struct htab GTY(())
-{
+struct GTY(()) htab {
   /* Pointer to hash function.  */
   htab_hash hash_f;
 
@@ -147,6 +156,9 @@ extern htab_t	htab_create_alloc_ex (size_t, htab_hash,
                                       htab_eq, htab_del,
                                       void *, htab_alloc_with_arg,
                                       htab_free_with_arg);
+
+extern htab_t  htab_create_typed_alloc (size_t, htab_hash, htab_eq, htab_del,
+					htab_alloc, htab_alloc, htab_free);
 
 /* Backward-compatibility functions.  */
 extern htab_t htab_create (size_t, htab_hash, htab_eq, htab_del);

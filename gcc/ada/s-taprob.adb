@@ -1,31 +1,29 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --      S Y S T E M . T A S K I N G . P R O T E C T E D _ O B J E C T S     --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---             Copyright (C) 1991-1994, Florida State University            --
---                   Copyright (C) 1995-2005, AdaCore                       --
+--            Copyright (C) 1991-1994, Florida State University             --
+--                     Copyright (C) 1995-2011, AdaCore                     --
 --                                                                          --
--- GNARL is free software; you can  redistribute it  and/or modify it under --
+-- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
@@ -37,23 +35,21 @@ pragma Polling (Off);
 --  tasking operations. It causes infinite loops and other problems.
 
 with System.Task_Primitives.Operations;
---  used for Write_Lock
---           Unlock
---           Self
-
 with System.Parameters;
---  used for Runtime_Traces
-
 with System.Traces;
---  used for Send_Trace_Info
-
 with System.Soft_Links.Tasking;
---  Used for Init_Tasking_Soft_Links
 
 package body System.Tasking.Protected_Objects is
 
    use System.Task_Primitives.Operations;
    use System.Traces;
+
+   ----------------
+   -- Local Data --
+   ----------------
+
+   Locking_Policy : Character;
+   pragma Import (C, Locking_Policy, "__gl_locking_policy");
 
    -------------------------
    -- Finalize_Protection --
@@ -81,8 +77,19 @@ package body System.Tasking.Protected_Objects is
 
       Initialize_Lock (Init_Priority, Object.L'Access);
       Object.Ceiling := System.Any_Priority (Init_Priority);
+      Object.New_Ceiling := System.Any_Priority (Init_Priority);
       Object.Owner := Null_Task;
    end Initialize_Protection;
+
+   -----------------
+   -- Get_Ceiling --
+   -----------------
+
+   function Get_Ceiling
+     (Object : Protection_Access) return System.Any_Priority is
+   begin
+      return Object.New_Ceiling;
+   end Get_Ceiling;
 
    ----------
    -- Lock --
@@ -92,7 +99,7 @@ package body System.Tasking.Protected_Objects is
       Ceiling_Violation : Boolean;
 
    begin
-      --  The lock is made without defering abort
+      --  The lock is made without deferring abort
 
       --  Therefore the abort has to be deferred before calling this routine.
       --  This means that the compiler has to generate a Defer_Abort call
@@ -162,7 +169,7 @@ package body System.Tasking.Protected_Objects is
       --  read ownership of the protected object, so that this method of
       --  storing the (single) protected object's owner does not work reliably
       --  for read locks. However, this is the approach taken for two major
-      --  reasosn: first, this function is not currently being used (it is
+      --  reasons: first, this function is not currently being used (it is
       --  provided for possible future use), and second, it largely simplifies
       --  the implementation.
 
@@ -199,6 +206,17 @@ package body System.Tasking.Protected_Objects is
       end if;
    end Lock_Read_Only;
 
+   -----------------
+   -- Set_Ceiling --
+   -----------------
+
+   procedure Set_Ceiling
+     (Object : Protection_Access;
+      Prio   : System.Any_Priority) is
+   begin
+      Object.New_Ceiling := Prio;
+   end Set_Ceiling;
+
    ------------
    -- Unlock --
    ------------
@@ -233,6 +251,18 @@ package body System.Tasking.Protected_Objects is
          end;
       end if;
 
+      --  Before releasing the mutex we must actually update its ceiling
+      --  priority if it has been changed.
+
+      if Object.New_Ceiling /= Object.Ceiling then
+         if Locking_Policy = 'C' then
+            System.Task_Primitives.Operations.Set_Ceiling
+              (Object.L'Access, Object.New_Ceiling);
+         end if;
+
+         Object.Ceiling := Object.New_Ceiling;
+      end if;
+
       Unlock (Object.L'Access);
 
       if Parameters.Runtime_Traces then
@@ -241,7 +271,9 @@ package body System.Tasking.Protected_Objects is
    end Unlock;
 
 begin
-   --  Ensure that tasking soft links are set when using protected objects
+   --  Ensure that tasking is initialized, as well as tasking soft links
+   --  when using protected objects.
 
+   Tasking.Initialize;
    System.Soft_Links.Tasking.Init_Tasking_Soft_Links;
 end System.Tasking.Protected_Objects;

@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1997-2004, Free Software Foundation, Inc.         --
+--          Copyright (C) 1997-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -52,18 +51,18 @@ procedure Gnatdll is
    --  Parse the command line arguments passed to gnatdll
 
    procedure Check_Context;
-   --  Check the context before runing any commands to build the library
+   --  Check the context before running any commands to build the library
 
    Syntax_Error : exception;
    --  Raised when a syntax error is detected, in this case a usage info will
    --  be displayed.
 
    Context_Error : exception;
-   --  Raised when some files (specifed on the command line) are missing to
+   --  Raised when some files (specified on the command line) are missing to
    --  build the DLL.
 
    Help : Boolean := False;
-   --  Help will be set to True the usage information is to be displayed.
+   --  Help will be set to True the usage information is to be displayed
 
    Version : constant String := Gnatvsn.Gnat_Version_String;
    --  Why should it be necessary to make a copy of this
@@ -90,7 +89,7 @@ procedure Gnatdll is
    --  List of objects to put inside the library
 
    Ali_Files : Argument_List_Access := MDLL.Null_Argument_List_Access;
-   --  For each Ada file specified, we keep arecord of the corresponding
+   --  For each Ada file specified, we keep a record of the corresponding
    --  ALI file. This list of SLI files is used to build the binder program.
 
    Options : Argument_List_Access := MDLL.Null_Argument_List_Access;
@@ -152,7 +151,7 @@ procedure Gnatdll is
    -- Check --
    -----------
 
-   procedure Check (Filename : in String) is
+   procedure Check (Filename : String) is
    begin
       if not Is_Regular_File (Filename) then
          Raise_Exception
@@ -166,12 +165,10 @@ procedure Gnatdll is
 
    procedure Parse_Command_Line is
 
-      use GNAT.Command_Line;
-
-      procedure Add_File (Filename : in String);
+      procedure Add_File (Filename : String);
       --  Add one file to the list of file to handle
 
-      procedure Add_Files_From_List (List_Filename : in String);
+      procedure Add_Files_From_List (List_Filename : String);
       --  Add the files listed in List_Filename (one by line) to the list
       --  of file to handle
 
@@ -203,13 +200,13 @@ procedure Gnatdll is
       --  A list of -bargs options (B is next entry to be used)
 
       Build_Import : Boolean := True;
-      --  Set to Fals if option -n if specified (no-import)
+      --  Set to False if option -n if specified (no-import)
 
       --------------
       -- Add_File --
       --------------
 
-      procedure Add_File (Filename : in String) is
+      procedure Add_File (Filename : String) is
       begin
          if Is_Ali (Filename) then
             Check (Filename);
@@ -241,7 +238,7 @@ procedure Gnatdll is
       -- Add_Files_From_List --
       -------------------------
 
-      procedure Add_Files_From_List (List_Filename : in String) is
+      procedure Add_Files_From_List (List_Filename : String) is
          File   : File_Type;
          Buffer : String (1 .. 500);
          Last   : Natural;
@@ -255,6 +252,12 @@ procedure Gnatdll is
          end loop;
 
          Close (File);
+
+      exception
+         when Name_Error =>
+            Raise_Exception
+              (Syntax_Error'Identity,
+               "list-of-files file " & List_Filename & " not found.");
       end Add_Files_From_List;
 
    --  Start of processing for Parse_Command_Line
@@ -267,7 +270,7 @@ procedure Gnatdll is
       loop
          case Getopt ("g h v q k a? b: d: e: l: n m I:") is
 
-            when ASCII.Nul =>
+            when ASCII.NUL =>
                exit;
 
             when 'h' =>
@@ -378,7 +381,7 @@ procedure Gnatdll is
 
       loop
          case Getopt ("*") is
-            when ASCII.Nul =>
+            when ASCII.NUL =>
                exit;
 
             when others =>
@@ -394,7 +397,7 @@ procedure Gnatdll is
       loop
          case Getopt ("*") is
 
-            when ASCII.Nul =>
+            when ASCII.NUL =>
                exit;
 
             when others =>

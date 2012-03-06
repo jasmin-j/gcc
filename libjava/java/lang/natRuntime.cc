@@ -1,6 +1,6 @@
 // natRuntime.cc - Implementation of native side of Runtime class.
 
-/* Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005  Free Software Foundation
+/* Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007  Free Software Foundation
 
    This file is part of libgcj.
 
@@ -21,14 +21,17 @@ details.  */
 #include <java/lang/Runtime.h>
 #include <java/lang/UnknownError.h>
 #include <java/lang/UnsatisfiedLinkError.h>
-#include <gnu/gcj/runtime/FileDeleter.h>
 #include <gnu/gcj/runtime/FinalizerThread.h>
 #include <java/io/File.h>
 #include <java/util/TimeZone.h>
 #include <java/lang/StringBuffer.h>
 #include <java/lang/Process.h>
-#include <java/lang/ConcreteProcess.h>
 #include <java/lang/ClassLoader.h>
+
+// It is convenient and safe to simply include all of these.
+#include <java/lang/Win32Process.h>
+#include <java/lang/EcosProcess.h>
+#include <java/lang/PosixProcess.h>
 
 #include <jni.h>
 
@@ -91,17 +94,18 @@ _Jv_FindSymbolInExecutable (const char *)
 
 
 void
+java::lang::Runtime::runFinalizationForExit ()
+{
+  if (finalizeOnExit)
+    _Jv_RunAllFinalizers ();
+}
+
+void
 java::lang::Runtime::exitInternal (jint status)
 {
   // Make status right for Unix.  This is perhaps strange.
   if (status < 0 || status > 255)
     status = 255;
-
-  if (finalizeOnExit)
-    _Jv_RunAllFinalizers ();
-
-  // Delete all files registered with File.deleteOnExit()
-  gnu::gcj::runtime::FileDeleter::deleteOnExitNow ();
 
   ::exit (status);
 }
@@ -203,7 +207,14 @@ java::lang::Runtime::_load (jstring path, jboolean do_search)
 	  // FIXME: what?
 	  return;
 	}
+
+      // Push a new frame so that JNI_OnLoad will get the right class
+      // loader if it calls FindClass.
+      ::java::lang::ClassLoader *loader
+	  = _Jv_StackTrace::GetFirstNonSystemClassLoader();
+      JNIEnv *env = _Jv_GetJNIEnvNewFrameWithLoader (loader);
       jint vers = ((jint (JNICALL *) (JavaVM *, void *)) onload) (vm, NULL);
+      _Jv_JNI_PopSystemFrame (env);
       if (vers != JNI_VERSION_1_1 && vers != JNI_VERSION_1_2
 	  && vers != JNI_VERSION_1_4)
 	{
@@ -242,6 +253,8 @@ java::lang::Runtime::init (void)
 {
 #ifdef USE_LTDL
   lt_dlinit ();
+  // Set module load path.
+  lt_dlsetsearchpath (_Jv_Module_Load_Path);
   // Make sure self is opened.
   lt_dlopen (NULL);
 #endif
@@ -284,7 +297,7 @@ java::lang::Runtime::execInternal (jstringArray cmd,
 				   jstringArray env,
 				   java::io::File *dir)
 {
-  return new java::lang::ConcreteProcess (cmd, env, dir);
+  return new _Jv_platform_process (cmd, env, dir, false);
 }
 
 jint

@@ -2,11 +2,11 @@
 --                                                                          --
 --                         GNAT LIBRARY COMPONENTS                          --
 --                                                                          --
---                    ADA.CONTAINERS.INDEFINITE_VECTORS                     --
+--    A D A . C O N T A I N E R S . I N D E F I N I T E _ V E C T O R S     --
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---             Copyright (C) 2004 Free Software Foundation, Inc.            --
+--          Copyright (C) 2004-2012, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -14,54 +14,66 @@
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- This unit was originally developed by Matthew J Heaney.                  --
 ------------------------------------------------------------------------------
 
-with Ada.Finalization;
-with Ada.Streams;
+with Ada.Iterator_Interfaces;
+
+private with Ada.Finalization;
+private with Ada.Streams;
 
 generic
    type Index_Type is range <>;
-
    type Element_Type (<>) is private;
 
    with function "=" (Left, Right : Element_Type) return Boolean is <>;
 
 package Ada.Containers.Indefinite_Vectors is
-pragma Preelaborate (Indefinite_Vectors);
+   pragma Preelaborate;
+   pragma Remote_Types;
 
    subtype Extended_Index is Index_Type'Base
      range Index_Type'First - 1 ..
-            Index_Type'Last +
-            Boolean'Pos (Index_Type'Base'Last > Index_Type'Last);
+           Index_Type'Min (Index_Type'Base'Last - 1, Index_Type'Last) + 1;
 
    No_Index : constant Extended_Index := Extended_Index'First;
 
-   subtype Index_Subtype is Index_Type;
+   type Vector is tagged private
+   with
+     Constant_Indexing => Constant_Reference,
+     Variable_Indexing => Reference,
+     Default_Iterator  => Iterate,
+     Iterator_Element  => Element_Type;
 
-   type Vector is tagged private;
+   pragma Preelaborable_Initialization (Vector);
 
    type Cursor is private;
+   pragma Preelaborable_Initialization (Cursor);
 
    Empty_Vector : constant Vector;
 
    No_Element : constant Cursor;
+
+   function Has_Element (Position : Cursor) return Boolean;
+
+   package Vector_Iterator_Interfaces is new
+     Ada.Iterator_Interfaces (Cursor, Has_Element);
+
+   overriding function "=" (Left, Right : Vector) return Boolean;
 
    function To_Vector (Length : Count_Type) return Vector;
 
@@ -77,8 +89,6 @@ pragma Preelaborate (Indefinite_Vectors);
 
    function "&" (Left, Right : Element_Type) return Vector;
 
-   function "=" (Left, Right : Vector) return Boolean;
-
    function Capacity (Container : Vector) return Count_Type;
 
    procedure Reserve_Capacity
@@ -87,9 +97,42 @@ pragma Preelaborate (Indefinite_Vectors);
 
    function Length (Container : Vector) return Count_Type;
 
+   procedure Set_Length
+     (Container : in out Vector;
+      Length    : Count_Type);
+
    function Is_Empty (Container : Vector) return Boolean;
 
    procedure Clear (Container : in out Vector);
+
+   type Constant_Reference_Type
+      (Element : not null access constant Element_Type) is private
+   with
+      Implicit_Dereference => Element;
+
+   type Reference_Type (Element : not null access Element_Type) is private
+   with
+      Implicit_Dereference => Element;
+
+   function Constant_Reference
+     (Container : aliased Vector;
+      Position  : Cursor) return Constant_Reference_Type;
+   pragma Inline (Constant_Reference);
+
+   function Reference
+     (Container : aliased in out Vector;
+      Position  : Cursor) return Reference_Type;
+   pragma Inline (Reference);
+
+   function Constant_Reference
+     (Container : aliased Vector;
+      Index     : Index_Type) return Constant_Reference_Type;
+   pragma Inline (Constant_Reference);
+
+   function Reference
+     (Container : aliased in out Vector;
+      Index     : Index_Type) return Reference_Type;
+   pragma Inline (Reference);
 
    function To_Cursor
      (Container : Vector;
@@ -103,6 +146,16 @@ pragma Preelaborate (Indefinite_Vectors);
 
    function Element (Position : Cursor) return Element_Type;
 
+   procedure Replace_Element
+     (Container : in out Vector;
+      Index     : Index_Type;
+      New_Item  : Element_Type);
+
+   procedure Replace_Element
+     (Container : in out Vector;
+      Position  : Cursor;
+      New_Item  : Element_Type);
+
    procedure Query_Element
      (Container : Vector;
       Index     : Index_Type;
@@ -113,24 +166,18 @@ pragma Preelaborate (Indefinite_Vectors);
       Process  : not null access procedure (Element : Element_Type));
 
    procedure Update_Element
-     (Container : Vector;
+     (Container : in out Vector;
       Index     : Index_Type;
       Process   : not null access procedure (Element : in out Element_Type));
 
    procedure Update_Element
-     (Position : Cursor;
-      Process  : not null access procedure (Element : in out Element_Type));
-
-   procedure Replace_Element
-     (Container : Vector;
-      Index     : Index_Type;
-      By        : Element_Type);
-
-   procedure Replace_Element
-     (Position : Cursor;
-      By       : Element_Type);
+     (Container : in out Vector;
+      Position  : Cursor;
+      Process   : not null access procedure (Element : in out Element_Type));
 
    procedure Assign (Target : in out Vector; Source : Vector);
+
+   function Copy (Source : Vector; Capacity : Count_Type := 0) return Vector;
 
    procedure Move (Target : in out Vector; Source : in out Vector);
 
@@ -198,13 +245,9 @@ pragma Preelaborate (Indefinite_Vectors);
       Position  : out Cursor;
       Count     : Count_Type := 1);
 
-   procedure Set_Length
-     (Container : in out Vector;
-      Length    : Count_Type);
-
    procedure Delete
      (Container : in out Vector;
-      Index     : Extended_Index;  --  TODO: verify
+      Index     : Extended_Index;
       Count     : Count_Type := 1);
 
    procedure Delete
@@ -220,6 +263,12 @@ pragma Preelaborate (Indefinite_Vectors);
      (Container : in out Vector;
       Count     : Count_Type := 1);
 
+   procedure Reverse_Elements (Container : in out Vector);
+
+   procedure Swap (Container : in out Vector; I, J : Index_Type);
+
+   procedure Swap (Container : in out Vector; I, J : Cursor);
+
    function First_Index (Container : Vector) return Index_Type;
 
    function First (Container : Vector) return Cursor;
@@ -232,13 +281,13 @@ pragma Preelaborate (Indefinite_Vectors);
 
    function Last_Element (Container : Vector) return Element_Type;
 
-   procedure Swap (Container : Vector; I, J : Index_Type);
+   function Next (Position : Cursor) return Cursor;
 
-   procedure Swap (I, J : Cursor);
+   procedure Next (Position : in out Cursor);
 
-   generic
-      with function "<" (Left, Right : Element_Type) return Boolean is <>;
-   procedure Generic_Sort (Container : Vector);
+   function Previous (Position : Cursor) return Cursor;
+
+   procedure Previous (Position : in out Cursor);
 
    function Find_Index
      (Container : Vector;
@@ -248,39 +297,49 @@ pragma Preelaborate (Indefinite_Vectors);
    function Find
      (Container : Vector;
       Item      : Element_Type;
-       Position  : Cursor := No_Element) return Cursor;
+      Position  : Cursor := No_Element) return Cursor;
 
    function Reverse_Find_Index
      (Container : Vector;
       Item      : Element_Type;
       Index     : Index_Type := Index_Type'Last) return Extended_Index;
 
-   function Reverse_Find (Container : Vector;
-                          Item      : Element_Type;
-                          Position  : Cursor := No_Element)
-      return Cursor;
+   function Reverse_Find
+     (Container : Vector;
+      Item      : Element_Type;
+      Position  : Cursor := No_Element) return Cursor;
 
    function Contains
      (Container : Vector;
       Item      : Element_Type) return Boolean;
 
-   function Next (Position : Cursor) return Cursor;
-
-   function Previous (Position : Cursor) return Cursor;
-
-   procedure Next (Position : in out Cursor);
-
-   procedure Previous (Position : in out Cursor);
-
-   function Has_Element (Position : Cursor) return Boolean;
-
    procedure Iterate
      (Container : Vector;
       Process   : not null access procedure (Position : Cursor));
 
+   function Iterate (Container : Vector)
+      return Vector_Iterator_Interfaces.Reversible_Iterator'class;
+
+   function Iterate
+     (Container : Vector;
+      Start     : Cursor)
+      return Vector_Iterator_Interfaces.Reversible_Iterator'class;
+
    procedure Reverse_Iterate
      (Container : Vector;
       Process   : not null access procedure (Position : Cursor));
+
+   generic
+      with function "<" (Left, Right : Element_Type) return Boolean is <>;
+   package Generic_Sorting is
+
+      function Is_Sorted (Container : Vector) return Boolean;
+
+      procedure Sort (Container : in out Vector);
+
+      procedure Merge (Target : in out Vector; Source : in out Vector);
+
+   end Generic_Sorting;
 
 private
 
@@ -293,43 +352,47 @@ private
    pragma Inline (Update_Element);
    pragma Inline (Replace_Element);
    pragma Inline (Contains);
+   pragma Inline (Next);
+   pragma Inline (Previous);
 
    type Element_Access is access Element_Type;
 
-   type Elements_Type is array (Index_Type range <>) of Element_Access;
+   type Elements_Array is array (Index_Type range <>) of Element_Access;
+   function "=" (L, R : Elements_Array) return Boolean is abstract;
 
-   function "=" (L, R : Elements_Type) return Boolean is abstract;
+   type Elements_Type (Last : Index_Type) is limited record
+      EA : Elements_Array (Index_Type'First .. Last);
+   end record;
 
    type Elements_Access is access Elements_Type;
 
-   use Ada.Finalization;
-
-   type Vector is new Controlled with record
+   type Vector is new Ada.Finalization.Controlled with record
       Elements : Elements_Access;
       Last     : Extended_Index := No_Index;
+      Busy     : Natural := 0;
+      Lock     : Natural := 0;
    end record;
 
-   procedure Adjust (Container : in out Vector);
+   overriding procedure Adjust (Container : in out Vector);
 
-   procedure Finalize (Container : in out Vector);
+   overriding procedure Finalize (Container : in out Vector);
 
+   use Ada.Finalization;
    use Ada.Streams;
 
    procedure Write
-     (Stream    : access Root_Stream_Type'Class;
+     (Stream    : not null access Root_Stream_Type'Class;
       Container : Vector);
 
    for Vector'Write use Write;
 
    procedure Read
-     (Stream    : access Root_Stream_Type'Class;
+     (Stream    : not null access Root_Stream_Type'Class;
       Container : out Vector);
 
    for Vector'Read use Read;
 
-   Empty_Vector : constant Vector := Vector'(Controlled with null, No_Index);
-
-   type Vector_Access is access constant Vector;
+   type Vector_Access is access all Vector;
    for Vector_Access'Storage_Size use 0;
 
    type Cursor is record
@@ -337,7 +400,67 @@ private
       Index     : Index_Type := Index_Type'First;
    end record;
 
+   procedure Read
+     (Stream   : not null access Root_Stream_Type'Class;
+      Position : out Cursor);
+
+   for Cursor'Read use Read;
+
+   procedure Write
+     (Stream   : not null access Root_Stream_Type'Class;
+      Position : Cursor);
+
+   for Cursor'Write use Write;
+
+   type Reference_Control_Type is
+      new Controlled with record
+         Container : Vector_Access;
+      end record;
+
+   overriding procedure Adjust (Control : in out Reference_Control_Type);
+   pragma Inline (Adjust);
+
+   overriding procedure Finalize (Control : in out Reference_Control_Type);
+   pragma Inline (Finalize);
+
+   type Constant_Reference_Type
+     (Element : not null access constant Element_Type) is
+      record
+         Control : Reference_Control_Type;
+      end record;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Constant_Reference_Type);
+
+   for Constant_Reference_Type'Write use Write;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Constant_Reference_Type);
+
+   for Constant_Reference_Type'Read use Read;
+
+   type Reference_Type
+     (Element : not null access Element_Type) is
+      record
+         Control : Reference_Control_Type;
+      end record;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Reference_Type);
+
+   for Reference_Type'Write use Write;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Reference_Type);
+
+   for Reference_Type'Read use Read;
+
+   Empty_Vector : constant Vector := (Controlled with null, No_Index, 0, 0);
+
    No_Element : constant Cursor := Cursor'(null, Index_Type'First);
 
 end Ada.Containers.Indefinite_Vectors;
-

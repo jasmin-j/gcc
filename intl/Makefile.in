@@ -31,6 +31,7 @@ exec_prefix = @exec_prefix@
 transform = @program_transform_name@
 libdir = @libdir@
 includedir = @includedir@
+datarootdir = @datarootdir@
 datadir = @datadir@
 localedir = $(datadir)/locale
 aliaspath = $(localedir)
@@ -148,7 +149,11 @@ installdirs:
 installcheck:
 uninstall:
 
+.PHONY: info dvi ps pdf html
+.PHONY: install-info install-dvi install-ps install-pdf install-html
+
 info dvi ps pdf html:
+install-info install-dvi install-ps install-pdf install-html:
 
 $(OBJECTS): config.h libintl.h
 bindtextdom.o dcgettext.o dcigettext.o dcngettext.o dgettext.o \
@@ -182,6 +187,7 @@ mostlyclean:
 clean: mostlyclean
 
 distclean: clean
+	rm -f config.status config.cache config.log config.intl config.h
 	rm -f Makefile ID TAGS
 
 maintainer-clean: distclean
@@ -198,23 +204,35 @@ Makefile: $(srcdir)/Makefile.in config.status
 
 config.intl: $(srcdir)/config.intl.in config.status
 	$(SHELL) ./config.status config.intl
-	
+
 config.status: $(srcdir)/configure
 	$(SHELL) ./config.status --recheck
 
 $(srcdir)/configure: @MAINT@ $(srcdir)/aclocal.m4 $(srcdir)/configure.ac
 	cd $(srcdir) && $(AUTOCONF)
 
-$(srcdir)/aclocal.m4: @MAINT@ $(srcdir)/configure.ac \
-	$(srcdir)/../config/codeset.m4 $(srcdir)/../config/gettext.m4 \
-	$(srcdir)/../config/glibc21.m4 $(srcdir)/../config/iconv.m4 \
-	$(srcdir)/../config/intdiv0.m4 $(srcdir)/../config/inttypes-pri.m4 \
-	$(srcdir)/../config/inttypes.m4 $(srcdir)/../config/inttypes_h.m4 \
-	$(srcdir)/../config/lcmessage.m4 $(srcdir)/../config/lib-ld.m4 \
-	$(srcdir)/../config/lib-link.m4 $(srcdir)/../config/lib-prefix.m4 \
-	$(srcdir)/../config/nls.m4 $(srcdir)/../config/po.m4 \
-	$(srcdir)/../config/progtest.m4 $(srcdir)/../config/stdint_h.m4 \
-	$(srcdir)/../config/uintmax_t.m4 $(srcdir)/../config/ulonglong.m4
+aclocal_deps = \
+	$(srcdir)/configure.ac \
+	$(srcdir)/../config/codeset.m4 \
+	$(srcdir)/../config/gettext.m4 \
+	$(srcdir)/../config/glibc21.m4 \
+	$(srcdir)/../config/iconv.m4 \
+	$(srcdir)/../config/intdiv0.m4 \
+	$(srcdir)/../config/inttypes-pri.m4 \
+	$(srcdir)/../config/inttypes.m4 \
+	$(srcdir)/../config/inttypes_h.m4 \
+	$(srcdir)/../config/lcmessage.m4 \
+	$(srcdir)/../config/lib-ld.m4 \
+	$(srcdir)/../config/lib-link.m4 \
+	$(srcdir)/../config/lib-prefix.m4 \
+	$(srcdir)/../config/nls.m4 \
+	$(srcdir)/../config/po.m4 \
+	$(srcdir)/../config/progtest.m4 \
+	$(srcdir)/../config/stdint_h.m4 \
+	$(srcdir)/../config/uintmax_t.m4 \
+	$(srcdir)/../config/ulonglong.m4
+
+$(srcdir)/aclocal.m4: @MAINT@ $(aclocal_deps)
 	cd $(srcdir) && $(ACLOCAL) -I ../config
 
 config.h: stamp-h1
@@ -227,7 +245,6 @@ stamp-h1: $(srcdir)/config.h.in config.status
 $(srcdir)/config.h.in: @MAINT@ $(srcdir)/aclocal.m4 $(srcdir)/configure.ac
 	cd $(srcdir) && $(AUTOHEADER)
 	-rm -f stamp-h1
-	
 
 # Tell versions [3.59,3.63) of GNU make not to export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

@@ -1,29 +1,28 @@
 /****************************************************************************
  *                                                                          *
- *                         GNAT COMPILER COMPONENTS                         *
+ *                         GNAT RUN-TIME COMPONENTS                         *
  *                                                                          *
  *                               E X P E C T                                *
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *           Copyright (C) 2001-2005 Ada Core Technologies, Inc.            *
+ *                     Copyright (C) 2001-2011, AdaCore                     *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
- * ware  Foundation;  either version 2,  or (at your option) any later ver- *
+ * ware  Foundation;  either version 3,  or (at your option) any later ver- *
  * sion.  GNAT is distributed in the hope that it will be useful, but WITH- *
  * OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY *
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
- * for  more details.  You should have  received  a copy of the GNU General *
- * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, *
- * MA 02111-1307, USA.                                                      *
+ * or FITNESS FOR A PARTICULAR PURPOSE.                                     *
  *                                                                          *
- * As a  special  exception,  if you  link  this file  with other  files to *
- * produce an executable,  this file does not by itself cause the resulting *
- * executable to be covered by the GNU General Public License. This except- *
- * ion does not  however invalidate  any other reasons  why the  executable *
- * file might be covered by the  GNU Public License.                        *
+ * As a special exception under Section 7 of GPL version 3, you are granted *
+ * additional permissions described in the GCC Runtime Library Exception,   *
+ * version 3.1, as published by the Free Software Foundation.               *
+ *                                                                          *
+ * You should have received a copy of the GNU General Public License and    *
+ * a copy of the GCC Runtime Library Exception along with this program;     *
+ * see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    *
+ * <http://www.gnu.org/licenses/>.                                          *
  *                                                                          *
  * GNAT was originally developed  by the GNAT team at  New York University. *
  * Extensive contributions were provided by Ada Core Technologies Inc.      *
@@ -49,6 +48,14 @@
 #if OLD_MINGW
 #include <sys/wait.h>
 #endif
+#elif defined (__vxworks) && defined (__RTP__)
+#include <wait.h>
+#elif defined (__Lynx__)
+/* ??? See comment in adaint.c.  */
+#define GCC_RESOURCE_H
+#include <sys/wait.h>
+#elif defined (__nucleus__)
+/* No wait.h available on Nucleus */
 #else
 #include <sys/wait.h>
 #endif
@@ -72,39 +79,48 @@
 
 #include <windows.h>
 #include <process.h>
+#include <signal.h>
+#include <io.h>
+#include "mingw32.h"
 
 void
-__gnat_kill (int pid, int sig)
+__gnat_kill (int pid, int sig, int close)
 {
-  HANDLE process_handle;
-
+  HANDLE h = OpenProcess (PROCESS_ALL_ACCESS, FALSE, pid);
+  if (h == NULL)
+    return;
   if (sig == 9)
     {
-      process_handle = OpenProcess (PROCESS_TERMINATE, FALSE, pid);
-      if (process_handle != NULL)
-	{
-	  TerminateProcess (process_handle, 0);
-	  CloseHandle (process_handle);
-	}
+      TerminateProcess (h, 0);
+      __gnat_win32_remove_handle (NULL, pid);
     }
+  else if (sig == SIGINT)
+    GenerateConsoleCtrlEvent (CTRL_C_EVENT, pid);
+  else if (sig == SIGBREAK)
+    GenerateConsoleCtrlEvent (CTRL_BREAK_EVENT, pid);
+  /* ??? The last two alternatives don't really work. SIGBREAK requires setting
+     up process groups at start time which we don't do; treating SIGINT is just
+     not possible apparently. So we really only support signal 9. Fortunately
+     that's all we use in GNAT.Expect */
+
+  CloseHandle (h);
 }
 
 int
 __gnat_waitpid (int pid)
 {
-  HANDLE process_handle;
+  HANDLE h = OpenProcess (PROCESS_ALL_ACCESS, FALSE, pid);
   DWORD exitcode = 1;
   DWORD res;
 
-  process_handle = OpenProcess (PROCESS_QUERY_INFORMATION, FALSE, pid);
-
-  if (process_handle != NULL)
+  if (h != NULL)
     {
-      res = WaitForSingleObject (process_handle, INFINITE);
-      GetExitCodeProcess (process_handle, &exitcode);
-      CloseHandle (process_handle);
+      res = WaitForSingleObject (h, INFINITE);
+      GetExitCodeProcess (h, &exitcode);
+      CloseHandle (h);
     }
 
+  __gnat_win32_remove_handle (NULL, pid);
   return (int) exitcode;
 }
 
@@ -117,7 +133,7 @@ __gnat_expect_fork (void)
 void
 __gnat_expect_portable_execvp (int *pid, char *cmd, char *argv[])
 {
-  *pid = (int) spawnve (_P_NOWAIT, cmd, argv, NULL);
+  *pid = __gnat_portable_no_block_spawn (argv);
 }
 
 int
@@ -126,8 +142,8 @@ __gnat_pipe (int *fd)
   HANDLE read, write;
 
   CreatePipe (&read, &write, NULL, 0);
-  fd[0]=_open_osfhandle ((long)read, 0);
-  fd[1]=_open_osfhandle ((long)write, 0);
+  fd[0]=_open_osfhandle ((intptr_t)read, 0);
+  fd[1]=_open_osfhandle ((intptr_t)write, 0);
   return 0;  /* always success */
 }
 
@@ -188,6 +204,13 @@ __gnat_expect_poll (int *fd, int num_fd, int timeout, int *is_set)
 #include <stdio.h>
 #include <vms/stsdef.h>
 #include <vms/iodef.h>
+#include <signal.h>
+
+void
+__gnat_kill (int pid, int sig, int close)
+{
+  kill (pid, sig);
+}
 
 int
 __gnat_waitpid (int pid)
@@ -195,7 +218,7 @@ __gnat_waitpid (int pid)
   int status = 0;
 
   waitpid (pid, &status, 0);
-  status =  WEXITSTATUS (status);
+  status = WEXITSTATUS (status);
 
   return status;
 }
@@ -312,8 +335,7 @@ __gnat_expect_poll (int *fd, int num_fd, int timeout, int *is_set)
 
   return ready;
 }
-
-#elif defined (__unix__)
+#elif defined (__unix__) && !defined (__nucleus__)
 
 #ifdef __hpux__
 #include <sys/ptyio.h>
@@ -335,7 +357,7 @@ typedef long fd_mask;
 #endif /* !NO_FD_SET */
 
 void
-__gnat_kill (int pid, int sig)
+__gnat_kill (int pid, int sig, int close)
 {
   kill (pid, sig);
 }
@@ -346,7 +368,7 @@ __gnat_waitpid (int pid)
   int status = 0;
 
   waitpid (pid, &status, 0);
-  status =  WEXITSTATUS (status);
+  status = WEXITSTATUS (status);
 
   return status;
 }
@@ -454,7 +476,7 @@ __gnat_expect_poll (int *fd, int num_fd, int timeout, int *is_set)
 #else
 
 void
-__gnat_kill (int pid, int sig)
+__gnat_kill (int pid, int sig, int close)
 {
 }
 

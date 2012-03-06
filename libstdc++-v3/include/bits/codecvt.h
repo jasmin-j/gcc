@@ -1,12 +1,12 @@
 // Locale support (codecvt) -*- C++ -*-
 
-// Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005
-//  Free Software Foundation, Inc.
+// Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008,
+// 2009, 2010, 2011  Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -14,19 +14,19 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 
-// You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// Under Section 7 of GPL version 3, you are granted additional
+// permissions described in the GCC Runtime Library Exception, version
+// 3.1, as published by the Free Software Foundation.
 
-// As a special exception, you may use this file as part of a free software
-// library without restriction.  Specifically, if other files instantiate
-// templates or use macros or inline functions from this file, or you compile
-// this file and link it with other files to produce an executable, this
-// file does not by itself cause the resulting executable to be covered by
-// the GNU General Public License.  This exception does not however
-// invalidate any other reasons why the executable file might be covered by
-// the GNU General Public License.
+// You should have received a copy of the GNU General Public License and
+// a copy of the GCC Runtime Library Exception along with this program;
+// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+// <http://www.gnu.org/licenses/>.
+
+/** @file bits/codecvt.h
+ *  This is an internal header file, included by other library headers.
+ *  Do not attempt to use it directly. @headername{locale}
+ */
 
 //
 // ISO C++ 14882: 22.2.1.5 Template class codecvt
@@ -34,17 +34,16 @@
 
 // Written by Benjamin Kosnik <bkoz@redhat.com>
 
-/** @file bits/codecvt.h
- *  This is an internal header file, included by other library headers.
- *  You should not attempt to use it directly.
- */
-
 #ifndef _CODECVT_H
 #define _CODECVT_H 1
 
 #pragma GCC system_header
 
-  /// @brief  Empty base class for codecvt facet [22.2.1.5].
+namespace std _GLIBCXX_VISIBILITY(default)
+{
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+
+  /// Empty base class for codecvt facet [22.2.1.5].
   class codecvt_base
   {
   public:
@@ -94,7 +93,7 @@
        *  respectively.  If the result needed no conversion, from_next and
        *  to_next are not affected.
        *
-       *  The @a state argument should be intialized if the input is at the
+       *  The @a state argument should be initialized if the input is at the
        *  beginning and carried from a previous call if continuing
        *  conversion.  There are no guarantees about how @a state is used.
        *
@@ -105,13 +104,13 @@
        *  output, returns codecvt_base::partial.  Otherwise the
        *  conversion failed and codecvt_base::error is returned.
        *
-       *  @param  state  Persistent conversion state data.
-       *  @param  from  Start of input.
-       *  @param  from_end  End of input.
-       *  @param  from_next  Returns start of unconverted data.
-       *  @param  to  Start of output buffer.
-       *  @param  to_end  End of output buffer.
-       *  @param  to_next  Returns start of unused output area.
+       *  @param  __state  Persistent conversion state data.
+       *  @param  __from  Start of input.
+       *  @param  __from_end  End of input.
+       *  @param  __from_next  Returns start of unconverted data.
+       *  @param  __to  Start of output buffer.
+       *  @param  __to_end  End of output buffer.
+       *  @param  __to_next  Returns start of unused output area.
        *  @return  codecvt_base::result.
       */
       result
@@ -147,10 +146,10 @@
        *  output has insufficient space, returns codecvt_base::partial.
        *  Otherwise the reset failed and codecvt_base::error is returned.
        *
-       *  @param  state  Persistent conversion state data.
-       *  @param  to  Start of output buffer.
-       *  @param  to_end  End of output buffer.
-       *  @param  to_next  Returns start of unused output area.
+       *  @param  __state  Persistent conversion state data.
+       *  @param  __to  Start of output buffer.
+       *  @param  __to_end  End of output buffer.
+       *  @param  __to_next  Returns start of unused output area.
        *  @return  codecvt_base::result.
       */
       result
@@ -174,7 +173,7 @@
        *  respectively.  If the result needed no conversion, from_next and
        *  to_next are not affected.
        *
-       *  The @a state argument should be intialized if the input is at the
+       *  The @a state argument should be initialized if the input is at the
        *  beginning and carried from a previous call if continuing
        *  conversion.  There are no guarantees about how @a state is used.
        *
@@ -185,13 +184,13 @@
        *  output, returns codecvt_base::partial.  Otherwise the
        *  conversion failed and codecvt_base::error is returned.
        *
-       *  @param  state  Persistent conversion state data.
-       *  @param  from  Start of input.
-       *  @param  from_end  End of input.
-       *  @param  from_next  Returns start of unconverted data.
-       *  @param  to  Start of output buffer.
-       *  @param  to_end  End of output buffer.
-       *  @param  to_next  Returns start of unused output area.
+       *  @param  __state  Persistent conversion state data.
+       *  @param  __from  Start of input.
+       *  @param  __from_end  End of input.
+       *  @param  __from_next  Returns start of unconverted data.
+       *  @param  __to  Start of output buffer.
+       *  @param  __to_end  End of output buffer.
+       *  @param  __to_next  Returns start of unused output area.
        *  @return  codecvt_base::result.
       */
       result
@@ -265,9 +264,16 @@
       do_max_length() const throw() = 0;
     };
 
-  /// @brief class codecvt [22.2.1.5].
-  /// NB: Generic, mostly useless implementation.
-  template<typename _InternT, typename _ExternT, typename _StateT>
+
+
+  /**
+   *  @brief  Primary class template codecvt.
+   *  @ingroup locales
+   *
+   *  NB: Generic, mostly useless implementation.
+   *
+  */
+   template<typename _InternT, typename _ExternT, typename _StateT>
     class codecvt
     : public __codecvt_abstract_base<_InternT, _ExternT, _StateT>
     {
@@ -286,7 +292,9 @@
 
       explicit
       codecvt(size_t __refs = 0)
-      : __codecvt_abstract_base<_InternT, _ExternT, _StateT> (__refs) { }
+      : __codecvt_abstract_base<_InternT, _ExternT, _StateT> (__refs),
+	_M_c_locale_codecvt(0)
+      { }
 
       explicit
       codecvt(__c_locale __cloc, size_t __refs = 0);
@@ -328,7 +336,7 @@
   template<typename _InternT, typename _ExternT, typename _StateT>
     locale::id codecvt<_InternT, _ExternT, _StateT>::id;
 
-  /// @brief class codecvt<char, char, mbstate_t> specialization.
+  /// class codecvt<char, char, mbstate_t> specialization.
   template<>
     class codecvt<char, char, mbstate_t>
     : public __codecvt_abstract_base<char, char, mbstate_t>
@@ -386,7 +394,7 @@
   };
 
 #ifdef _GLIBCXX_USE_WCHAR_T
-  /// @brief  class codecvt<wchar_t, char, mbstate_t> specialization.
+  /// class codecvt<wchar_t, char, mbstate_t> specialization.
   template<>
     class codecvt<wchar_t, char, mbstate_t>
     : public __codecvt_abstract_base<wchar_t, char, mbstate_t>
@@ -446,7 +454,7 @@
     };
 #endif //_GLIBCXX_USE_WCHAR_T
 
-  /// @brief class codecvt_byname [22.2.1.6].
+  /// class codecvt_byname [22.2.1.6].
   template<typename _InternT, typename _ExternT, typename _StateT>
     class codecvt_byname : public codecvt<_InternT, _ExternT, _StateT>
     {
@@ -455,7 +463,8 @@
       codecvt_byname(const char* __s, size_t __refs = 0)
       : codecvt<_InternT, _ExternT, _StateT>(__refs)
       {
-	if (std::strcmp(__s, "C") != 0 && std::strcmp(__s, "POSIX") != 0)
+	if (__builtin_strcmp(__s, "C") != 0
+	    && __builtin_strcmp(__s, "POSIX") != 0)
 	  {
 	    this->_S_destroy_c_locale(this->_M_c_locale_codecvt);
 	    this->_S_create_c_locale(this->_M_c_locale_codecvt, __s);
@@ -466,5 +475,34 @@
       virtual
       ~codecvt_byname() { }
     };
+
+  // Inhibit implicit instantiations for required instantiations,
+  // which are defined via explicit instantiations elsewhere.
+#if _GLIBCXX_EXTERN_TEMPLATE
+  extern template class codecvt_byname<char, char, mbstate_t>;
+
+  extern template
+    const codecvt<char, char, mbstate_t>&
+    use_facet<codecvt<char, char, mbstate_t> >(const locale&);
+
+  extern template
+    bool
+    has_facet<codecvt<char, char, mbstate_t> >(const locale&);
+
+#ifdef _GLIBCXX_USE_WCHAR_T
+  extern template class codecvt_byname<wchar_t, char, mbstate_t>;
+
+  extern template
+    const codecvt<wchar_t, char, mbstate_t>&
+    use_facet<codecvt<wchar_t, char, mbstate_t> >(const locale&);
+
+  extern template
+    bool
+    has_facet<codecvt<wchar_t, char, mbstate_t> >(const locale&);
+#endif
+#endif
+
+_GLIBCXX_END_NAMESPACE_VERSION
+} // namespace std
 
 #endif // _CODECVT_H

@@ -1,5 +1,5 @@
 /* Implementation of the CSHIFT intrinsic
-   Copyright 2003 Free Software Foundation, Inc.
+   Copyright 2003, 2007, 2009 Free Software Foundation, Inc.
    Contributed by Feng Wang <wf_cs@yahoo.com>
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -7,42 +7,35 @@ This file is part of the GNU Fortran 95 runtime library (libgfortran).
 Libgfortran is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public
 License as published by the Free Software Foundation; either
-version 2 of the License, or (at your option) any later version.
-
-In addition to the permissions in the GNU General Public License, the
-Free Software Foundation gives you unlimited permission to link the
-compiled version of this file into combinations with other programs,
-and to distribute those combinations without any restriction coming
-from the use of this file.  (The General Public License restrictions
-do apply in other respects; for example, they cover modification of
-the file, and distribution when not linked into a combine
-executable.)
+version 3 of the License, or (at your option) any later version.
 
 Ligbfortran is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public
-License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+Under Section 7 of GPL version 3, you are granted additional
+permissions described in the GCC Runtime Library Exception, version
+3.1, as published by the Free Software Foundation.
 
-#include "config.h"
+You should have received a copy of the GNU General Public License and
+a copy of the GCC Runtime Library Exception along with this program;
+see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+<http://www.gnu.org/licenses/>.  */
+
+#include "libgfortran.h"
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include "libgfortran.h"
 
-void cshift1_4 (const gfc_array_char * ret,
-			   const gfc_array_char * array,
-			   const gfc_array_i4 * h, const GFC_INTEGER_4 * pwhich);
-export_proto(cshift1_4);
 
-void
-cshift1_4 (const gfc_array_char * ret,
-		      const gfc_array_char * array,
-		      const gfc_array_i4 * h, const GFC_INTEGER_4 * pwhich)
+#if defined (HAVE_GFC_INTEGER_4)
+
+static void
+cshift1 (gfc_array_char * const restrict ret, 
+	const gfc_array_char * const restrict array,
+	const gfc_array_i4 * const restrict h, 
+	const GFC_INTEGER_4 * const restrict pwhich)
 {
   /* r.* indicates the return array.  */
   index_type rstride[GFC_MAX_DIMENSIONS];
@@ -56,7 +49,7 @@ cshift1_4 (const gfc_array_char * ret,
   index_type soffset;
   const char *sptr;
   const char *src;
-  /* h.* indicates the  array.  */
+  /* h.* indicates the shift array.  */
   index_type hstride[GFC_MAX_DIMENSIONS];
   index_type hstride0;
   const GFC_INTEGER_4 *hptr;
@@ -64,11 +57,12 @@ cshift1_4 (const gfc_array_char * ret,
   index_type count[GFC_MAX_DIMENSIONS];
   index_type extent[GFC_MAX_DIMENSIONS];
   index_type dim;
-  index_type size;
   index_type len;
   index_type n;
   int which;
   GFC_INTEGER_4 sh;
+  index_type arraysize;
+  index_type size;
 
   if (pwhich)
     which = *pwhich - 1;
@@ -78,11 +72,49 @@ cshift1_4 (const gfc_array_char * ret,
   if (which < 0 || (which + 1) > GFC_DESCRIPTOR_RANK (array))
     runtime_error ("Argument 'DIM' is out of range in call to 'CSHIFT'");
 
-  size = GFC_DESCRIPTOR_SIZE (ret);
+  size = GFC_DESCRIPTOR_SIZE(array);
+
+  arraysize = size0 ((array_t *)array);
+
+  if (ret->data == NULL)
+    {
+      int i;
+
+      ret->data = internal_malloc_size (size * arraysize);
+      ret->offset = 0;
+      ret->dtype = array->dtype;
+      for (i = 0; i < GFC_DESCRIPTOR_RANK (array); i++)
+        {
+	  index_type ub, str;
+
+          ub = GFC_DESCRIPTOR_EXTENT(array,i) - 1;
+
+          if (i == 0)
+            str = 1;
+          else
+	    str = GFC_DESCRIPTOR_EXTENT(ret,i-1) *
+	      GFC_DESCRIPTOR_STRIDE(ret,i-1);
+
+	  GFC_DIMENSION_SET(ret->dim[i], 0, ub, str);
+        }
+    }
+  else if (unlikely (compile_options.bounds_check))
+    {
+      bounds_equal_extents ((array_t *) ret, (array_t *) array,
+				 "return value", "CSHIFT");
+    }
+
+  if (unlikely (compile_options.bounds_check))
+    {
+      bounds_reduced_extents ((array_t *) h, (array_t *) array, which,
+      			      "SHIFT argument", "CSHIFT");
+    }
+
+  if (arraysize == 0)
+    return;
 
   extent[0] = 1;
   count[0] = 0;
-  size = GFC_DESCRIPTOR_SIZE (array);
   n = 0;
 
   /* Initialized for avoiding compiler warnings.  */
@@ -94,22 +126,22 @@ cshift1_4 (const gfc_array_char * ret,
     {
       if (dim == which)
         {
-          roffset = ret->dim[dim].stride * size;
+          roffset = GFC_DESCRIPTOR_STRIDE_BYTES(ret,dim);
           if (roffset == 0)
             roffset = size;
-          soffset = array->dim[dim].stride * size;
+          soffset = GFC_DESCRIPTOR_STRIDE_BYTES(array,dim);
           if (soffset == 0)
             soffset = size;
-          len = array->dim[dim].ubound + 1 - array->dim[dim].lbound;
+          len = GFC_DESCRIPTOR_EXTENT(array,dim);
         }
       else
         {
           count[n] = 0;
-          extent[n] = array->dim[dim].ubound + 1 - array->dim[dim].lbound;
-          rstride[n] = ret->dim[dim].stride * size;
-          sstride[n] = array->dim[dim].stride * size;
+          extent[n] = GFC_DESCRIPTOR_EXTENT(array,dim);
+          rstride[n] = GFC_DESCRIPTOR_STRIDE_BYTES(ret,dim);
+          sstride[n] = GFC_DESCRIPTOR_STRIDE_BYTES(array,dim);
 
-          hstride[n] = h->dim[n].stride;
+          hstride[n] = GFC_DESCRIPTOR_STRIDE(h,n);
           n++;
         }
     }
@@ -130,7 +162,7 @@ cshift1_4 (const gfc_array_char * ret,
 
   while (rptr)
     {
-      /* Do the  for this dimension.  */
+      /* Do the shift for this dimension.  */
       sh = *hptr;
       sh = (div (sh, len)).rem;
       if (sh < 0)
@@ -161,7 +193,7 @@ cshift1_4 (const gfc_array_char * ret,
              the next dimension.  */
           count[n] = 0;
           /* We could precalculate these products, but this is a less
-             frequently used path so proabably not worth it.  */
+             frequently used path so probably not worth it.  */
           rptr -= rstride[n] * extent[n];
           sptr -= sstride[n] * extent[n];
 	  hptr -= hstride[n] * extent[n];
@@ -182,3 +214,60 @@ cshift1_4 (const gfc_array_char * ret,
         }
     }
 }
+
+void cshift1_4 (gfc_array_char * const restrict, 
+	const gfc_array_char * const restrict,
+	const gfc_array_i4 * const restrict, 
+	const GFC_INTEGER_4 * const restrict);
+export_proto(cshift1_4);
+
+void
+cshift1_4 (gfc_array_char * const restrict ret,
+	const gfc_array_char * const restrict array,
+	const gfc_array_i4 * const restrict h, 
+	const GFC_INTEGER_4 * const restrict pwhich)
+{
+  cshift1 (ret, array, h, pwhich);
+}
+
+
+void cshift1_4_char (gfc_array_char * const restrict ret, 
+	GFC_INTEGER_4,
+	const gfc_array_char * const restrict array,
+	const gfc_array_i4 * const restrict h, 
+	const GFC_INTEGER_4 * const restrict pwhich,
+	GFC_INTEGER_4);
+export_proto(cshift1_4_char);
+
+void
+cshift1_4_char (gfc_array_char * const restrict ret,
+	GFC_INTEGER_4 ret_length __attribute__((unused)),
+	const gfc_array_char * const restrict array,
+	const gfc_array_i4 * const restrict h, 
+	const GFC_INTEGER_4 * const restrict pwhich,
+	GFC_INTEGER_4 array_length __attribute__((unused)))
+{
+  cshift1 (ret, array, h, pwhich);
+}
+
+
+void cshift1_4_char4 (gfc_array_char * const restrict ret, 
+	GFC_INTEGER_4,
+	const gfc_array_char * const restrict array,
+	const gfc_array_i4 * const restrict h, 
+	const GFC_INTEGER_4 * const restrict pwhich,
+	GFC_INTEGER_4);
+export_proto(cshift1_4_char4);
+
+void
+cshift1_4_char4 (gfc_array_char * const restrict ret,
+	GFC_INTEGER_4 ret_length __attribute__((unused)),
+	const gfc_array_char * const restrict array,
+	const gfc_array_i4 * const restrict h, 
+	const GFC_INTEGER_4 * const restrict pwhich,
+	GFC_INTEGER_4 array_length __attribute__((unused)))
+{
+  cshift1 (ret, array, h, pwhich);
+}
+
+#endif

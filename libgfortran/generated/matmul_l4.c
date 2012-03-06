@@ -1,5 +1,5 @@
 /* Implementation of the MATMUL intrinsic
-   Copyright 2002, 2005 Free Software Foundation, Inc.
+   Copyright 2002, 2005, 2006, 2007, 2009 Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
 
 This file is part of the GNU Fortran 95 runtime library (libgfortran).
@@ -7,44 +7,43 @@ This file is part of the GNU Fortran 95 runtime library (libgfortran).
 Libgfortran is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public
 License as published by the Free Software Foundation; either
-version 2 of the License, or (at your option) any later version.
-
-In addition to the permissions in the GNU General Public License, the
-Free Software Foundation gives you unlimited permission to link the
-compiled version of this file into combinations with other programs,
-and to distribute those combinations without any restriction coming
-from the use of this file.  (The General Public License restrictions
-do apply in other respects; for example, they cover modification of
-the file, and distribution when not linked into a combine
-executable.)
+version 3 of the License, or (at your option) any later version.
 
 Libgfortran is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public
-License along with libgfortran; see the file COPYING.  If not,
-write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+Under Section 7 of GPL version 3, you are granted additional
+permissions described in the GCC Runtime Library Exception, version
+3.1, as published by the Free Software Foundation.
 
-#include "config.h"
+You should have received a copy of the GNU General Public License and
+a copy of the GCC Runtime Library Exception along with this program;
+see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+<http://www.gnu.org/licenses/>.  */
+
+#include "libgfortran.h"
 #include <stdlib.h>
 #include <assert.h>
-#include "libgfortran.h"
+
+
+#if defined (HAVE_GFC_LOGICAL_4)
 
 /* Dimensions: retarray(x,y) a(x, count) b(count,y).
    Either a or b can be rank 1.  In this case x or y is 1.  */
 
-extern void matmul_l4 (gfc_array_l4 *, gfc_array_l4 *, gfc_array_l4 *);
+extern void matmul_l4 (gfc_array_l4 * const restrict, 
+	gfc_array_l1 * const restrict, gfc_array_l1 * const restrict);
 export_proto(matmul_l4);
 
 void
-matmul_l4 (gfc_array_l4 * retarray, gfc_array_l4 * a, gfc_array_l4 * b)
+matmul_l4 (gfc_array_l4 * const restrict retarray, 
+	gfc_array_l1 * const restrict a, gfc_array_l1 * const restrict b)
 {
-  GFC_INTEGER_4 *abase;
-  GFC_INTEGER_4 *bbase;
-  GFC_LOGICAL_4 *dest;
+  const GFC_LOGICAL_1 * restrict abase;
+  const GFC_LOGICAL_1 * restrict bbase;
+  GFC_LOGICAL_4 * restrict dest;
   index_type rxstride;
   index_type rystride;
   index_type xcount;
@@ -53,9 +52,11 @@ matmul_l4 (gfc_array_l4 * retarray, gfc_array_l4 * a, gfc_array_l4 * b)
   index_type ystride;
   index_type x;
   index_type y;
+  int a_kind;
+  int b_kind;
 
-  GFC_INTEGER_4 *pa;
-  GFC_INTEGER_4 *pb;
+  const GFC_LOGICAL_1 * restrict pa;
+  const GFC_LOGICAL_1 * restrict pb;
   index_type astride;
   index_type bstride;
   index_type count;
@@ -68,96 +69,139 @@ matmul_l4 (gfc_array_l4 * retarray, gfc_array_l4 * a, gfc_array_l4 * b)
     {
       if (GFC_DESCRIPTOR_RANK (a) == 1)
         {
-          retarray->dim[0].lbound = 0;
-          retarray->dim[0].ubound = b->dim[1].ubound - b->dim[1].lbound;
-          retarray->dim[0].stride = 1;
+	  GFC_DIMENSION_SET(retarray->dim[0], 0,
+	                    GFC_DESCRIPTOR_EXTENT(b,1) - 1, 1);
         }
       else if (GFC_DESCRIPTOR_RANK (b) == 1)
         {
-          retarray->dim[0].lbound = 0;
-          retarray->dim[0].ubound = a->dim[0].ubound - a->dim[0].lbound;
-          retarray->dim[0].stride = 1;
+	  GFC_DIMENSION_SET(retarray->dim[0], 0,
+	                    GFC_DESCRIPTOR_EXTENT(a,0) - 1, 1);
         }
       else
         {
-          retarray->dim[0].lbound = 0;
-          retarray->dim[0].ubound = a->dim[0].ubound - a->dim[0].lbound;
-          retarray->dim[0].stride = 1;
+	  GFC_DIMENSION_SET(retarray->dim[0], 0,
+	                    GFC_DESCRIPTOR_EXTENT(a,0) - 1, 1);
 
-          retarray->dim[1].lbound = 0;
-          retarray->dim[1].ubound = b->dim[1].ubound - b->dim[1].lbound;
-          retarray->dim[1].stride = retarray->dim[0].ubound+1;
+          GFC_DIMENSION_SET(retarray->dim[1], 0,
+	                    GFC_DESCRIPTOR_EXTENT(b,1) - 1,
+			    GFC_DESCRIPTOR_EXTENT(retarray,0));
         }
-
+          
       retarray->data
 	= internal_malloc_size (sizeof (GFC_LOGICAL_4) * size0 ((array_t *) retarray));
-      retarray->base = 0;
+      retarray->offset = 0;
     }
+    else if (unlikely (compile_options.bounds_check))
+      {
+	index_type ret_extent, arg_extent;
+
+	if (GFC_DESCRIPTOR_RANK (a) == 1)
+	  {
+	    arg_extent = GFC_DESCRIPTOR_EXTENT(b,1);
+	    ret_extent = GFC_DESCRIPTOR_EXTENT(retarray,0);
+	    if (arg_extent != ret_extent)
+	      runtime_error ("Incorrect extent in return array in"
+			     " MATMUL intrinsic: is %ld, should be %ld",
+			     (long int) ret_extent, (long int) arg_extent);
+	  }
+	else if (GFC_DESCRIPTOR_RANK (b) == 1)
+	  {
+	    arg_extent = GFC_DESCRIPTOR_EXTENT(a,0);
+	    ret_extent = GFC_DESCRIPTOR_EXTENT(retarray,0);
+	    if (arg_extent != ret_extent)
+	      runtime_error ("Incorrect extent in return array in"
+			     " MATMUL intrinsic: is %ld, should be %ld",
+			     (long int) ret_extent, (long int) arg_extent);	    
+	  }
+	else
+	  {
+	    arg_extent = GFC_DESCRIPTOR_EXTENT(a,0);
+	    ret_extent = GFC_DESCRIPTOR_EXTENT(retarray,0);
+	    if (arg_extent != ret_extent)
+	      runtime_error ("Incorrect extent in return array in"
+			     " MATMUL intrinsic for dimension 1:"
+			     " is %ld, should be %ld",
+			     (long int) ret_extent, (long int) arg_extent);
+
+	    arg_extent = GFC_DESCRIPTOR_EXTENT(b,1);
+	    ret_extent = GFC_DESCRIPTOR_EXTENT(retarray,1);
+	    if (arg_extent != ret_extent)
+	      runtime_error ("Incorrect extent in return array in"
+			     " MATMUL intrinsic for dimension 2:"
+			     " is %ld, should be %ld",
+			     (long int) ret_extent, (long int) arg_extent);
+	  }
+      }
 
   abase = a->data;
-  if (GFC_DESCRIPTOR_SIZE (a) != 4)
-    {
-      assert (GFC_DESCRIPTOR_SIZE (a) == 8);
-      abase = GFOR_POINTER_L8_TO_L4 (abase);
-    }
-  bbase = b->data;
-  if (GFC_DESCRIPTOR_SIZE (b) != 4)
-    {
-      assert (GFC_DESCRIPTOR_SIZE (b) == 8);
-      bbase = GFOR_POINTER_L8_TO_L4 (bbase);
-    }
-  dest = retarray->data;
+  a_kind = GFC_DESCRIPTOR_SIZE (a);
 
-  if (retarray->dim[0].stride == 0)
-    retarray->dim[0].stride = 1;
-  if (a->dim[0].stride == 0)
-    a->dim[0].stride = 1;
-  if (b->dim[0].stride == 0)
-    b->dim[0].stride = 1;
+  if (a_kind == 1 || a_kind == 2 || a_kind == 4 || a_kind == 8
+#ifdef HAVE_GFC_LOGICAL_16
+     || a_kind == 16
+#endif
+     )
+    abase = GFOR_POINTER_TO_L1 (abase, a_kind);
+  else
+    internal_error (NULL, "Funny sized logical array");
+
+  bbase = b->data;
+  b_kind = GFC_DESCRIPTOR_SIZE (b);
+
+  if (b_kind == 1 || b_kind == 2 || b_kind == 4 || b_kind == 8
+#ifdef HAVE_GFC_LOGICAL_16
+     || b_kind == 16
+#endif
+     )
+    bbase = GFOR_POINTER_TO_L1 (bbase, b_kind);
+  else
+    internal_error (NULL, "Funny sized logical array");
+
+  dest = retarray->data;
 
 
   if (GFC_DESCRIPTOR_RANK (retarray) == 1)
     {
-      rxstride = retarray->dim[0].stride;
+      rxstride = GFC_DESCRIPTOR_STRIDE(retarray,0);
       rystride = rxstride;
     }
   else
     {
-      rxstride = retarray->dim[0].stride;
-      rystride = retarray->dim[1].stride;
+      rxstride = GFC_DESCRIPTOR_STRIDE(retarray,0);
+      rystride = GFC_DESCRIPTOR_STRIDE(retarray,1);
     }
 
   /* If we have rank 1 parameters, zero the absent stride, and set the size to
      one.  */
   if (GFC_DESCRIPTOR_RANK (a) == 1)
     {
-      astride = a->dim[0].stride;
-      count = a->dim[0].ubound + 1 - a->dim[0].lbound;
+      astride = GFC_DESCRIPTOR_STRIDE_BYTES(a,0);
+      count = GFC_DESCRIPTOR_EXTENT(a,0);
       xstride = 0;
       rxstride = 0;
       xcount = 1;
     }
   else
     {
-      astride = a->dim[1].stride;
-      count = a->dim[1].ubound + 1 - a->dim[1].lbound;
-      xstride = a->dim[0].stride;
-      xcount = a->dim[0].ubound + 1 - a->dim[0].lbound;
+      astride = GFC_DESCRIPTOR_STRIDE_BYTES(a,1);
+      count = GFC_DESCRIPTOR_EXTENT(a,1);
+      xstride = GFC_DESCRIPTOR_STRIDE_BYTES(a,0);
+      xcount = GFC_DESCRIPTOR_EXTENT(a,0);
     }
   if (GFC_DESCRIPTOR_RANK (b) == 1)
     {
-      bstride = b->dim[0].stride;
-      assert(count == b->dim[0].ubound + 1 - b->dim[0].lbound);
+      bstride = GFC_DESCRIPTOR_STRIDE_BYTES(b,0);
+      assert(count == GFC_DESCRIPTOR_EXTENT(b,0));
       ystride = 0;
       rystride = 0;
       ycount = 1;
     }
   else
     {
-      bstride = b->dim[0].stride;
-      assert(count == b->dim[0].ubound + 1 - b->dim[0].lbound);
-      ystride = b->dim[1].stride;
-      ycount = b->dim[1].ubound + 1 - b->dim[1].lbound;
+      bstride = GFC_DESCRIPTOR_STRIDE_BYTES(b,0);
+      assert(count == GFC_DESCRIPTOR_EXTENT(b,0));
+      ystride = GFC_DESCRIPTOR_STRIDE_BYTES(b,1);
+      ycount = GFC_DESCRIPTOR_EXTENT(b,1);
     }
 
   for (y = 0; y < ycount; y++)
@@ -190,3 +234,6 @@ matmul_l4 (gfc_array_l4 * retarray, gfc_array_l4 * a, gfc_array_l4 * b)
       dest += rystride - (rxstride * xcount);
     }
 }
+
+#endif
+

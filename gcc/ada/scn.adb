@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -26,6 +25,7 @@
 
 with Atree;    use Atree;
 with Csets;    use Csets;
+with Hostparm; use Hostparm;
 with Namet;    use Namet;
 with Opt;      use Opt;
 with Restrict; use Restrict;
@@ -45,8 +45,8 @@ package body Scn is
    --  keyword as an identifier once for a given keyword).
 
    procedure Check_End_Of_Line;
-   --  Called when end of line encountered. Checks that line is not
-   --  too long, and that other style checks for the end of line are met.
+   --  Called when end of line encountered. Checks that line is not too long,
+   --  and that other style checks for the end of line are met.
 
    function Determine_License return License_Type;
    --  Scan header of file and check that it has an appropriate GNAT-style
@@ -55,45 +55,6 @@ package body Scn is
 
    procedure Error_Long_Line;
    --  Signal error of excessively long line
-
-   ---------------
-   -- Post_Scan --
-   ---------------
-
-   procedure Post_Scan is
-   begin
-      case Token is
-         when Tok_Char_Literal =>
-            Token_Node := New_Node (N_Character_Literal, Token_Ptr);
-            Set_Char_Literal_Value (Token_Node, UI_From_CC (Character_Code));
-            Set_Chars (Token_Node, Token_Name);
-
-         when Tok_Identifier =>
-            Token_Node := New_Node (N_Identifier, Token_Ptr);
-            Set_Chars (Token_Node, Token_Name);
-
-         when Tok_Real_Literal =>
-            Token_Node := New_Node (N_Real_Literal, Token_Ptr);
-            Set_Realval (Token_Node, Real_Literal_Value);
-
-         when Tok_Integer_Literal =>
-            Token_Node := New_Node (N_Integer_Literal, Token_Ptr);
-            Set_Intval (Token_Node, Int_Literal_Value);
-
-         when Tok_String_Literal =>
-            Token_Node := New_Node (N_String_Literal, Token_Ptr);
-            Set_Has_Wide_Character (Token_Node, Wide_Character_Found);
-            Set_Strval (Token_Node, String_Literal_Id);
-
-         when Tok_Operator_Symbol =>
-            Token_Node := New_Node (N_Operator_Symbol, Token_Ptr);
-            Set_Chars (Token_Node, Token_Name);
-            Set_Strval (Token_Node, String_Literal_Id);
-
-         when others =>
-            null;
-      end case;
-   end Post_Scan;
 
    -----------------------
    -- Check_End_Of_Line --
@@ -104,7 +65,7 @@ package body Scn is
    begin
       if Style_Check then
          Style.Check_Line_Terminator (Len);
-      elsif Len > Opt.Max_Line_Length then
+      elsif Len > Max_Line_Length then
          Error_Long_Line;
       end if;
    end Check_End_Of_Line;
@@ -266,7 +227,7 @@ package body Scn is
    begin
       Error_Msg
         ("this line is too long",
-         Current_Line_Start + Source_Ptr (Opt.Max_Line_Length));
+         Current_Line_Start + Source_Ptr (Max_Line_Length));
    end Error_Long_Line;
 
    ------------------------
@@ -280,7 +241,13 @@ package body Scn is
       GNAT_Hedr : constant Text_Buffer (1 .. 78) := (others => '-');
 
    begin
-      Scanner.Initialize_Scanner (Unit, Index);
+      Scanner.Initialize_Scanner (Index);
+
+      if Index /= Internal_Source_File then
+         Set_Unit (Index, Unit);
+      end if;
+
+      Current_Source_Unit := Unit;
 
       --  Set default for Comes_From_Source (except if we are going to process
       --  an artificial string internally created within the compiler and
@@ -298,6 +265,8 @@ package body Scn is
       then
          Set_License (Current_Source_File, Determine_License);
       end if;
+
+      Check_For_BOM;
 
       --  Because of the License stuff above, Scng.Initialize_Scanner cannot
       --  call Scan. Scan initial token (note this initializes Prev_Token,
@@ -317,26 +286,127 @@ package body Scn is
          Scan;
       end if;
 
-      --  Clear flags for reserved words used as indentifiers
+      --  Clear flags for reserved words used as identifiers
 
       for J in Token_Type loop
          Used_As_Identifier (J) := False;
       end loop;
    end Initialize_Scanner;
 
-   -----------------------
-   -- Obsolescent_Check --
-   -----------------------
+   ---------------
+   -- Post_Scan --
+   ---------------
 
-   procedure Obsolescent_Check (S : Source_Ptr) is
+   procedure Post_Scan is
+      procedure Check_Obsolescent_Features_Restriction (S : Source_Ptr);
+      --  This checks for Obsolescent_Features restriction being active, and
+      --  if so, flags the restriction as occurring at the given scan location.
+
+      procedure Check_Obsolete_Base_Char;
+      --  Check for numeric literal using ':' instead of '#' for based case
+
+      --------------------------------------------
+      -- Check_Obsolescent_Features_Restriction --
+      --------------------------------------------
+
+      procedure Check_Obsolescent_Features_Restriction (S : Source_Ptr) is
+      begin
+         --  Normally we have a node handy for posting restrictions. We don't
+         --  have such a node here, so construct a dummy one with the right
+         --  scan pointer. This is only used to get the Sloc value anyway.
+
+         Check_Restriction (No_Obsolescent_Features, New_Node (N_Empty, S));
+      end Check_Obsolescent_Features_Restriction;
+
+      ------------------------------
+      -- Check_Obsolete_Base_Char --
+      ------------------------------
+
+      procedure Check_Obsolete_Base_Char is
+         S : Source_Ptr;
+
+      begin
+         if Based_Literal_Uses_Colon then
+
+            --  Find the : for the restriction or warning message
+
+            S := Token_Ptr;
+            while Source (S) /= ':' loop
+               S := S + 1;
+            end loop;
+
+            Check_Obsolescent_Features_Restriction (S);
+
+            if Warn_On_Obsolescent_Feature then
+               Error_Msg
+                 ("use of "":"" is an obsolescent feature (RM J.2(3))?", S);
+               Error_Msg
+                 ("\use ""'#"" instead?", S);
+            end if;
+         end if;
+      end Check_Obsolete_Base_Char;
+
+   --  Start of processing for Post_Scan
+
    begin
-      --  This is a pain in the neck case, since we normally need a node to
-      --  call Check_Restrictions, and all we have is a source pointer. The
-      --  easiest thing is to construct a dummy node. A bit kludgy, but this
-      --  is a marginal case. It's not worth trying to do things more cleanly.
+      case Token is
+         when Tok_Char_Literal =>
+            Token_Node := New_Node (N_Character_Literal, Token_Ptr);
+            Set_Char_Literal_Value (Token_Node, UI_From_CC (Character_Code));
+            Set_Chars (Token_Node, Token_Name);
 
-      Check_Restriction (No_Obsolescent_Features, New_Node (N_Empty, S));
-   end Obsolescent_Check;
+         when Tok_Identifier =>
+            Token_Node := New_Node (N_Identifier, Token_Ptr);
+            Set_Chars (Token_Node, Token_Name);
+
+         when Tok_Real_Literal =>
+            Token_Node := New_Node (N_Real_Literal, Token_Ptr);
+            Set_Realval (Token_Node, Real_Literal_Value);
+            Check_Obsolete_Base_Char;
+
+         when Tok_Integer_Literal =>
+            Token_Node := New_Node (N_Integer_Literal, Token_Ptr);
+            Set_Intval (Token_Node, Int_Literal_Value);
+            Check_Obsolete_Base_Char;
+
+         when Tok_String_Literal =>
+            Token_Node := New_Node (N_String_Literal, Token_Ptr);
+            Set_Has_Wide_Character
+              (Token_Node, Wide_Character_Found);
+            Set_Has_Wide_Wide_Character
+              (Token_Node, Wide_Wide_Character_Found);
+            Set_Strval (Token_Node, String_Literal_Id);
+
+            if Source (Token_Ptr) = '%' then
+               Check_Obsolescent_Features_Restriction (Token_Ptr);
+
+               if Warn_On_Obsolescent_Feature then
+                  Error_Msg_SC
+                    ("use of ""'%"" is an obsolescent feature (RM J.2(4))?");
+                  Error_Msg_SC ("\use """""" instead?");
+               end if;
+            end if;
+
+         when Tok_Operator_Symbol =>
+            Token_Node := New_Node (N_Operator_Symbol, Token_Ptr);
+            Set_Chars (Token_Node, Token_Name);
+            Set_Strval (Token_Node, String_Literal_Id);
+
+         when Tok_Vertical_Bar =>
+            if Source (Token_Ptr) = '!' then
+               Check_Obsolescent_Features_Restriction (Token_Ptr);
+
+               if Warn_On_Obsolescent_Feature then
+                  Error_Msg_SC
+                    ("use of ""'!"" is an obsolescent feature (RM J.2(2))?");
+                  Error_Msg_SC ("\use ""'|"" instead?");
+               end if;
+            end if;
+
+         when others =>
+            null;
+      end case;
+   end Post_Scan;
 
    ------------------------------
    -- Scan_Reserved_Identifier --

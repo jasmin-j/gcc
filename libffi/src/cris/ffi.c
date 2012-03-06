@@ -2,6 +2,7 @@
    ffi.c - Copyright (c) 1998 Cygnus Solutions
            Copyright (c) 2004 Simon Posnjak
 	   Copyright (c) 2005 Axis Communications AB
+	   Copyright (C) 2007 Free Software Foundation, Inc.
 
    CRIS Foreign Function Interface
 
@@ -152,21 +153,24 @@ ffi_prep_args (char *stack, extended_cif * ecif)
   return (struct_count);
 }
 
-ffi_status
-ffi_prep_cif (ffi_cif * cif,
-	      ffi_abi abi, unsigned int nargs,
-	      ffi_type * rtype, ffi_type ** atypes)
+ffi_status FFI_HIDDEN
+ffi_prep_cif_core (ffi_cif * cif,
+	           ffi_abi abi, unsigned int isvariadic,
+		   unsigned int nfixedargs, unsigned int ntotalargs,
+	           ffi_type * rtype, ffi_type ** atypes)
 {
   unsigned bytes = 0;
   unsigned int i;
   ffi_type **ptr;
 
   FFI_ASSERT (cif != NULL);
-  FFI_ASSERT ((abi > FFI_FIRST_ABI) && (abi <= FFI_DEFAULT_ABI));
+  FFI_ASSERT((!isvariadic) || (nfixedargs >= 1));
+  FFI_ASSERT(nfixedargs <= ntotalargs);
+  FFI_ASSERT (abi > FFI_FIRST_ABI && abi < FFI_LAST_ABI);
 
   cif->abi = abi;
   cif->arg_types = atypes;
-  cif->nargs = nargs;
+  cif->nargs = ntotalargs;
   cif->rtype = rtype;
 
   cif->flags = 0;
@@ -360,10 +364,11 @@ ffi_prep_closure_inner (void **params, ffi_closure* closure)
 /* API function: Prepare the trampoline.  */
 
 ffi_status
-ffi_prep_closure (ffi_closure* closure,
-		  ffi_cif* cif,
-		  void (*fun)(ffi_cif *, void *, void **, void*),
-		  void *user_data)
+ffi_prep_closure_loc (ffi_closure* closure,
+		      ffi_cif* cif,
+		      void (*fun)(ffi_cif *, void *, void **, void*),
+		      void *user_data,
+		      void *codeloc)
 {
   void *innerfn = ffi_prep_closure_inner;
   FFI_ASSERT (cif->abi == FFI_SYSV);
@@ -375,7 +380,7 @@ ffi_prep_closure (ffi_closure* closure,
   memcpy (closure->tramp + ffi_cris_trampoline_fn_offset,
 	  &innerfn, sizeof (void *));
   memcpy (closure->tramp + ffi_cris_trampoline_closure_offset,
-	  &closure, sizeof (void *));
+	  &codeloc, sizeof (void *));
 
   return FFI_OK;
 }

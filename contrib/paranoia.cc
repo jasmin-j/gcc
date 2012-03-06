@@ -169,7 +169,6 @@ lines
     };
 #undef DEFTREECODE
 
-#define ENUM_BITFIELD(X) enum X
 #define class klass
 
 #include "real.h"
@@ -2643,8 +2642,6 @@ int main(int ac, char **av)
 	    F(vax_g),
 	    F(i370_single),
 	    F(i370_double),
-	    F(c4x_single),
-	    F(c4x_extended),
 	    F(real_internal),
 #undef F
 	  };

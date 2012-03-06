@@ -1,5 +1,5 @@
 /* jni_md.h
-   Copyright (C) 2001, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2001, 2005, 2007, 2010 Free Software Foundation, Inc.
 
 This file is part of GNU Classpath.
 
@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 As a special exception, if you link this library with other files to
 produce an executable, this library does not by itself cause the
@@ -58,9 +58,6 @@ typedef struct _Jv_JavaVM JavaVM;
   /* The current exception.  */						\
   jthrowable ex;							\
 									\
-  /* The class of the current native method.  */			\
-  jclass klass;								\
-									\
   /* The chain of local frames.  */					\
   struct _Jv_JNI_LocalFrame *locals;					\
 									\
@@ -68,6 +65,15 @@ typedef struct _Jv_JavaVM JavaVM;
      reused between non-nesting JNI calls.  */				\
   struct _Jv_JNI_LocalFrame *bottom_locals;
 
+/*  JNI calling convention.  Also defined in javaprims.h. */
+#ifndef JNICALL
+#if (defined (_WIN32) || defined (__WIN32__) || defined (WIN32)) \
+    && !defined (_WIN64)
+  #define JNICALL __stdcall
+ #else
+  #define JNICALL
+ #endif
+#endif
 
 #else /* __GCJ_JNI_IMPL__ */
 
@@ -81,7 +87,7 @@ typedef int    jbyte  __attribute__((__mode__(__QI__)));
 typedef int    jshort __attribute__((__mode__(__HI__)));
 typedef int    jint   __attribute__((__mode__(__SI__)));
 typedef int    jlong  __attribute__((__mode__(__DI__)));
-typedef int    jboolean __attribute__((__mode__(__QI__)));
+typedef unsigned int   jboolean __attribute__((__mode__(__QI__)));
 typedef unsigned short jchar __attribute__((__mode__(__HI__)));
 typedef float  jfloat;
 typedef double jdouble;
@@ -102,7 +108,7 @@ typedef int64_t jlong;
 typedef float jfloat;
 typedef double jdouble;
 typedef jint jsize;
-typedef int8_t jboolean;
+typedef uint8_t jboolean;
 typedef uint16_t jchar;
 
 #  else /* JV_HAVE_INTTYPES_H */
@@ -120,12 +126,30 @@ typedef uint16_t jchar;
 
 
 /* Linkage and calling conventions. */
-#if defined (_WIN32) || defined (__WIN32__) || defined (WIN32)
+#if (defined (_WIN32) || defined (__WIN32__) || defined (WIN32)) \
+    && !defined (_WIN64)
 
 #define JNIIMPORT        __declspec(dllimport)
 #define JNIEXPORT        __declspec(dllexport)
 
-#define JNICALL          __stdcall
+#ifndef JNICALL
+#define JNICALL __stdcall
+#endif
+
+#else /* !( _WIN32 || __WIN32__ || WIN32) || _WIN64 */
+
+#define JNIIMPORT
+#if defined(__GNUC__) && __GNUC__ > 3
+#define JNIEXPORT __attribute__ ((visibility("default")))
+#else
+#define JNIEXPORT
+#endif
+
+#ifndef JNICALL
+#define JNICALL
+#endif
+
+#endif /* !( _WIN32 || __WIN32__ || WIN32) || _WIN64 */
 
 /* These defines apply to symbols in libgcj */
 #ifdef __GCJ_DLL__
@@ -137,15 +161,5 @@ typedef uint16_t jchar;
 #else /* ! __GCJ_DLL__ */
 # define _CLASSPATH_JNIIMPEXP
 #endif /*  __GCJ_DLL__ */
-
-#else /* !( _WIN32 || __WIN32__ || WIN32) */
-
-#define JNIIMPORT
-#define JNIEXPORT
-#define JNICALL
-#define _CLASSPATH_JNIIMPEXP
-
-#endif /* !( _WIN32 || __WIN32__ || WIN32) */
-
 
 #endif /* __GCJ_JNI_MD_H__ */

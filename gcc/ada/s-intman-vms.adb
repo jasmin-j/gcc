@@ -1,69 +1,68 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --           S Y S T E M . I N T E R R U P T _ M A N A G E M E N T          --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---         Copyright (C) 1992-2002, Free Software Foundation, Inc.          --
+--         Copyright (C) 1992-2009, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This is a OpenVMS/Alpha version of this package.
-
---  PLEASE DO NOT add any dependences on other packages.
---  This package is designed to work with or without tasking support.
-
---  See the other warnings in the package specification before making
---  any modifications to this file.
-
-with System.OS_Interface;
---  used for various Constants, Signal and types
+--  This is a OpenVMS/Alpha version of this package
 
 package body System.Interrupt_Management is
 
-   use System.OS_Interface;
-   use type unsigned_long;
+   ----------------
+   -- Initialize --
+   ----------------
 
-   ---------------------------
-   -- Initialize_Interrupts --
-   ---------------------------
+   Initialized : Boolean := False;
 
-   procedure Initialize_Interrupts is
+   procedure Initialize is
+      use System.OS_Interface;
       Status : Cond_Value_Type;
 
    begin
+      if Initialized then
+         return;
+      end if;
+
+      Initialized := True;
+      Abort_Task_Interrupt := Interrupt_ID_0;
+      --  Unused
+
+      Reserve := Reserve or Keep_Unmasked or Keep_Masked;
+      Reserve (Interrupt_ID_0) := True;
+
       Sys_Crembx
         (Status => Status,
-         Prmflg => False,
+         Prmflg => 0,
          Chan   => Rcv_Interrupt_Chan,
          Maxmsg => Interrupt_ID'Size,
          Bufquo => Interrupt_Bufquo,
          Lognam => "GNAT_Interrupt_Mailbox",
          Flags  => CMB_M_READONLY);
-
       pragma Assert ((Status and 1) = 1);
 
       Sys_Assign
@@ -71,18 +70,7 @@ package body System.Interrupt_Management is
          Devnam => "GNAT_Interrupt_Mailbox",
          Chan   => Snd_Interrupt_Chan,
          Flags  => AGN_M_WRITEONLY);
-
       pragma Assert ((Status and 1) = 1);
-   end Initialize_Interrupts;
+   end Initialize;
 
-begin
-   --  Unused
-
-   Abort_Task_Interrupt := Interrupt_ID_0;
-
-   Reserve := Reserve or Keep_Unmasked or Keep_Masked;
-
-   Reserve (Interrupt_ID_0) := True;
-
-   Initialize_Interrupts;
 end System.Interrupt_Management;

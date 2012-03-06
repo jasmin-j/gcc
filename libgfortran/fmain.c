@@ -1,4 +1,6 @@
-#include "config.h"
+/* Note that this file is not used as of GFortran 4.5, and exists here
+   only for backwards compatibility.  */
+
 #include "libgfortran.h"
 
 /* The main Fortran program actually is a function, called MAIN__.

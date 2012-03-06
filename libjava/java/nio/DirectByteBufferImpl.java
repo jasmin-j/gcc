@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -109,25 +109,23 @@ abstract class DirectByteBufferImpl extends ByteBuffer
 
   DirectByteBufferImpl(int capacity)
   {
-    super(capacity, capacity, 0, -1);
+    super(capacity, capacity, 0, -1,
+	  VMDirectByteBuffer.allocate(capacity), null, 0);
     this.owner = this;
-    this.address = VMDirectByteBuffer.allocate(capacity);
   }
 
   DirectByteBufferImpl(RawData address, int capacity)
   {
-    super(capacity, capacity, 0, -1);
+    super(capacity, capacity, 0, -1, address, null, 0);
     this.owner = null;
-    this.address = address;
   }
   
   DirectByteBufferImpl(Object owner, RawData address,
 		       int capacity, int limit,
 		       int position)
   {
-    super(capacity, limit, position, -1);
+    super(capacity, limit, position, -1, address, null, 0);
     this.owner = owner;
-    this.address = address;
   }
 
   /**

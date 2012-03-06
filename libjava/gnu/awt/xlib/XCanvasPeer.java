@@ -44,6 +44,8 @@ import gnu.gcj.xlib.XImage;
 
 import gnu.awt.j2d.*;
 
+import sun.awt.CausedFocusEvent;
+
 public class XCanvasPeer implements CanvasPeer
 {
   static final Dimension MIN_SIZE = new Dimension(1, 1);
@@ -55,6 +57,8 @@ public class XCanvasPeer implements CanvasPeer
 
   Component component;
   XGraphicsConfiguration config;
+  private WindowAttributes attributes = new WindowAttributes();
+  private long eventMask;
   
   public XCanvasPeer(Component component)
   {
@@ -92,7 +96,6 @@ public class XCanvasPeer implements CanvasPeer
        object. */
     component.setBounds(bounds);
 	    
-    WindowAttributes attributes = new WindowAttributes();
 
     /* Set background color */
     Color bg = component.getBackground();
@@ -246,10 +249,12 @@ public class XCanvasPeer implements CanvasPeer
     gfx2d.setColor(component.getBackground());
     return gfx2d;
   }
-    
+
+  private Rectangle locationBounds;
   public Point getLocationOnScreen()
   {
-    throw new UnsupportedOperationException("FIXME, not implemented");
+    locationBounds = window.getBounds (locationBounds);
+    return new Point (locationBounds.x,locationBounds.y);
   }
 
   public Dimension getMinimumSize ()
@@ -349,8 +354,21 @@ public class XCanvasPeer implements CanvasPeer
 
   public void setBackground(Color color)
   {
-    /* default canvas peer does not keep track of background, since it won't
-     * paint anything. */
+    if (color != null)
+    {
+      int[] components =
+      {
+        color.getRed (),
+        color.getGreen (),
+        color.getBlue (),
+        0xff
+      };
+      
+      ColorModel cm = config.getColorModel ();
+      long pixel = cm.getDataElement (components, 0);
+      attributes.setBackground (pixel);
+      window.setAttributes (attributes);
+    }
   }
 
   public void setBounds(int x, int y, int width, int height)
@@ -388,20 +406,22 @@ public class XCanvasPeer implements CanvasPeer
 
   public void setEventMask(long eventMask)
   {
-    WindowAttributes attributes = new WindowAttributes();
-
-    long xEventMask = getBasicEventMask();
-	
-    if ((eventMask & AWTEvent.MOUSE_EVENT_MASK) != 0)
+    if (this.eventMask != eventMask)
+    {
+      this.eventMask = eventMask;
+      long xEventMask = getBasicEventMask ();
+      
+      if ((eventMask & AWTEvent.MOUSE_EVENT_MASK) != 0)
       {
-	xEventMask |=
-	  WindowAttributes.MASK_BUTTON_PRESS |
-	  WindowAttributes.MASK_BUTTON_RELEASE;
+        xEventMask |=
+          WindowAttributes.MASK_BUTTON_PRESS |
+          WindowAttributes.MASK_BUTTON_RELEASE;
       }
-	    
-    attributes.setEventMask(xEventMask);
-    window.setAttributes(attributes);
-    ensureFlush();
+      
+      attributes.setEventMask (xEventMask);
+      window.setAttributes (attributes);
+      ensureFlush ();
+    }
   }
 
   public void setFont(Font font)
@@ -447,6 +467,13 @@ public class XCanvasPeer implements CanvasPeer
 
   public boolean requestFocus (Component source, boolean b1, 
                                boolean b2, long x)
+  {
+    return false;
+  }
+
+  public boolean requestFocus (Component source, boolean b1, 
+                               boolean b2, long x,
+			       CausedFocusEvent.Cause cause)
   {
     return false;
   }
@@ -511,5 +538,63 @@ public class XCanvasPeer implements CanvasPeer
       window.map();
     }
   }
-}
 
+  /**
+   * @since 1.5
+   */
+  public boolean isRestackSupported ()
+  {
+    return false;
+  }
+
+  /**
+   * @since 1.5
+   */
+  public void cancelPendingPaint (int x, int y, int width, int height)
+  {
+  }
+
+  /**
+   * @since 1.5
+   */
+  public void restack ()
+  {
+  }
+
+  /**
+   * @since 1.5
+   */
+  public Rectangle getBounds ()
+  {
+    return null;
+  }
+
+  /**
+   * @since 1.5
+   */
+  public void reparent (ContainerPeer parent)
+  {
+  }
+
+  /**
+   * @since 1.5
+   */
+  public void setBounds (int x, int y, int width, int height, int z)
+  {
+  }
+
+  /**
+   * @since 1.5
+   */
+  public boolean isReparentSupported ()
+  {
+    return false;
+  }
+
+  /**
+   * @since 1.5
+   */
+  public void layout ()
+  {
+  }
+}

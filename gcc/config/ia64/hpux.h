@@ -1,6 +1,6 @@
 /* Definitions of target machine GNU compiler.  IA-64 version.
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2009, 2010,
+   2011 Free Software Foundation, Inc.
    Contributed by Steve Ellcey <sje@cup.hp.com> and
                   Reva Cuthbertson <reva@cup.hp.com>
 
@@ -8,7 +8,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -17,14 +17,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
-
-/* This macro is a C statement to print on `stderr' a string describing the
-   particular machine description choice.  */
-
-#define TARGET_VERSION fprintf (stderr, " (IA-64) HP-UX");
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* Enable HPUX ABI quirks.  */
 #undef  TARGET_HPUX
@@ -47,12 +41,13 @@ do {							\
 	builtin_define("__IA64__");			\
 	builtin_define("_LONGLONG");			\
 	builtin_define("_INCLUDE_LONGLONG");		\
+	builtin_define("__STDC_EXT__");			\
 	builtin_define("_UINT128_T");			\
 	if (c_dialect_cxx () || !flag_iso)		\
 	  {						\
 	    builtin_define("_HPUX_SOURCE");		\
-	    builtin_define("__STDC_EXT__");		\
 	    builtin_define("__STDCPP__");		\
+	    builtin_define("_INCLUDE__STDC_A1_SOURCE");	\
 	  }						\
 	if (TARGET_ILP32)				\
 	  builtin_define("_ILP32");			\
@@ -68,10 +63,24 @@ do {							\
 #undef  ASM_EXTRA_SPEC
 #define ASM_EXTRA_SPEC "%{milp32:-milp32} %{mlp64:-mlp64}"
 
+#ifndef USE_GAS
+#define AS_NEEDS_DASH_FOR_PIPED_INPUT
+#endif
+
+#ifndef CROSS_DIRECTORY_STRUCTURE
+#undef MD_EXEC_PREFIX
+#define MD_EXEC_PREFIX "/usr/ccs/bin/"
+
+#undef MD_STARTFILE_PREFIX
+#define MD_STARTFILE_PREFIX "/usr/ccs/lib/"
+#endif
+
 #undef ENDFILE_SPEC
 
 #undef STARTFILE_SPEC
-#define STARTFILE_SPEC "%{!shared:%{static:crt0%O%s}}"
+#define STARTFILE_SPEC "%{!shared:%{static:crt0%O%s} \
+			  %{mlp64:/usr/lib/hpux64/unix98%O%s} \
+			  %{!mlp64:/usr/lib/hpux32/unix98%O%s}}"
 
 #undef LINK_SPEC
 #define LINK_SPEC \
@@ -84,7 +93,7 @@ do {							\
 #undef  LIB_SPEC
 #define LIB_SPEC \
   "%{!shared: \
-     %{mt|pthread:-lpthread} \
+     %{mt|pthread:%{fopenmp:-lrt} -lpthread} \
      %{p:%{!mlp64:-L/usr/lib/hpux32/libp} \
 	 %{mlp64:-L/usr/lib/hpux64/libp} -lprof} \
      %{pg:%{!mlp64:-L/usr/lib/hpux32/libp} \
@@ -106,14 +115,8 @@ do {							\
 #define TARGET_DEFAULT \
   (MASK_DWARF2_ASM | MASK_BIG_ENDIAN | MASK_ILP32)
 
-/* This needs to be set to force structure arguments with a single
-   integer field to be treated as structures and not as the type of
-   their field.  Without this a structure with a single char will be
-   returned just like a char variable, instead of being returned at the
-   top of the register as specified for big-endian IA64.  */
-
-#define MEMBER_TYPE_FORCES_BLK(FIELD, MODE) \
-  (!FLOAT_MODE_P (MODE) || (MODE) == TFmode)
+/* ??? Might not be needed anymore.  */
+#define MEMBER_TYPE_FORCES_BLK(FIELD, MODE) ((MODE) == TFmode)
 
 /* ASM_OUTPUT_EXTERNAL_LIBCALL defaults to just a globalize_label call,
    but that doesn't put out the @function type information which causes
@@ -147,10 +150,6 @@ do {								\
    definitions, so do not use them in gthr-posix.h.  */
 #define GTHREAD_USE_WEAK 0
 
-/* Put out the needed function declarations at the end.  */
-
-#define TARGET_ASM_FILE_END ia64_hpux_file_end
-
 #undef CTORS_SECTION_ASM_OP
 #define CTORS_SECTION_ASM_OP  "\t.section\t.init_array,\t\"aw\",\"init_array\""
 
@@ -181,13 +180,8 @@ do {								\
 
 /* It is illegal to have relocations in shared segments on HPUX.
    Pretend flag_pic is always set.  */
-#undef  TARGET_ASM_SELECT_SECTION
-#define TARGET_ASM_SELECT_SECTION  ia64_rwreloc_select_section
-#undef  TARGET_ASM_UNIQUE_SECTION
-#define TARGET_ASM_UNIQUE_SECTION  ia64_rwreloc_unique_section
-#undef  TARGET_ASM_SELECT_RTX_SECTION
-#define TARGET_ASM_SELECT_RTX_SECTION  ia64_rwreloc_select_rtx_section
-#define TARGET_RWRELOC  true
+#undef  TARGET_ASM_RELOC_RW_MASK
+#define TARGET_ASM_RELOC_RW_MASK  ia64_hpux_reloc_rw_mask
 
 /* ia64 HPUX has the float and long double forms of math functions.  */
 #undef TARGET_C99_FUNCTIONS
@@ -201,10 +195,36 @@ do {								\
 /* Put all *xf routines in libgcc, regardless of long double size.  */
 #undef LIBGCC2_HAS_XF_MODE
 #define LIBGCC2_HAS_XF_MODE 1
+#define XF_SIZE 64
 
 /* Put all *tf routines in libgcc, regardless of long double size.  */
 #undef LIBGCC2_HAS_TF_MODE
 #define LIBGCC2_HAS_TF_MODE 1
+#define TF_SIZE 113
 
 /* HP-UX headers are C++-compatible.  */
 #define NO_IMPLICIT_EXTERN_C
+
+/* HP-UX uses PROFILE_HOOK instead of FUNCTION_PROFILER but we need a
+   FUNCTION_PROFILER defined because its use is not ifdefed.  When using
+   PROFILE_HOOK, the profile call comes after the prologue.  */
+
+#undef FUNCTION_PROFILER
+#define FUNCTION_PROFILER(FILE, LABELNO) do { } while (0)
+
+#undef PROFILE_HOOK
+#define PROFILE_HOOK(LABEL) ia64_profile_hook (LABEL)
+
+#undef  PROFILE_BEFORE_PROLOGUE
+
+#undef NO_PROFILE_COUNTERS
+#define NO_PROFILE_COUNTERS 0
+
+/* The HP-UX linker has a bug that causes calls from functions in
+   .text.unlikely to functions in .text to cause a segfault.  Until
+   it is fixed, prevent code from being put into .text.unlikely or
+   .text.hot.  */
+
+#define TARGET_ASM_FUNCTION_SECTION ia64_hpux_function_section
+
+#define TARGET_POSIX_IO

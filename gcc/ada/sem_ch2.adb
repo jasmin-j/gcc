@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -26,10 +25,12 @@
 
 with Atree;    use Atree;
 with Errout;   use Errout;
+with Namet;    use Namet;
 with Opt;      use Opt;
 with Restrict; use Restrict;
 with Rident;   use Rident;
 with Sem_Ch8;  use Sem_Ch8;
+with Sem_Dim;  use Sem_Dim;
 with Sinfo;    use Sinfo;
 with Stand;    use Stand;
 with Uintp;    use Uintp;
@@ -75,6 +76,8 @@ package body Sem_Ch2 is
       else
          Find_Direct_Name (N);
       end if;
+
+      Analyze_Dimension (N);
    end Analyze_Identifier;
 
    -----------------------------

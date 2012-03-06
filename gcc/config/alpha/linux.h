@@ -1,14 +1,14 @@
 /* Definitions of target machine for GNU compiler,
    for Alpha Linux-based GNU systems.
-   Copyright (C) 1996, 1997, 1998, 2002, 2003, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 1996, 1997, 1998, 2002, 2003, 2004, 2005, 2006, 2007, 2009,
+   2010, 2011 Free Software Foundation, Inc.
    Contributed by Richard Henderson.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -17,9 +17,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #undef TARGET_DEFAULT
 #define TARGET_DEFAULT (MASK_FPREGS | MASK_GAS)
@@ -36,11 +35,6 @@ Boston, MA 02111-1307, USA.  */
 	/* The GNU C++ standard library requires this.  */	\
 	if (c_dialect_cxx ())					\
 	  builtin_define ("_GNU_SOURCE");			\
-	if (flag_pic)						\
-	  {							\
-		builtin_define ("__PIC__");			\
-		builtin_define ("__pic__");			\
-	  }							\
     } while (0)
 
 #undef LIB_SPEC
@@ -48,6 +42,9 @@ Boston, MA 02111-1307, USA.  */
   "%{pthread:-lpthread} \
    %{shared:-lc} \
    %{!shared: %{profile:-lc_p}%{!profile:-lc}}"
+
+#undef CPP_SPEC
+#define CPP_SPEC "%{posix:-D_POSIX_SOURCE} %{pthread:-D_REENTRANT}"
 
 /* Show that we need a GP when profiling.  */
 #undef TARGET_PROFILING_NEEDS_GP
@@ -64,14 +61,20 @@ Boston, MA 02111-1307, USA.  */
 #undef WCHAR_TYPE
 #define WCHAR_TYPE "int"
 
-/* Define this so that all GNU/Linux targets handle the same pragmas.  */
-#define HANDLE_PRAGMA_PACK_PUSH_POP
+#ifdef SINGLE_LIBC
+#define OPTION_GLIBC  (DEFAULT_LIBC == LIBC_GLIBC)
+#else
+#define OPTION_GLIBC  (linux_libc == LIBC_GLIBC)
+#endif
 
-/* Determine whether the the entire c99 runtime is present in the
+/* Determine whether the entire c99 runtime is present in the
    runtime library.  */
-#define TARGET_C99_FUNCTIONS 1
+#define TARGET_C99_FUNCTIONS (OPTION_GLIBC)
 
-#define TARGET_HAS_F_SETLKW
+/* Whether we have sincos that follows the GNU extension.  */
+#define TARGET_HAS_SINCOS (OPTION_GLIBC)
+
+#define TARGET_POSIX_IO
 
 #define LINK_GCC_C_SEQUENCE_SPEC \
   "%{static:--start-group} %G %L %{static:--end-group}%{!static:%G}"
@@ -81,4 +84,21 @@ Boston, MA 02111-1307, USA.  */
 #define USE_LD_AS_NEEDED 1
 #endif
 
-#define MD_UNWIND_SUPPORT "config/alpha/linux-unwind.h"
+/* Define if long doubles should be mangled as 'g'.  */
+#define TARGET_ALTERNATE_LONG_DOUBLE_MANGLING
+
+/* -mcpu=native handling only makes sense with compiler running on
+   an Alpha chip.  */
+#if defined(__alpha__) || defined(__alpha)
+extern const char *host_detect_local_cpu (int argc, const char **argv);
+# define EXTRA_SPEC_FUNCTIONS						\
+  { "local_cpu_detect", host_detect_local_cpu },
+
+# define MCPU_MTUNE_NATIVE_SPECS					\
+   " %{mcpu=native:%<mcpu=native %:local_cpu_detect(cpu)}"		\
+   " %{mtune=native:%<mtune=native %:local_cpu_detect(tune)}"
+#else
+# define MCPU_MTUNE_NATIVE_SPECS ""
+#endif
+
+#define DRIVER_SELF_SPECS MCPU_MTUNE_NATIVE_SPECS

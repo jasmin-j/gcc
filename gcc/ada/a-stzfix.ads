@@ -1,23 +1,22 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
 --          A D A . S T R I N G S . W I D E _ W I D E _ F I X E D           --
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
--- This specification is adapted from the Ada Reference Manual for use with --
+-- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT.  In accordance with the copyright of that document, you can freely --
 -- copy and modify this specification,  provided that if you redistribute a --
 -- modified version,  any changes that you have made are clearly indicated. --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-
 with Ada.Strings.Wide_Wide_Maps;
 
 package Ada.Strings.Wide_Wide_Fixed is
-pragma Preelaborate (Wide_Wide_Fixed);
+   pragma Preelaborate;
 
    ------------------------------------------------------------------------
    -- Copy Procedure for Wide_Wide_Strings of Possibly Different Lengths --
@@ -107,6 +106,15 @@ pragma Preelaborate (Wide_Wide_Fixed);
    function Count
      (Source : Wide_Wide_String;
       Set    : Wide_Wide_Maps.Wide_Wide_Character_Set) return Natural;
+
+   procedure Find_Token
+     (Source : Wide_Wide_String;
+      Set    : Wide_Wide_Maps.Wide_Wide_Character_Set;
+      From   : Positive;
+      Test   : Membership;
+      First  : out Positive;
+      Last   : out Natural);
+   pragma Ada_2012 (Find_Token);
 
    procedure Find_Token
      (Source : Wide_Wide_String;
@@ -236,10 +244,10 @@ pragma Preelaborate (Wide_Wide_Fixed);
       return Wide_Wide_String;
 
    procedure Tail
-     (Source : in out Wide_Wide_String;
-      Count  : Natural;
+     (Source  : in out Wide_Wide_String;
+      Count   : Natural;
       Justify : Alignment := Left;
-      Pad    : Wide_Wide_Character := Ada.Strings.Wide_Wide_Space);
+      Pad     : Wide_Wide_Character := Ada.Strings.Wide_Wide_Space);
 
    --------------------------------------------
    -- Wide_Wide_String Constructor Functions --

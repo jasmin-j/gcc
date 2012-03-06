@@ -2,124 +2,46 @@
 --                                                                          --
 --                         GNAT LIBRARY COMPONENTS                          --
 --                                                                          --
---               ADA.CONTAINERS.GENERIC_ANONYMOUS_ARRAY_SORT                --
+--              ADA.CONTAINERS.GENERIC_ANONYMOUS_ARRAY_SORT                 --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---             Copyright (C) 2004 Free Software Foundation, Inc.            --
---                                                                          --
--- This specification is derived from the Ada Reference Manual for use with --
--- GNAT. The copyright notice above, and the license provisions that follow --
--- apply solely to the  contents of the part following the private keyword. --
+--          Copyright (C) 2004-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- This unit was originally developed by Matthew J Heaney.                  --
 ------------------------------------------------------------------------------
 
+--  This unit was originally a GNAT-specific addition to Ada 2005. A unit
+--  providing the same feature, Ada.Containers.Generic_Sort, was defined for
+--  Ada 2012.  We retain Generic_Anonymous_Array_Sort for compatibility, but
+--  implement it in terms of the official unit, Generic_Sort.
+
+with Ada.Containers.Generic_Sort;
+
 procedure Ada.Containers.Generic_Anonymous_Array_Sort
   (First, Last : Index_Type'Base)
 is
-   Pivot, Lo, Mid, Hi : Index_Type;
+   procedure Sort is new Ada.Containers.Generic_Sort
+     (Index_Type => Index_Type,
+      Before     => Less,
+      Swap       => Swap);
 
 begin
-   if Last <= First then
-      return;
-   end if;
-
-   Lo := First;
-   Hi := Last;
-
-   if Last = Index_Type'Succ (First) then
-      if not Less (Lo, Hi) then
-         Swap (Lo, Hi);
-      end if;
-
-      return;
-   end if;
-
-   Mid := Index_Type'Val
-     (Index_Type'Pos (Lo) +
-      (Index_Type'Pos (Hi) - Index_Type'Pos (Lo)) / 2);
-
-   --  We need to figure out which case we have:
-   --  x < y < z
-   --  x < z < y
-   --  z < x < y
-   --  y < x < z
-   --  y < z < x
-   --  z < y < x
-
-   if Less (Lo, Mid) then
-      if Less (Lo, Hi) then
-         if Less (Mid, Hi) then
-            Swap (Lo, Mid);
-
-         else
-            Swap (Lo, Hi);
-
-         end if;
-
-      else
-         null;  --  lo is median
-      end if;
-
-   elsif Less (Lo, Hi) then
-      null; --  lo is median
-
-   elsif Less (Mid, Hi) then
-      Swap (Lo, Hi);
-
-   else
-      Swap (Lo, Mid);
-   end if;
-
-   Pivot := Lo;
-   Outer : loop
-      loop
-         exit Outer when not (Pivot < Hi);
-
-         if Less (Hi, Pivot) then
-            Swap (Hi, Pivot);
-            Pivot := Hi;
-            Lo := Index_Type'Succ (Lo);
-            exit;
-         else
-            Hi := Index_Type'Pred (Hi);
-         end if;
-      end loop;
-
-      loop
-         exit Outer when not (Lo < Pivot);
-
-         if Less (Lo, Pivot) then
-            Lo := Index_Type'Succ (Lo);
-         else
-            Swap (Lo, Pivot);
-            Pivot := Lo;
-            Hi := Index_Type'Pred (Hi);
-            exit;
-         end if;
-      end loop;
-   end loop Outer;
-
-   Generic_Anonymous_Array_Sort (First, Index_Type'Pred (Pivot));
-   Generic_Anonymous_Array_Sort (Index_Type'Succ (Pivot), Last);
-
+   Sort (First, Last);
 end Ada.Containers.Generic_Anonymous_Array_Sort;

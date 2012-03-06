@@ -1,31 +1,29 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                   S Y S T E M . O S _ I N T E R F A C E                  --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
 --             Copyright (C) 1991-1994, Florida State University            --
---             Copyright (C) 1995-2004, Free Software Foundation, Inc.      --
+--          Copyright (C) 1995-2011, Free Software Foundation, Inc.         --
 --                                                                          --
--- GNARL is free software; you can  redistribute it  and/or modify it under --
+-- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
@@ -35,13 +33,14 @@
 --  This is the HP-UX version of this package
 
 --  This package encapsulates all direct interfaces to OS services
---  that are needed by children of System.
+--  that are needed by the tasking run-time (libgnarl).
 
 --  PLEASE DO NOT add any with-clauses to this package or remove the pragma
 --  Preelaborate. This package is designed to be a bottom-level (leaf) package.
 
+with Ada.Unchecked_Conversion;
+
 with Interfaces.C;
-with Unchecked_Conversion;
 
 package System.OS_Interface is
    pragma Preelaborate;
@@ -133,6 +132,7 @@ package System.OS_Interface is
    type sigset_t is private;
 
    type isr_address is access procedure (sig : int);
+   pragma Convention (C, isr_address);
 
    function intr_attach (sig : int; handler : isr_address) return long;
 
@@ -166,6 +166,7 @@ package System.OS_Interface is
 
    SA_RESTART  : constant  := 16#40#;
    SA_SIGINFO  : constant  := 16#10#;
+   SA_ONSTACK  : constant  := 16#01#;
 
    SIG_BLOCK   : constant  := 0;
    SIG_UNBLOCK : constant  := 1;
@@ -190,9 +191,7 @@ package System.OS_Interface is
    function nanosleep (rqtp, rmtp : access timespec) return int;
    pragma Import (C, nanosleep);
 
-   type clockid_t is private;
-
-   CLOCK_REALTIME : constant clockid_t;
+   type clockid_t is new int;
 
    function Clock_Gettime
      (Clock_Id : clockid_t; Tp : access timespec) return int;
@@ -203,14 +202,6 @@ package System.OS_Interface is
 
    function To_Timespec (D : Duration) return timespec;
    pragma Inline (To_Timespec);
-
-   type struct_timeval is private;
-
-   function To_Duration (TV : struct_timeval) return Duration;
-   pragma Inline (To_Duration);
-
-   function To_Timeval (D : Duration) return struct_timeval;
-   pragma Inline (To_Timeval);
 
    -------------------------
    -- Priority Scheduling --
@@ -238,9 +229,10 @@ package System.OS_Interface is
 
    type Thread_Body is access
      function (arg : System.Address) return System.Address;
+   pragma Convention (C, Thread_Body);
 
    function Thread_Body_Access is new
-     Unchecked_Conversion (System.Address, Thread_Body);
+     Ada.Unchecked_Conversion (System.Address, Thread_Body);
 
    type pthread_t           is private;
    subtype Thread_Id        is pthread_t;
@@ -287,15 +279,12 @@ package System.OS_Interface is
    pragma Inline (pthread_kill);
    --  DCE_THREADS doesn't have pthread_kill
 
-   type sigset_t_ptr is access all sigset_t;
-
    function pthread_sigmask
      (how  : int;
-      set  : sigset_t_ptr;
-      oset : sigset_t_ptr) return int;
-   --  DCE THREADS does not have pthread_sigmask. Instead, it uses
-   --  sigprocmask to do the signal handling when the thread library is
-   --  sucked in.
+      set  : access sigset_t;
+      oset : access sigset_t) return int;
+   --  DCE THREADS does not have pthread_sigmask. Instead, it uses sigprocmask
+   --  to do the signal handling when the thread library is sucked in.
    pragma Import (C, pthread_sigmask, "sigprocmask");
 
    --------------------------
@@ -304,7 +293,7 @@ package System.OS_Interface is
 
    function pthread_mutexattr_init
      (attr : access pthread_mutexattr_t) return int;
-   --  DCE_THREADS has a nonstandard pthread_mutexattr_init.
+   --  DCE_THREADS has a nonstandard pthread_mutexattr_init
 
    function pthread_mutexattr_destroy
      (attr : access pthread_mutexattr_t) return int;
@@ -429,6 +418,7 @@ package System.OS_Interface is
    --  DCE_THREADS has a nonstandard pthread_getspecific
 
    type destructor_pointer is access procedure (arg : System.Address);
+   pragma Convention (C, destructor_pointer);
 
    function pthread_key_create
      (key        : access pthread_key_t;
@@ -456,12 +446,6 @@ private
 
    type clockid_t is new int;
    CLOCK_REALTIME : constant clockid_t := 1;
-
-   type struct_timeval is record
-      tv_sec  : time_t;
-      tv_usec : time_t;
-   end record;
-   pragma Convention (C, struct_timeval);
 
    type cma_t_address is new System.Address;
 

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
--- This specification is adapted from the Ada Reference Manual for use with --
+-- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT.  In accordance with the copyright of that document, you can freely --
 -- copy and modify this specification,  provided that if you redistribute a --
 -- modified version,  any changes that you have made are clearly indicated. --
@@ -16,7 +16,7 @@
 with System.Parameters;
 
 package Interfaces.C is
-pragma Pure (C);
+   pragma Pure;
 
    --  Declaration's based on C's <limits.h>
 
@@ -47,17 +47,17 @@ pragma Pure (C);
    type unsigned_char is mod (UCHAR_MAX + 1);
    for unsigned_char'Size use CHAR_BIT;
 
-   subtype plain_char is unsigned_char; -- ??? should be parametrized
+   subtype plain_char is unsigned_char; -- ??? should be parameterized
 
    --  Note: the Integer qualifications used in the declaration of ptrdiff_t
    --  avoid ambiguities when compiling in the presence of s-auxdec.ads and
    --  a non-private system.address type.
 
    type ptrdiff_t is
-     range -(2 ** (Standard'Address_Size - Integer'(1))) ..
-           +(2 ** (Standard'Address_Size - Integer'(1)) - 1);
+     range -(2 ** (System.Parameters.ptr_bits - Integer'(1))) ..
+           +(2 ** (System.Parameters.ptr_bits - Integer'(1)) - 1);
 
-   type size_t is mod 2 ** Standard'Address_Size;
+   type size_t is mod 2 ** System.Parameters.ptr_bits;
 
    --  Floating-Point
 
@@ -79,7 +79,7 @@ pragma Pure (C);
    type char_array is array (size_t range <>) of aliased char;
    for char_array'Component_Size use CHAR_BIT;
 
-   function Is_Nul_Terminated (Item : in char_array) return Boolean;
+   function Is_Nul_Terminated (Item : char_array) return Boolean;
 
    function To_C
      (Item       : String;

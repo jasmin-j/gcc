@@ -1,5 +1,5 @@
-/* { dg-do run { target { powerpc*-*-* && lp64 } } } */
-/* { dg-do compile { target { powerpc*-*-* && ilp32 } } } */
+/* { dg-do run { target { { powerpc*-*-* && lp64 } && powerpc_altivec_ok } } } */
+/* { dg-do compile { target { { powerpc*-*-* && ilp32 } && powerpc_altivec_ok } } } */
 /* { dg-options "-O2 -ftree-vectorize -mpowerpc64 -fdump-tree-vect-stats -maltivec" } */
 
 #include <stdarg.h>
@@ -7,6 +7,7 @@
 
 #define N 16
  
+__attribute__ ((noinline))
 int main1 ()
 {  
   long long unsigned int ca[N];

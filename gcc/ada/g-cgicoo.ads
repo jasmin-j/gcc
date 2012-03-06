@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---            Copyright (C) 2000-2001 Ada Core Technologies, Inc.           --
+--                     Copyright (C) 2000-2010, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -38,9 +36,9 @@
 --  The complete CGI Cookie specification can be found in the RFC2109 at:
 --     http://www.ics.uci.edu/pub/ietf/http/rfc2109.txt
 
---  This package builds up data tables whose memory is not released.
---  A CGI program is expected to be a short lived program and so it
---  is adequate to have the underlying OS free the program on exit.
+--  This package builds up data tables whose memory is not released. A CGI
+--  program is expected to be a short lived program and so it is adequate to
+--  have the underlying OS free the program on exit.
 
 package GNAT.CGI.Cookie is
 
@@ -50,7 +48,7 @@ package GNAT.CGI.Cookie is
    --  will be raised when calling any services below (except for Ok).
 
    Cookie_Not_Found : exception;
-   --  This exception is raised when a specific parameter is not found.
+   --  This exception is raised when a specific parameter is not found
 
    procedure Put_Header
      (Header : String  := Default_Header;
@@ -67,33 +65,32 @@ package GNAT.CGI.Cookie is
    --     max_age=<max_age>; path=<path>[; secured]
 
    function Ok return Boolean;
-   --  Returns True if the CGI cookie environment is valid and False
-   --  otherwise. Every service used when the CGI environment is not valid
-   --  will raise the exception Data_Error.
+   --  Returns True if the CGI cookie environment is valid and False otherwise.
+   --  Every service used when the CGI environment is not valid will raise the
+   --  exception Data_Error.
 
    function Count return Natural;
-   --  Returns the number of cookies received by the CGI.
+   --  Returns the number of cookies received by the CGI
 
    function Value
      (Key      : String;
-      Required : Boolean := False)
-      return     String;
-   --  Returns the cookie value associated with the cookie named Key. If
-   --  cookie does not exist, returns an empty string if Required is
-   --  False and raises the exception Cookie_Not_Found otherwise.
+      Required : Boolean := False) return String;
+   --  Returns the cookie value associated with the cookie named Key. If cookie
+   --  does not exist, returns an empty string if Required is False and raises
+   --  the exception Cookie_Not_Found otherwise.
 
    function Value (Position : Positive) return String;
-   --  Returns the value associated with the cookie number Position
-   --  of the CGI. It raises Cookie_Not_Found if there is no such
-   --  cookie (i.e. Position > Count)
+   --  Returns the value associated with the cookie number Position of the CGI.
+   --  It raises Cookie_Not_Found if there is no such cookie (i.e. Position >
+   --  Count)
 
    function Exists (Key : String) return Boolean;
-   --  Returns True if the cookie named Key exist and False otherwise.
+   --  Returns True if the cookie named Key exist and False otherwise
 
    function Key (Position : Positive) return String;
-   --  Returns the key associated with the cookie number Position of
-   --  the CGI. It raises Cookie_Not_Found if there is no such cookie
-   --  (i.e. Position > Count)
+   --  Returns the key associated with the cookie number Position of the CGI.
+   --  It raises Cookie_Not_Found if there is no such cookie (i.e. Position >
+   --  Count)
 
    procedure Set
      (Key     : String;
@@ -103,8 +100,8 @@ package GNAT.CGI.Cookie is
       Max_Age : Natural := Natural'Last;
       Path    : String  := "/";
       Secure  : Boolean := False);
-   --  Add a cookie to the list of cookies. This will be sent back
-   --  to the server by the Put_Header service above.
+   --  Add a cookie to the list of cookies. This will be sent back to the
+   --  server by the Put_Header service above.
 
    generic
       with procedure

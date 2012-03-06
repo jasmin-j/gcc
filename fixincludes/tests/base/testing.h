@@ -74,13 +74,6 @@ BSD43__IOWR('T', 1) /* Some are multi-line */
 #endif  /* IO_QUOTES_USE_CHECK */
 
 
-#if defined( LIBC1_IFDEFD_MEMX_CHECK )
-/* Copy N bytes of SRC to DEST.  */
-extern __ptr_t memcpy __P ((__ptr_t __dest, __const __ptr_t __src,
-                         size_t __n));
-#endif  /* LIBC1_IFDEFD_MEMX_CHECK */
-
-
 #if defined( MACHINE_ANSI_H_VA_LIST_CHECK )
  # define _BSD_VA_LIST_	__builtin_va_list
 #endif  /* MACHINE_ANSI_H_VA_LIST_CHECK */
@@ -129,6 +122,12 @@ extern size_t
 #endif  /* SYSV68_STRING_CHECK */
 
 
-#if defined( WINDISS_VALIST_CHECK )
-#include <stdarg.h>
-#endif  /* WINDISS_VALIST_CHECK */
+#if defined( VMS_USE_PRAGMA_EXTERN_MODEL_CHECK )
+#if defined(__DECC) || defined(__DECCXX) || defined(__GNUC__)
+# pragma extern_model __save
+# pragma extern_model strict_refdef
+   extern struct x zz;
+# pragma extern_model __restore
+#endif
+
+#endif  /* VMS_USE_PRAGMA_EXTERN_MODEL_CHECK */

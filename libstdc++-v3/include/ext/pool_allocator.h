@@ -1,11 +1,13 @@
 // Allocators -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2003, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009,
+// 2010, 2011
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -13,19 +15,14 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 
-// You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// Under Section 7 of GPL version 3, you are granted additional
+// permissions described in the GCC Runtime Library Exception, version
+// 3.1, as published by the Free Software Foundation.
 
-// As a special exception, you may use this file as part of a free software
-// library without restriction.  Specifically, if other files instantiate
-// templates or use macros or inline functions from this file, or you compile
-// this file and link it with other files to produce an executable, this
-// file does not by itself cause the resulting executable to be covered by
-// the GNU General Public License.  This exception does not however
-// invalidate any other reasons why the executable file might be covered by
-// the GNU General Public License.
+// You should have received a copy of the GNU General Public License and
+// a copy of the GCC Runtime Library Exception along with this program;
+// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+// <http://www.gnu.org/licenses/>.
 
 /*
  * Copyright (c) 1996-1997
@@ -51,15 +48,20 @@
 #include <cstdlib>
 #include <new>
 #include <bits/functexcept.h>
-#include <bits/atomicity.h>
-#include <bits/concurrence.h>
+#include <ext/atomicity.h>
+#include <ext/concurrence.h>
+#include <bits/move.h>
 
-namespace __gnu_cxx
+namespace __gnu_cxx _GLIBCXX_VISIBILITY(default)
 {
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+
+  using std::size_t;
+  using std::ptrdiff_t;
+
   /**
    *  @brief  Base class for __pool_alloc.
    *
-   *  @if maint
    *  Uses various allocators to fulfill underlying requests (and makes as
    *  few requests as possible when in default high-speed pool mode).
    *
@@ -71,8 +73,6 @@ namespace __gnu_cxx
    *     _S_round_up(requested_size).  Thus the client has enough size
    *     information that we can return the object to the proper free list
    *     without permanently losing part of the object.
-   *
-   *  @endif
    */
     class __pool_alloc_base
     {
@@ -99,11 +99,11 @@ namespace __gnu_cxx
       _M_round_up(size_t __bytes)
       { return ((__bytes + (size_t)_S_align - 1) & ~((size_t)_S_align - 1)); }
       
-      _Obj* volatile*
-      _M_get_free_list(size_t __bytes);
+      _GLIBCXX_CONST _Obj* volatile*
+      _M_get_free_list(size_t __bytes) throw ();
     
-      mutex_type&
-      _M_get_mutex();
+      __mutex&
+      _M_get_mutex() throw ();
 
       // Returns an object of size __n, and optionally adds to size __n
       // free list.
@@ -117,7 +117,10 @@ namespace __gnu_cxx
     };
 
 
-  /// @brief  class __pool_alloc.
+  /**
+   * @brief  Allocator using a memory pool with a single lock.
+   * @ingroup allocators
+   */
   template<typename _Tp>
     class __pool_alloc : private __pool_alloc_base
     {
@@ -137,33 +140,46 @@ namespace __gnu_cxx
         struct rebind
         { typedef __pool_alloc<_Tp1> other; };
 
-      __pool_alloc() throw() { }
+      __pool_alloc() _GLIBCXX_USE_NOEXCEPT { }
 
-      __pool_alloc(const __pool_alloc&) throw() { }
+      __pool_alloc(const __pool_alloc&) _GLIBCXX_USE_NOEXCEPT { }
 
       template<typename _Tp1>
-        __pool_alloc(const __pool_alloc<_Tp1>&) throw() { }
+        __pool_alloc(const __pool_alloc<_Tp1>&) _GLIBCXX_USE_NOEXCEPT { }
 
-      ~__pool_alloc() throw() { }
+      ~__pool_alloc() _GLIBCXX_USE_NOEXCEPT { }
 
       pointer
-      address(reference __x) const { return &__x; }
+      address(reference __x) const _GLIBCXX_NOEXCEPT
+      { return std::__addressof(__x); }
 
       const_pointer
-      address(const_reference __x) const { return &__x; }
+      address(const_reference __x) const _GLIBCXX_NOEXCEPT
+      { return std::__addressof(__x); }
 
       size_type
-      max_size() const throw() 
+      max_size() const _GLIBCXX_USE_NOEXCEPT 
       { return size_t(-1) / sizeof(_Tp); }
 
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      template<typename _Up, typename... _Args>
+        void
+        construct(_Up* __p, _Args&&... __args)
+	{ ::new((void *)__p) _Up(std::forward<_Args>(__args)...); }
+
+      template<typename _Up>
+        void 
+        destroy(_Up* __p) { __p->~_Up(); }
+#else
       // _GLIBCXX_RESOLVE_LIB_DEFECTS
       // 402. wrong new expression in [some_] allocator::construct
       void 
       construct(pointer __p, const _Tp& __val) 
-      { ::new(__p) _Tp(__val); }
+      { ::new((void *)__p) _Tp(__val); }
 
       void 
       destroy(pointer __p) { __p->~_Tp(); }
+#endif
 
       pointer
       allocate(size_type __n, const void* = 0);
@@ -193,7 +209,7 @@ namespace __gnu_cxx
       pointer __ret = 0;
       if (__builtin_expect(__n != 0, true))
 	{
-	  if (__builtin_expect(__n > this->max_size(), false))
+	  if (__n > this->max_size())
 	    std::__throw_bad_alloc();
 
 	  // If there is a race through here, assume answer from getenv
@@ -201,20 +217,20 @@ namespace __gnu_cxx
 	  // to efficiently support threading found in basic_string.h.
 	  if (_S_force_new == 0)
 	    {
-	      if (getenv("GLIBCXX_FORCE_NEW"))
-		__atomic_add(&_S_force_new, 1);
+	      if (std::getenv("GLIBCXX_FORCE_NEW"))
+		__atomic_add_dispatch(&_S_force_new, 1);
 	      else
-		__atomic_add(&_S_force_new, -1);
+		__atomic_add_dispatch(&_S_force_new, -1);
 	    }
 
 	  const size_t __bytes = __n * sizeof(_Tp);	      
-	  if (__bytes > size_t(_S_max_bytes) || _S_force_new == 1)
+	  if (__bytes > size_t(_S_max_bytes) || _S_force_new > 0)
 	    __ret = static_cast<_Tp*>(::operator new(__bytes));
 	  else
 	    {
 	      _Obj* volatile* __free_list = _M_get_free_list(__bytes);
 	      
-	      lock sentry(_M_get_mutex());
+	      __scoped_lock sentry(_M_get_mutex());
 	      _Obj* __restrict__ __result = *__free_list;
 	      if (__builtin_expect(__result == 0, 0))
 		__ret = static_cast<_Tp*>(_M_refill(_M_round_up(__bytes)));
@@ -223,7 +239,7 @@ namespace __gnu_cxx
 		  *__free_list = __result->_M_free_list_link;
 		  __ret = reinterpret_cast<_Tp*>(__result);
 		}
-	      if (__builtin_expect(__ret == 0, 0))
+	      if (__ret == 0)
 		std::__throw_bad_alloc();
 	    }
 	}
@@ -237,19 +253,21 @@ namespace __gnu_cxx
       if (__builtin_expect(__n != 0 && __p != 0, true))
 	{
 	  const size_t __bytes = __n * sizeof(_Tp);
-	  if (__bytes > static_cast<size_t>(_S_max_bytes) || _S_force_new == 1)
+	  if (__bytes > static_cast<size_t>(_S_max_bytes) || _S_force_new > 0)
 	    ::operator delete(__p);
 	  else
 	    {
 	      _Obj* volatile* __free_list = _M_get_free_list(__bytes);
 	      _Obj* __q = reinterpret_cast<_Obj*>(__p);
 
-	      lock sentry(_M_get_mutex());
+	      __scoped_lock sentry(_M_get_mutex());
 	      __q ->_M_free_list_link = *__free_list;
 	      *__free_list = __q;
 	    }
 	}
     }
-} // namespace __gnu_cxx
+
+_GLIBCXX_END_NAMESPACE_VERSION
+} // namespace
 
 #endif

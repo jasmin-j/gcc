@@ -1,13 +1,13 @@
 /* Definitions of target machine for GNU compiler,
    for 64 bit PowerPC linux.
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008,
+   2009, 2010, 2011  Free Software Foundation, Inc.
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -15,10 +15,14 @@
    or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
    License for more details.
 
-   You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the
-   Free Software Foundation, 59 Temple Place - Suite 330, Boston,
-   MA 02111-1307, USA.  */
+   Under Section 7 of GPL version 3, you are granted additional
+   permissions described in the GCC Runtime Library Exception, version
+   3.1, as published by the Free Software Foundation.
+
+   You should have received a copy of the GNU General Public License and
+   a copy of the GCC Runtime Library Exception along with this program;
+   see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+   <http://www.gnu.org/licenses/>.  */
 
 #ifndef RS6000_BI_ARCH
 
@@ -57,10 +61,21 @@ extern int dot_symbols;
 #define DOT_SYMBOLS dot_symbols
 #endif
 
+#define TARGET_PROFILE_KERNEL profile_kernel
+
+#define TARGET_USES_LINUX64_OPT 1
+#ifdef HAVE_LD_LARGE_TOC
+#undef TARGET_CMODEL
+#define TARGET_CMODEL rs6000_current_cmodel
+#define SET_CMODEL(opt) rs6000_current_cmodel = opt
+#else
+#define SET_CMODEL(opt) do {} while (0)
+#endif
+
 #undef  PROCESSOR_DEFAULT
-#define PROCESSOR_DEFAULT PROCESSOR_POWER4
+#define PROCESSOR_DEFAULT PROCESSOR_POWER7
 #undef  PROCESSOR_DEFAULT64
-#define PROCESSOR_DEFAULT64 PROCESSOR_POWER4
+#define PROCESSOR_DEFAULT64 PROCESSOR_POWER7
 
 /* We don't need to generate entries in .fixup, except when
    -mrelocatable or -mrelocatable-lib is given.  */
@@ -78,7 +93,7 @@ extern int dot_symbols;
 #define	SUBSUBTARGET_OVERRIDE_OPTIONS				\
   do								\
     {								\
-      if (!rs6000_explicit_options.alignment)			\
+      if (!global_options_set.x_rs6000_alignment_flags)		\
 	rs6000_alignment_flags = MASK_ALIGN_NATURAL;		\
       if (TARGET_64BIT)						\
 	{							\
@@ -98,15 +113,32 @@ extern int dot_symbols;
 	      target_flags &= ~MASK_EABI;			\
 	      error (INVALID_64BIT, "eabi");			\
 	    }							\
-	  if (target_flags & MASK_PROTOTYPE)			\
+	  if (TARGET_PROTOTYPE)					\
 	    {							\
-	      target_flags &= ~MASK_PROTOTYPE;			\
+	      target_prototype = 0;				\
 	      error (INVALID_64BIT, "prototype");		\
 	    }							\
 	  if ((target_flags & MASK_POWERPC64) == 0)		\
 	    {							\
 	      target_flags |= MASK_POWERPC64;			\
 	      error ("-m64 requires a PowerPC64 cpu");		\
+	    }							\
+	  if ((target_flags_explicit & MASK_MINIMAL_TOC) != 0)	\
+	    {							\
+	      if (global_options_set.x_rs6000_current_cmodel	\
+		  && rs6000_current_cmodel != CMODEL_SMALL)	\
+		error ("-mcmodel incompatible with other toc options"); \
+	      SET_CMODEL (CMODEL_SMALL);			\
+	    }							\
+	  else							\
+	    {							\
+	      if (!global_options_set.x_rs6000_current_cmodel)	\
+		SET_CMODEL (CMODEL_MEDIUM);			\
+	      if (rs6000_current_cmodel != CMODEL_SMALL)	\
+		{						\
+		  TARGET_NO_FP_IN_TOC = 0;			\
+		  TARGET_NO_SUM_IN_TOC = 0;			\
+		}						\
 	    }							\
 	}							\
       else							\
@@ -115,8 +147,13 @@ extern int dot_symbols;
 	    error (INVALID_32BIT, "32");			\
 	  if (TARGET_PROFILE_KERNEL)				\
 	    {							\
-	      target_flags &= ~MASK_PROFILE_KERNEL;		\
+	      TARGET_PROFILE_KERNEL = 0;			\
 	      error (INVALID_32BIT, "profile-kernel");		\
+	    }							\
+	  if (global_options_set.x_rs6000_current_cmodel)	\
+	    {							\
+	      SET_CMODEL (CMODEL_SMALL);			\
+	      error (INVALID_32BIT, "cmodel");			\
 	    }							\
 	}							\
     }								\
@@ -124,10 +161,10 @@ extern int dot_symbols;
 
 #ifdef	RS6000_BI_ARCH
 
-#undef	OVERRIDE_OPTIONS
-#define	OVERRIDE_OPTIONS \
-  rs6000_override_options (((TARGET_DEFAULT ^ target_flags) & MASK_64BIT) \
-			   ? (char *) 0 : TARGET_CPU_DEFAULT)
+#undef	OPTION_TARGET_CPU_DEFAULT
+#define	OPTION_TARGET_CPU_DEFAULT \
+  (((TARGET_DEFAULT ^ target_flags) & MASK_64BIT) \
+   ? (char *) 0 : TARGET_CPU_DEFAULT)
 
 #endif
 
@@ -151,22 +188,20 @@ extern int dot_symbols;
 #endif
 #endif
 
-#define ASM_SPEC32 "-a32 %{n} %{T} %{Ym,*} %{Yd,*} \
+#define ASM_SPEC32 "-a32 \
 %{mrelocatable} %{mrelocatable-lib} %{fpic:-K PIC} %{fPIC:-K PIC} \
-%{memb} %{!memb: %{msdata: -memb} %{msdata=eabi: -memb}} \
+%{memb} %{!memb: %{msdata=eabi: -memb}} \
 %{!mlittle: %{!mlittle-endian: %{!mbig: %{!mbig-endian: \
     %{mcall-freebsd: -mbig} \
     %{mcall-i960-old: -mlittle} \
     %{mcall-linux: -mbig} \
-    %{mcall-gnu: -mbig} \
     %{mcall-netbsd: -mbig} \
 }}}}"
 
 #define ASM_SPEC64 "-a64"
 
 #define ASM_SPEC_COMMON "%(asm_cpu) \
-%{.s: %{mregnames} %{mno-regnames}} %{.S: %{mregnames} %{mno-regnames}} \
-%{v:-V} %{Qy:} %{!Qn:-Qy} %{Wa,*:%*} \
+%{,assembler|,assembler-with-cpp: %{mregnames} %{mno-regnames}} \
 %{mlittle} %{mlittle-endian} %{mbig} %{mbig-endian}"
 
 #undef	SUBSUBTARGET_EXTRA_SPECS
@@ -207,7 +242,7 @@ extern int dot_symbols;
 #endif
 
 /* We use glibc _mcount for profiling.  */
-#define NO_PROFILE_COUNTERS TARGET_64BIT
+#define NO_PROFILE_COUNTERS 1
 #define PROFILE_HOOK(LABEL) \
   do { if (TARGET_64BIT) output_profile_hook (LABEL); } while (0)
 
@@ -218,9 +253,7 @@ extern int dot_symbols;
    ? 128								\
    : (TARGET_64BIT							\
       && TARGET_ALIGN_NATURAL == 0					\
-      && TYPE_MODE (TREE_CODE (TREE_TYPE (FIELD)) == ARRAY_TYPE		\
-		    ? get_inner_array_type (FIELD)			\
-		    : TREE_TYPE (FIELD)) == DFmode)			\
+      && TYPE_MODE (strip_array_types (TREE_TYPE (FIELD))) == DFmode)	\
    ? MIN ((COMPUTED), 32)						\
    : (COMPUTED))
 
@@ -228,15 +261,19 @@ extern int dot_symbols;
    the first field is an FP double, only if in power alignment mode.  */
 #undef  ROUND_TYPE_ALIGN
 #define ROUND_TYPE_ALIGN(STRUCT, COMPUTED, SPECIFIED)			\
-  ((TARGET_ALTIVEC && TREE_CODE (STRUCT) == VECTOR_TYPE)		\
-   ? MAX (MAX ((COMPUTED), (SPECIFIED)), 128)				\
-   : (TARGET_64BIT							\
-      && (TREE_CODE (STRUCT) == RECORD_TYPE				\
-	  || TREE_CODE (STRUCT) == UNION_TYPE				\
-	  || TREE_CODE (STRUCT) == QUAL_UNION_TYPE)			\
-      && TARGET_ALIGN_NATURAL == 0)					\
+  ((TARGET_64BIT							\
+    && (TREE_CODE (STRUCT) == RECORD_TYPE				\
+	|| TREE_CODE (STRUCT) == UNION_TYPE				\
+	|| TREE_CODE (STRUCT) == QUAL_UNION_TYPE)			\
+    && TARGET_ALIGN_NATURAL == 0)					\
    ? rs6000_special_round_type_align (STRUCT, COMPUTED, SPECIFIED)	\
    : MAX ((COMPUTED), (SPECIFIED)))
+
+/* Use the default for compiling target libs.  */
+#ifdef IN_TARGET_LIBS
+#undef TARGET_ALIGN_NATURAL
+#define TARGET_ALIGN_NATURAL 1
+#endif
 
 /* Indicate that jump tables go in the text section.  */
 #undef  JUMP_TABLES_IN_TEXT_SECTION
@@ -261,25 +298,23 @@ extern int dot_symbols;
 #define BLOCK_REG_PADDING(MODE, TYPE, FIRST) \
   (!(FIRST) ? upward : FUNCTION_ARG_PADDING (MODE, TYPE))
 
-/* __throw will restore its own return address to be the same as the
-   return address of the function that the throw is being made to.
-   This is unfortunate, because we want to check the original
-   return address to see if we need to restore the TOC.
-   So we have to squirrel it away with this.  */
-#define SETUP_FRAME_ADDRESSES() \
-  do { if (TARGET_64BIT) rs6000_aix_emit_builtin_unwind_init (); } while (0)
-
-/* Override svr4.h  */
-#undef MD_EXEC_PREFIX
-#undef MD_STARTFILE_PREFIX
-
 /* Linux doesn't support saving and restoring 64-bit regs in a 32-bit
    process.  */
 #define OS_MISSING_POWERPC64 !TARGET_64BIT
 
+#ifdef SINGLE_LIBC
+#define OPTION_GLIBC  (DEFAULT_LIBC == LIBC_GLIBC)
+#else
+#define OPTION_GLIBC  (linux_libc == LIBC_GLIBC)
+#endif
+
 /* glibc has float and long double forms of math functions.  */
 #undef  TARGET_C99_FUNCTIONS
-#define TARGET_C99_FUNCTIONS 1
+#define TARGET_C99_FUNCTIONS (OPTION_GLIBC)
+
+/* Whether we have sincos that follows the GNU extension.  */
+#undef  TARGET_HAS_SINCOS
+#define TARGET_HAS_SINCOS (OPTION_GLIBC)
 
 #undef  TARGET_OS_CPP_BUILTINS
 #define TARGET_OS_CPP_BUILTINS()			\
@@ -291,7 +326,6 @@ extern int dot_symbols;
 	  builtin_define ("__PPC64__");			\
 	  builtin_define ("__powerpc__");		\
 	  builtin_define ("__powerpc64__");		\
-	  builtin_define ("__PIC__");			\
 	  builtin_assert ("cpu=powerpc64");		\
 	  builtin_assert ("machine=powerpc64");		\
 	}						\
@@ -333,13 +367,30 @@ extern int dot_symbols;
 #undef	LINK_OS_DEFAULT_SPEC
 #define LINK_OS_DEFAULT_SPEC "%(link_os_linux)"
 
+#define GLIBC_DYNAMIC_LINKER32 "/lib/ld.so.1"
+#define GLIBC_DYNAMIC_LINKER64 "/lib64/ld64.so.1"
+#define UCLIBC_DYNAMIC_LINKER32 "/lib/ld-uClibc.so.0"
+#define UCLIBC_DYNAMIC_LINKER64 "/lib/ld64-uClibc.so.0"
+#if DEFAULT_LIBC == LIBC_UCLIBC
+#define CHOOSE_DYNAMIC_LINKER(G, U) "%{mglibc:" G ";:" U "}"
+#elif DEFAULT_LIBC == LIBC_GLIBC
+#define CHOOSE_DYNAMIC_LINKER(G, U) "%{muclibc:" U ";:" G "}"
+#else
+#error "Unsupported DEFAULT_LIBC"
+#endif
+#define GNU_USER_DYNAMIC_LINKER32 \
+  CHOOSE_DYNAMIC_LINKER (GLIBC_DYNAMIC_LINKER32, UCLIBC_DYNAMIC_LINKER32)
+#define GNU_USER_DYNAMIC_LINKER64 \
+  CHOOSE_DYNAMIC_LINKER (GLIBC_DYNAMIC_LINKER64, UCLIBC_DYNAMIC_LINKER64)
+
+
 #define LINK_OS_LINUX_SPEC32 "-m elf32ppclinux %{!shared: %{!static: \
   %{rdynamic:-export-dynamic} \
-  %{!dynamic-linker:-dynamic-linker /lib/ld.so.1}}}"
+  -dynamic-linker " GNU_USER_DYNAMIC_LINKER32 "}}"
 
 #define LINK_OS_LINUX_SPEC64 "-m elf64ppc %{!shared: %{!static: \
   %{rdynamic:-export-dynamic} \
-  %{!dynamic-linker:-dynamic-linker /lib64/ld64.so.1}}}"
+  -dynamic-linker " GNU_USER_DYNAMIC_LINKER64 "}}"
 
 #undef  TOC_SECTION_ASM_OP
 #define TOC_SECTION_ASM_OP \
@@ -354,9 +405,6 @@ extern int dot_symbols;
    : ((TARGET_RELOCATABLE || flag_pic)			\
       ? "\t.section\t\".got2\",\"aw\""			\
       : "\t.section\t\".got1\",\"aw\""))
-
-#undef  TARGET_VERSION
-#define TARGET_VERSION fprintf (stderr, " (PowerPC64 GNU/Linux)");
 
 /* Must be at least as big as our pointer type.  */
 #undef	SIZE_TYPE
@@ -409,11 +457,11 @@ extern int dot_symbols;
 #undef  SAVE_FP_PREFIX
 #define SAVE_FP_PREFIX (TARGET_64BIT ? "._savef" : "_savefpr_")
 #undef  SAVE_FP_SUFFIX
-#define SAVE_FP_SUFFIX (TARGET_64BIT ? "" : "_l")
+#define SAVE_FP_SUFFIX ""
 #undef  RESTORE_FP_PREFIX
 #define RESTORE_FP_PREFIX (TARGET_64BIT ? "._restf" : "_restfpr_")
 #undef  RESTORE_FP_SUFFIX
-#define RESTORE_FP_SUFFIX (TARGET_64BIT ? "" : "_l")
+#define RESTORE_FP_SUFFIX ""
 
 /* Dwarf2 debugging.  */
 #undef  PREFERRED_DEBUGGING_TYPE
@@ -443,9 +491,8 @@ extern int dot_symbols;
    we also do this for floating-point constants.  We actually can only
    do this if the FP formats of the target and host machines are the
    same, but we can't check that since not every file that uses
-   GO_IF_LEGITIMATE_ADDRESS_P includes real.h.  We also do this when
-   we can write the entry into the TOC and the entry is not larger
-   than a TOC entry.  */
+   the macros includes real.h.  We also do this when we can write the
+   entry into the TOC and the entry is not larger than a TOC entry.  */
 
 #undef  ASM_OUTPUT_SPECIAL_POOL_ENTRY_P
 #define ASM_OUTPUT_SPECIAL_POOL_ENTRY_P(X, MODE)			\
@@ -458,68 +505,14 @@ extern int dot_symbols;
 	   && GET_MODE_BITSIZE (MODE) <= GET_MODE_BITSIZE (Pmode))	\
        || (GET_CODE (X) == CONST_DOUBLE					\
 	   && ((TARGET_64BIT						\
-		&& (TARGET_POWERPC64					\
-		    || TARGET_MINIMAL_TOC				\
-		    || (GET_MODE_CLASS (GET_MODE (X)) == MODE_FLOAT	\
+		&& (TARGET_MINIMAL_TOC					\
+		    || (SCALAR_FLOAT_MODE_P (GET_MODE (X))		\
 			&& ! TARGET_NO_FP_IN_TOC)))			\
 	       || (!TARGET_64BIT					\
 		   && !TARGET_NO_FP_IN_TOC				\
 		   && !TARGET_RELOCATABLE				\
-		   && GET_MODE_CLASS (GET_MODE (X)) == MODE_FLOAT	\
+		   && SCALAR_FLOAT_MODE_P (GET_MODE (X))		\
 		   && BITS_PER_WORD == HOST_BITS_PER_INT)))))
-
-/* This ABI cannot use DBX_LINES_FUNCTION_RELATIVE, nor can it use
-   dbxout_stab_value_internal_label_diff, because we must
-   use the function code label, not the function descriptor label.  */
-#define	DBX_OUTPUT_SOURCE_LINE(FILE, LINE, COUNTER)			\
-do									\
-  {									\
-    char temp[256];							\
-    const char *s;							\
-    ASM_GENERATE_INTERNAL_LABEL (temp, "LM", COUNTER);			\
-    dbxout_begin_stabn_sline (LINE);					\
-    assemble_name (FILE, temp);						\
-    putc ('-', FILE);							\
-    s = XSTR (XEXP (DECL_RTL (current_function_decl), 0), 0);		\
-    rs6000_output_function_entry (FILE, s);				\
-    putc ('\n', FILE);							\
-    targetm.asm_out.internal_label (FILE, "LM", COUNTER);		\
-    COUNTER += 1;							\
-  }									\
-while (0)
-
-/* Similarly, we want the function code label here.  Cannot use
-   dbxout_stab_value_label_diff, as we have to use
-   rs6000_output_function_entry.  FIXME.  */
-#define DBX_OUTPUT_BRAC(FILE, NAME, BRAC)				\
-  do									\
-    {									\
-      const char *s;							\
-      dbxout_begin_stabn (BRAC);					\
-      assemble_name (FILE, NAME);					\
-      putc ('-', FILE);							\
-      s = XSTR (XEXP (DECL_RTL (current_function_decl), 0), 0);		\
-      rs6000_output_function_entry (FILE, s);				\
-      putc ('\n', FILE);						\
-    }									\
-  while (0)
-
-#define DBX_OUTPUT_LBRAC(FILE, NAME) DBX_OUTPUT_BRAC (FILE, NAME, N_LBRAC)
-#define DBX_OUTPUT_RBRAC(FILE, NAME) DBX_OUTPUT_BRAC (FILE, NAME, N_RBRAC)
-
-/* Another case where we want the dot name.  */
-#define	DBX_OUTPUT_NFUN(FILE, LSCOPE, DECL)				\
-  do									\
-    {									\
-      const char *s;							\
-      dbxout_begin_empty_stabs (N_FUN);					\
-      assemble_name (FILE, LSCOPE);					\
-      putc ('-', FILE);							\
-      s = XSTR (XEXP (DECL_RTL (current_function_decl), 0), 0);		\
-      rs6000_output_function_entry (FILE, s);				\
-      putc ('\n', FILE);						\
-    }									\
-  while (0)
 
 /* Select a format to encode pointers in exception handling data.  CODE
    is 0 for data, 1 for code labels, 2 for function pointers.  GLOBAL is
@@ -536,9 +529,7 @@ while (0)
 #undef DRAFT_V4_STRUCT_RET
 #define DRAFT_V4_STRUCT_RET (!TARGET_64BIT)
 
-#define TARGET_ASM_FILE_END rs6000_elf_end_indicate_exec_stack
-
-#define TARGET_HAS_F_SETLKW
+#define TARGET_POSIX_IO
 
 #define LINK_GCC_C_SEQUENCE_SPEC \
   "%{static:--start-group} %G %L %{static:--end-group}%{!static:%G}"
@@ -548,4 +539,21 @@ while (0)
 #define USE_LD_AS_NEEDED 1
 #endif
 
-#define MD_UNWIND_SUPPORT "config/rs6000/linux-unwind.h"
+#ifdef TARGET_LIBC_PROVIDES_SSP
+/* ppc32 glibc provides __stack_chk_guard in -0x7008(2),
+   ppc64 glibc provides it at -0x7010(13).  */
+#define TARGET_THREAD_SSP_OFFSET	(TARGET_64BIT ? -0x7010 : -0x7008)
+#endif
+
+#define POWERPC_LINUX
+
+/* ppc{32,64} linux has 128-bit long double support in glibc 2.4 and later.  */
+#ifdef TARGET_DEFAULT_LONG_DOUBLE_128
+#define RS6000_DEFAULT_LONG_DOUBLE_SIZE 128
+#endif
+
+/* Static stack checking is supported by means of probes.  */
+#define STACK_CHECK_STATIC_BUILTIN 1
+
+/* The default value isn't sufficient in 64-bit mode.  */
+#define STACK_CHECK_PROTECT (TARGET_64BIT ? 16 * 1024 : 12 * 1024)

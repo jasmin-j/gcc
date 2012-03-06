@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -32,7 +30,7 @@
 ------------------------------------------------------------------------------
 
 --  WARNING: There is a C version of this package. Any changes to this
---  source file must be properly reflected in the C header file a-namet.h
+--  source file must be properly reflected in the C header file namet.h
 --  which is created manually from namet.ads and namet.adb.
 
 with Debug;    use Debug;
@@ -40,6 +38,8 @@ with Opt;      use Opt;
 with Output;   use Output;
 with Tree_IO;  use Tree_IO;
 with Widechar; use Widechar;
+
+with Interfaces; use Interfaces;
 
 package body Namet is
 
@@ -52,10 +52,10 @@ package body Namet is
    --  reallocating during this second unlocked phase, we reserve a bit of
    --  extra space before doing the release call.
 
-   Hash_Num : constant Int := 2**12;
+   Hash_Num : constant Int := 2**16;
    --  Number of headers in the hash table. Current hash algorithm is closely
    --  tailored to this choice, so it can only be changed if a corresponding
-   --  change is made to the hash alogorithm.
+   --  change is made to the hash algorithm.
 
    Hash_Max : constant Int := Hash_Num - 1;
    --  Indexes in the hash header table run from 0 to Hash_Num - 1
@@ -120,17 +120,17 @@ package body Namet is
       end loop;
    end Add_Str_To_Name_Buffer;
 
-
    --------------
    -- Finalize --
    --------------
 
    procedure Finalize is
-      Max_Chain_Length : constant := 50;
-      --  Max length of chains for which specific information is output
+      F : array (Int range 0 .. 50) of Int;
+      --  N'th entry is the number of chains of length N, except last entry,
+      --  which is the number of chains of length F'Last or more.
 
-      F : array (Int range 0 .. Max_Chain_Length) of Int;
-      --  N'th entry is number of chains of length N
+      Max_Chain_Length : Int := 0;
+      --  Maximum length of all chains
 
       Probes : Int := 0;
       --  Used to compute average number of probes
@@ -138,49 +138,74 @@ package body Namet is
       Nsyms : Int := 0;
       --  Number of symbols in table
 
+      Verbosity : constant Int range 1 .. 3 := 1;
+      pragma Warnings (Off, Verbosity);
+      --  This constant indicates the level of verbosity in the output from
+      --  this procedure. Currently this can only be changed by editing the
+      --  declaration above and recompiling. That's good enough in practice,
+      --  since we very rarely need to use this debug option. Settings are:
+      --
+      --    1 => print basic summary information
+      --    2 => in addition print number of entries per hash chain
+      --    3 => in addition print content of entries
+
+      Zero : constant Int := Character'Pos ('0');
+
    begin
-      if Debug_Flag_H then
-         for J in F'Range loop
-            F (J) := 0;
-         end loop;
+      if not Debug_Flag_H then
+         return;
+      end if;
 
-         for J in Hash_Index_Type loop
-            if Hash_Table (J) = No_Name then
-               F (0) := F (0) + 1;
+      for J in F'Range loop
+         F (J) := 0;
+      end loop;
 
-            else
-               Write_Str ("Hash_Table (");
-               Write_Int (Int (J));
-               Write_Str (") has ");
+      for J in Hash_Index_Type loop
+         if Hash_Table (J) = No_Name then
+            F (0) := F (0) + 1;
 
-               declare
-                  C : Int := 1;
-                  N : Name_Id;
-                  S : Int;
+         else
+            declare
+               C : Int;
+               N : Name_Id;
+               S : Int;
 
-               begin
-                  C := 0;
-                  N := Hash_Table (J);
+            begin
+               C := 0;
+               N := Hash_Table (J);
 
-                  while N /= No_Name loop
-                     N := Name_Entries.Table (N).Hash_Link;
-                     C := C + 1;
-                  end loop;
+               while N /= No_Name loop
+                  N := Name_Entries.Table (N).Hash_Link;
+                  C := C + 1;
+               end loop;
 
+               Nsyms := Nsyms + 1;
+               Probes := Probes + (1 + C) * 100;
+
+               if C > Max_Chain_Length then
+                  Max_Chain_Length := C;
+               end if;
+
+               if Verbosity >= 2 then
+                  Write_Str ("Hash_Table (");
+                  Write_Int (J);
+                  Write_Str (") has ");
                   Write_Int (C);
                   Write_Str (" entries");
                   Write_Eol;
+               end if;
 
-                  if C < Max_Chain_Length then
-                     F (C) := F (C) + 1;
-                  else
-                     F (Max_Chain_Length) := F (Max_Chain_Length) + 1;
-                  end if;
+               if C < F'Last then
+                  F (C) := F (C) + 1;
+               else
+                  F (F'Last) := F (F'Last) + 1;
+               end if;
 
+               if Verbosity >= 3 then
                   N := Hash_Table (J);
-
                   while N /= No_Name loop
                      S := Name_Entries.Table (N).Name_Chars_Index;
+
                      Write_Str ("      ");
 
                      for J in 1 .. Name_Entries.Table (N).Name_Len loop
@@ -188,50 +213,61 @@ package body Namet is
                      end loop;
 
                      Write_Eol;
+
                      N := Name_Entries.Table (N).Hash_Link;
                   end loop;
-               end;
+               end if;
+            end;
+         end if;
+      end loop;
+
+      Write_Eol;
+
+      for J in F'Range loop
+         if F (J) /= 0 then
+            Write_Str ("Number of hash chains of length ");
+
+            if J < 10 then
+               Write_Char (' ');
             end if;
-         end loop;
 
-         Write_Eol;
+            Write_Int (J);
 
-         for J in Int range 0 .. Max_Chain_Length loop
-            if F (J) /= 0 then
-               Write_Str ("Number of hash chains of length ");
-
-               if J < 10 then
-                  Write_Char (' ');
-               end if;
-
-               Write_Int (J);
-
-               if J = Max_Chain_Length then
-                  Write_Str (" or greater");
-               end if;
-
-               Write_Str (" = ");
-               Write_Int (F (J));
-               Write_Eol;
-
-               if J /= 0 then
-                  Nsyms := Nsyms + F (J);
-                  Probes := Probes + F (J) * (1 + J) * 100;
-               end if;
+            if J = F'Last then
+               Write_Str (" or greater");
             end if;
-         end loop;
 
-         Write_Eol;
-         Write_Str ("Average number of probes for lookup = ");
-         Probes := Probes / Nsyms;
-         Write_Int (Probes / 200);
-         Write_Char ('.');
-         Probes := (Probes mod 200) / 2;
-         Write_Char (Character'Val (48 + Probes / 10));
-         Write_Char (Character'Val (48 + Probes mod 10));
-         Write_Eol;
-         Write_Eol;
-      end if;
+            Write_Str (" = ");
+            Write_Int (F (J));
+            Write_Eol;
+         end if;
+      end loop;
+
+      --  Print out average number of probes, in the case where Name_Find is
+      --  called for a string that is already in the table.
+
+      Write_Eol;
+      Write_Str ("Average number of probes for lookup = ");
+      Probes := Probes / Nsyms;
+      Write_Int (Probes / 200);
+      Write_Char ('.');
+      Probes := (Probes mod 200) / 2;
+      Write_Char (Character'Val (Zero + Probes / 10));
+      Write_Char (Character'Val (Zero + Probes mod 10));
+      Write_Eol;
+
+      Write_Str ("Max_Chain_Length = ");
+      Write_Int (Max_Chain_Length);
+      Write_Eol;
+      Write_Str ("Name_Chars'Length = ");
+      Write_Int (Name_Chars.Last - Name_Chars.First + 1);
+      Write_Eol;
+      Write_Str ("Name_Entries'Length = ");
+      Write_Int (Int (Name_Entries.Last - Name_Entries.First + 1));
+      Write_Eol;
+      Write_Str ("Nsyms = ");
+      Write_Int (Nsyms);
+      Write_Eol;
    end Finalize;
 
    -----------------------------
@@ -245,11 +281,18 @@ package body Namet is
    begin
       Get_Name_String (Id);
 
+      --  Skip scan if we already know there are no encodings
+
+      if Name_Entries.Table (Id).Name_Has_No_Encodings then
+         return;
+      end if;
+
       --  Quick loop to see if there is anything special to do
 
       P := 1;
       loop
          if P = Name_Len then
+            Name_Entries.Table (Id).Name_Has_No_Encodings := True;
             return;
 
          else
@@ -313,7 +356,6 @@ package body Namet is
                else
                   Insert_Character (Character'Val (Hex (2)));
                end if;
-
 
             --  WW (wide wide character insertion)
 
@@ -439,7 +481,7 @@ package body Namet is
 
                   --  Search the map. Note that this loop must terminate, if
                   --  not we have some kind of internal error, and a constraint
-                  --  constraint error may be raised.
+                  --  error may be raised.
 
                   J := Map'First;
                   loop
@@ -708,151 +750,27 @@ package body Namet is
    ----------
 
    function Hash return Hash_Index_Type is
+
+      --  This hash function looks at every character, in order to make it
+      --  likely that similar strings get different hash values. The rotate by
+      --  7 bits has been determined empirically to be good, and it doesn't
+      --  lose bits like a shift would. The final conversion can't overflow,
+      --  because the table is 2**16 in size. This function probably needs to
+      --  be changed if the hash table size is changed.
+
+      --  Note that we could get some speed improvement by aligning the string
+      --  to 32 or 64 bits, and doing word-wise xor's. We could also implement
+      --  a growable table. It doesn't seem worth the trouble to do those
+      --  things, for now.
+
+      Result : Unsigned_16 := 0;
+
    begin
-      --  For the cases of 1-12 characters, all characters participate in the
-      --  hash. The positioning is randomized, with the bias that characters
-      --  later on participate fully (i.e. are added towards the right side).
+      for J in 1 .. Name_Len loop
+         Result := Rotate_Left (Result, 7) xor Character'Pos (Name_Buffer (J));
+      end loop;
 
-      case Name_Len is
-
-         when 0 =>
-            return 0;
-
-         when 1 =>
-            return
-               Character'Pos (Name_Buffer (1));
-
-         when 2 =>
-            return ((
-              Character'Pos (Name_Buffer (1))) * 64 +
-              Character'Pos (Name_Buffer (2))) mod Hash_Num;
-
-         when 3 =>
-            return (((
-              Character'Pos (Name_Buffer (1))) * 16 +
-              Character'Pos (Name_Buffer (3))) * 16 +
-              Character'Pos (Name_Buffer (2))) mod Hash_Num;
-
-         when 4 =>
-            return ((((
-              Character'Pos (Name_Buffer (1))) * 8 +
-              Character'Pos (Name_Buffer (2))) * 8 +
-              Character'Pos (Name_Buffer (3))) * 8 +
-              Character'Pos (Name_Buffer (4))) mod Hash_Num;
-
-         when 5 =>
-            return (((((
-              Character'Pos (Name_Buffer (4))) * 8 +
-              Character'Pos (Name_Buffer (1))) * 4 +
-              Character'Pos (Name_Buffer (3))) * 4 +
-              Character'Pos (Name_Buffer (5))) * 8 +
-              Character'Pos (Name_Buffer (2))) mod Hash_Num;
-
-         when 6 =>
-            return ((((((
-              Character'Pos (Name_Buffer (5))) * 4 +
-              Character'Pos (Name_Buffer (1))) * 4 +
-              Character'Pos (Name_Buffer (4))) * 4 +
-              Character'Pos (Name_Buffer (2))) * 4 +
-              Character'Pos (Name_Buffer (6))) * 4 +
-              Character'Pos (Name_Buffer (3))) mod Hash_Num;
-
-         when 7 =>
-            return (((((((
-              Character'Pos (Name_Buffer (4))) * 4 +
-              Character'Pos (Name_Buffer (3))) * 4 +
-              Character'Pos (Name_Buffer (1))) * 4 +
-              Character'Pos (Name_Buffer (2))) * 2 +
-              Character'Pos (Name_Buffer (5))) * 2 +
-              Character'Pos (Name_Buffer (7))) * 2 +
-              Character'Pos (Name_Buffer (6))) mod Hash_Num;
-
-         when 8 =>
-            return ((((((((
-              Character'Pos (Name_Buffer (2))) * 4 +
-              Character'Pos (Name_Buffer (1))) * 4 +
-              Character'Pos (Name_Buffer (3))) * 2 +
-              Character'Pos (Name_Buffer (5))) * 2 +
-              Character'Pos (Name_Buffer (7))) * 2 +
-              Character'Pos (Name_Buffer (6))) * 2 +
-              Character'Pos (Name_Buffer (4))) * 2 +
-              Character'Pos (Name_Buffer (8))) mod Hash_Num;
-
-         when 9 =>
-            return (((((((((
-              Character'Pos (Name_Buffer (2))) * 4 +
-              Character'Pos (Name_Buffer (1))) * 4 +
-              Character'Pos (Name_Buffer (3))) * 4 +
-              Character'Pos (Name_Buffer (4))) * 2 +
-              Character'Pos (Name_Buffer (8))) * 2 +
-              Character'Pos (Name_Buffer (7))) * 2 +
-              Character'Pos (Name_Buffer (5))) * 2 +
-              Character'Pos (Name_Buffer (6))) * 2 +
-              Character'Pos (Name_Buffer (9))) mod Hash_Num;
-
-         when 10 =>
-            return ((((((((((
-              Character'Pos (Name_Buffer (01))) * 2 +
-              Character'Pos (Name_Buffer (02))) * 2 +
-              Character'Pos (Name_Buffer (08))) * 2 +
-              Character'Pos (Name_Buffer (03))) * 2 +
-              Character'Pos (Name_Buffer (04))) * 2 +
-              Character'Pos (Name_Buffer (09))) * 2 +
-              Character'Pos (Name_Buffer (06))) * 2 +
-              Character'Pos (Name_Buffer (05))) * 2 +
-              Character'Pos (Name_Buffer (07))) * 2 +
-              Character'Pos (Name_Buffer (10))) mod Hash_Num;
-
-         when 11 =>
-            return (((((((((((
-              Character'Pos (Name_Buffer (05))) * 2 +
-              Character'Pos (Name_Buffer (01))) * 2 +
-              Character'Pos (Name_Buffer (06))) * 2 +
-              Character'Pos (Name_Buffer (09))) * 2 +
-              Character'Pos (Name_Buffer (07))) * 2 +
-              Character'Pos (Name_Buffer (03))) * 2 +
-              Character'Pos (Name_Buffer (08))) * 2 +
-              Character'Pos (Name_Buffer (02))) * 2 +
-              Character'Pos (Name_Buffer (10))) * 2 +
-              Character'Pos (Name_Buffer (04))) * 2 +
-              Character'Pos (Name_Buffer (11))) mod Hash_Num;
-
-         when 12 =>
-            return ((((((((((((
-              Character'Pos (Name_Buffer (03))) * 2 +
-              Character'Pos (Name_Buffer (02))) * 2 +
-              Character'Pos (Name_Buffer (05))) * 2 +
-              Character'Pos (Name_Buffer (01))) * 2 +
-              Character'Pos (Name_Buffer (06))) * 2 +
-              Character'Pos (Name_Buffer (04))) * 2 +
-              Character'Pos (Name_Buffer (08))) * 2 +
-              Character'Pos (Name_Buffer (11))) * 2 +
-              Character'Pos (Name_Buffer (07))) * 2 +
-              Character'Pos (Name_Buffer (09))) * 2 +
-              Character'Pos (Name_Buffer (10))) * 2 +
-              Character'Pos (Name_Buffer (12))) mod Hash_Num;
-
-         --  Names longer than 12 characters are handled by taking the first
-         --  6 odd numbered characters and the last 6 even numbered characters.
-
-         when others => declare
-               Even_Name_Len : constant Integer := (Name_Len) / 2 * 2;
-         begin
-            return ((((((((((((
-              Character'Pos (Name_Buffer (01))) * 2 +
-              Character'Pos (Name_Buffer (Even_Name_Len - 10))) * 2 +
-              Character'Pos (Name_Buffer (03))) * 2 +
-              Character'Pos (Name_Buffer (Even_Name_Len - 08))) * 2 +
-              Character'Pos (Name_Buffer (05))) * 2 +
-              Character'Pos (Name_Buffer (Even_Name_Len - 06))) * 2 +
-              Character'Pos (Name_Buffer (07))) * 2 +
-              Character'Pos (Name_Buffer (Even_Name_Len - 04))) * 2 +
-              Character'Pos (Name_Buffer (09))) * 2 +
-              Character'Pos (Name_Buffer (Even_Name_Len - 02))) * 2 +
-              Character'Pos (Name_Buffer (11))) * 2 +
-              Character'Pos (Name_Buffer (Even_Name_Len))) mod Hash_Num;
-         end;
-      end case;
+      return Hash_Index_Type (Result);
    end Hash;
 
    ----------------
@@ -861,31 +779,21 @@ package body Namet is
 
    procedure Initialize is
    begin
-      Name_Chars.Init;
-      Name_Entries.Init;
-
-      --  Initialize entries for one character names
-
-      for C in Character loop
-         Name_Entries.Increment_Last;
-         Name_Entries.Table (Name_Entries.Last).Name_Chars_Index :=
-           Name_Chars.Last;
-         Name_Entries.Table (Name_Entries.Last).Name_Len  := 1;
-         Name_Entries.Table (Name_Entries.Last).Hash_Link := No_Name;
-         Name_Entries.Table (Name_Entries.Last).Int_Info  := 0;
-         Name_Entries.Table (Name_Entries.Last).Byte_Info := 0;
-         Name_Chars.Increment_Last;
-         Name_Chars.Table (Name_Chars.Last) := C;
-         Name_Chars.Increment_Last;
-         Name_Chars.Table (Name_Chars.Last) := ASCII.NUL;
-      end loop;
-
-      --  Clear hash table
-
-      for J in Hash_Index_Type loop
-         Hash_Table (J) := No_Name;
-      end loop;
+      null;
    end Initialize;
+
+   -------------------------------
+   -- Insert_Str_In_Name_Buffer --
+   -------------------------------
+
+   procedure Insert_Str_In_Name_Buffer (S : String; Index : Positive) is
+      SL : constant Natural := S'Length;
+   begin
+      Name_Buffer (Index + SL .. Name_Len + SL) :=
+        Name_Buffer (Index .. Name_Len);
+      Name_Buffer (Index .. Index + SL - 1) := S;
+      Name_Len := Name_Len + SL;
+   end Insert_Str_In_Name_Buffer;
 
    ----------------------
    -- Is_Internal_Name --
@@ -963,6 +871,15 @@ package body Namet is
       return Name_Chars.Table (S + 1) = 'O';
    end Is_Operator_Name;
 
+   -------------------
+   -- Is_Valid_Name --
+   -------------------
+
+   function Is_Valid_Name (Id : Name_Id) return Boolean is
+   begin
+      return Id in Name_Entries.First .. Name_Entries.Last;
+   end Is_Valid_Name;
+
    --------------------
    -- Length_Of_Name --
    --------------------
@@ -1001,23 +918,21 @@ package body Namet is
 
    function Name_Enter return Name_Id is
    begin
-      Name_Entries.Increment_Last;
-      Name_Entries.Table (Name_Entries.Last).Name_Chars_Index :=
-        Name_Chars.Last;
-      Name_Entries.Table (Name_Entries.Last).Name_Len  := Short (Name_Len);
-      Name_Entries.Table (Name_Entries.Last).Hash_Link := No_Name;
-      Name_Entries.Table (Name_Entries.Last).Int_Info  := 0;
-      Name_Entries.Table (Name_Entries.Last).Byte_Info := 0;
+      Name_Entries.Append
+        ((Name_Chars_Index      => Name_Chars.Last,
+          Name_Len              => Short (Name_Len),
+          Byte_Info             => 0,
+          Int_Info              => 0,
+          Name_Has_No_Encodings => False,
+          Hash_Link             => No_Name));
 
       --  Set corresponding string entry in the Name_Chars table
 
       for J in 1 .. Name_Len loop
-         Name_Chars.Increment_Last;
-         Name_Chars.Table (Name_Chars.Last) := Name_Buffer (J);
+         Name_Chars.Append (Name_Buffer (J));
       end loop;
 
-      Name_Chars.Increment_Last;
-      Name_Chars.Table (Name_Chars.Last) := ASCII.NUL;
+      Name_Chars.Append (ASCII.NUL);
 
       return Name_Entries.Last;
    end Name_Enter;
@@ -1097,7 +1012,6 @@ package body Namet is
                        Name_Entries.Last + 1;
                      exit Search;
                   end if;
-
             end loop Search;
          end if;
 
@@ -1105,27 +1019,56 @@ package body Namet is
          --  hash table. We now create a new entry in the names table. The hash
          --  link pointing to the new entry (Name_Entries.Last+1) has been set.
 
-         Name_Entries.Increment_Last;
-         Name_Entries.Table (Name_Entries.Last).Name_Chars_Index :=
-           Name_Chars.Last;
-         Name_Entries.Table (Name_Entries.Last).Name_Len  := Short (Name_Len);
-         Name_Entries.Table (Name_Entries.Last).Hash_Link := No_Name;
-         Name_Entries.Table (Name_Entries.Last).Int_Info  := 0;
-         Name_Entries.Table (Name_Entries.Last).Byte_Info := 0;
+         Name_Entries.Append
+           ((Name_Chars_Index      => Name_Chars.Last,
+             Name_Len              => Short (Name_Len),
+             Hash_Link             => No_Name,
+             Name_Has_No_Encodings => False,
+             Int_Info              => 0,
+             Byte_Info             => 0));
 
          --  Set corresponding string entry in the Name_Chars table
 
          for J in 1 .. Name_Len loop
-            Name_Chars.Increment_Last;
-            Name_Chars.Table (Name_Chars.Last) := Name_Buffer (J);
+            Name_Chars.Append (Name_Buffer (J));
          end loop;
 
-         Name_Chars.Increment_Last;
-         Name_Chars.Table (Name_Chars.Last) := ASCII.NUL;
+         Name_Chars.Append (ASCII.NUL);
 
          return Name_Entries.Last;
       end if;
    end Name_Find;
+
+   ------------------
+   -- Reinitialize --
+   ------------------
+
+   procedure Reinitialize is
+   begin
+      Name_Chars.Init;
+      Name_Entries.Init;
+
+      --  Initialize entries for one character names
+
+      for C in Character loop
+         Name_Entries.Append
+           ((Name_Chars_Index      => Name_Chars.Last,
+             Name_Len              => 1,
+             Byte_Info             => 0,
+             Int_Info              => 0,
+             Name_Has_No_Encodings => True,
+             Hash_Link             => No_Name));
+
+         Name_Chars.Append (C);
+         Name_Chars.Append (ASCII.NUL);
+      end loop;
+
+      --  Clear hash table
+
+      for J in Hash_Index_Type loop
+         Hash_Table (J) := No_Name;
+      end loop;
+   end Reinitialize;
 
    ----------------------
    -- Reset_Name_Table --
@@ -1345,8 +1288,27 @@ package body Namet is
    --------
 
    procedure wn (Id : Name_Id) is
+      S : Int;
+
    begin
-      Write_Name (Id);
+      if not Id'Valid then
+         Write_Str ("<invalid name_id>");
+
+      elsif Id = No_Name then
+         Write_Str ("<No_Name>");
+
+      elsif Id = Error_Name then
+         Write_Str ("<Error_Name>");
+
+      else
+         S := Name_Entries.Table (Id).Name_Chars_Index;
+         Name_Len := Natural (Name_Entries.Table (Id).Name_Len);
+
+         for J in 1 .. Name_Len loop
+            Write_Char (Name_Chars.Table (S + Int (J)));
+         end loop;
+      end if;
+
       Write_Eol;
    end wn;
 
@@ -1374,4 +1336,8 @@ package body Namet is
       end if;
    end Write_Name_Decoded;
 
+--  Package initialization, initialize tables
+
+begin
+   Reinitialize;
 end Namet;

@@ -1,4 +1,4 @@
-c { dg-do run }
+c { dg-do run { target fd_truncate } }
 c This program tests: namelist comment, a blank line before the nameilist name, the namelist name,
 c a scalar qualifier, various combinations of space, comma and lf delimiters, f-formats, e-formats
 c a blank line within the data read, nulls, a range qualifier, a new object name before end of data
@@ -7,8 +7,8 @@ c provided by Paul Thomas - pault@gcc.gnu.org
 
       program namelist_1
 
-      REAL*4 x(10)
-      REAL*8 xx
+      REAL x(10)
+      REAL(kind=8) xx
       integer ier
       namelist /mynml/ x, xx
 

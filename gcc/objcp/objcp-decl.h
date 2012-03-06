@@ -1,13 +1,13 @@
 /* Process the ObjC-specific declarations and variables for 
    the Objective-C++ compiler.
-   Copyright (C) 2005 Free Software Foundation, Inc.
+   Copyright (C) 2005, 2007, 2009, 2010 Free Software Foundation, Inc.
    Contributed by Ziemowit Laski  <zlaski@apple.com>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -16,22 +16,19 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
+
 
 #ifndef GCC_OBJCP_DECL_H
 #define GCC_OBJCP_DECL_H
 
-extern tree objcp_start_struct (enum tree_code, tree);
-extern tree objcp_finish_struct (tree, tree, tree);
+extern tree objcp_start_struct (location_t, enum tree_code, tree);
+extern tree objcp_finish_struct (location_t, tree, tree, tree);
 extern void objcp_finish_function (void);
-extern tree objcp_lookup_name (tree);
 extern tree objcp_build_function_call (tree, tree);
 extern tree objcp_xref_tag (enum tree_code, tree);
 extern int objcp_comptypes (tree, tree);
-extern tree objcp_builtin_function (const char *, tree, int, 
-				    enum built_in_class, const char *, tree);
 extern tree objcp_begin_compound_stmt (int);
 extern tree objcp_end_compound_stmt (tree, int);
 
@@ -40,21 +37,21 @@ extern tree objcp_end_compound_stmt (tree, int);
    invoke the original C++ functions if needed).  */
 #ifdef OBJCP_REMAP_FUNCTIONS
 
-#define start_struct(code, name) \
-	objcp_start_struct (code, name)
-#define finish_struct(t, fieldlist, attributes) \
-	objcp_finish_struct (t, fieldlist, attributes)
+#define start_struct(loc, code, name, struct_info) \
+	objcp_start_struct (loc, code, name)
+#define finish_struct(loc, t, fieldlist, attributes, struct_info) \
+	objcp_finish_struct (loc, t, fieldlist, attributes)
 #define finish_function() \
 	objcp_finish_function ()
-#define lookup_name(name) \
-	objcp_lookup_name (name)
+#define finish_decl(decl, loc, init, origtype, asmspec) \
+	cp_finish_decl (decl, init, false, asmspec, 0)
 #define xref_tag(code, name) \
 	objcp_xref_tag (code, name)
 #define comptypes(type1, type2) \
 	objcp_comptypes (type1, type2)
 #define c_begin_compound_stmt(flags) \
 	objcp_begin_compound_stmt (flags)
-#define c_end_compound_stmt(stmt, flags) \
+#define c_end_compound_stmt(loc, stmt, flags)	\
 	objcp_end_compound_stmt (stmt, flags)
 
 #undef OBJC_TYPE_NAME
@@ -76,8 +73,8 @@ extern tree objcp_end_compound_stmt (tree, int);
 #undef ALLOC_OBJC_TYPE_LANG_SPECIFIC
 #define ALLOC_OBJC_TYPE_LANG_SPECIFIC(NODE)				\
   do {									\
-    TYPE_LANG_SPECIFIC (NODE) = GGC_CNEWVAR	                        \
-      (struct lang_type, sizeof (struct lang_type_class));		\
+    TYPE_LANG_SPECIFIC (NODE) = ggc_alloc_cleared_lang_type		\
+      (sizeof (struct lang_type_class));		\
     TYPE_LANG_SPECIFIC (NODE)->u.c.h.is_lang_type_class = 1;		\
   } while (0)
 

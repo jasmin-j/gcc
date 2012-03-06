@@ -1,31 +1,29 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                   S Y S T E M . O S _ I N T E R F A C E                  --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
 --             Copyright (C) 1991-1994, Florida State University            --
---             Copyright (C) 1995-2004, Free Software Foundation, Inc.      --
+--          Copyright (C) 1995-2011, Free Software Foundation, Inc.         --
 --                                                                          --
--- GNARL is free software; you can  redistribute it  and/or modify it under --
+-- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
@@ -35,13 +33,14 @@
 --  This is a Solaris (native) version of this package
 
 --  This package includes all direct interfaces to OS services
---  that are needed by children of System.
+--  that are needed by the tasking run-time (libgnarl).
 
 --  PLEASE DO NOT add any with-clauses to this package or remove the pragma
 --  Preelaborate. This package is designed to be a bottom-level (leaf) package.
 
 with Interfaces.C;
-with Unchecked_Conversion;
+
+with Ada.Unchecked_Conversion;
 
 package System.OS_Interface is
    pragma Preelaborate;
@@ -126,7 +125,7 @@ package System.OS_Interface is
    Unmasked : constant Signal_Set := (SIGTRAP, SIGLWP, SIGPROF);
 
    --  Following signals should not be disturbed.
-   --  See c-posix-signals.c in FLORIST
+   --  See c-posix-signals.c in FLORIST.
 
    Reserved : constant Signal_Set :=
      (SIGKILL, SIGSTOP, SIGWAITING, SIGCANCEL, SIGTRAP, SIGSEGV);
@@ -166,15 +165,6 @@ package System.OS_Interface is
    --  the signal context information, or perhaps something else.
    --  More analysis is needed, after which these declarations may need to
    --  be changed.
-
-   FPE_INTDIV  : constant := 1; --  integer divide by zero
-   FPE_INTOVF  : constant := 2; --  integer overflow
-   FPE_FLTDIV  : constant := 3; --  floating point divide by zero
-   FPE_FLTOVF  : constant := 4; --  floating point overflow
-   FPE_FLTUND  : constant := 5; --  floating point underflow
-   FPE_FLTRES  : constant := 6; --  floating point inexact result
-   FPE_FLTINV  : constant := 7; --  invalid floating point operation
-   FPE_FLTSUB  : constant := 8; --  subscript out of range
 
    type greg_t is new int;
 
@@ -253,9 +243,7 @@ package System.OS_Interface is
 
    type timespec is private;
 
-   type clockid_t is private;
-
-   CLOCK_REALTIME : constant clockid_t;
+   type clockid_t is new int;
 
    function clock_gettime
      (clock_id : clockid_t; tp : access timespec) return int;
@@ -270,16 +258,6 @@ package System.OS_Interface is
 
    function To_Timespec (D : Duration) return timespec;
    pragma Inline (To_Timespec);
-
-   type struct_timeval is private;
-   --  This is needed on systems that do not have clock_gettime()
-   --  but do have gettimeofday().
-
-   function To_Duration (TV : struct_timeval) return Duration;
-   pragma Inline (To_Duration);
-
-   function To_Timeval (D : Duration) return struct_timeval;
-   pragma Inline (To_Timeval);
 
    -------------
    -- Process --
@@ -299,9 +277,10 @@ package System.OS_Interface is
 
    type Thread_Body is access
      function (arg : System.Address) return System.Address;
+   pragma Convention (C, Thread_Body);
 
    function Thread_Body_Access is new
-     Unchecked_Conversion (System.Address, Thread_Body);
+     Ada.Unchecked_Conversion (System.Address, Thread_Body);
 
    THR_DETACHED  : constant := 64;
    THR_BOUND     : constant := 1;
@@ -312,7 +291,7 @@ package System.OS_Interface is
    subtype Thread_Id is thread_t;
    --  These types should be commented ???
 
-   function To_thread_t is new Unchecked_Conversion (Integer, thread_t);
+   function To_thread_t is new Ada.Unchecked_Conversion (Integer, thread_t);
 
    type mutex_t is limited private;
 
@@ -400,18 +379,16 @@ package System.OS_Interface is
    function thr_kill (thread : thread_t; sig : Signal) return int;
    pragma Import (C, thr_kill, "thr_kill");
 
-   type sigset_t_ptr is access all sigset_t;
-
    function thr_sigsetmask
      (how  : int;
-      set  : sigset_t_ptr;
-      oset : sigset_t_ptr) return int;
+      set  : access sigset_t;
+      oset : access sigset_t) return int;
    pragma Import (C, thr_sigsetmask, "thr_sigsetmask");
 
    function pthread_sigmask
      (how  : int;
-      set  : sigset_t_ptr;
-      oset : sigset_t_ptr) return int;
+      set  : access sigset_t;
+      oset : access sigset_t) return int;
    pragma Import (C, pthread_sigmask, "thr_sigsetmask");
 
    function thr_suspend (target_thread : thread_t) return int;
@@ -453,7 +430,7 @@ package System.OS_Interface is
    type id_t is new long;
 
    P_MYID : constant := -1;
-   --  the specified LWP or process is the current one.
+   --  The specified LWP or process is the current one
 
    type struct_pcinfo is record
       pc_cid    : id_t;
@@ -487,21 +464,21 @@ package System.OS_Interface is
    --  Constants for function processor_bind
 
    PBIND_QUERY : constant processorid_t := -2;
-   --  the processor bindings are not changed.
+   --  The processor bindings are not changed
 
    PBIND_NONE  : constant processorid_t := -1;
-   --  the processor bindings of the specified LWPs are cleared.
+   --  The processor bindings of the specified LWPs are cleared
 
    --  Flags for function p_online
 
    PR_OFFLINE : constant int := 1;
-   --  processor is offline, as quiet as possible
+   --  Processor is offline, as quiet as possible
 
    PR_ONLINE  : constant int := 2;
-   --  processor online
+   --  Processor online
 
    PR_STATUS  : constant int := 3;
-   --  value passed to p_online to request status
+   --  Value passed to p_online to request status
 
    function p_online (processorid : processorid_t; flag : int) return int;
    pragma Import (C, p_online, "p_online");
@@ -513,8 +490,26 @@ package System.OS_Interface is
       obind   : processorid_t_ptr) return int;
    pragma Import (C, processor_bind, "processor_bind");
 
+   type psetid_t is new int;
+
+   function pset_create (pset : access psetid_t) return int;
+   pragma Import (C, pset_create, "pset_create");
+
+   function pset_assign
+     (pset    : psetid_t;
+      proc_id : processorid_t;
+      opset   : access psetid_t) return int;
+   pragma Import (C, pset_assign, "pset_assign");
+
+   function pset_bind
+     (pset    : psetid_t;
+      id_type : int;
+      id      : id_t;
+      opset   : access psetid_t) return int;
+   pragma Import (C, pset_bind, "pset_bind");
+
    procedure pthread_init;
-   --  dummy procedure to share s-intman.adb with other Solaris targets.
+   --  Dummy procedure to share s-intman.adb with other Solaris targets
 
 private
 
@@ -533,15 +528,6 @@ private
       tv_nsec : long;
    end record;
    pragma Convention (C, timespec);
-
-   type clockid_t is new int;
-   CLOCK_REALTIME : constant clockid_t := 0;
-
-   type struct_timeval is record
-      tv_sec  : long;
-      tv_usec : long;
-   end record;
-   pragma Convention (C, struct_timeval);
 
    type array_type_9 is array (0 .. 3) of unsigned_char;
    type record_type_3 is record

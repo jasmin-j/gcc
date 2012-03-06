@@ -1,5 +1,5 @@
 /* SystemProperties.java -- Manage the System properties.
-   Copyright (C) 2004, 2005 Free Software Foundation
+   Copyright (C) 2004, 2005, 2006 Free Software Foundation
 
 This file is part of GNU Classpath.
 
@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -69,6 +69,9 @@ public class SystemProperties
   static
   {
     insertSystemProperties(defaultProperties);
+
+    defaultProperties.put("gnu.classpath.version",
+                          Configuration.CLASSPATH_VERSION);
 
     // Set base URL if not already set.
     if (defaultProperties.get("gnu.classpath.home.url") == null)
@@ -151,4 +154,18 @@ public class SystemProperties
    * @return true if the system is big-endian.
    */
   private static native boolean isWordsBigEndian();
+
+  /**
+   * Removes the supplied system property and its current value.
+   * If the specified property does not exist, nothing happens.
+   * 
+   * @throws NullPointerException if the property name is null.
+   * @return the value of the removed property, or null if no
+   *         such property exists.
+   */
+  public static String remove(String name)
+  {
+    return (String) properties.remove(name);
+  }
+
 }

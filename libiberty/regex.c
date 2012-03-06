@@ -2,7 +2,9 @@
    version 0.12.
    (Implements POSIX draft P1003.2/D11.2, except for some of the
    internationalization features.)
-   Copyright (C) 1993-1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+
+   Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001,
+   2002, 2005, 2010 Free Software Foundation, Inc.
    This file is part of the GNU C Library.
 
    The GNU C Library is free software; you can redistribute it and/or
@@ -1918,7 +1920,7 @@ static reg_errcode_t byte_compile_range (unsigned int range_start,
    ? (char) translate[(unsigned char) (d)] : (d))
 # else /* BYTE */
 #   define TRANSLATE(d) \
-  (translate ? (char) translate[(unsigned char) (d)] : (d))
+  (translate ? (char) translate[(unsigned char) (d)] : (char) (d))
 #  endif /* WCHAR */
 # endif
 
@@ -4968,7 +4970,7 @@ weak_alias (__re_search_2, re_search_2)
 #ifdef MATCH_MAY_ALLOCATE
 # define FREE_VAR(var) if (var) REGEX_FREE (var); var = NULL
 #else
-# define FREE_VAR(var) if (var) free (var); var = NULL
+# define FREE_VAR(var) free (var); var = NULL
 #endif
 
 #ifdef WCHAR
@@ -5908,10 +5910,13 @@ byte_re_match_2_internal (struct re_pattern_buffer *bufp,
 	    {
 	      /* 1 if this match ends in the same string (string1 or string2)
 		 as the best previous match.  */
-	      boolean same_str_p = (FIRST_STRING_P (match_end)
-				    == MATCHING_IN_FIRST_STRING);
+	      boolean same_str_p;
+
 	      /* 1 if this match is the best seen so far.  */
 	      boolean best_match_p;
+
+              same_str_p = (FIRST_STRING_P (match_end)
+                            == MATCHING_IN_FIRST_STRING);
 
 	      /* AIX compiler got confused when this was combined
 		 with the previous declaration.  */
@@ -7135,8 +7140,8 @@ byte_re_match_2_internal (struct re_pattern_buffer *bufp,
                register from the stack, since lowest will == highest in
                `pop_failure_point'.  */
             active_reg_t dummy_low_reg, dummy_high_reg;
-            UCHAR_T *pdummy = NULL;
-            const CHAR_T *sdummy = NULL;
+            UCHAR_T *pdummy ATTRIBUTE_UNUSED = NULL;
+            const CHAR_T *sdummy ATTRIBUTE_UNUSED = NULL;
 
             DEBUG_PRINT1 ("EXECUTING pop_failure_jump.\n");
             POP_FAILURE_POINT (sdummy, pdummy,
@@ -7814,7 +7819,7 @@ re_comp (const char *s)
   if (!s)
     {
       if (!re_comp_buf.buffer)
-	return gettext ("No previous regular expression");
+	return (char *) gettext ("No previous regular expression");
       return 0;
     }
 
@@ -7921,7 +7926,7 @@ regcomp (regex_t *preg, const char *pattern, int cflags)
 
   if (cflags & REG_ICASE)
     {
-      unsigned i;
+      int i;
 
       preg->translate
 	= (RE_TRANSLATE_TYPE) malloc (CHAR_SET_SIZE
@@ -7931,7 +7936,7 @@ regcomp (regex_t *preg, const char *pattern, int cflags)
 
       /* Map uppercase characters to corresponding lowercase ones.  */
       for (i = 0; i < CHAR_SET_SIZE; i++)
-        preg->translate[i] = ISUPPER (i) ? TOLOWER (i) : (int) i;
+        preg->translate[i] = ISUPPER (i) ? TOLOWER (i) : i;
     }
   else
     preg->translate = NULL;
@@ -8106,20 +8111,17 @@ weak_alias (__regerror, regerror)
 void
 regfree (regex_t *preg)
 {
-  if (preg->buffer != NULL)
-    free (preg->buffer);
+  free (preg->buffer);
   preg->buffer = NULL;
 
   preg->allocated = 0;
   preg->used = 0;
 
-  if (preg->fastmap != NULL)
-    free (preg->fastmap);
+  free (preg->fastmap);
   preg->fastmap = NULL;
   preg->fastmap_accurate = 0;
 
-  if (preg->translate != NULL)
-    free (preg->translate);
+  free (preg->translate);
   preg->translate = NULL;
 }
 #ifdef _LIBC

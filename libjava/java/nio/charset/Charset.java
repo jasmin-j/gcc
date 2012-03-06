@@ -1,5 +1,5 @@
 /* Charset.java -- 
-   Copyright (C) 2002, 2004, 2005  Free Software Foundation, Inc.
+   Copyright (C) 2002, 2004, 2005, 2007  Free Software Foundation, Inc.
 
 This file is part of GNU Classpath.
 
@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -38,6 +38,8 @@ exception statement from your version. */
 
 package java.nio.charset;
 
+import gnu.classpath.ServiceFactory;
+import gnu.classpath.SystemProperties;
 import gnu.java.nio.charset.Provider;
 
 import java.io.BufferedReader;
@@ -59,14 +61,15 @@ import java.util.TreeMap;
 /**
  * @author Jesse Rosenstock
  * @since 1.4
+ * @status updated to 1.5
  */
-public abstract class Charset implements Comparable
+public abstract class Charset implements Comparable<Charset>
 {
   private CharsetEncoder cachedEncoder;
   private CharsetDecoder cachedDecoder;
  
   /**
-   * Charset providers.
+   * Extra Charset providers.
    */
   private static CharsetProvider[] providers;
   
@@ -116,6 +119,53 @@ public abstract class Charset implements Comparable
       }
   }
 
+  /**
+   * Returns the system default charset.
+   *
+   * This may be set by the user or VM with the file.encoding
+   * property.
+   *
+   * @since 1.5
+   */
+  public static Charset defaultCharset()
+  {
+    String encoding;
+    
+    try 
+      {
+	encoding = SystemProperties.getProperty("file.encoding");
+      }
+    catch(SecurityException e)
+      {
+	// Use fallback.
+	encoding = "ISO-8859-1";
+      }
+    catch(IllegalArgumentException e)
+      {
+	// Use fallback.
+	encoding = "ISO-8859-1";
+      }
+
+    try
+      {
+	return forName(encoding);
+      }
+    catch(UnsupportedCharsetException e)
+      {
+	// Ignore.
+      }
+    catch(IllegalCharsetNameException e)
+      {
+	// Ignore.
+      }
+    catch(IllegalArgumentException e)
+      {
+	// Ignore.
+      }
+    
+    throw new IllegalStateException("Can't get default charset!");
+  }
+
   public static boolean isSupported (String charsetName)
   {
     return charsetForName (charsetName) != null;
@@ -125,7 +175,7 @@ public abstract class Charset implements Comparable
    * Returns the Charset instance for the charset of the given name.
    * 
    * @param charsetName
-   * @return
+   * @return the Charset instance for the indicated charset
    * @throws UnsupportedCharsetException if this VM does not support
    * the charset of the given name.
    * @throws IllegalCharsetNameException if the given charset name is
@@ -155,25 +205,37 @@ public abstract class Charset implements Comparable
   private static Charset charsetForName(String charsetName)
   {
     checkName (charsetName);
-    Charset cs = null;
-    CharsetProvider[] providers = providers2();
-    for (int i = 0; i < providers.length; i++)
+    // Try the default provider first
+    // (so we don't need to load external providers unless really necessary)
+    // if it is an exotic charset try loading the external providers.
+    Charset cs = provider().charsetForName(charsetName);
+    if (cs == null)
       {
-        cs = providers[i].charsetForName(charsetName);
-        if (cs != null)
-	  break;
+	CharsetProvider[] providers = providers2();
+	for (int i = 0; i < providers.length; i++)
+	  {
+	    cs = providers[i].charsetForName(charsetName);
+	    if (cs != null)
+	      break;
+	  }
       }
     return cs;
   }
 
-  public static SortedMap availableCharsets()
+  public static SortedMap<String, Charset> availableCharsets()
   {
-    TreeMap charsets = new TreeMap(String.CASE_INSENSITIVE_ORDER);
+    TreeMap<String, Charset> charsets
+      = new TreeMap(String.CASE_INSENSITIVE_ORDER);
+    for (Iterator<Charset> i = provider().charsets(); i.hasNext(); )
+      {
+	Charset cs = i.next();
+	charsets.put(cs.name(), cs);
+      }
 
     CharsetProvider[] providers = providers2();
     for (int j = 0; j < providers.length; j++)
       {
-        for (Iterator i = providers[j].charsets(); i.hasNext(); )
+        for (Iterator<Charset> i = providers[j].charsets(); i.hasNext(); )
           {
             Charset cs = (Charset) i.next();
             charsets.put(cs.name(), cs);
@@ -206,7 +268,7 @@ public abstract class Charset implements Comparable
   /**
    * We need to support multiple providers, reading them from
    * java.nio.charset.spi.CharsetProvider in the resource directory
-   * META-INF/services.
+   * META-INF/services. This returns the "extra" charset providers.
    */
   private static CharsetProvider[] providers2()
   {
@@ -214,24 +276,10 @@ public abstract class Charset implements Comparable
       {
         try
           {
-            Enumeration en = ClassLoader.getSystemResources
-	      ("META-INF/services/java.nio.charset.spi.CharsetProvider");
+            Iterator i = ServiceFactory.lookupProviders(CharsetProvider.class);
             LinkedHashSet set = new LinkedHashSet();
-            set.add(provider());
-            while (en.hasMoreElements())
-              {
-                BufferedReader rdr = new BufferedReader(new InputStreamReader
-                  (((URL) (en.nextElement())).openStream()));
-                while (true)
-                  {
-                    String s = rdr.readLine();
-                    if (s == null)
-		      break;
-                    CharsetProvider p =
-		      (CharsetProvider) ((Class.forName(s)).newInstance());
-                    set.add(p);
-                  }
-               }
+            while (i.hasNext())
+              set.add(i.next());
 
             providers = new CharsetProvider[set.size()];
             set.toArray(providers);
@@ -249,14 +297,14 @@ public abstract class Charset implements Comparable
     return canonicalName;
   }
 
-  public final Set aliases ()
+  public final Set<String> aliases ()
   {
     if (aliases == null)
-      return Collections.EMPTY_SET;
+      return Collections.<String>emptySet();
 
     // should we cache the aliasSet instead?
     int n = aliases.length;
-    HashSet aliasSet = new HashSet (n);
+    HashSet<String> aliasSet = new HashSet<String> (n);
     for (int i = 0; i < n; ++i)
         aliasSet.add (aliases[i]);
     return Collections.unmodifiableSet (aliasSet);
@@ -341,9 +389,9 @@ public abstract class Charset implements Comparable
       }
   }
 
-  public final int compareTo (Object ob)
+  public final int compareTo (Charset other)
   {
-    return canonicalName.compareToIgnoreCase (((Charset) ob).canonicalName);
+    return canonicalName.compareToIgnoreCase (other.canonicalName);
   }
 
   public final int hashCode ()

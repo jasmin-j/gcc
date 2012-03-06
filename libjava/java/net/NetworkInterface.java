@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -38,7 +38,12 @@ exception statement from your version. */
 
 package java.net;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.Vector;
 
 /**
@@ -54,7 +59,7 @@ import java.util.Vector;
 public final class NetworkInterface
 {
   private String name;
-  private Vector inetAddresses;
+  private Vector<InetAddress> inetAddresses;
 
   NetworkInterface(String name, InetAddress address)
   {
@@ -92,19 +97,19 @@ public final class NetworkInterface
    *
    * @return An enumeration of all addresses.
    */
-  public Enumeration getInetAddresses()
+  public Enumeration<InetAddress> getInetAddresses()
   {
     SecurityManager s = System.getSecurityManager();
 
     if (s == null)
       return inetAddresses.elements();
 
-    Vector tmpInetAddresses = new Vector(1, 1);
+    Vector<InetAddress> tmpInetAddresses = new Vector<InetAddress>(1, 1);
 
-    for (Enumeration addresses = inetAddresses.elements();
+    for (Enumeration<InetAddress> addresses = inetAddresses.elements();
          addresses.hasMoreElements();)
       {
-	InetAddress addr = (InetAddress) addresses.nextElement();
+	InetAddress addr = addresses.nextElement();
 	try
 	  {
 	    s.checkConnect(addr.getHostAddress(), 58000);
@@ -143,9 +148,7 @@ public final class NetworkInterface
   public static NetworkInterface getByName(String name)
     throws SocketException
   {
-    Vector networkInterfaces = VMNetworkInterface.getInterfaces();
-
-    for (Enumeration e = networkInterfaces.elements(); e.hasMoreElements();)
+    for (Enumeration e = getNetworkInterfaces(); e.hasMoreElements();)
       {
 	NetworkInterface tmp = (NetworkInterface) e.nextElement();
 
@@ -170,9 +173,7 @@ public final class NetworkInterface
   public static NetworkInterface getByInetAddress(InetAddress addr)
     throws SocketException
   {
-    Vector networkInterfaces = VMNetworkInterface.getInterfaces();
-
-    for (Enumeration interfaces = networkInterfaces.elements();
+    for (Enumeration interfaces = getNetworkInterfaces();
          interfaces.hasMoreElements();)
       {
 	NetworkInterface tmp = (NetworkInterface) interfaces.nextElement();
@@ -188,6 +189,41 @@ public final class NetworkInterface
     throw new SocketException("no network interface is bound to such an IP address");
   }
 
+  static private Collection condense(Collection interfaces) 
+  {
+    final Map condensed = new HashMap();
+
+    final Iterator interfs = interfaces.iterator();
+    while (interfs.hasNext()) {
+
+      final NetworkInterface face = (NetworkInterface) interfs.next();
+      final String name = face.getName();
+      
+      if (condensed.containsKey(name))
+	{
+	  final NetworkInterface conface = (NetworkInterface) condensed.get(name);
+	  if (!conface.inetAddresses.containsAll(face.inetAddresses))
+	    {
+	      final Iterator faceAddresses = face.inetAddresses.iterator();
+	      while (faceAddresses.hasNext())
+		{
+		  final InetAddress faceAddress = (InetAddress) faceAddresses.next();
+		  if (!conface.inetAddresses.contains(faceAddress))
+		    {
+		      conface.inetAddresses.add(faceAddress);
+		    }
+		}
+	    }
+	}
+      else
+	{
+	  condensed.put(name, face);
+	}
+    }
+
+    return condensed.values();
+  }
+
   /**
    * Return an <code>Enumeration</code> of all available network interfaces
    *
@@ -195,14 +231,18 @@ public final class NetworkInterface
    * 
    * @exception SocketException If an error occurs
    */
-  public static Enumeration getNetworkInterfaces() throws SocketException
+  public static Enumeration<NetworkInterface> getNetworkInterfaces()
+    throws SocketException
   {
-    Vector networkInterfaces = VMNetworkInterface.getInterfaces();
+    Vector<NetworkInterface> networkInterfaces =
+      VMNetworkInterface.getInterfaces();
 
     if (networkInterfaces.isEmpty())
       return null;
 
-    return networkInterfaces.elements();
+    Collection condensed = condense(networkInterfaces);
+
+    return Collections.enumeration(condensed);
   }
 
   /**

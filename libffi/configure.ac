@@ -1,8 +1,8 @@
 dnl Process this with autoconf to create configure
 
-AC_PREREQ(2.59)
+AC_PREREQ(2.64)
 
-AC_INIT([libffi], [2.1], [http://gcc.gnu.org/bugs.html])
+AC_INIT([libffi], [3.0.9], [http://gcc.gnu.org/bugs.html])
 AC_CONFIG_HEADERS([fficonfig.h])
 
 AM_ENABLE_MULTILIB(, ..)
@@ -22,7 +22,7 @@ AM_INIT_AUTOMAKE
 m4_rename([_AC_ARG_VAR_PRECIOUS],[real_PRECIOUS])
 m4_define([_AC_ARG_VAR_PRECIOUS],[])
 AC_PROG_CC
-m4_rename([real_PRECIOUS],[_AC_ARG_VAR_PRECIOUS])
+m4_rename_force([real_PRECIOUS],[_AC_ARG_VAR_PRECIOUS])
 
 AC_SUBST(CFLAGS)
 
@@ -41,58 +41,161 @@ AM_CONDITIONAL(TESTSUBDIR, test -d $srcdir/testsuite)
 
 TARGETDIR="unknown"
 case "$host" in
-i*86-*-linux*) TARGET=X86; TARGETDIR=x86;;
-i*86-*-solaris*) TARGET=X86; TARGETDIR=x86;;
-i*86-*-beos*) TARGET=X86; TARGETDIR=x86;;
-i*86-*-freebsd* | i*86-*-kfreebsd*-gnu) TARGET=X86; TARGETDIR=x86;;
-i*86-*-netbsdelf* | i*86-*-knetbsd*-gnu) TARGET=X86; TARGETDIR=x86;;
-i*86-*-rtems*) TARGET=X86; TARGETDIR=x86;;
-i*86-*-win32*) TARGET=X86_WIN32; TARGETDIR=x86;;
-i*86-*-cygwin*) TARGET=X86_WIN32; TARGETDIR=x86;;
-i*86-*-mingw*) TARGET=X86_WIN32; TARGETDIR=x86;;
-frv-*-*) TARGET=FRV; TARGETDIR=frv;;
-sparc-sun-4*) TARGET=SPARC; TARGETDIR=sparc;;
-sparc*-sun-*) TARGET=SPARC; TARGETDIR=sparc;;
-sparc-*-linux* | sparc-*-netbsdelf* | sparc-*-knetbsd*-gnu) TARGET=SPARC; TARGETDIR=sparc;;
-sparc*-*-rtems*) TARGET=SPARC; TARGETDIR=sparc;;
-sparc64-*-linux* | sparc64-*-netbsd* | sparc64-*-knetbsd*-gnu) TARGET=SPARC; TARGETDIR=sparc;;
-alpha*-*-linux* | alpha*-*-osf* | alpha*-*-freebsd* | alpha*-*-kfreebsd*-gnu | alpha*-*-netbsd* | alpha*-*-knetbsd*-gnu) TARGET=ALPHA; TARGETDIR=alpha;;
-ia64*-*-*) TARGET=IA64; TARGETDIR=ia64;;
-m32r*-*-linux* ) TARGET=M32R; TARGETDIR=m32r;;
-m68k-*-linux*) TARGET=M68K; TARGETDIR=m68k;;
-mips64*-*);;
-mips-sgi-irix5.* | mips-sgi-irix6.*) TARGET=MIPS_IRIX; TARGETDIR=mips;;
-mips*-*-linux*) TARGET=MIPS_LINUX; TARGETDIR=mips;;
-powerpc*-*-linux* | powerpc-*-sysv*) TARGET=POWERPC; TARGETDIR=powerpc;;
-powerpc-*-beos*) TARGET=POWERPC; TARGETDIR=powerpc;;
-powerpc-*-darwin*) TARGET=POWERPC_DARWIN; TARGETDIR=powerpc;;
-powerpc-*-aix*) TARGET=POWERPC_AIX; TARGETDIR=powerpc;;
-powerpc*-*-rtems*) TARGET=POWERPC; TARGETDIR=powerpc;;
-rs6000-*-aix*) TARGET=POWERPC_AIX; TARGETDIR=powerpc;;
-arm*-*-linux-*) TARGET=ARM; TARGETDIR=arm;;
-arm*-*-netbsdelf* | arm*-*-knetbsd*-gnu) TARGET=ARM; TARGETDIR=arm;;
-arm*-*-rtems*) TARGET=ARM; TARGETDIR=arm;;
-cris-*-*) TARGET=LIBFFI_CRIS; TARGETDIR=cris;;
-s390-*-linux-*) TARGET=S390; TARGETDIR=s390;;
-s390x-*-linux-*) TARGET=S390; TARGETDIR=s390;;
-x86_64-*-linux* | x86_64-*-freebsd* | x86_64-*-kfreebsd*-gnu) TARGET=X86_64; TARGETDIR=x86;;
-sh-*-linux* | sh[[34]]*-*-linux*) TARGET=SH; TARGETDIR=sh;;
-sh-*-rtems*) TARGET=SH; TARGETDIR=sh;;
-sh64-*-linux* | sh5*-*-linux*) TARGET=SH64; TARGETDIR=sh64;;
-hppa-*-linux* | parisc-*-linux*) TARGET=PA; TARGETDIR=pa;;
+  alpha*-*-*)
+	TARGET=ALPHA; TARGETDIR=alpha;
+	# Support 128-bit long double, changeable via command-line switch.
+	HAVE_LONG_DOUBLE='defined(__LONG_DOUBLE_128__)'
+	;;
+
+  arm*-*-*)
+	TARGET=ARM; TARGETDIR=arm
+	;;
+
+  amd64-*-freebsd* | amd64-*-openbsd*)
+	TARGET=X86_64; TARGETDIR=x86
+	;;
+
+  avr32*-*-*)
+	TARGET=AVR32; TARGETDIR=avr32
+	;;
+
+  cris-*-*)
+	TARGET=LIBFFI_CRIS; TARGETDIR=cris
+	;;
+
+  frv-*-*)
+	TARGET=FRV; TARGETDIR=frv
+	;;
+
+  hppa*-*-linux* | parisc*-*-linux*)
+	TARGET=PA_LINUX; TARGETDIR=pa
+	;;
+  hppa*64-*-hpux*)
+	TARGET=PA64_HPUX; TARGETDIR=pa
+	;;
+  hppa*-*-hpux*)
+	TARGET=PA_HPUX; TARGETDIR=pa
+	;;
+
+  i?86-*-freebsd* | i?86-*-openbsd*)
+	TARGET=X86_FREEBSD; TARGETDIR=x86
+	;;
+  i?86-win32* | i?86-*-cygwin* | i?86-*-mingw* | i?86-*-os2*)
+	TARGET=X86_WIN32; TARGETDIR=x86
+	# All mingw/cygwin/win32 builds require -no-undefined for sharedlib.
+	# We must also check with_cross_host to decide if this is a native
+	# or cross-build and select where to install dlls appropriately.
+	if test -n "$with_cross_host" &&
+	   test x"$with_cross_host" != x"no"; then
+	  AM_LTLDFLAGS='-no-undefined -bindir "$(toolexeclibdir)"';
+	else
+	  AM_LTLDFLAGS='-no-undefined -bindir "$(bindir)"';
+	fi
+	;;
+  i?86-*-darwin*)
+	TARGET=X86_DARWIN; TARGETDIR=x86
+	;;
+  i?86-*-solaris2.1[[0-9]]*)
+	TARGET=X86_64; TARGETDIR=x86
+	;;
+  i?86-*-*)
+	TARGET=X86_64; TARGETDIR=x86
+	;;
+
+  ia64*-*-*)
+	TARGET=IA64; TARGETDIR=ia64
+	;;
+
+  m32r*-*-*)
+	TARGET=M32R; TARGETDIR=m32r
+	;;
+
+  m68k-*-*)
+	TARGET=M68K; TARGETDIR=m68k
+	;;
+
+  mips-sgi-irix5.* | mips-sgi-irix6.* | mips*-*-rtems*)
+	TARGET=MIPS; TARGETDIR=mips
+	;;
+  mips*-*-linux*)
+	# Support 128-bit long double for NewABI.
+	HAVE_LONG_DOUBLE='defined(__mips64)'
+	TARGET=MIPS; TARGETDIR=mips
+	;;
+
+  powerpc*-*-linux* | powerpc-*-sysv*)
+	TARGET=POWERPC; TARGETDIR=powerpc
+	;;
+  powerpc-*-beos*)
+	TARGET=POWERPC; TARGETDIR=powerpc
+	;;
+  powerpc-*-darwin*)
+	TARGET=POWERPC_DARWIN; TARGETDIR=powerpc
+	;;
+  powerpc-*-aix* | rs6000-*-aix*)
+	TARGET=POWERPC_AIX; TARGETDIR=powerpc
+	;;
+  powerpc-*-freebsd*)
+	TARGET=POWERPC_FREEBSD; TARGETDIR=powerpc
+	;;
+ powerpc64-*-freebsd*)
+	TARGET=POWERPC; TARGETDIR=powerpc
+	;;
+  powerpc*-*-rtems*)
+	TARGET=POWERPC; TARGETDIR=powerpc
+	;;
+
+  s390-*-* | s390x-*-*)
+	TARGET=S390; TARGETDIR=s390
+	;;
+
+  sh-*-* | sh[[34]]*-*-*)
+	TARGET=SH; TARGETDIR=sh
+	;;
+  sh64-*-* | sh5*-*-*)
+	TARGET=SH64; TARGETDIR=sh64
+	;;
+
+  sparc*-*-*)
+	TARGET=SPARC; TARGETDIR=sparc
+	;;
+
+  x86_64-*-darwin*)
+	TARGET=X86_DARWIN; TARGETDIR=x86
+	;;
+
+  x86_64-*-cygwin* | x86_64-*-mingw*)
+	TARGET=X86_WIN64; TARGETDIR=x86
+	# All mingw/cygwin/win32 builds require -no-undefined for sharedlib.
+	# We must also check with_cross_host to decide if this is a native
+	# or cross-build and select where to install dlls appropriately.
+	if test -n "$with_cross_host" &&
+	   test x"$with_cross_host" != x"no"; then
+	  AM_LTLDFLAGS='-no-undefined -bindir "$(toolexeclibdir)"';
+	else
+	  AM_LTLDFLAGS='-no-undefined -bindir "$(bindir)"';
+	fi
+	;;
+
+  x86_64-*-*)
+	TARGET=X86_64; TARGETDIR=x86
+	;;
 esac
 
 AC_SUBST(AM_RUNTESTFLAGS)
+AC_SUBST(AM_LTLDFLAGS)
 
 if test $TARGETDIR = unknown; then
   AC_MSG_ERROR(["libffi has not been ported to $host."])
 fi
 
-AM_CONDITIONAL(MIPS_IRIX, test x$TARGET = xMIPS_IRIX)
-AM_CONDITIONAL(MIPS_LINUX, test x$TARGET = xMIPS_LINUX)
+AM_CONDITIONAL(MIPS, test x$TARGET = xMIPS)
 AM_CONDITIONAL(SPARC, test x$TARGET = xSPARC)
 AM_CONDITIONAL(X86, test x$TARGET = xX86)
+AM_CONDITIONAL(X86_FREEBSD, test x$TARGET = xX86_FREEBSD)
 AM_CONDITIONAL(X86_WIN32, test x$TARGET = xX86_WIN32)
+AM_CONDITIONAL(X86_WIN64, test x$TARGET = xX86_WIN64)
+AM_CONDITIONAL(X86_DARWIN, test x$TARGET = xX86_DARWIN)
 AM_CONDITIONAL(ALPHA, test x$TARGET = xALPHA)
 AM_CONDITIONAL(IA64, test x$TARGET = xIA64)
 AM_CONDITIONAL(M32R, test x$TARGET = xM32R)
@@ -100,19 +203,18 @@ AM_CONDITIONAL(M68K, test x$TARGET = xM68K)
 AM_CONDITIONAL(POWERPC, test x$TARGET = xPOWERPC)
 AM_CONDITIONAL(POWERPC_AIX, test x$TARGET = xPOWERPC_AIX)
 AM_CONDITIONAL(POWERPC_DARWIN, test x$TARGET = xPOWERPC_DARWIN)
+AM_CONDITIONAL(POWERPC_FREEBSD, test x$TARGET = xPOWERPC_FREEBSD)
 AM_CONDITIONAL(ARM, test x$TARGET = xARM)
+AM_CONDITIONAL(AVR32, test x$TARGET = xAVR32)
 AM_CONDITIONAL(LIBFFI_CRIS, test x$TARGET = xLIBFFI_CRIS)
 AM_CONDITIONAL(FRV, test x$TARGET = xFRV)
 AM_CONDITIONAL(S390, test x$TARGET = xS390)
 AM_CONDITIONAL(X86_64, test x$TARGET = xX86_64)
 AM_CONDITIONAL(SH, test x$TARGET = xSH)
 AM_CONDITIONAL(SH64, test x$TARGET = xSH64)
-AM_CONDITIONAL(PA, test x$TARGET = xPA)
-
-case x$TARGET in
-  xMIPS*) TARGET=MIPS ;;
-  *) ;;
-esac
+AM_CONDITIONAL(PA_LINUX, test x$TARGET = xPA_LINUX)
+AM_CONDITIONAL(PA_HPUX, test x$TARGET = xPA_HPUX)
+AM_CONDITIONAL(PA64_HPUX, test x$TARGET = xPA64_HPUX)
 
 AC_HEADER_STDC
 AC_CHECK_FUNCS(memcpy)
@@ -122,16 +224,20 @@ AC_CHECK_SIZEOF(double)
 AC_CHECK_SIZEOF(long double)
 
 # Also AC_SUBST this variable for ffi.h.
-HAVE_LONG_DOUBLE=0
-if test $ac_cv_sizeof_double != $ac_cv_sizeof_long_double; then
-  if test $ac_cv_sizeof_long_double != 0; then
-    HAVE_LONG_DOUBLE=1
-    AC_DEFINE(HAVE_LONG_DOUBLE, 1, [Define if you have the long double type and it is bigger than a double])
+if test -z "$HAVE_LONG_DOUBLE"; then
+  HAVE_LONG_DOUBLE=0
+  if test $ac_cv_sizeof_double != $ac_cv_sizeof_long_double; then
+    if test $ac_cv_sizeof_long_double != 0; then
+      HAVE_LONG_DOUBLE=1
+      AC_DEFINE(HAVE_LONG_DOUBLE, 1, [Define if you have the long double type and it is bigger than a double])
+    fi
   fi
 fi
 AC_SUBST(HAVE_LONG_DOUBLE)
 
 AC_C_BIGENDIAN
+
+GCC_AS_CFI_PSEUDO_OP
 
 if test x$TARGET = xSPARC; then
     AC_CACHE_CHECK([assembler and linker support unaligned pc related relocs],
@@ -164,6 +270,70 @@ if test x$TARGET = xSPARC; then
     fi
 fi
 
+if test x$TARGET = xX86 || test x$TARGET = xX86_WIN32 || test x$TARGET = xX86_64; then
+    AC_CACHE_CHECK([assembler supports pc related relocs],
+	libffi_cv_as_x86_pcrel, [
+	libffi_cv_as_x86_pcrel=yes
+	echo '.text; foo: nop; .data; .long foo-.; .text' > conftest.s
+	if $CC $CFLAGS -c conftest.s 2>&1 | $EGREP -i 'illegal|warning' > /dev/null; then
+	    libffi_cv_as_x86_pcrel=no
+	fi
+	])
+    if test "x$libffi_cv_as_x86_pcrel" = xyes; then
+	AC_DEFINE(HAVE_AS_X86_PCREL, 1,
+		  [Define if your assembler supports PC relative relocs.])
+    fi
+
+    AC_CACHE_CHECK([assembler .ascii pseudo-op support],
+       libffi_cv_as_ascii_pseudo_op, [
+       libffi_cv_as_ascii_pseudo_op=unknown
+       # Check if we have .ascii
+       AC_TRY_COMPILE([asm (".ascii \\"string\\"");],,
+		       [libffi_cv_as_ascii_pseudo_op=yes],
+		       [libffi_cv_as_ascii_pseudo_op=no])
+    ])
+    if test "x$libffi_cv_as_ascii_pseudo_op" = xyes; then
+       AC_DEFINE(HAVE_AS_ASCII_PSEUDO_OP, 1,
+	       [Define if your assembler supports .ascii.])
+    fi
+
+    AC_CACHE_CHECK([assembler .string pseudo-op support],
+       libffi_cv_as_string_pseudo_op, [
+       libffi_cv_as_string_pseudo_op=unknown
+       # Check if we have .string
+       AC_TRY_COMPILE([asm (".string \\"string\\"");],,
+		       [libffi_cv_as_string_pseudo_op=yes],
+		       [libffi_cv_as_string_pseudo_op=no])
+    ])
+    if test "x$libffi_cv_as_string_pseudo_op" = xyes; then
+       AC_DEFINE(HAVE_AS_STRING_PSEUDO_OP, 1,
+	       [Define if your assembler supports .string.])
+    fi
+fi
+
+case "$target" in
+     *-apple-darwin10* | *-*-freebsd* | *-*-openbsd* | *-pc-solaris*)
+       AC_DEFINE(FFI_MMAP_EXEC_WRIT, 1,
+                 [Cannot use malloc on this target, so, we revert to
+                   alternative means])
+     ;;
+esac
+
+if test x$TARGET = xX86_64; then
+    AC_CACHE_CHECK([assembler supports unwind section type],
+	libffi_cv_as_x86_64_unwind_section_type, [
+	libffi_cv_as_x86_64_unwind_section_type=yes
+	echo '.section .eh_frame,"a",@unwind' > conftest.s
+	if $CC $CFLAGS -c conftest.s 2>&1 | grep -i warning > /dev/null; then
+	    libffi_cv_as_x86_64_unwind_section_type=no
+	fi
+	])
+    if test "x$libffi_cv_as_x86_64_unwind_section_type" = xyes; then
+	AC_DEFINE(HAVE_AS_X86_64_UNWIND_SECTION_TYPE, 1,
+		  [Define if your assembler supports unwind section type.])
+    fi
+fi
+
 AC_CACHE_CHECK([whether .eh_frame section should be read-only],
     libffi_cv_ro_eh_frame, [
 	libffi_cv_ro_eh_frame=no
@@ -187,6 +357,38 @@ else
     AC_DEFINE(EH_FRAME_FLAGS, "aw",
 	      [Define to the flags needed for the .section .eh_frame directive.])
 fi
+
+AC_CACHE_CHECK([for __attribute__((visibility("hidden")))],
+    libffi_cv_hidden_visibility_attribute, [
+	echo 'int __attribute__ ((visibility ("hidden"))) foo (void) { return 1; }' > conftest.c
+	libffi_cv_hidden_visibility_attribute=no
+	if AC_TRY_COMMAND(${CC-cc} -Werror -S conftest.c -o conftest.s 1>&AS_MESSAGE_LOG_FD); then
+	    if grep '\.hidden.*foo' conftest.s >/dev/null; then
+		libffi_cv_hidden_visibility_attribute=yes
+	    fi
+	fi
+	rm -f conftest.*
+    ])
+if test $libffi_cv_hidden_visibility_attribute = yes; then
+    AC_DEFINE(HAVE_HIDDEN_VISIBILITY_ATTRIBUTE, 1,
+	      [Define if __attribute__((visibility("hidden"))) is supported.])
+fi
+
+AH_BOTTOM([
+#ifdef HAVE_HIDDEN_VISIBILITY_ATTRIBUTE
+#ifdef LIBFFI_ASM
+#define FFI_HIDDEN(name) .hidden name
+#else
+#define FFI_HIDDEN __attribute__ ((visibility ("hidden")))
+#endif
+#else
+#ifdef LIBFFI_ASM
+#define FFI_HIDDEN(name)
+#else
+#define FFI_HIDDEN
+#endif
+#endif
+])
 
 AC_SUBST(TARGET)
 AC_SUBST(TARGETDIR)
@@ -247,6 +449,6 @@ test -d src/$TARGETDIR || mkdir src/$TARGETDIR
 
 AC_CONFIG_LINKS(include/ffitarget.h:src/$TARGETDIR/ffitarget.h)
 
-AC_CONFIG_FILES(include/Makefile include/ffi.h Makefile testsuite/Makefile)
+AC_CONFIG_FILES(include/Makefile include/ffi.h Makefile testsuite/Makefile man/Makefile)
 
 AC_OUTPUT

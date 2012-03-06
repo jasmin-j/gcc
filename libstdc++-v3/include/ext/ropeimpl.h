@@ -1,11 +1,12 @@
 // SGI's rope class implementation -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2003, 2004 Free Software Foundation, Inc.
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -13,19 +14,14 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 
-// You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// Under Section 7 of GPL version 3, you are granted additional
+// permissions described in the GCC Runtime Library Exception, version
+// 3.1, as published by the Free Software Foundation.
 
-// As a special exception, you may use this file as part of a free software
-// library without restriction.  Specifically, if other files instantiate
-// templates or use macros or inline functions from this file, or you compile
-// this file and link it with other files to produce an executable, this
-// file does not by itself cause the resulting executable to be covered by
-// the GNU General Public License.  This exception does not however
-// invalidate any other reasons why the executable file might be covered by
-// the GNU General Public License.
+// You should have received a copy of the GNU General Public License and
+// a copy of the GCC Runtime Library Exception along with this program;
+// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+// <http://www.gnu.org/licenses/>.
 
 /*
  * Copyright (c) 1997
@@ -42,7 +38,7 @@
 
 /** @file ropeimpl.h
  *  This is an internal header file, included by other library headers.
- *  You should not attempt to use it directly.
+ *  Do not attempt to use it directly. @headername{ext/rope}
  */
 
 #include <cstdio>
@@ -53,8 +49,10 @@
 #include <ext/memory> // For uninitialized_copy_n
 #include <ext/numeric> // For power
 
-namespace __gnu_cxx
+namespace __gnu_cxx _GLIBCXX_VISIBILITY(default)
 {
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+
   using std::size_t;
   using std::printf;
   using std::basic_ostream;
@@ -77,13 +75,13 @@ namespace __gnu_cxx
 
       switch(__leaf->_M_tag)
 	{
-	case _Rope_constants::_S_leaf:
+	case __detail::_S_leaf:
 	  __x._M_buf_start = ((_Rope_RopeLeaf<_CharT, _Alloc>*)__leaf)->_M_data;
 	  __x._M_buf_ptr = __x._M_buf_start + (__pos - __leaf_pos);
 	  __x._M_buf_end = __x._M_buf_start + __leaf->_M_size;
 	  break;
-	case _Rope_constants::_S_function:
-	case _Rope_constants::_S_substringfn:
+	case __detail::_S_function:
+	case __detail::_S_substringfn:
 	  {
 	    size_t __len = _S_iterator_buf_len;
 	    size_t __buf_start_pos = __leaf_pos;
@@ -116,7 +114,7 @@ namespace __gnu_cxx
     _Rope_iterator_base<_CharT, _Alloc>::
     _S_setcache(_Rope_iterator_base<_CharT, _Alloc>& __x)
     {
-      const _RopeRep* __path[int(_Rope_constants::_S_max_rope_depth) + 1];
+      const _RopeRep* __path[int(__detail::_S_max_rope_depth) + 1];
       const _RopeRep* __curr_rope;
       int __curr_depth = -1;  /* index into path    */
       size_t __curr_start_pos = 0;
@@ -146,12 +144,12 @@ namespace __gnu_cxx
 	  __path[__curr_depth] = __curr_rope;
 	  switch(__curr_rope->_M_tag)
 	    {
-	    case _Rope_constants::_S_leaf:
-	    case _Rope_constants::_S_function:
-	    case _Rope_constants::_S_substringfn:
+	    case __detail::_S_leaf:
+	    case __detail::_S_function:
+	    case __detail::_S_substringfn:
 	      __x._M_leaf_pos = __curr_start_pos;
 	      goto done;
-	    case _Rope_constants::_S_concat:
+	    case __detail::_S_concat:
 	      {
 		_Rope_RopeConcatenation<_CharT, _Alloc>* __c =
 		  (_Rope_RopeConcatenation<_CharT, _Alloc>*)__curr_rope;
@@ -233,7 +231,7 @@ namespace __gnu_cxx
       __current_node = __c->_M_right;
       __x._M_path_end[++__current_index] = __current_node;
       __dirns |= 1;
-      while (_Rope_constants::_S_concat == __current_node->_M_tag)
+      while (__detail::_S_concat == __current_node->_M_tag)
 	{
 	  ++__current_index;
 	  if (int(_S_path_cache_len) == __current_index)
@@ -346,7 +344,7 @@ namespace __gnu_cxx
       if (0 != __cstr)
 	{
 	  size_t __size = this->_M_size + 1;
-	  _Destroy(__cstr, __cstr + __size, get_allocator());
+	  _Destroy(__cstr, __cstr + __size, _M_get_allocator());
 	  this->_Data_deallocate(__cstr, __size);
 	}
     }
@@ -354,7 +352,7 @@ namespace __gnu_cxx
   template <class _CharT, class _Alloc>
     inline void
     _Rope_RopeRep<_CharT, _Alloc>::
-    _S_free_string(_CharT* __s, size_t __n, allocator_type __a)
+    _S_free_string(_CharT* __s, size_t __n, allocator_type& __a)
     {
       if (!_S_is_basic_char_type((_CharT*)0))
 	_Destroy(__s, __s + __n, __a);
@@ -377,38 +375,38 @@ namespace __gnu_cxx
     {
       switch(_M_tag)
 	{
-	case _Rope_constants::_S_leaf:
+	case __detail::_S_leaf:
 	  {
 	    _Rope_RopeLeaf<_CharT, _Alloc>* __l
 	      = (_Rope_RopeLeaf<_CharT, _Alloc>*)this;
 	    __l->_Rope_RopeLeaf<_CharT, _Alloc>::~_Rope_RopeLeaf();
-	    _L_deallocate(__l, 1);
+	    this->_L_deallocate(__l, 1);
 	    break;
 	  }
-	case _Rope_constants::_S_concat:
+	case __detail::_S_concat:
 	  {
 	    _Rope_RopeConcatenation<_CharT,_Alloc>* __c
 	      = (_Rope_RopeConcatenation<_CharT, _Alloc>*)this;
 	    __c->_Rope_RopeConcatenation<_CharT, _Alloc>::
 	      ~_Rope_RopeConcatenation();
-	    _C_deallocate(__c, 1);
+	    this->_C_deallocate(__c, 1);
 	    break;
 	  }
-	case _Rope_constants::_S_function:
+	case __detail::_S_function:
 	  {
 	    _Rope_RopeFunction<_CharT, _Alloc>* __f
 	      = (_Rope_RopeFunction<_CharT, _Alloc>*)this;
 	    __f->_Rope_RopeFunction<_CharT, _Alloc>::~_Rope_RopeFunction();
-	    _F_deallocate(__f, 1);
+	    this->_F_deallocate(__f, 1);
 	    break;
 	  }
-	case _Rope_constants::_S_substringfn:
+	case __detail::_S_substringfn:
 	  {
 	    _Rope_RopeSubstring<_CharT, _Alloc>* __ss =
 	      (_Rope_RopeSubstring<_CharT, _Alloc>*)this;
 	    __ss->_Rope_RopeSubstring<_CharT, _Alloc>::
 	      ~_Rope_RopeSubstring();
-	    _S_deallocate(__ss, 1);
+	    this->_S_deallocate(__ss, 1);
 	    break;
 	  }
 	}
@@ -432,21 +430,21 @@ namespace __gnu_cxx
     {
       size_t __old_len = __r->_M_size;
       _CharT* __new_data = (_CharT*)
-	_Data_allocate(_S_rounded_up_size(__old_len + __len));
+	rope::_Data_allocate(_S_rounded_up_size(__old_len + __len));
       _RopeLeaf* __result;
 
       uninitialized_copy_n(__r->_M_data, __old_len, __new_data);
       uninitialized_copy_n(__iter, __len, __new_data + __old_len);
       _S_cond_store_eos(__new_data[__old_len + __len]);
-      try
+      __try
 	{
 	  __result = _S_new_RopeLeaf(__new_data, __old_len + __len,
-				     __r->get_allocator());
+				     __r->_M_get_allocator());
 	}
-      catch(...)
+      __catch(...)
 	{
 	  _RopeRep::__STL_FREE_STRING(__new_data, __old_len + __len,
-				      __r->get_allocator());
+				      __r->_M_get_allocator());
 	  __throw_exception_again;
 	}
       return __result;
@@ -497,23 +495,23 @@ namespace __gnu_cxx
     {
       _RopeConcatenation* __result = _S_new_RopeConcatenation(__left, __right,
 							      __left->
-							      get_allocator());
+							      _M_get_allocator());
       size_t __depth = __result->_M_depth;
       
       if (__depth > 20
 	  && (__result->_M_size < 1000
-	      || __depth > size_t(_Rope_constants::_S_max_rope_depth)))
+	      || __depth > size_t(__detail::_S_max_rope_depth)))
 	{
 	  _RopeRep* __balanced;
 
-	  try
+	  __try
 	    {
 	      __balanced = _S_balance(__result);
 	      __result->_M_unref_nonnil();
 	    }
-	  catch(...)
+	  __catch(...)
 	    {
-	      _C_deallocate(__result,1);
+	      rope::_C_deallocate(__result,1);
 	      __throw_exception_again;
 	    }
 	  // In case of exception, we need to deallocate
@@ -539,16 +537,15 @@ namespace __gnu_cxx
 	}
       if (0 == __r)
 	return __STL_ROPE_FROM_UNOWNED_CHAR_PTR(__s, __slen,
-						__r->get_allocator());
-      if (_Rope_constants::_S_leaf == __r->_M_tag
+						__r->_M_get_allocator());
+      if (__r->_M_tag == __detail::_S_leaf
 	  && __r->_M_size + __slen <= size_t(_S_copy_max))
 	{
 	  __result = _S_leaf_concat_char_iter((_RopeLeaf*)__r, __s, __slen);
 	  return __result;
 	}
-      if (_Rope_constants::_S_concat == __r->_M_tag
-	  && _Rope_constants::_S_leaf == ((_RopeConcatenation*)
-					  __r)->_M_right->_M_tag)
+      if (__detail::_S_concat == __r->_M_tag
+	  && __detail::_S_leaf == ((_RopeConcatenation*) __r)->_M_right->_M_tag)
 	{
 	  _RopeLeaf* __right =
 	    (_RopeLeaf* )(((_RopeConcatenation* )__r)->_M_right);
@@ -558,9 +555,9 @@ namespace __gnu_cxx
 	      _RopeRep* __nright =
 		_S_leaf_concat_char_iter((_RopeLeaf*)__right, __s, __slen);
 	      __left->_M_ref_nonnil();
-	      try
+	      __try
 		{ __result = _S_tree_concat(__left, __nright); }
-	      catch(...)
+	      __catch(...)
 		{
 		  _S_unref(__left);
 		  _S_unref(__nright);
@@ -570,13 +567,13 @@ namespace __gnu_cxx
 	    }
 	}
       _RopeRep* __nright =
-	__STL_ROPE_FROM_UNOWNED_CHAR_PTR(__s, __slen, __r->get_allocator());
-      try
+	__STL_ROPE_FROM_UNOWNED_CHAR_PTR(__s, __slen, __r->_M_get_allocator());
+      __try
 	{
 	  __r->_M_ref_nonnil();
 	  __result = _S_tree_concat(__r, __nright);
 	}
-      catch(...)
+      __catch(...)
 	{
 	  _S_unref(__r);
 	  _S_unref(__nright);
@@ -594,7 +591,7 @@ namespace __gnu_cxx
       _RopeRep* __result;
       if (0 == __r)
 	return __STL_ROPE_FROM_UNOWNED_CHAR_PTR(__s, __slen,
-						__r->get_allocator());
+						__r->_M_get_allocator());
       size_t __count = __r->_M_ref_count;
       size_t __orig_size = __r->_M_size;
       if (__count > 1)
@@ -605,17 +602,17 @@ namespace __gnu_cxx
 	  return __r;
 	}
       if (__orig_size + __slen <= size_t(_S_copy_max)
-	  && _Rope_constants::_S_leaf == __r->_M_tag)
+	  && __detail::_S_leaf == __r->_M_tag)
 	{
 	  __result = _S_destr_leaf_concat_char_iter((_RopeLeaf*)__r, __s, 
 						    __slen);
 	  return __result;
 	}
-      if (_Rope_constants::_S_concat == __r->_M_tag)
+      if (__detail::_S_concat == __r->_M_tag)
 	{
 	  _RopeLeaf* __right = (_RopeLeaf*)(((_RopeConcatenation*)
 					     __r)->_M_right);
-	  if (_Rope_constants::_S_leaf == __right->_M_tag
+	  if (__detail::_S_leaf == __right->_M_tag
 	      && __right->_M_size + __slen <= size_t(_S_copy_max))
 	    {
 	      _RopeRep* __new_right =
@@ -636,11 +633,11 @@ namespace __gnu_cxx
 	    }
 	}
       _RopeRep* __right =
-	__STL_ROPE_FROM_UNOWNED_CHAR_PTR(__s, __slen, __r->get_allocator());
+	__STL_ROPE_FROM_UNOWNED_CHAR_PTR(__s, __slen, __r->_M_get_allocator());
       __r->_M_ref_nonnil();
-      try
+      __try
 	{ __result = _S_tree_concat(__r, __right); }
-      catch(...)
+      __catch(...)
 	{
 	  _S_unref(__r);
 	  _S_unref(__right);
@@ -665,17 +662,17 @@ namespace __gnu_cxx
 	  __left->_M_ref_nonnil();
 	  return __left;
 	}
-      if (_Rope_constants::_S_leaf == __right->_M_tag)
+      if (__detail::_S_leaf == __right->_M_tag)
 	{
-	  if (_Rope_constants::_S_leaf == __left->_M_tag)
+	  if (__detail::_S_leaf == __left->_M_tag)
 	    {
 	      if (__right->_M_size + __left->_M_size <= size_t(_S_copy_max))
 		return _S_leaf_concat_char_iter((_RopeLeaf*)__left,
 						((_RopeLeaf*)__right)->_M_data,
 						__right->_M_size);
 	    }
-	  else if (_Rope_constants::_S_concat == __left->_M_tag
-		   && _Rope_constants::_S_leaf == ((_RopeConcatenation*)
+	  else if (__detail::_S_concat == __left->_M_tag
+		   && __detail::_S_leaf == ((_RopeConcatenation*)
 						   __left)->_M_right->_M_tag)
 	    {
 	      _RopeLeaf* __leftright =
@@ -690,9 +687,9 @@ namespace __gnu_cxx
 							      _M_data,
 							      __right->_M_size);
 		  __leftleft->_M_ref_nonnil();
-		  try
+		  __try
 		    { return(_S_tree_concat(__leftleft, __rest)); }
-		  catch(...)
+		  __catch(...)
 		    {
 		      _S_unref(__leftleft);
 		      _S_unref(__rest);
@@ -703,9 +700,9 @@ namespace __gnu_cxx
 	}
       __left->_M_ref_nonnil();
       __right->_M_ref_nonnil();
-      try
+      __try
 	{ return(_S_tree_concat(__left, __right)); }
-      catch(...)
+      __catch(...)
 	{
 	  _S_unref(__left);
 	  _S_unref(__right);
@@ -740,7 +737,7 @@ namespace __gnu_cxx
 
       switch(__base->_M_tag)
 	{
-	case _Rope_constants::_S_concat:
+	case __detail::_S_concat:
 	    {
 	      _RopeConcatenation* __c = (_RopeConcatenation*)__base;
 	      _RopeRep* __left = __c->_M_left;
@@ -762,7 +759,7 @@ namespace __gnu_cxx
 	      __result = _S_concat(__left_result, __right_result);
 	      return __result;
 	    }
-	case _Rope_constants::_S_leaf:
+	case __detail::_S_leaf:
 	  {
 	    _RopeLeaf* __l = (_RopeLeaf*)__base;
 	    _RopeLeaf* __result;
@@ -775,18 +772,18 @@ namespace __gnu_cxx
 #ifdef __GC
 	    const _CharT* __section = __l->_M_data + __start;
 	    __result = _S_new_RopeLeaf(__section, __result_len,
-				       __base->get_allocator());
+				       __base->_M_get_allocator());
 	    __result->_M_c_string = 0;  // Not eos terminated.
 #else
 	    // We should sometimes create substring node instead.
 	    __result = __STL_ROPE_FROM_UNOWNED_CHAR_PTR(__l->_M_data + __start,
 							__result_len,
 							__base->
-							get_allocator());
+							_M_get_allocator());
 #endif
 	    return __result;
 	  }
-	case _Rope_constants::_S_substringfn:
+	case __detail::_S_substringfn:
 	  // Avoid introducing multiple layers of substring nodes.
 	  {
 	    _RopeSubstring* __old = (_RopeSubstring*)__base;
@@ -800,12 +797,12 @@ namespace __gnu_cxx
 		  _S_new_RopeSubstring(__old->_M_base,
 				       __start + __old->_M_start,
 				       __adj_endp1 - __start,
-				       __base->get_allocator());
+				       __base->_M_get_allocator());
 		return __result;
 		
 	      } // *** else fall through: ***
 	  }
-	case _Rope_constants::_S_function:
+	case __detail::_S_function:
 	  {
 	    _RopeFunction* __f = (_RopeFunction*)__base;
 	    _CharT* __section;
@@ -817,25 +814,25 @@ namespace __gnu_cxx
 	    if (__result_len > __lazy_threshold)
 	      goto lazy;
 	    __section = (_CharT*)
-	      _Data_allocate(_S_rounded_up_size(__result_len));
-	    try
+	      rope::_Data_allocate(_S_rounded_up_size(__result_len));
+	    __try
 	      {	(*(__f->_M_fn))(__start, __result_len, __section); }
-	    catch(...)
+	    __catch(...)
 	      {
 		_RopeRep::__STL_FREE_STRING(__section, __result_len,
-					    __base->get_allocator());
+					    __base->_M_get_allocator());
 		__throw_exception_again;
 	      }
 	    _S_cond_store_eos(__section[__result_len]);
 	    return _S_new_RopeLeaf(__section, __result_len,
-				   __base->get_allocator());
+				   __base->_M_get_allocator());
 	  }
 	}
     lazy:
       {
 	// Create substring node.
 	return _S_new_RopeSubstring(__base, __start, __adj_endp1 - __start,
-				    __base->get_allocator());
+				    __base->_M_get_allocator());
       }
     }
 
@@ -930,7 +927,7 @@ namespace __gnu_cxx
 	return true;
       switch(__r->_M_tag)
 	{
-	case _Rope_constants::_S_concat:
+	case __detail::_S_concat:
 	  {
 	    _RopeConcatenation* __conc = (_RopeConcatenation*)__r;
 	    _RopeRep* __left =  __conc->_M_left;
@@ -952,26 +949,26 @@ namespace __gnu_cxx
 	      }
 	  }
 	  return true;
-	case _Rope_constants::_S_leaf:
+	case __detail::_S_leaf:
 	  {
 	    _RopeLeaf* __l = (_RopeLeaf*)__r;
 	    return __c(__l->_M_data + __begin, __end - __begin);
 	  }
-	case _Rope_constants::_S_function:
-	case _Rope_constants::_S_substringfn:
+	case __detail::_S_function:
+	case __detail::_S_substringfn:
 	    {
 	      _RopeFunction* __f = (_RopeFunction*)__r;
 	      size_t __len = __end - __begin;
 	      bool __result;
 	      _CharT* __buffer =
 		(_CharT*)_Alloc().allocate(__len * sizeof(_CharT));
-	      try
+	      __try
 		{
 		  (*(__f->_M_fn))(__begin, __len, __buffer);
 		  __result = __c(__buffer, __len);
                   _Alloc().deallocate(__buffer, __len * sizeof(_CharT));
                 }
-	      catch(...)
+	      __catch(...)
 		{
 		  _Alloc().deallocate(__buffer, __len * sizeof(_CharT));
 		  __throw_exception_again;
@@ -1027,7 +1024,7 @@ namespace __gnu_cxx
 
       if (!__is_simple)
 	__o.width(__w / __rope_len);
-      try
+      __try
 	{
 	  if (__is_simple && !__left && __pad_len > 0)
 	    _Rope_fill(__o, __pad_len);
@@ -1037,7 +1034,7 @@ namespace __gnu_cxx
 	  if (!__is_simple)
 	    __o.width(__w);
 	}
-      catch(...)
+      __catch(...)
 	{
 	  if (!__is_simple)
 	    __o.width(__w);
@@ -1081,7 +1078,7 @@ namespace __gnu_cxx
 	return __buffer;
       switch(__r->_M_tag)
 	{
-	case _Rope_constants::_S_concat:
+	case __detail::_S_concat:
 	  {
 	    _RopeConcatenation* __c = (_RopeConcatenation*)__r;
 	    _RopeRep* __left = __c->_M_left;
@@ -1089,13 +1086,13 @@ namespace __gnu_cxx
 	    _CharT* __rest = _S_flatten(__left, __buffer);
 	    return _S_flatten(__right, __rest);
 	  }
-	case _Rope_constants::_S_leaf:
+	case __detail::_S_leaf:
 	  {
 	    _RopeLeaf* __l = (_RopeLeaf*)__r;
 	    return copy_n(__l->_M_data, __l->_M_size, __buffer).second;
 	  }
-	case _Rope_constants::_S_function:
-	case _Rope_constants::_S_substringfn:
+	case __detail::_S_function:
+	case __detail::_S_substringfn:
 	  // We don't yet do anything with substring nodes.
 	  // This needs to be fixed before ropefiles will work well.
 	  {
@@ -1121,7 +1118,7 @@ namespace __gnu_cxx
 	  printf("NULL\n");
 	  return;
 	}
-      if (_Rope_constants::_S_concat == __r->_M_tag)
+      if (_S_concat == __r->_M_tag)
 	{
 	  _RopeConcatenation* __c = (_RopeConcatenation*)__r;
 	  _RopeRep* __left = __c->_M_left;
@@ -1147,13 +1144,13 @@ namespace __gnu_cxx
 	  
 	  switch (__r->_M_tag)
 	    {
-	    case _Rope_constants::_S_leaf:
+	    case __detail::_S_leaf:
 	      __kind = "Leaf";
 	      break;
-	    case _Rope_constants::_S_function:
+	    case __detail::_S_function:
 	      __kind = "Function";
 	      break;
-	    case _Rope_constants::_S_substringfn:
+	    case __detail::_S_substringfn:
 	      __kind = "Function representing substring";
 	      break;
 	    default:
@@ -1186,7 +1183,7 @@ namespace __gnu_cxx
   template <class _CharT, class _Alloc>
     const unsigned long
     rope<_CharT, _Alloc>::
-    _S_min_len[int(_Rope_constants::_S_max_rope_depth) + 1] = {
+    _S_min_len[int(__detail::_S_max_rope_depth) + 1] = {
       /* 0 */1, /* 1 */2, /* 2 */3, /* 3 */5, /* 4 */8, /* 5 */13, /* 6 */21,
       /* 7 */34, /* 8 */55, /* 9 */89, /* 10 */144, /* 11 */233, /* 12 */377,
       /* 13 */610, /* 14 */987, /* 15 */1597, /* 16 */2584, /* 17 */4181,
@@ -1205,7 +1202,7 @@ namespace __gnu_cxx
     rope<_CharT, _Alloc>::
     _S_balance(_RopeRep* __r)
     {
-      _RopeRep* __forest[int(_Rope_constants::_S_max_rope_depth) + 1];
+      _RopeRep* __forest[int(__detail::_S_max_rope_depth) + 1];
       _RopeRep* __result = 0;
       int __i;
       // Invariant:
@@ -1214,12 +1211,12 @@ namespace __gnu_cxx
       // __forest[__i]._M_depth = __i
       // References from forest are included in refcount.
       
-      for (__i = 0; __i <= int(_Rope_constants::_S_max_rope_depth); ++__i)
+      for (__i = 0; __i <= int(__detail::_S_max_rope_depth); ++__i)
 	__forest[__i] = 0;
-      try
+      __try
 	{
 	  _S_add_to_forest(__r, __forest);
-	  for (__i = 0; __i <= int(_Rope_constants::_S_max_rope_depth); ++__i)
+	  for (__i = 0; __i <= int(__detail::_S_max_rope_depth); ++__i)
 	    if (0 != __forest[__i])
 	      {
 #ifndef __GC
@@ -1232,14 +1229,14 @@ namespace __gnu_cxx
 #endif
 	      }
 	}
-      catch(...)
+      __catch(...)
 	{
-	  for(__i = 0; __i <= int(_Rope_constants::_S_max_rope_depth); __i++)
+	  for(__i = 0; __i <= int(__detail::_S_max_rope_depth); __i++)
 	    _S_unref(__forest[__i]);
 	  __throw_exception_again;
 	}
       
-      if (__result->_M_depth > int(_Rope_constants::_S_max_rope_depth))
+      if (__result->_M_depth > int(__detail::_S_max_rope_depth))
 	__throw_length_error(__N("rope::_S_balance"));
       return(__result);
     }
@@ -1307,7 +1304,7 @@ namespace __gnu_cxx
 	      __forest[__i]->_M_unref_nonnil();
 	      __forest[__i] = 0;
 	    }
-	  if (__i == int(_Rope_constants::_S_max_rope_depth)
+	  if (__i == int(__detail::_S_max_rope_depth)
 	      || __insertee->_M_size < _S_min_len[__i+1])
 	    {
 	      __forest[__i] = __insertee;
@@ -1330,7 +1327,7 @@ namespace __gnu_cxx
 	{
 	  switch(__r->_M_tag)
 	    {
-	    case _Rope_constants::_S_concat:
+	    case __detail::_S_concat:
 	      {
 		_RopeConcatenation* __c = (_RopeConcatenation*)__r;
 		_RopeRep* __left = __c->_M_left;
@@ -1345,13 +1342,13 @@ namespace __gnu_cxx
 		  __r = __left;
 	      }
 	      break;
-	    case _Rope_constants::_S_leaf:
+	    case __detail::_S_leaf:
 	      {
 		_RopeLeaf* __l = (_RopeLeaf*)__r;
 		return __l->_M_data[__i];
 	      }
-	    case _Rope_constants::_S_function:
-	    case _Rope_constants::_S_substringfn:
+	    case __detail::_S_function:
+	    case __detail::_S_substringfn:
 	      {
 		_RopeFunction* __f = (_RopeFunction*)__r;
 		_CharT __result;
@@ -1371,7 +1368,7 @@ namespace __gnu_cxx
     rope<_CharT, _Alloc>::
     _S_fetch_ptr(_RopeRep* __r, size_type __i)
     {
-      _RopeRep* __clrstack[_Rope_constants::_S_max_rope_depth];
+      _RopeRep* __clrstack[__detail::_S_max_rope_depth];
       size_t __csptr = 0;
       
       for(;;)
@@ -1380,7 +1377,7 @@ namespace __gnu_cxx
 	    return 0;
 	  switch(__r->_M_tag)
 	    {
-	    case _Rope_constants::_S_concat:
+	    case __detail::_S_concat:
 	      {
 		_RopeConcatenation* __c = (_RopeConcatenation*)__r;
 		_RopeRep* __left = __c->_M_left;
@@ -1397,7 +1394,7 @@ namespace __gnu_cxx
 		  __r = __left;
 	      }
 	      break;
-	    case _Rope_constants::_S_leaf:
+	    case __detail::_S_leaf:
 	      {
 		_RopeLeaf* __l = (_RopeLeaf*)__r;
 		if (__l->_M_c_string != __l->_M_data && __l->_M_c_string != 0)
@@ -1411,8 +1408,8 @@ namespace __gnu_cxx
 		  }
 		return __l->_M_data + __i;
 	      }
-	    case _Rope_constants::_S_function:
-	    case _Rope_constants::_S_substringfn:
+	    case __detail::_S_function:
+	    case __detail::_S_substringfn:
 	      return 0;
 	    }
 	}
@@ -1437,10 +1434,10 @@ namespace __gnu_cxx
 	return -1;
       __left_len = __left->_M_size;
       __right_len = __right->_M_size;
-      if (_Rope_constants::_S_leaf == __left->_M_tag)
+      if (__detail::_S_leaf == __left->_M_tag)
 	{
 	  _RopeLeaf* __l = (_RopeLeaf*) __left;
-	  if (_Rope_constants::_S_leaf == __right->_M_tag)
+	  if (__detail::_S_leaf == __right->_M_tag)
 	    {
 	      _RopeLeaf* __r = (_RopeLeaf*) __right;
 	      return lexicographical_compare_3way(__l->_M_data,
@@ -1461,7 +1458,7 @@ namespace __gnu_cxx
 	{
 	  const_iterator __lstart(__left, 0);
 	  const_iterator __lend(__left, __left_len);
-	  if (_Rope_constants::_S_leaf == __right->_M_tag)
+	  if (__detail::_S_leaf == __right->_M_tag)
 	    {
 	      _RopeLeaf* __r = (_RopeLeaf*) __right;
 	      return lexicographical_compare_3way(__lstart, __lend,
@@ -1550,13 +1547,15 @@ namespace __gnu_cxx
 	{
 	  __rest_buffer = this->_Data_allocate(_S_rounded_up_size(__rest));
 	  __uninitialized_fill_n_a(__rest_buffer, __rest, __c,
-				   get_allocator());
+				   _M_get_allocator());
 	  _S_cond_store_eos(__rest_buffer[__rest]);
-	  try
-	    { __remainder = _S_new_RopeLeaf(__rest_buffer, __rest, __a); }
-	  catch(...)
+	  __try
+	    { __remainder = _S_new_RopeLeaf(__rest_buffer, __rest,
+					    _M_get_allocator()); }
+	  __catch(...)
 	    {
-	      _RopeRep::__STL_FREE_STRING(__rest_buffer, __rest, __a);
+	      _RopeRep::__STL_FREE_STRING(__rest_buffer, __rest,
+					  _M_get_allocator());
 	      __throw_exception_again;
 	    }
 	}
@@ -1568,17 +1567,19 @@ namespace __gnu_cxx
 	  _RopeLeaf* __base_leaf;
 	  rope __base_rope;
 	  __uninitialized_fill_n_a(__base_buffer, __exponentiate_threshold, __c,
-				   get_allocator());
+				   _M_get_allocator());
 	  _S_cond_store_eos(__base_buffer[__exponentiate_threshold]);
-	  try
+	  __try
 	    {
 	      __base_leaf = _S_new_RopeLeaf(__base_buffer,
-					    __exponentiate_threshold, __a);
+					    __exponentiate_threshold,
+					    _M_get_allocator());
 	    }
-	  catch(...)
+	  __catch(...)
 	    {
 	      _RopeRep::__STL_FREE_STRING(__base_buffer,
-					  __exponentiate_threshold, __a);
+					  __exponentiate_threshold,
+					  _M_get_allocator());
 	      __throw_exception_again;
 	    }
 	  __base_rope._M_tree_ptr = __base_leaf;
@@ -1637,7 +1638,7 @@ namespace __gnu_cxx
 	  return _S_empty_c_str;
 	}
       __GC_CONST _CharT* __old_c_string = this->_M_tree_ptr->_M_c_string;
-      if (_Rope_constants::_S_leaf == this->_M_tree_ptr->_M_tag
+      if (__detail::_S_leaf == this->_M_tree_ptr->_M_tag
 	  && 0 != __old_c_string)
 	return(__old_c_string);
       size_t __s = size();
@@ -1646,7 +1647,7 @@ namespace __gnu_cxx
       __result[__s] = _S_eos((_CharT*)0);
       this->_M_tree_ptr->_M_unref_nonnil();
       this->_M_tree_ptr = _S_new_RopeLeaf(__result, __s,
-					  this->get_allocator());
+					  this->_M_get_allocator());
       return(__result);
     }
 
@@ -1699,8 +1700,5 @@ namespace __gnu_cxx
   { _Rope_rotate(__first, __middle, __last); }
 # endif
 
-} // namespace __gnu_cxx
-
-// Local Variables:
-// mode:C++
-// End:
+_GLIBCXX_END_NAMESPACE_VERSION
+} // namespace

@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---              Copyright (C) 2001 Ada Core Technologies, Inc.              --
+--                      Copyright (C) 2001-2010, AdaCore                    --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -50,10 +48,10 @@ package body GNAT.CGI is
    --  services exported by this unit.
 
    Current_Method : Method_Type;
-   --  This is the current method used to pass CGI parameters.
+   --  This is the current method used to pass CGI parameters
 
    Header_Sent : Boolean := False;
-   --  Will be set to True when the header will be sent.
+   --  Will be set to True when the header will be sent
 
    --  Key/Value table declaration
 
@@ -72,7 +70,7 @@ package body GNAT.CGI is
 
    procedure Check_Environment;
    pragma Inline (Check_Environment);
-   --  This procedure will raise Data_Error if Valid_Environment is False.
+   --  This procedure will raise Data_Error if Valid_Environment is False
 
    procedure Initialize;
    --  Initialize CGI package by reading the runtime environment. This
@@ -122,6 +120,12 @@ package body GNAT.CGI is
             Result (J) := Character'Val
               (Natural'Value ("16#" & S (K + 1 .. K + 2) & '#'));
             K := K + 3;
+
+         --  Plus sign is decoded as a space
+
+         elsif S (K) = '+' then
+            Result (J) := ' ';
+            K := K + 1;
 
          else
             Result (J) := S (K);
@@ -178,7 +182,7 @@ package body GNAT.CGI is
       --  for the data is passed in CONTENT_LENGTH environment variable.
 
       procedure Set_Parameter_Table (Data : String);
-      --  Parse the parameter data and set the parameter table.
+      --  Parse the parameter data and set the parameter table
 
       --------------------
       -- Initialize_GET --
@@ -188,6 +192,7 @@ package body GNAT.CGI is
          Data : constant String := Metavariable (Query_String);
       begin
          Current_Method := Get;
+
          if Data /= "" then
             Set_Parameter_Table (Data);
          end if;
@@ -328,16 +333,15 @@ package body GNAT.CGI is
       Required : Boolean := False) return String
    is
       function Get_Environment (Variable_Name : String) return String;
-      --  Returns the environment variable content.
+      --  Returns the environment variable content
 
       ---------------------
       -- Get_Environment --
       ---------------------
 
       function Get_Environment (Variable_Name : String) return String is
-         Value : OS_Lib.String_Access := OS_Lib.Getenv (Variable_Name);
+         Value  : OS_Lib.String_Access := OS_Lib.Getenv (Variable_Name);
          Result : constant String := Value.all;
-
       begin
          OS_Lib.Free (Value);
          return Result;

@@ -1,5 +1,7 @@
 // { dg-do run  }
 // Origin: Mark Mitchell <mark@codesourcery.com>
+// Avoid use of none-overridable new/delete operators in shared
+// { dg-options "-static" { target *-*-mingw* } }
 
 #if defined (__GXX_ABI_VERSION) && __GXX_ABI_VERSION >= 100
 
@@ -8,7 +10,10 @@
 
 void* p;
 
-void* operator new[](size_t s) throw (std::bad_alloc)
+void* operator new[](size_t s)
+#if __cplusplus <= 199711L
+  throw (std::bad_alloc)
+#endif
 {
   // Record the base of the last array allocated.
   p = malloc (s);
@@ -94,19 +99,19 @@ void check_placement_cookie (int i)
 struct X {};
 
 template <typename T>
-struct Y { int i; virtual void f () {}; };
+struct Y { int i; virtual void f () {} };
 
 // A class with a non-trivial destructor -- it needs a cookie.
-struct Z { ~Z () {}; };
+struct Z { ~Z () {} };
 // Likewise, but this class needs a bigger cookie so that the array
 // elements are correctly aligned.
-struct Z2 { ~Z2 () {}; long double d; };
+struct Z2 { ~Z2 () {} long double d; };
   
-struct W1 { void operator delete[] (void *, size_t) {}; };
-struct W2 { void operator delete[] (void *) {}; 
-            void operator delete[] (void *, size_t) {}; };
-struct W3 { void operator delete[] (void *, size_t) {}; 
-            void operator delete[] (void *) {}; };
+struct W1 { void operator delete[] (void *, size_t) {} };
+struct W2 { void operator delete[] (void *) {}
+            void operator delete[] (void *, size_t) {} };
+struct W3 { void operator delete[] (void *, size_t) {}
+            void operator delete[] (void *) {} };
 struct W4 : public W1 {};
 
 struct V { void *operator new[] (size_t s, void *p) 

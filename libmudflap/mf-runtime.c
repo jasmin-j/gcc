@@ -1,5 +1,6 @@
 /* Mudflap: narrow-pointer bounds-checking by tree rewriting.
-   Copyright (C) 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2008, 2009, 2010, 2011, 2012
+   Free Software Foundation, Inc.
    Contributed by Frank Ch. Eigler <fche@redhat.com>
    and Graydon Hoare <graydon@redhat.com>
    Splay Tree code originally by Mark Mitchell <mark@markmitchell.com>,
@@ -9,27 +10,22 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
-
-In addition to the permissions in the GNU General Public License, the
-Free Software Foundation gives you unlimited permission to link the
-compiled version of this file into combinations with other programs,
-and to distribute those combinations without any restriction coming
-from the use of this file.  (The General Public License restrictions
-do apply in other respects; for example, they cover modification of
-the file, and distribution when not linked into a combine
-executable.)
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or
 FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
-You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Under Section 7 of GPL version 3, you are granted additional
+permissions described in the GCC Runtime Library Exception, version
+3.1, as published by the Free Software Foundation.
+
+You should have received a copy of the GNU General Public License and
+a copy of the GCC Runtime Library Exception along with this program;
+see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 
@@ -141,20 +137,25 @@ static void mfsplay_tree_rebalance (mfsplay_tree sp);
 #define __MF_VIOL_WATCH 5
 
 /* Protect against recursive calls. */
-#define BEGIN_RECURSION_PROTECT() do { \
-  if (UNLIKELY (__mf_state == reentrant)) { \
-    write (2, "mf: erroneous reentrancy detected in `", 38); \
-    write (2, __PRETTY_FUNCTION__, strlen(__PRETTY_FUNCTION__)); \
-    write (2, "'\n", 2); \
-    abort (); } \
-  __mf_state = reentrant;  \
-  } while (0)
 
-#define END_RECURSION_PROTECT() do { \
-  __mf_state = active; \
-  } while (0)
+static void
+begin_recursion_protect1 (const char *pf)
+{
+  if (__mf_get_state () == reentrant)
+    {
+      write (2, "mf: erroneous reentrancy detected in `", 38);
+      write (2, pf, strlen(pf));
+      write (2, "'\n", 2); \
+      abort ();
+    }
+  __mf_set_state (reentrant);
+}
 
+#define BEGIN_RECURSION_PROTECT() \
+  begin_recursion_protect1 (__PRETTY_FUNCTION__)
 
+#define END_RECURSION_PROTECT() \
+  __mf_set_state (active)
 
 /* ------------------------------------------------------------------------ */
 /* Required globals.  */
@@ -169,14 +170,15 @@ unsigned char __mf_lc_shift = LOOKUP_CACHE_SHIFT_DFL;
 #define LOOKUP_CACHE_SIZE (__mf_lc_mask + 1)
 
 struct __mf_options __mf_opts;
-
 int __mf_starting_p = 1;
-#ifndef LIBMUDFLAPTH
-enum __mf_state_enum __mf_state = active;
-#else
-/* See __mf_state_perthread() in mf-hooks.c. */
-#endif
 
+#ifdef LIBMUDFLAPTH
+#if defined(HAVE_TLS) && !defined(USE_EMUTLS)
+__thread enum __mf_state_enum __mf_state_1 = reentrant;
+#endif
+#else
+enum __mf_state_enum __mf_state_1 = reentrant;
+#endif
 
 #ifdef LIBMUDFLAPTH
 pthread_mutex_t __mf_biglock =
@@ -196,7 +198,6 @@ pthread_mutex_t __mf_biglock =
 #else
 #define pthread_join NULL
 #endif
-const void *threads_active_p = (void *) pthread_join;
 #endif
 
 
@@ -295,13 +296,24 @@ __mf_set_default_options ()
   __mf_opts.timestamps = 1;
   __mf_opts.mudflap_mode = mode_check;
   __mf_opts.violation_mode = viol_nop;
+#ifdef HAVE___LIBC_FREERES
+  __mf_opts.call_libc_freeres = 1;
+#endif
   __mf_opts.heur_std_data = 1;
 #ifdef LIBMUDFLAPTH
   __mf_opts.thread_stack = 0;
 #endif
+
+  /* PR41443: Beware that the above flags will be applied to
+     setuid/setgid binaries, and cannot be overriden with
+     $MUDFLAP_OPTIONS.  So the defaults must be non-exploitable. 
+
+     Should we consider making the default violation_mode something
+     harsher than viol_nop?  OTOH, glibc's MALLOC_CHECK_ is disabled
+     by default for these same programs. */
 }
 
-static struct option
+static struct mudoption
 {
   char *name;
   char *description;
@@ -360,6 +372,11 @@ options [] =
     {"print-leaks",
      "print any memory leaks at program shutdown",
      set_option, 1, &__mf_opts.print_leaks},
+#ifdef HAVE___LIBC_FREERES
+    {"libc-freeres",
+     "call glibc __libc_freeres at shutdown for better leak data",
+     set_option, 1, &__mf_opts.call_libc_freeres},
+#endif
     {"check-initialization",
      "detect uninitialized object reads",
      set_option, 1, &__mf_opts.check_initialization},
@@ -427,13 +444,13 @@ options [] =
 static void
 __mf_usage ()
 {
-  struct option *opt;
+  struct mudoption *opt;
 
   fprintf (stderr,
            "This is a %s%sGCC \"mudflap\" memory-checked binary.\n"
-           "Mudflap is Copyright (C) 2002-2004 Free Software Foundation, Inc.\n"
+           "Mudflap is Copyright (C) 2002-2012 Free Software Foundation, Inc.\n"
            "\n"
-           "The mudflap code can be controlled by an environment variable:\n"
+           "Unless setuid, a program's mudflap options be set by an environment variable:\n"
            "\n"
            "$ export MUDFLAP_OPTIONS='<options>'\n"
            "$ <mudflapped_program>\n"
@@ -442,7 +459,7 @@ __mf_usage ()
            "any of the following options.  Use `-no-OPTION' to disable options.\n"
            "\n",
 #if HAVE_PTHREAD_H
-           (threads_active_p ? "multi-threaded " : "single-threaded "),
+           (pthread_join ? "multi-threaded " : "single-threaded "),
 #else
            "",
 #endif
@@ -501,7 +518,7 @@ __mf_set_options (const char *optstr)
 int
 __mfu_set_options (const char *optstr)
 {
-  struct option *opts = 0;
+  struct mudoption *opts = 0;
   char *nxt = 0;
   long tmp = 0;
   int rc = 0;
@@ -649,6 +666,9 @@ struct __mf_dynamic_entry __mf_dynamic [] =
   {NULL, "free", NULL},
   {NULL, "malloc", NULL},
   {NULL, "mmap", NULL},
+#ifdef HAVE_MMAP64
+  {NULL, "mmap64", NULL},
+#endif
   {NULL, "munmap", NULL},
   {NULL, "realloc", NULL},
   {NULL, "DUMMY", NULL}, /* dyn_INITRESOLVE */
@@ -686,15 +706,24 @@ __mf_init ()
   if (LIKELY (__mf_starting_p == 0))
     return;
 
+#if defined(__FreeBSD__) && defined(LIBMUDFLAPTH)
+  pthread_self();
+  LOCKTH ();
+  UNLOCKTH ();
+#endif /* Prime mutex which calls calloc upon first lock to avoid deadlock. */
+
   /* This initial bootstrap phase requires that __mf_starting_p = 1. */
 #ifdef PIC
   __mf_resolve_dynamics ();
 #endif
   __mf_starting_p = 0;
 
+  __mf_set_state (active);
+
   __mf_set_default_options ();
 
-  ov = getenv ("MUDFLAP_OPTIONS");
+  if (getuid () == geteuid () && getgid () == getegid ()) /* PR41433, not setuid */
+    ov = getenv ("MUDFLAP_OPTIONS");
   if (ov)
     {
       int rc = __mfu_set_options (ov);
@@ -755,12 +784,22 @@ __wrap_main (int argc, char* argv[])
 
       __mf_register (& errno, sizeof (errno), __MF_TYPE_STATIC, "errno area");
 
+#if !(defined(__sun__) && defined(__svr4__))
+      /* Conflicts with the automatic registration of __iob[].  */
       __mf_register (stdin,  sizeof (*stdin),  __MF_TYPE_STATIC, "stdin");
       __mf_register (stdout, sizeof (*stdout), __MF_TYPE_STATIC, "stdout");
       __mf_register (stderr, sizeof (*stderr), __MF_TYPE_STATIC, "stderr");
+#endif
 
       /* Make some effort to register ctype.h static arrays.  */
-      /* XXX: e.g., on Solaris, may need to register __ctype, _ctype, __ctype_mask, __toupper, etc. */
+#if defined(__sun__) && defined(__svr4__)
+      /* __ctype[] is declared without size, but MB_CUR_MAX is the last
+	 member.  There seems to be no proper way to determine the size.  */
+      __mf_register (__ctype, &MB_CUR_MAX - &__ctype[0] + 1, __MF_TYPE_STATIC, "__ctype");
+      /* __ctype_mask points at _C_masks[1].  The size can only determined
+	 using nm on libc.so.1.  */
+      __mf_register (__ctype_mask - 1, 1028, __MF_TYPE_STATIC, "_C_masks");
+#endif
       /* On modern Linux GLIBC, these are thread-specific and changeable, and are dealt
          with in mf-hooks2.c.  */
     }
@@ -919,7 +958,7 @@ void __mfu_check (void *ptr, size_t sz, int type, const char *location)
                   judgement = -1;
               }
 
-            /* We now know that the access spans one or more only valid objects.  */
+            /* We now know that the access spans no invalid objects.  */
             if (LIKELY (judgement >= 0))
               for (i = 0; i < obj_count; i++)
                 {
@@ -1066,22 +1105,78 @@ __mf_uncache_object (__mf_object_t *old_obj)
     {
       uintptr_t low = old_obj->low;
       uintptr_t high = old_obj->high;
-      unsigned idx_low = __MF_CACHE_INDEX (low);
-      unsigned idx_high = __MF_CACHE_INDEX (high);
+      struct __mf_cache *entry;
       unsigned i;
-      for (i = idx_low; i <= idx_high; i++)
-        {
-          struct __mf_cache *entry = & __mf_lookup_cache [i];
-          /* NB: the "||" in the following test permits this code to
-             tolerate the situation introduced by __mf_check over
-             contiguous objects, where a cache entry spans several
-             objects.  */
-          if (entry->low == low || entry->high == high)
+      if ((high - low) >= (__mf_lc_mask << __mf_lc_shift))
+	{
+	  /* For large objects (>= cache size - 1) check the whole cache.  */
+          entry = & __mf_lookup_cache [0];
+          for (i = 0; i <= __mf_lc_mask; i++, entry++)
             {
-              entry->low = MAXPTR;
-              entry->high = MINPTR;
+              /* NB: the "||" in the following test permits this code to
+                 tolerate the situation introduced by __mf_check over
+                 contiguous objects, where a cache entry spans several
+                 objects.  */
+              if (entry->low == low || entry->high == high)
+                {
+                  entry->low = MAXPTR;
+                  entry->high = MINPTR;
+                }
             }
         }
+      else
+	{
+	  /* Object is now smaller then cache size.  */
+          unsigned entry_low_idx = __MF_CACHE_INDEX (low);
+          unsigned entry_high_idx = __MF_CACHE_INDEX (high);
+          if (entry_low_idx <= entry_high_idx)
+	    {
+              entry = & __mf_lookup_cache [entry_low_idx];
+              for (i = entry_low_idx; i <= entry_high_idx; i++, entry++)
+                {
+                  /* NB: the "||" in the following test permits this code to
+                     tolerate the situation introduced by __mf_check over
+                     contiguous objects, where a cache entry spans several
+                     objects.  */
+                  if (entry->low == low || entry->high == high)
+                    {
+                      entry->low = MAXPTR;
+                      entry->high = MINPTR;
+                    }
+                }
+            }
+          else
+	    {
+	      /* Object wrapped around the end of the cache. First search
+		 from low to end of cache and then from 0 to high.  */
+              entry = & __mf_lookup_cache [entry_low_idx];
+              for (i = entry_low_idx; i <= __mf_lc_mask; i++, entry++)
+                {
+                  /* NB: the "||" in the following test permits this code to
+                     tolerate the situation introduced by __mf_check over
+                     contiguous objects, where a cache entry spans several
+                     objects.  */
+                  if (entry->low == low || entry->high == high)
+                    {
+                      entry->low = MAXPTR;
+                      entry->high = MINPTR;
+                    }
+                }
+              entry = & __mf_lookup_cache [0];
+              for (i = 0; i <= entry_high_idx; i++, entry++)
+                {
+                  /* NB: the "||" in the following test permits this code to
+                     tolerate the situation introduced by __mf_check over
+                     contiguous objects, where a cache entry spans several
+                     objects.  */
+                  if (entry->low == low || entry->high == high)
+                    {
+                      entry->low = MAXPTR;
+                      entry->high = MINPTR;
+                    }
+                }
+	    }
+	}
     }
 }
 
@@ -1316,10 +1411,15 @@ __mfu_unregister (void *ptr, size_t sz, int type)
                 (old_obj->type == __MF_TYPE_HEAP
                  || old_obj->type == __MF_TYPE_HEAP_I))
               {
+		/* The problem with a warning message here is that we may not
+		   be privy to accesses to such objects that occur within
+		   uninstrumented libraries.  */
+#if 0
                 fprintf (stderr,
                          "*******\n"
                          "mudflap warning: unaccessed registered object:\n");
                 __mf_describe_object (old_obj);
+#endif
               }
           }
 
@@ -1848,6 +1948,14 @@ __mfu_report ()
 
       /* Free up any remaining alloca()'d blocks.  */
       __mf_wrap_alloca_indirect (0);
+#ifdef HAVE___LIBC_FREERES
+      if (__mf_opts.call_libc_freeres)
+        {
+          extern void __libc_freeres (void);
+          __libc_freeres ();
+        }
+#endif
+
       __mf_describe_object (NULL); /* Reset description epoch.  */
       l = __mf_report_leaks ();
       fprintf (stderr, "number of leaked objects: %u\n", l);
@@ -2211,7 +2319,7 @@ __mf_sigusr1_respond ()
   if (__mf_sigusr1_received > __mf_sigusr1_handled)
     {
       __mf_sigusr1_handled ++;
-      assert (__mf_state == reentrant);
+      assert (__mf_get_state () == reentrant);
       __mfu_report ();
       handler_installed = 0; /* We may need to re-enable signal; this might be a SysV library. */
     }

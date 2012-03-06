@@ -1,8 +1,16 @@
 /* Test whether strncmp has not been "optimized" into memcmp
    nor any code with memcmp semantics.  */
-/* { dg-do run { target i?86-*-linux* x86_64-*-linux* ia64-*-linux* alpha*-*-linux* powerpc*-*-linux* s390*-*-linux* sparc*-*-linux* } } */
+/* { dg-do run { target mmap } } */
 /* { dg-options "-O2" } */
+#include <stddef.h>
+#include <stdio.h>
 #include <sys/mman.h>
+#ifndef MAP_ANONYMOUS
+#define MAP_ANONYMOUS MAP_ANON
+#endif
+#ifndef MAP_ANON
+#define MAP_ANON 0
+#endif
 #include <stdlib.h>
 
 void __attribute__((noinline)) test (const char *p)

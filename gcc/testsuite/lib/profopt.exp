@@ -1,8 +1,9 @@
-#   Copyright (C) 2001, 2004, 2005 Free Software Foundation, Inc.
+# Copyright (C) 2001, 2004, 2005, 2007, 2008, 2010, 2011
+# Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 # 
 # This program is distributed in the hope that it will be useful,
@@ -11,8 +12,8 @@
 # GNU General Public License for more details.
 # 
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  
+# along with GCC; see the file COPYING3.  If not see
+# <http://www.gnu.org/licenses/>.
 #
 # This script was submitted by Janis Johnson <janis187@us.ibm.com>.
 
@@ -177,6 +178,10 @@ proc profopt-get-options { src } {
     # dg-require-* sets dg-do-what.
     upvar dg-do-what dg-do-what 
 
+    # current_compiler_flags reads tool_flags from the same stack frame
+    # as dg-extra-tool-flags
+    set tool_flags ""
+
     set tmp [dg-get-options $src]
     foreach op $tmp {
 	set cmd [lindex $op 0]
@@ -184,16 +189,17 @@ proc profopt-get-options { src } {
 	     || ![string compare "dg-skip-if" $cmd] \
 	     || ![string compare "dg-final-generate" $cmd] \
 	     || ![string compare "dg-final-use" $cmd] \
+             || ![string compare "dg-additional-sources" $cmd] \
 	     || [string match "dg-require-*" $cmd]  } {
 	    set status [catch "$op" errmsg]
 	    if { $status != 0 } {
-		perror "src: $errmsg for \"$op\"\n"
+		perror "$src: $errmsg for \"$op\"\n"
 		unresolved "$src: $errmsg for \"$op\""
 		return
 	    }
 	} else {
 	    # Ignore unrecognized dg- commands, but warn about them.
-	    warning "compat.exp does not support $cmd"
+	    warning "profopt.exp does not support $cmd"
 	}
     }
 
@@ -221,7 +227,7 @@ proc profopt-execute { src } {
         error "No feedback option specified for second compile."
     }
 
-    regsub "^$srcdir/?" $src "" testcase
+    regsub "(?q)$srcdir/" $src "" testcase
     # If we couldn't rip $srcdir out of `src' then just do the best we can.
     # The point is to reduce the unnecessary noise in the logs.  Don't strip
     # out too much because different testcases with the same name can confuse
@@ -231,6 +237,8 @@ proc profopt-execute { src } {
     }
 
     set executable $tmpdir/[file tail [file rootname $src].x]
+    set basename [file tail $testcase]
+    set base [file rootname $basename]
 
     set count 0
     foreach option $prof_option_list {
@@ -245,7 +253,9 @@ proc profopt-execute { src } {
 	verbose "Testing $testcase, $option" 1
 
 	# Remove old profiling and performance data files.
-	profopt-cleanup $testcase $prof_ext
+	foreach ext $prof_ext {
+	    remote_file target delete $tmpdir/$base.$ext
+	}
 	if [info exists perf_ext] {
 	    profopt-cleanup $testcase $perf_ext
 	}
@@ -262,9 +272,17 @@ proc profopt-execute { src } {
 	    return
 	}
 
+        set extra_options [dg-additional-files-options "" "$src"]
+
+	# Tree profiling requires TLS runtime support, which may need
+	# additional flags.
+	if { [string first "-fprofile-generate" $profile_option] >= 0 } {
+	    set extra_flags [add_options_for_tls $extra_flags]
+	}
+
 	# Compile for profiling.
 
-	set options ""
+	set options "$extra_options"
 	lappend options "additional_flags=$option $extra_flags $profile_option"
 	set optstr "$option $profile_option"
 	set comp_output [${tool}_target_compile "$src" "$execname1" executable $options]
@@ -282,9 +300,8 @@ proc profopt-execute { src } {
 	set missing_file 0
 	# Make sure the profile data was generated, and fail if not.
 	if { $status == "pass" } {
-	    set basename [file tail $testcase]
-	    set base [file rootname $basename]
 	    foreach ext $prof_ext {
+		remote_upload target $tmpdir/$base.$ext
 		set files [glob -nocomplain $base.$ext]
 		if { $files == "" } {
 		    set status "fail"
@@ -314,10 +331,14 @@ proc profopt-execute { src } {
 
 	# Compile with feedback-directed optimizations.
 
-	set options ""
+	set options "$extra_options"
 	lappend options "additional_flags=$option $extra_flags $feedback_option"
 	set optstr "$option $feedback_option"
 	set comp_output [${tool}_target_compile "$src" "$execname2" "executable" $options]
+
+	# Prune warnings we know are unwanted.
+	set comp_output [prune_warnings $comp_output]
+
 	if ![${tool}_check_compile "$testcase compilation" $optstr $execname2 $comp_output] {
  	    unresolved "$testcase execution,   $optstr"
 	    continue
@@ -335,7 +356,9 @@ proc profopt-execute { src } {
 	}
 
 	# Remove the profiling data files.
-	profopt-cleanup $testcase $prof_ext
+	foreach ext $prof_ext {
+	    remote_file target delete $tmpdir/$base.$ext
+	}
 
 	if { $status != "pass" } {
 	    continue
@@ -359,7 +382,7 @@ proc profopt-execute { src } {
 
 	# Compile with normal optimizations.
 
-	set options ""
+	set options "$extra_options"
 	lappend options "additional_flags=$option"
 	set optstr "$option"
 	set comp_output [${tool}_target_compile "$src" "$execname3" "executable" $options]

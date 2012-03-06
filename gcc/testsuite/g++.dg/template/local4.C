@@ -1,11 +1,10 @@
 // PR c++/17413
+// { dg-options -std=c++98 }
 
-template <typename T> void foo() {}
+template <typename T> void foo() {} // { dg-message "note" }
 
 int main () {
   struct S {};
-  // We do not simply use "local|match" on line 10 because we want to
-  // make sure that "local" appears.
-  // { dg-error "local" "local" { target *-*-* } 10 }
-  foo<S> (); // { dg-error "trying|match" } 
+  foo<S> (); // { dg-error "(match|template argument for|trying to instantiate)" } 
+  // { dg-message "candidate" "candidate note" { target *-*-* } 8 }
 }

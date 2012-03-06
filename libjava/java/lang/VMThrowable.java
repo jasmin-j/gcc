@@ -1,5 +1,6 @@
 /* java.lang.VMThrowable -- VM support methods for Throwable.
-   Copyright (C) 1998, 1999, 2002, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2002, 2004, 2005, 2006
+   Free Software Foundation, Inc.
 
 This file is part of GNU Classpath.
 
@@ -15,8 +16,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -75,9 +76,6 @@ final class VMThrowable
    * @see Throwable#getStackTrace()
    */
   native StackTraceElement[] getStackTrace(Throwable t);
-  
-  // Setting this flag to false prevents fillInStackTrace() from running.
-  static boolean trace_enabled = true;
   
   // Native stack data.
   private RawDataManaged data;

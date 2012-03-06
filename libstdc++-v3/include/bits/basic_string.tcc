@@ -1,12 +1,13 @@
 // Components for manipulating sequences of characters -*- C++ -*-
 
-// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005
+// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+// 2006, 2007, 2008, 2009, 2010, 2011
 // Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -14,23 +15,18 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 
-// You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// Under Section 7 of GPL version 3, you are granted additional
+// permissions described in the GCC Runtime Library Exception, version
+// 3.1, as published by the Free Software Foundation.
 
-// As a special exception, you may use this file as part of a free software
-// library without restriction.  Specifically, if other files instantiate
-// templates or use macros or inline functions from this file, or you compile
-// this file and link it with other files to produce an executable, this
-// file does not by itself cause the resulting executable to be covered by
-// the GNU General Public License.  This exception does not however
-// invalidate any other reasons why the executable file might be covered by
-// the GNU General Public License.
+// You should have received a copy of the GNU General Public License and
+// a copy of the GCC Runtime Library Exception along with this program;
+// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+// <http://www.gnu.org/licenses/>.
 
-/** @file basic_string.tcc
+/** @file bits/basic_string.tcc
  *  This is an internal header file, included by other library headers.
- *  You should not attempt to use it directly.
+ *  Do not attempt to use it directly. @headername{string}
  */
 
 //
@@ -45,17 +41,11 @@
 
 #pragma GCC system_header
 
-namespace std
-{
-  template<typename _Type>
-    inline bool
-    __is_null_pointer(_Type* __ptr)
-    { return __ptr == 0; }
+#include <bits/cxxabi_forced.h>
 
-  template<typename _Type>
-    inline bool
-    __is_null_pointer(_Type)
-    { return false; }
+namespace std _GLIBCXX_VISIBILITY(default)
+{
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   template<typename _CharT, typename _Traits, typename _Alloc>
     const typename basic_string<_CharT, _Traits, _Alloc>::size_type
@@ -90,7 +80,7 @@ namespace std
       _S_construct(_InIterator __beg, _InIterator __end, const _Alloc& __a,
 		   input_iterator_tag)
       {
-#ifndef _GLIBCXX_FULLY_DYNAMIC_STRING
+#if _GLIBCXX_FULLY_DYNAMIC_STRING == 0
 	if (__beg == __end && __a == _Alloc())
 	  return _S_empty_rep()._M_refdata();
 #endif
@@ -104,7 +94,7 @@ namespace std
 	  }
 	_Rep* __r = _Rep::_S_create(__len, size_type(0), __a);
 	_M_copy(__r->_M_refdata(), __buf, __len);
-	try
+	__try
 	  {
 	    while (__beg != __end)
 	      {
@@ -120,7 +110,7 @@ namespace std
 		++__beg;
 	      }
 	  }
-	catch(...)
+	__catch(...)
 	  {
 	    __r->_M_destroy(__a);
 	    __throw_exception_again;
@@ -136,21 +126,21 @@ namespace std
       _S_construct(_InIterator __beg, _InIterator __end, const _Alloc& __a,
 		   forward_iterator_tag)
       {
-#ifndef _GLIBCXX_FULLY_DYNAMIC_STRING
+#if _GLIBCXX_FULLY_DYNAMIC_STRING == 0
 	if (__beg == __end && __a == _Alloc())
 	  return _S_empty_rep()._M_refdata();
 #endif
 	// NB: Not required, but considered best practice.
-	if (__builtin_expect(__is_null_pointer(__beg) && __beg != __end, 0))
-	  __throw_logic_error(__N("basic_string::_S_construct NULL not valid"));
+	if (__gnu_cxx::__is_null_pointer(__beg) && __beg != __end)
+	  __throw_logic_error(__N("basic_string::_S_construct null not valid"));
 
 	const size_type __dnew = static_cast<size_type>(std::distance(__beg,
 								      __end));
 	// Check for out_of_range and length_error exceptions.
 	_Rep* __r = _Rep::_S_create(__dnew, size_type(0), __a);
-	try
+	__try
 	  { _S_copy_chars(__r->_M_refdata(), __beg, __end); }
-	catch(...)
+	__catch(...)
 	  {
 	    __r->_M_destroy(__a);
 	    __throw_exception_again;
@@ -164,7 +154,7 @@ namespace std
     basic_string<_CharT, _Traits, _Alloc>::
     _S_construct(size_type __n, _CharT __c, const _Alloc& __a)
     {
-#ifndef _GLIBCXX_FULLY_DYNAMIC_STRING
+#if _GLIBCXX_FULLY_DYNAMIC_STRING == 0
       if (__n == 0 && __a == _Alloc())
 	return _S_empty_rep()._M_refdata();
 #endif
@@ -240,6 +230,14 @@ namespace std
     basic_string(_InputIterator __beg, _InputIterator __end, const _Alloc& __a)
     : _M_dataplus(_S_construct(__beg, __end, __a), __a)
     { }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+  template<typename _CharT, typename _Traits, typename _Alloc>
+    basic_string<_CharT, _Traits, _Alloc>::
+    basic_string(initializer_list<_CharT> __l, const _Alloc& __a)
+    : _M_dataplus(_S_construct(__l.begin(), __l.end(), __a), __a)
+    { }
+#endif
 
   template<typename _CharT, typename _Traits, typename _Alloc>
     basic_string<_CharT, _Traits, _Alloc>&
@@ -390,6 +388,29 @@ namespace std
      }
 
    template<typename _CharT, typename _Traits, typename _Alloc>
+     typename basic_string<_CharT, _Traits, _Alloc>::iterator
+     basic_string<_CharT, _Traits, _Alloc>::
+     erase(iterator __first, iterator __last)
+     {
+       _GLIBCXX_DEBUG_PEDASSERT(__first >= _M_ibegin() && __first <= __last
+				&& __last <= _M_iend());
+
+       // NB: This isn't just an optimization (bail out early when
+       // there is nothing to do, really), it's also a correctness
+       // issue vs MT, see libstdc++/40518.
+       const size_type __size = __last - __first;
+       if (__size)
+	 {
+	   const size_type __pos = __first - _M_ibegin();
+	   _M_mutate(__pos, __size, size_type(0));
+	   _M_rep()->_M_set_leaked();
+	   return iterator(_M_data() + __pos);
+	 }
+       else
+	 return __first;
+     }
+
+   template<typename _CharT, typename _Traits, typename _Alloc>
      basic_string<_CharT, _Traits, _Alloc>&
      basic_string<_CharT, _Traits, _Alloc>::
      replace(size_type __pos, size_type __n1, const _CharT* __s,
@@ -425,10 +446,9 @@ namespace std
     basic_string<_CharT, _Traits, _Alloc>::_Rep::
     _M_destroy(const _Alloc& __a) throw ()
     {
-      const size_type __size = ((this->_M_capacity + 1) * sizeof(_CharT)
-				+ sizeof(_Rep_base) + sizeof(size_type) - 1);
-      _Raw_alloc(__a).deallocate(reinterpret_cast<size_type*>(this), __size
-				 / sizeof(size_type));
+      const size_type __size = sizeof(_Rep_base) +
+	                       (this->_M_capacity + 1) * sizeof(_CharT);
+      _Raw_bytes_alloc(__a).deallocate(reinterpret_cast<char*>(this), __size);
     }
 
   template<typename _CharT, typename _Traits, typename _Alloc>
@@ -436,7 +456,7 @@ namespace std
     basic_string<_CharT, _Traits, _Alloc>::
     _M_leak_hard()
     {
-#ifndef _GLIBCXX_FULLY_DYNAMIC_STRING
+#if _GLIBCXX_FULLY_DYNAMIC_STRING == 0
       if (_M_rep() == &_S_empty_rep())
 	return;
 #endif
@@ -569,12 +589,9 @@ namespace std
 	__capacity = 2 * __old_capacity;
 
       // NB: Need an array of char_type[__capacity], plus a terminating
-      // null char_type() element, plus enough for the _Rep data structure,
-      // plus sizeof(size_type) - 1 to upper round to a size multiple
-      // of sizeof(size_type).
+      // null char_type() element, plus enough for the _Rep data structure.
       // Whew. Seemingly so needy, yet so elemental.
-      size_type __size = ((__capacity + 1) * sizeof(_CharT) + sizeof(_Rep)
-			  + sizeof(size_type) - 1);
+      size_type __size = (__capacity + 1) * sizeof(_CharT) + sizeof(_Rep);
 
       const size_type __adj_size = __size + __malloc_header_size;
       if (__adj_size > __pagesize && __capacity > __old_capacity)
@@ -584,16 +601,22 @@ namespace std
 	  // Never allocate a string bigger than _S_max_size.
 	  if (__capacity > _S_max_size)
 	    __capacity = _S_max_size;
-	  __size = ((__capacity + 1) * sizeof(_CharT) + sizeof(_Rep)
-		    + sizeof(size_type) - 1);
+	  __size = (__capacity + 1) * sizeof(_CharT) + sizeof(_Rep);
 	}
 
       // NB: Might throw, but no worries about a leak, mate: _Rep()
       // does not throw.
-      void* __place = _Raw_alloc(__alloc).allocate(__size
-						   / sizeof(size_type));
+      void* __place = _Raw_bytes_alloc(__alloc).allocate(__size);
       _Rep *__p = new (__place) _Rep;
       __p->_M_capacity = __capacity;
+      // ABI compatibility - 3.4.x set in _S_create both
+      // _M_refcount and _M_length.  All callers of _S_create
+      // in basic_string.tcc then set just _M_length.
+      // In 4.0.x and later both _M_refcount and _M_length
+      // are initialized in the callers, unfortunately we can
+      // have 3.4.x compiled code with _S_create callers inlined
+      // calling 4.0.x+ _S_create.
+      __p->_M_set_sharable();
       return __p;
     }
 
@@ -716,23 +739,27 @@ namespace std
     find(const _CharT* __s, size_type __pos, size_type __n) const
     {
       __glibcxx_requires_string_len(__s, __n);
-      size_type __ret = npos;
       const size_type __size = this->size();
-      if (__pos + __n <= __size)
+      const _CharT* __data = _M_data();
+
+      if (__n == 0)
+	return __pos <= __size ? __pos : npos;
+
+      if (__n <= __size)
 	{
-	  const _CharT* __data = _M_data();
-	  const _CharT* __p = std::search(__data + __pos, __data + __size,
-					  __s, __s + __n, traits_type::eq);
-	  if (__p != __data + __size || __n == 0)
-	    __ret = __p - __data;
+	  for (; __pos <= __size - __n; ++__pos)
+	    if (traits_type::eq(__data[__pos], __s[0])
+		&& traits_type::compare(__data + __pos + 1,
+					__s + 1, __n - 1) == 0)
+	      return __pos;
 	}
-      return __ret;
+      return npos;
     }
 
   template<typename _CharT, typename _Traits, typename _Alloc>
     typename basic_string<_CharT, _Traits, _Alloc>::size_type
     basic_string<_CharT, _Traits, _Alloc>::
-    find(_CharT __c, size_type __pos) const
+    find(_CharT __c, size_type __pos) const _GLIBCXX_NOEXCEPT
     {
       size_type __ret = npos;
       const size_type __size = this->size();
@@ -771,7 +798,7 @@ namespace std
   template<typename _CharT, typename _Traits, typename _Alloc>
     typename basic_string<_CharT, _Traits, _Alloc>::size_type
     basic_string<_CharT, _Traits, _Alloc>::
-    rfind(_CharT __c, size_type __pos) const
+    rfind(_CharT __c, size_type __pos) const _GLIBCXX_NOEXCEPT
     {
       size_type __size = this->size();
       if (__size)
@@ -836,7 +863,7 @@ namespace std
   template<typename _CharT, typename _Traits, typename _Alloc>
     typename basic_string<_CharT, _Traits, _Alloc>::size_type
     basic_string<_CharT, _Traits, _Alloc>::
-    find_first_not_of(_CharT __c, size_type __pos) const
+    find_first_not_of(_CharT __c, size_type __pos) const _GLIBCXX_NOEXCEPT
     {
       for (; __pos < this->size(); ++__pos)
 	if (!traits_type::eq(_M_data()[__pos], __c))
@@ -868,7 +895,7 @@ namespace std
   template<typename _CharT, typename _Traits, typename _Alloc>
     typename basic_string<_CharT, _Traits, _Alloc>::size_type
     basic_string<_CharT, _Traits, _Alloc>::
-    find_last_not_of(_CharT __c, size_type __pos) const
+    find_last_not_of(_CharT __c, size_type __pos) const _GLIBCXX_NOEXCEPT
     {
       size_type __size = this->size();
       if (__size)
@@ -896,7 +923,7 @@ namespace std
       const size_type __len = std::min(__n, __osize);
       int __r = traits_type::compare(_M_data() + __pos, __str.data(), __len);
       if (!__r)
-	__r = __n - __osize;
+	__r = _S_compare(__n, __osize);
       return __r;
     }
 
@@ -914,7 +941,7 @@ namespace std
       int __r = traits_type::compare(_M_data() + __pos1,
 				     __str.data() + __pos2, __len);
       if (!__r)
-	__r = __n1 - __n2;
+	__r = _S_compare(__n1, __n2);
       return __r;
     }
 
@@ -929,7 +956,7 @@ namespace std
       const size_type __len = std::min(__size, __osize);
       int __r = traits_type::compare(_M_data(), __s, __len);
       if (!__r)
-	__r = __size - __osize;
+	__r = _S_compare(__size, __osize);
       return __r;
     }
 
@@ -945,7 +972,7 @@ namespace std
       const size_type __len = std::min(__n1, __osize);
       int __r = traits_type::compare(_M_data() + __pos, __s, __len);
       if (!__r)
-	__r = __n1 - __osize;
+	__r = _S_compare(__n1, __osize);
       return __r;
     }
 
@@ -961,14 +988,149 @@ namespace std
       const size_type __len = std::min(__n1, __n2);
       int __r = traits_type::compare(_M_data() + __pos, __s, __len);
       if (!__r)
-	__r = __n1 - __n2;
+	__r = _S_compare(__n1, __n2);
       return __r;
+    }
+
+  // 21.3.7.9 basic_string::getline and operators
+  template<typename _CharT, typename _Traits, typename _Alloc>
+    basic_istream<_CharT, _Traits>&
+    operator>>(basic_istream<_CharT, _Traits>& __in,
+	       basic_string<_CharT, _Traits, _Alloc>& __str)
+    {
+      typedef basic_istream<_CharT, _Traits>		__istream_type;
+      typedef basic_string<_CharT, _Traits, _Alloc>	__string_type;
+      typedef typename __istream_type::ios_base         __ios_base;
+      typedef typename __istream_type::int_type		__int_type;
+      typedef typename __string_type::size_type		__size_type;
+      typedef ctype<_CharT>				__ctype_type;
+      typedef typename __ctype_type::ctype_base         __ctype_base;
+
+      __size_type __extracted = 0;
+      typename __ios_base::iostate __err = __ios_base::goodbit;
+      typename __istream_type::sentry __cerb(__in, false);
+      if (__cerb)
+	{
+	  __try
+	    {
+	      // Avoid reallocation for common case.
+	      __str.erase();
+	      _CharT __buf[128];
+	      __size_type __len = 0;	      
+	      const streamsize __w = __in.width();
+	      const __size_type __n = __w > 0 ? static_cast<__size_type>(__w)
+		                              : __str.max_size();
+	      const __ctype_type& __ct = use_facet<__ctype_type>(__in.getloc());
+	      const __int_type __eof = _Traits::eof();
+	      __int_type __c = __in.rdbuf()->sgetc();
+
+	      while (__extracted < __n
+		     && !_Traits::eq_int_type(__c, __eof)
+		     && !__ct.is(__ctype_base::space,
+				 _Traits::to_char_type(__c)))
+		{
+		  if (__len == sizeof(__buf) / sizeof(_CharT))
+		    {
+		      __str.append(__buf, sizeof(__buf) / sizeof(_CharT));
+		      __len = 0;
+		    }
+		  __buf[__len++] = _Traits::to_char_type(__c);
+		  ++__extracted;
+		  __c = __in.rdbuf()->snextc();
+		}
+	      __str.append(__buf, __len);
+
+	      if (_Traits::eq_int_type(__c, __eof))
+		__err |= __ios_base::eofbit;
+	      __in.width(0);
+	    }
+	  __catch(__cxxabiv1::__forced_unwind&)
+	    {
+	      __in._M_setstate(__ios_base::badbit);
+	      __throw_exception_again;
+	    }
+	  __catch(...)
+	    {
+	      // _GLIBCXX_RESOLVE_LIB_DEFECTS
+	      // 91. Description of operator>> and getline() for string<>
+	      // might cause endless loop
+	      __in._M_setstate(__ios_base::badbit);
+	    }
+	}
+      // 211.  operator>>(istream&, string&) doesn't set failbit
+      if (!__extracted)
+	__err |= __ios_base::failbit;
+      if (__err)
+	__in.setstate(__err);
+      return __in;
+    }
+
+  template<typename _CharT, typename _Traits, typename _Alloc>
+    basic_istream<_CharT, _Traits>&
+    getline(basic_istream<_CharT, _Traits>& __in,
+	    basic_string<_CharT, _Traits, _Alloc>& __str, _CharT __delim)
+    {
+      typedef basic_istream<_CharT, _Traits>		__istream_type;
+      typedef basic_string<_CharT, _Traits, _Alloc>	__string_type;
+      typedef typename __istream_type::ios_base         __ios_base;
+      typedef typename __istream_type::int_type		__int_type;
+      typedef typename __string_type::size_type		__size_type;
+
+      __size_type __extracted = 0;
+      const __size_type __n = __str.max_size();
+      typename __ios_base::iostate __err = __ios_base::goodbit;
+      typename __istream_type::sentry __cerb(__in, true);
+      if (__cerb)
+	{
+	  __try
+	    {
+	      __str.erase();
+	      const __int_type __idelim = _Traits::to_int_type(__delim);
+	      const __int_type __eof = _Traits::eof();
+	      __int_type __c = __in.rdbuf()->sgetc();
+
+	      while (__extracted < __n
+		     && !_Traits::eq_int_type(__c, __eof)
+		     && !_Traits::eq_int_type(__c, __idelim))
+		{
+		  __str += _Traits::to_char_type(__c);
+		  ++__extracted;
+		  __c = __in.rdbuf()->snextc();
+		}
+
+	      if (_Traits::eq_int_type(__c, __eof))
+		__err |= __ios_base::eofbit;
+	      else if (_Traits::eq_int_type(__c, __idelim))
+		{
+		  ++__extracted;		  
+		  __in.rdbuf()->sbumpc();
+		}
+	      else
+		__err |= __ios_base::failbit;
+	    }
+	  __catch(__cxxabiv1::__forced_unwind&)
+	    {
+	      __in._M_setstate(__ios_base::badbit);
+	      __throw_exception_again;
+	    }
+	  __catch(...)
+	    {
+	      // _GLIBCXX_RESOLVE_LIB_DEFECTS
+	      // 91. Description of operator>> and getline() for string<>
+	      // might cause endless loop
+	      __in._M_setstate(__ios_base::badbit);
+	    }
+	}
+      if (!__extracted)
+	__err |= __ios_base::failbit;
+      if (__err)
+	__in.setstate(__err);
+      return __in;
     }
 
   // Inhibit implicit instantiations for required instantiations,
   // which are defined via explicit instantiations elsewhere.
-  // NB: This syntax is a GNU extension.
-#if _GLIBCXX_EXTERN_TEMPLATE
+#if _GLIBCXX_EXTERN_TEMPLATE > 0
   extern template class basic_string<char>;
   extern template
     basic_istream<char>&
@@ -999,6 +1161,8 @@ namespace std
     getline(basic_istream<wchar_t>&, wstring&);
 #endif
 #endif
+
+_GLIBCXX_END_NAMESPACE_VERSION
 } // namespace std
 
 #endif

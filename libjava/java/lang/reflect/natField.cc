@@ -1,6 +1,6 @@
 // natField.cc - Implementation of java.lang.reflect.Field native methods.
 
-/* Copyright (C) 1998, 1999, 2000, 2001, 2003, 2004  Free Software Foundation
+/* Copyright (C) 1998, 1999, 2000, 2001, 2003, 2004, 2006  Free Software Foundation
 
    This file is part of libgcj.
 
@@ -29,10 +29,24 @@ details.  */
 #include <java/lang/Boolean.h>
 #include <java/lang/Character.h>
 
+typedef JArray< ::java::lang::annotation::Annotation * > * anno_a_t;
+
 jint
-java::lang::reflect::Field::getModifiers ()
+java::lang::reflect::Field::getModifiersInternal ()
 {
-  return _Jv_FromReflectedField (this)->getModifiers ();
+  return _Jv_FromReflectedField (this)->flags;
+}
+
+jstring
+java::lang::reflect::Field::getSignature()
+{
+  return declaringClass->getReflectionSignature (this);
+}
+
+anno_a_t
+java::lang::reflect::Field::getDeclaredAnnotationsInternal()
+{
+  return (anno_a_t) declaringClass->getDeclaredAnnotations(this);
 }
 
 jstring
@@ -60,11 +74,6 @@ static void*
 getAddr (java::lang::reflect::Field* field, jclass caller, jobject obj,
          jboolean checkFinal)
 {
-  // FIXME: we know CALLER is NULL here.  At one point we planned to
-  // have the compiler insert the caller as a hidden argument in some
-  // calls.  However, we never implemented that, so we have to find
-  // the caller by hand instead.
-  
   using namespace java::lang::reflect;
   
   jfieldID fld = _Jv_FromReflectedField (field);
@@ -72,14 +81,19 @@ getAddr (java::lang::reflect::Field* field, jclass caller, jobject obj,
 
   // Setting a final field is usually not allowed.
   if (checkFinal
-      && field->getModifiers() & java::lang::reflect::Modifier::FINAL)
+      // As of 1.5, you can set a non-static final field if it is
+      // accessible.
+      && (! field->isAccessible()
+	  || (field->getModifiers() & java::lang::reflect::Modifier::STATIC))
+      && (field->getModifiers() & java::lang::reflect::Modifier::FINAL))
     throw new java::lang::IllegalAccessException(JvNewStringUTF 
       ("Field is final"));
   
   // Check accessibility, if required.
   if (! (Modifier::isPublic (flags) || field->isAccessible()))
     {
-      caller = _Jv_StackTrace::GetCallingClass (&Field::class$);
+      if (! caller)
+	caller = _Jv_StackTrace::GetCallingClass (&Field::class$);
       if (! _Jv_CheckAccess (caller, field->getDeclaringClass(), flags))
 	throw new java::lang::IllegalAccessException;
     }

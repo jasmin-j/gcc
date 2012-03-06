@@ -1,5 +1,5 @@
 /* Mudflap: narrow-pointer bounds-checking by tree rewriting.
-   Copyright (C) 2002, 2003, 2004 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2009, 2011 Free Software Foundation, Inc.
    Contributed by Frank Ch. Eigler <fche@redhat.com>
    and Graydon Hoare <graydon@redhat.com>
 
@@ -7,28 +7,22 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
-
-In addition to the permissions in the GNU General Public License, the
-Free Software Foundation gives you unlimited permission to link the
-compiled version of this file into combinations with other programs,
-and to distribute those combinations without any restriction coming
-from the use of this file.  (The General Public License restrictions
-do apply in other respects; for example, they cover modification of
-the file, and distribution when not linked into a combine
-executable.)
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or
 FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
-You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Under Section 7 of GPL version 3, you are granted additional
+permissions described in the GCC Runtime Library Exception, version
+3.1, as published by the Free Software Foundation.
 
+You should have received a copy of the GNU General Public License and
+a copy of the GCC Runtime Library Exception along with this program;
+see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 
@@ -95,6 +89,9 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 #endif
 #ifdef HAVE_MNTENT_H
 #include <mntent.h>
+#endif
+#ifdef HAVE_SYS_MNTTAB_H
+#include <sys/mnttab.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
@@ -544,8 +541,14 @@ WRAPPER2(struct tm*, gmtime, const time_t *timep)
 /* The following indicate if the result of the corresponding function
  * should be explicitly un/registered by the wrapper
 */
+
+#ifdef __FreeBSD__
+#define MF_REGISTER_fopen		__MF_TYPE_STATIC
+#else
 #undef  MF_REGISTER_fopen
+#endif
 #define MF_RESULT_SIZE_fopen		(sizeof (FILE))
+
 #undef  MF_REGISTER_opendir
 #define MF_RESULT_SIZE_opendir		0	/* (sizeof (DIR)) */
 #undef  MF_REGISTER_readdir
@@ -1394,7 +1397,8 @@ WRAPPER2(int, getsockopt, int s, int level, int optname, void *optval,
 WRAPPER2(int, accept, int s, struct  sockaddr *addr, socklen_t *addrlen)
 {
   TRACE ("%s\n", __PRETTY_FUNCTION__);
-  MF_VALIDATE_EXTENT (addr, (size_t)*addrlen, __MF_CHECK_WRITE, "accept addr");
+  if (addr != NULL)
+    MF_VALIDATE_EXTENT (addr, (size_t)*addrlen, __MF_CHECK_WRITE, "accept addr");
   return accept (s, addr, addrlen);
 }
 
@@ -2062,6 +2066,7 @@ WRAPPER2(const char *, gai_strerror, int errcode)
 
 
 #ifdef HAVE_GETMNTENT
+#ifdef HAVE_MNTENT_H
 WRAPPER2(struct mntent *, getmntent, FILE *filep)
 {
   struct mntent *m;
@@ -2096,6 +2101,44 @@ WRAPPER2(struct mntent *, getmntent, FILE *filep)
 
   return m;
 }
+#elif defined HAVE_SYS_MNTTAB_H
+WRAPPER2(int, getmntent, FILE *filep, struct mnttab *mp)
+{
+  static struct mnttab *last = NULL;
+  int res;
+
+  MF_VALIDATE_EXTENT (filep, sizeof (*filep), __MF_CHECK_WRITE,
+    "getmntent stream");
+#define UR(field) __mf_unregister(last->field, strlen (last->field)+1, __MF_TYPE_STATIC)
+  if (last)
+    {
+      UR (mnt_special);
+      UR (mnt_mountp);
+      UR (mnt_fstype);
+      UR (mnt_mntopts);
+      UR (mnt_time);
+      __mf_unregister (last, sizeof (*last), __MF_TYPE_STATIC);
+    }
+#undef UR
+
+  res = getmntent (filep, mp);
+  last = mp;
+
+#define R(field) __mf_register(last->field, strlen (last->field)+1, __MF_TYPE_STATIC, "mntent " #field)
+  if (mp)
+    {
+      R (mnt_special);
+      R (mnt_mountp);
+      R (mnt_fstype);
+      R (mnt_mntopts);
+      R (mnt_time);
+      __mf_register (last, sizeof (*last), __MF_TYPE_STATIC, "getmntent result");
+    }
+#undef R
+
+  return res;
+}
+#endif
 #endif
 
 

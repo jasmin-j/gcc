@@ -805,7 +805,7 @@ Sat Oct  1 15:18:49 1994  Jason Merrill  <jason@phydeaux.cygnus.com>
 	push_c_function_context.
 	(pop_cp_function_context): Similarly.
 	(finish_function): Reverse order of poplevel and pop_nested_class so
-	that current_class_decl is restored properly. 
+	that current_class_decl is restored properly.
 	(start_function): Likewise.
 	(finish_function): Add parameter 'nested'.  Don't call
 	permanent_allocation if (nested).
@@ -5403,3 +5403,10 @@ Mon Jan  3 22:22:32 1994  Gerald Baumgartner  <gb@cygnus.com>
 	* invoke.texi: Added `-fhandle-signatures' in the list of
 	C++ language options.  Added explanation for this option.
 
+
+
+Copyright (C) 1994 Free Software Foundation, Inc.
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.

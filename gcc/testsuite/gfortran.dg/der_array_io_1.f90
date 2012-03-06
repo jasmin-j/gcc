@@ -1,5 +1,7 @@
 ! Test IO of arrays of integers in derived types
 ! { dg-do run }
+! { dg-options "-std=legacy" }
+!
 program main
 
   character* 10000 :: buf1, buf2
@@ -17,8 +19,8 @@ program main
      foo(i)%z = 100*i+40
   enddo
 
-  print (buf1, '(20i4)'), foo
-  print (buf2, '(20i4)'), (foo(i)%x, (foo(i)%y(j), j=1,3), foo(i)%z, i=1,4)
+  write (buf1, '(20i4)')  foo
+  write (buf2, '(20i4)')  (foo(i)%x, (foo(i)%y(j), j=1,3), foo(i)%z, i=1,4)
 
   if (buf1.ne.buf2) call abort
 end program main

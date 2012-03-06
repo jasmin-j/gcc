@@ -1,30 +1,28 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                          GNAT RUNTIME COMPONENTS                         --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
---                A D A . S T R I N G S . U N B O U N D E D                 --
+--                 A D A . S T R I N G S . U N B O U N D E D                --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -509,6 +507,19 @@ package body Ada.Strings.Unbounded is
    procedure Find_Token
      (Source : Unbounded_String;
       Set    : Maps.Character_Set;
+      From   : Positive;
+      Test   : Strings.Membership;
+      First  : out Positive;
+      Last   : out Natural)
+   is
+   begin
+      Search.Find_Token
+        (Source.Reference (From .. Source.Last), Set, Test, First, Last);
+   end Find_Token;
+
+   procedure Find_Token
+     (Source : Unbounded_String;
+      Set    : Maps.Character_Set;
       Test   : Strings.Membership;
       First  : out Positive;
       Last   : out Natural)
@@ -623,7 +634,6 @@ package body Ada.Strings.Unbounded is
         (Source.Reference (1 .. Source.Last), Pattern, From, Going, Mapping);
    end Index;
 
-
    function Index
      (Source  : Unbounded_String;
       Set     : Maps.Character_Set;
@@ -691,7 +701,7 @@ package body Ada.Strings.Unbounded is
          raise Index_Error;
       end if;
 
-      Realloc_For_Chunk (Source, New_Item'Size);
+      Realloc_For_Chunk (Source, New_Item'Length);
 
       Source.Reference
         (Before +  New_Item'Length .. Source.Last + New_Item'Length) :=
@@ -755,17 +765,36 @@ package body Ada.Strings.Unbounded is
      (Source     : in out Unbounded_String;
       Chunk_Size : Natural)
    is
-      Growth_Factor : constant := 50;
-      S_Length      : constant Natural := Source.Reference'Length;
+      Growth_Factor : constant := 32;
+      --  The growth factor controls how much extra space is allocated when
+      --  we have to increase the size of an allocated unbounded string. By
+      --  allocating extra space, we avoid the need to reallocate on every
+      --  append, particularly important when a string is built up by repeated
+      --  append operations of small pieces. This is expressed as a factor so
+      --  32 means add 1/32 of the length of the string as growth space.
+
+      Min_Mul_Alloc : constant := Standard'Maximum_Alignment;
+      --  Allocation will be done by a multiple of Min_Mul_Alloc This causes
+      --  no memory loss as most (all?) malloc implementations are obliged to
+      --  align the returned memory on the maximum alignment as malloc does not
+      --  know the target alignment.
+
+      S_Length : constant Natural := Source.Reference'Length;
 
    begin
       if Chunk_Size > S_Length - Source.Last then
          declare
-            Alloc_Chunk_Size : constant Positive :=
-                                 Chunk_Size + (S_Length / Growth_Factor);
-            Tmp : String_Access;
+            New_Size : constant Positive :=
+                         S_Length + Chunk_Size + (S_Length / Growth_Factor);
+
+            New_Rounded_Up_Size : constant Positive :=
+                                    ((New_Size - 1) / Min_Mul_Alloc + 1) *
+                                       Min_Mul_Alloc;
+
+            Tmp : constant String_Access :=
+                    new String (1 .. New_Rounded_Up_Size);
+
          begin
-            Tmp := new String (1 .. S_Length + Alloc_Chunk_Size);
             Tmp (1 .. Source.Last) := Source.Reference (1 .. Source.Last);
             Free (Source.Reference);
             Source.Reference := Tmp;
@@ -829,10 +858,12 @@ package body Ada.Strings.Unbounded is
      (Target : out Unbounded_String;
       Source : String)
    is
+      Old : String_Access := Target.Reference;
    begin
       Target.Last          := Source'Length;
       Target.Reference     := new String (1 .. Source'Length);
       Target.Reference.all := Source;
+      Free (Old);
    end Set_Unbounded_String;
 
    -----------
@@ -896,9 +927,14 @@ package body Ada.Strings.Unbounded is
    function To_Unbounded_String (Source : String) return Unbounded_String is
       Result : Unbounded_String;
    begin
-      Result.Last          := Source'Length;
-      Result.Reference     := new String (1 .. Source'Length);
-      Result.Reference.all := Source;
+      --  Do not allocate an empty string: keep the default
+
+      if Source'Length > 0 then
+         Result.Last          := Source'Length;
+         Result.Reference     := new String (1 .. Source'Length);
+         Result.Reference.all := Source;
+      end if;
+
       return Result;
    end To_Unbounded_String;
 
@@ -906,9 +942,15 @@ package body Ada.Strings.Unbounded is
      (Length : Natural) return Unbounded_String
    is
       Result : Unbounded_String;
+
    begin
-      Result.Last      := Length;
-      Result.Reference := new String (1 .. Length);
+      --  Do not allocate an empty string: keep the default
+
+      if Length > 0 then
+         Result.Last      := Length;
+         Result.Reference := new String (1 .. Length);
+      end if;
+
       return Result;
    end To_Unbounded_String;
 

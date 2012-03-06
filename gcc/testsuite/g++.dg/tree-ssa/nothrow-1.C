@@ -1,5 +1,7 @@
 /* { dg-do compile } */
 /* { dg-options "-O1 -fdump-tree-cfg" } */
+/* { dg-add-options bind_pic_locally } */
+
 double a;
 void t()
 {

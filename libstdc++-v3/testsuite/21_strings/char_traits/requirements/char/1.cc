@@ -1,11 +1,12 @@
 // 1999-06-03 bkoz
 
-// Copyright (C) 1999, 2000, 2001, 2003, 2004 Free Software Foundation, Inc.
+// Copyright (C) 1999, 2000, 2001, 2003, 2004, 2005, 2009
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -14,9 +15,8 @@
 // GNU General Public License for more details.
 
 // You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// with this library; see the file COPYING3.  If not see
+// <http://www.gnu.org/licenses/>.
 
 // 21.1.1 Characher traits requirements
 
@@ -32,12 +32,12 @@ void test01(void)
   // 21.1.1 character traits requirements
 
   // Key for decoding what function signatures really mean:
-  // X                == char_traits<_CharT>
+  // X        == char_traits<_CharT>
   // [c,d]    == _CharT
   // [p,q]    == const _CharT*
-  // s                == _CharT*
+  // s        == _CharT*
   // [n,i,j]  == size_t
-  // f                == X::int_type
+  // f        == X::int_type
   // pos      == X::pos_type
   // state    == X::state_type
 
@@ -54,9 +54,11 @@ void test01(void)
   // correctly even where p is in [s, s + n), and yields s.   
   char array1[] = {'z', 'u', 'm', 'a', ' ', 'b', 'e', 'a', 'c', 'h',  0};
   const char str_lit1[] = "montara and ocean beach";
-  int len = sizeof(str_lit1) + sizeof(array1) - 1; // two terminating chars
-  char array2[len];
-  std::char_traits<char>::copy(array2, "boracay, philippines", len);
+  const char str_lit2[] = "boracay, philippines";
+  const int len1 = sizeof(str_lit1)/sizeof(char);
+  const int len2 = sizeof(str_lit2)/sizeof(char);
+  char array2[len1 + len2 - 1]; // two terminating chars
+  std::char_traits<char>::copy(array2, str_lit2, len2);
 
   VERIFY( str_lit1[0] == 'm' );
   c1 = array2[0];

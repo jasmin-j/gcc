@@ -1,30 +1,28 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                  S Y S T E M . O S _ P R I M I T I V E S                 --
 --                                                                          --
---                                  B o d y                                 --
+--                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1998-2003 Free Software Foundation, Inc.          --
+--          Copyright (C) 1998-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
@@ -33,40 +31,12 @@
 
 --  This is the NT version of this package
 
-with Ada.Exceptions;
-with Interfaces.C;
+with System.Win32.Ext;
 
 package body System.OS_Primitives is
 
-   ---------------------------
-   -- Win32 API Definitions --
-   ---------------------------
-
-   --  These definitions are copied from System.OS_Interface because we do not
-   --  want to depend on gnarl here.
-
-   type DWORD is new Interfaces.C.unsigned_long;
-
-   type LARGE_INTEGER is delta 1.0 range -2.0**63 .. 2.0**63 - 1.0;
-
-   type BOOL is new Boolean;
-   for BOOL'Size use Interfaces.C.unsigned_long'Size;
-
-   procedure GetSystemTimeAsFileTime (lpFileTime : access Long_Long_Integer);
-   pragma Import (Stdcall, GetSystemTimeAsFileTime, "GetSystemTimeAsFileTime");
-
-   function QueryPerformanceCounter
-     (lpPerformanceCount : access LARGE_INTEGER) return BOOL;
-   pragma Import
-     (Stdcall, QueryPerformanceCounter, "QueryPerformanceCounter");
-
-   function QueryPerformanceFrequency
-     (lpFrequency : access LARGE_INTEGER) return BOOL;
-   pragma Import
-     (Stdcall, QueryPerformanceFrequency, "QueryPerformanceFrequency");
-
-   procedure Sleep (dwMilliseconds : DWORD);
-   pragma Import (Stdcall, Sleep, External_Name => "Sleep");
+   use System.Win32;
+   use System.Win32.Ext;
 
    ----------------------------------------
    -- Data for the high resolution clock --
@@ -79,7 +49,7 @@ package body System.OS_Primitives is
    --  GNU/Linker will fail to auto-import those variables when building
    --  libgnarl.dll. The indirection level introduced here has no measurable
    --  penalties.
-   --
+
    --  Note that access variables below must not be declared as constant
    --  otherwise the compiler optimization will remove this indirect access.
 
@@ -99,7 +69,7 @@ package body System.OS_Primitives is
 
    Base_Ticks : aliased LARGE_INTEGER;
    BTA : constant LIA := Base_Ticks'Access;
-   --  Holds the Tick count for the base time.
+   --  Holds the Tick count for the base time
 
    Base_Monotonic_Ticks : aliased LARGE_INTEGER;
    BMTA : constant LIA := Base_Monotonic_Ticks'Access;
@@ -144,7 +114,7 @@ package body System.OS_Primitives is
       Now                  : aliased Long_Long_Integer;
 
    begin
-      if not QueryPerformanceCounter (Current_Ticks'Access) then
+      if QueryPerformanceCounter (Current_Ticks'Access) = Win32.FALSE then
          return 0.0;
       end if;
 
@@ -158,9 +128,9 @@ package body System.OS_Primitives is
         Duration (Long_Long_Float (Current_Ticks - BTA.all) /
                   Long_Long_Float (TFA.all));
 
-      --  If we have a shift of more than Max_Shift seconds we resynchonize the
-      --  Clock. This is probably due to a manual Clock adjustment, an DST
-      --  adjustment or an NTP synchronisation. And we want to adjust the
+      --  If we have a shift of more than Max_Shift seconds we resynchronize
+      --  the Clock. This is probably due to a manual Clock adjustment, an
+      --  DST adjustment or an NTP synchronisation. And we want to adjust the
       --  time for this system (non-monotonic) clock.
 
       if abs (Elap_Secs_Sys - Elap_Secs_Tick) > Max_Shift then
@@ -179,38 +149,82 @@ package body System.OS_Primitives is
    -------------------
 
    procedure Get_Base_Time is
-      --  The resolution for GetSystemTime is 1 millisecond.
+
+      --  The resolution for GetSystemTime is 1 millisecond
 
       --  The time to get both base times should take less than 1 millisecond.
       --  Therefore, the elapsed time reported by GetSystemTime between both
       --  actions should be null.
 
-      Max_Elapsed    : constant := 0;
-
-      Test_Now       : aliased Long_Long_Integer;
-
       epoch_1970     : constant := 16#19D_B1DE_D53E_8000#; -- win32 UTC epoch
       system_time_ns : constant := 100;                    -- 100 ns per tick
       Sec_Unit       : constant := 10#1#E9;
+      Max_Elapsed    : constant LARGE_INTEGER :=
+                         LARGE_INTEGER (Tick_Frequency / 100_000);
+      --  Look for a precision of 0.01 ms
+
+      Loc_Ticks, Ctrl_Ticks : aliased LARGE_INTEGER;
+      Loc_Time, Ctrl_Time   : aliased Long_Long_Integer;
+      Elapsed               : LARGE_INTEGER;
+      Current_Max           : LARGE_INTEGER := LARGE_INTEGER'Last;
 
    begin
       --  Here we must be sure that both of these calls are done in a short
       --  amount of time. Both are base time and should in theory be taken
       --  at the very same time.
 
-      loop
-         GetSystemTimeAsFileTime (Base_Time'Access);
+      --  The goal of the following loop is to synchronize the system time
+      --  with the Win32 performance counter by getting a base offset for both.
+      --  Using these offsets it is then possible to compute actual time using
+      --  a performance counter which has a better precision than the Win32
+      --  time API.
 
-         if not QueryPerformanceCounter (Base_Ticks'Access) then
+      --  Try at most 10th times to reach the best synchronisation (below 1
+      --  millisecond) otherwise the runtime will use the best value reached
+      --  during the runs.
+
+      for K in 1 .. 10 loop
+         if QueryPerformanceCounter (Loc_Ticks'Access) = Win32.FALSE then
             pragma Assert
               (Standard.False,
                "Could not query high performance counter in Clock");
             null;
          end if;
 
-         GetSystemTimeAsFileTime (Test_Now'Access);
+         GetSystemTimeAsFileTime (Ctrl_Time'Access);
 
-         exit when Test_Now - Base_Time = Max_Elapsed;
+         --  Scan for clock tick, will take up to 16ms/1ms depending on PC.
+         --  This cannot be an infinite loop or the system hardware is badly
+         --  damaged.
+
+         loop
+            GetSystemTimeAsFileTime (Loc_Time'Access);
+
+            if QueryPerformanceCounter (Ctrl_Ticks'Access) = Win32.FALSE then
+               pragma Assert
+                 (Standard.False,
+                  "Could not query high performance counter in Clock");
+               null;
+            end if;
+
+            exit when Loc_Time /= Ctrl_Time;
+            Loc_Ticks := Ctrl_Ticks;
+         end loop;
+
+         --  Check elapsed Performance Counter between samples
+         --  to choose the best one.
+
+         Elapsed := Ctrl_Ticks - Loc_Ticks;
+
+         if Elapsed < Current_Max then
+            Base_Time   := Loc_Time;
+            Base_Ticks  := Loc_Ticks;
+            Current_Max := Elapsed;
+
+            --  Exit the loop when we have reached the expected precision
+
+            exit when Elapsed <= Max_Elapsed;
+         end if;
       end loop;
 
       Base_Clock := Duration
@@ -226,15 +240,14 @@ package body System.OS_Primitives is
       Current_Ticks  : aliased LARGE_INTEGER;
       Elap_Secs_Tick : Duration;
    begin
-      if not QueryPerformanceCounter (Current_Ticks'Access) then
+      if QueryPerformanceCounter (Current_Ticks'Access) = Win32.FALSE then
          return 0.0;
+      else
+         Elap_Secs_Tick :=
+           Duration (Long_Long_Float (Current_Ticks - BMTA.all) /
+                       Long_Long_Float (TFA.all));
+         return BMCA.all + Elap_Secs_Tick;
       end if;
-
-      Elap_Secs_Tick :=
-        Duration (Long_Long_Float (Current_Ticks - BMTA.all) /
-                  Long_Long_Float (TFA.all));
-
-      return BMCA.all + Elap_Secs_Tick;
    end Monotonic_Clock;
 
    -----------------
@@ -242,9 +255,37 @@ package body System.OS_Primitives is
    -----------------
 
    procedure Timed_Delay (Time : Duration; Mode : Integer) is
+
+      function Mode_Clock return Duration;
+      pragma Inline (Mode_Clock);
+      --  Return the current clock value using either the monotonic clock or
+      --  standard clock depending on the Mode value.
+
+      ----------------
+      -- Mode_Clock --
+      ----------------
+
+      function Mode_Clock return Duration is
+      begin
+         case Mode is
+            when Absolute_RT =>
+               return Monotonic_Clock;
+            when others =>
+               return Clock;
+         end case;
+      end Mode_Clock;
+
+      --  Local Variables
+
+      Base_Time : constant Duration := Mode_Clock;
+      --  Base_Time is used to detect clock set backward, in this case we
+      --  cannot ensure the delay accuracy.
+
       Rel_Time   : Duration;
       Abs_Time   : Duration;
-      Check_Time : Duration := Monotonic_Clock;
+      Check_Time : Duration := Base_Time;
+
+   --  Start of processing for Timed Delay
 
    begin
       if Mode = Relative then
@@ -258,29 +299,44 @@ package body System.OS_Primitives is
       if Rel_Time > 0.0 then
          loop
             Sleep (DWORD (Rel_Time * 1000.0));
-            Check_Time := Monotonic_Clock;
+            Check_Time := Mode_Clock;
 
-            exit when Abs_Time <= Check_Time;
+            exit when Abs_Time <= Check_Time or else Check_Time < Base_Time;
 
             Rel_Time := Abs_Time - Check_Time;
          end loop;
       end if;
    end Timed_Delay;
 
---  Package elaboration, get starting time as base
+   ----------------
+   -- Initialize --
+   ----------------
 
-begin
-   if not QueryPerformanceFrequency (Tick_Frequency'Access) then
-      Ada.Exceptions.Raise_Exception
-        (Program_Error'Identity,
-         "cannot get high performance counter frequency");
-   end if;
+   Initialized : Boolean := False;
 
-   Get_Base_Time;
+   procedure Initialize is
+   begin
+      if Initialized then
+         return;
+      end if;
 
-   --  Keep base clock and ticks for the monotonic clock. These values should
-   --  never be changed to ensure proper behavior of the monotonic clock.
+      Initialized := True;
 
-   Base_Monotonic_Clock := Base_Clock;
-   Base_Monotonic_Ticks := Base_Ticks;
+      --  Get starting time as base
+
+      if QueryPerformanceFrequency (Tick_Frequency'Access) = Win32.FALSE then
+         raise Program_Error with
+           "cannot get high performance counter frequency";
+      end if;
+
+      Get_Base_Time;
+
+      --  Keep base clock and ticks for the monotonic clock. These values
+      --  should never be changed to ensure proper behavior of the monotonic
+      --  clock.
+
+      Base_Monotonic_Clock := Base_Clock;
+      Base_Monotonic_Ticks := Base_Ticks;
+   end Initialize;
+
 end System.OS_Primitives;

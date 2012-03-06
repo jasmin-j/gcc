@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---            Copyright (C) 2000-2003 Ada Core Technologies, Inc.           --
+--                     Copyright (C) 2000-2010, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -43,12 +41,12 @@ package body GNAT.CGI.Cookie is
    use Ada;
 
    Valid_Environment : Boolean := False;
-   --  This boolean will be set to True if the initialization was fine.
+   --  This boolean will be set to True if the initialization was fine
 
    Header_Sent : Boolean := False;
-   --  Will be set to True when the header will be sent.
+   --  Will be set to True when the header will be sent
 
-   --  Cookie data that have been added.
+   --  Cookie data that has been added
 
    type String_Access is access String;
 
@@ -67,14 +65,14 @@ package body GNAT.CGI.Cookie is
    end record;
 
    package Cookie_Table is new Table (Cookie_Data, Positive, 1, 5, 50);
-   --  This is the table to keep all cookies to be sent back to the server.
+   --  This is the table to keep all cookies to be sent back to the server
 
    package Key_Value_Table is new Table (Key_Value, Positive, 1, 1, 50);
-   --  This is the table to keep all cookies received from the server.
+   --  This is the table to keep all cookies received from the server
 
    procedure Check_Environment;
    pragma Inline (Check_Environment);
-   --  This procedure will raise Data_Error if Valid_Environment is False.
+   --  This procedure will raise Data_Error if Valid_Environment is False
 
    procedure Initialize;
    --  Initialize CGI package by reading the runtime environment. This
@@ -149,7 +147,7 @@ package body GNAT.CGI.Cookie is
       HTTP_COOKIE : constant String := Metavariable (CGI.HTTP_Cookie);
 
       procedure Set_Parameter_Table (Data : String);
-      --  Parse Data and insert information in Key_Value_Table.
+      --  Parse Data and insert information in Key_Value_Table
 
       -------------------------
       -- Set_Parameter_Table --
@@ -161,8 +159,8 @@ package body GNAT.CGI.Cookie is
          --  Add a single parameter into the table at index K. The parameter
          --  format is "key=value".
 
-         Count : constant Positive
-           := 1 + Strings.Fixed.Count (Data, Strings.Maps.To_Set (";"));
+         Count : constant Positive :=
+                   1 + Strings.Fixed.Count (Data, Strings.Maps.To_Set (";"));
          --  Count is the number of parameters in the string. Parameters are
          --  separated by ampersand character.
 
@@ -185,6 +183,8 @@ package body GNAT.CGI.Cookie is
             end if;
          end Add_Parameter;
 
+      --  Start of processing for Set_Parameter_Table
+
       begin
          Key_Value_Table.Set_Last (Count);
 
@@ -196,10 +196,12 @@ package body GNAT.CGI.Cookie is
             Index := Sep + 2;
          end loop;
 
-         --  add last parameter
+         --  Add last parameter
 
          Add_Parameter (Count, Data (Index .. Data'Last));
       end Set_Parameter_Table;
+
+   --  Start of processing for Initialize
 
    begin
       if HTTP_COOKIE /= "" then
@@ -245,7 +247,6 @@ package body GNAT.CGI.Cookie is
      (Header : String  := Default_Header;
       Force  : Boolean := False)
    is
-
       procedure Output_Cookies;
       --  Iterate through the list of cookies to be sent to the server
       --  and output them.
@@ -264,7 +265,7 @@ package body GNAT.CGI.Cookie is
             Max_Age : Natural;
             Path    : String;
             Secure  : Boolean);
-         --  Output one cookie in the CGI header.
+         --  Output one cookie in the CGI header
 
          -----------------------
          -- Output_One_Cookie --
@@ -344,7 +345,8 @@ package body GNAT.CGI.Cookie is
       Domain  : String   := "";
       Max_Age : Natural  := Natural'Last;
       Path    : String   := "/";
-      Secure  : Boolean  := False) is
+      Secure  : Boolean  := False)
+   is
    begin
       Cookie_Table.Increment_Last;
 
@@ -364,8 +366,7 @@ package body GNAT.CGI.Cookie is
 
    function Value
      (Key      : String;
-      Required : Boolean := False)
-      return     String
+      Required : Boolean := False) return String
    is
    begin
       Check_Environment;

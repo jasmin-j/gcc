@@ -1,31 +1,29 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                   S Y S T E M . O S _ I N T E R F A C E                  --
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
 --             Copyright (C) 1991-1994, Florida State University            --
---             Copyright (C) 1995-2004, Free Software Foundation, Inc.      --
+--          Copyright (C) 1995-2011, Free Software Foundation, Inc.         --
 --                                                                          --
--- GNARL is free software; you can  redistribute it  and/or modify it under --
+-- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
@@ -34,14 +32,15 @@
 
 --  This is the SGI Pthreads version of this package
 
---  This package encapsulates all direct interfaces to OS services
---  that are needed by children of System.
+--  This package encapsulates all direct interfaces to OS services that are
+--  needed by the tasking run-time (libgnarl).
 
 --  PLEASE DO NOT add any with-clauses to this package or remove the pragma
 --  Preelaborate. This package is designed to be a bottom-level (leaf) package.
 
+with Ada.Unchecked_Conversion;
+
 with Interfaces.C;
-with Unchecked_Conversion;
 
 package System.OS_Interface is
 
@@ -86,8 +85,7 @@ package System.OS_Interface is
    SIGILL     : constant := 4; --  illegal instruction (not reset)
    SIGTRAP    : constant := 5; --  trace trap (not reset)
    SIGIOT     : constant := 6; --  IOT instruction
-   SIGABRT    : constant := 6; --  used by abort, replace SIGIOT in the
-   --                              future
+   SIGABRT    : constant := 6; --  used by abort, replace SIGIOT in the future
    SIGEMT     : constant := 7; --  EMT instruction
    SIGFPE     : constant := 8; --  floating point exception
    SIGKILL    : constant := 9; --  kill (cannot be caught or ignored)
@@ -119,7 +117,7 @@ package System.OS_Interface is
    SIGCKPT    : constant := 33; --  Checkpoint warning
    SIGRESTART : constant := 34; --  Restart warning
    SIGUME     : constant := 35; --  Uncorrectable memory error
-   --  Signals defined for Posix 1003.1c.
+   --  Signals defined for Posix 1003.1c
    SIGPTINTR    : constant := 47;
    SIGPTRESCHED : constant := 48;
    --  Posix 1003.1b signals
@@ -127,7 +125,6 @@ package System.OS_Interface is
    SIGRTMAX   : constant := 64; --  Posix 1003.1b signals
 
    type sigset_t is private;
-   type sigset_t_ptr is access all sigset_t;
 
    function sigaddset (set : access sigset_t; sig : Signal) return int;
    pragma Import (C, sigaddset, "sigaddset");
@@ -175,11 +172,7 @@ package System.OS_Interface is
    type timespec is private;
    type timespec_ptr is access all timespec;
 
-   type clockid_t is private;
-
-   CLOCK_REALTIME  : constant clockid_t;
-   CLOCK_SGI_FAST  : constant clockid_t;
-   CLOCK_SGI_CYCLE : constant clockid_t;
+   type clockid_t is new int;
 
    SGI_CYCLECNTR_SIZE : constant := 165;
 
@@ -201,14 +194,6 @@ package System.OS_Interface is
 
    function To_Timespec (D : Duration) return timespec;
    pragma Inline (To_Timespec);
-
-   type struct_timeval is private;
-
-   function To_Duration (TV : struct_timeval) return Duration;
-   pragma Inline (To_Duration);
-
-   function To_Timeval (D : Duration) return struct_timeval;
-   pragma Inline (To_Timeval);
 
    -------------------------
    -- Priority Scheduling --
@@ -244,9 +229,10 @@ package System.OS_Interface is
 
    type Thread_Body is access
      function (arg : System.Address) return System.Address;
+   pragma Convention (C, Thread_Body);
 
    function Thread_Body_Access is new
-     Unchecked_Conversion (System.Address, Thread_Body);
+     Ada.Unchecked_Conversion (System.Address, Thread_Body);
 
    type pthread_t           is private;
    subtype Thread_Id        is pthread_t;
@@ -259,6 +245,21 @@ package System.OS_Interface is
    type pthread_key_t       is private;
 
    PTHREAD_CREATE_DETACHED : constant := 1;
+
+   --  Read/Write lock not supported on SGI. To add support both types
+   --  pthread_rwlock_t and pthread_rwlockattr_t must properly be defined
+   --  with the associated routines pthread_rwlock_[init/destroy] and
+   --  pthread_rwlock_[rdlock/wrlock/unlock].
+
+   subtype pthread_rwlock_t     is pthread_mutex_t;
+   subtype pthread_rwlockattr_t is pthread_mutexattr_t;
+
+   -----------
+   -- Stack --
+   -----------
+
+   Alternate_Stack_Size : constant := 0;
+   --  No alternate signal stack is used on this platform
 
    ---------------------------------------
    -- Nonstandard Thread Initialization --
@@ -284,8 +285,8 @@ package System.OS_Interface is
 
    function pthread_sigmask
      (how  : int;
-      set  : sigset_t_ptr;
-      oset : sigset_t_ptr) return int;
+      set  : access sigset_t;
+      oset : access sigset_t) return int;
    pragma Import (C, pthread_sigmask, "pthread_sigmask");
 
    --------------------------
@@ -446,6 +447,7 @@ package System.OS_Interface is
    pragma Import (C, pthread_getspecific, "pthread_getspecific");
 
    type destructor_pointer is access procedure (arg : System.Address);
+   pragma Convention (C, destructor_pointer);
 
    function pthread_key_create
      (key        : access pthread_key_t;
@@ -479,17 +481,6 @@ private
       tv_nsec : long;
    end record;
    pragma Convention (C, timespec);
-
-   type clockid_t is new int;
-   CLOCK_REALTIME  : constant clockid_t := 1;
-   CLOCK_SGI_CYCLE : constant clockid_t := 2;
-   CLOCK_SGI_FAST  : constant clockid_t := 3;
-
-   type struct_timeval is record
-      tv_sec  : time_t;
-      tv_usec : time_t;
-   end record;
-   pragma Convention (C, struct_timeval);
 
    type array_type_9 is array (Integer range 0 .. 4) of long;
    type pthread_attr_t is record

@@ -1,30 +1,28 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --                 S Y S T E M . T R A C E S . T A S K I N G                --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---           Copyright (C) 2001-2004 Free Software Foundation, Inc.         --
+--           Copyright (C) 2001-2009 Free Software Foundation, Inc.         --
 --                                                                          --
--- GNARL is free software; you can  redistribute it  and/or modify it under --
+-- GNARL is free software;  you can redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -39,9 +37,7 @@ with System.Traces;        use System.Traces;
 
 package body System.Traces.Tasking is
 
-   use System.Tasking;
    use System.Traces;
-   use System.Traces.Format;
 
    package SSL renames System.Soft_Links;
 
@@ -60,8 +56,8 @@ package body System.Traces.Tasking is
                     (1 .. Task_Name2.Common.Task_Image_Len);
       Trace_S : String (1 .. 6 + Task_S'Length + Task2_S'Length);
 
-      L0 : Integer := Task_S'Length;
-      L1 : Integer := Task2_S'Length;
+      L0 : constant Integer := Task_S'Length;
+      L1 : constant Integer := Task2_S'Length;
 
    begin
       if Parameters.Runtime_Traces then
@@ -108,13 +104,13 @@ package body System.Traces.Tasking is
       Task2_S : constant String :=
                   Task_Name2.Common.Task_Image
                     (1 .. Task_Name2.Common.Task_Image_Len);
-      Entry_S   : String := Integer'Image (Integer (Entry_Number));
+      Entry_S   : constant String := Integer'Image (Integer (Entry_Number));
       Trace_S   : String (1 .. 9 + Task_S'Length
                                  + Task2_S'Length + Entry_S'Length);
 
-      L0 : Integer := Task_S'Length;
-      L1 : Integer := Task_S'Length + Entry_S'Length;
-      L2 : Integer := Task_S'Length + Task2_S'Length;
+      L0 : constant Integer := Task_S'Length;
+      L1 : constant Integer := Task_S'Length + Entry_S'Length;
+      L2 : constant Integer := Task_S'Length + Task2_S'Length;
 
    begin
       if Parameters.Runtime_Traces then
@@ -156,12 +152,12 @@ package body System.Traces.Tasking is
       Task2_S : constant String :=
                   Task_Name2.Common.Task_Image
                     (1 .. Task_Name2.Common.Task_Image_Len);
-      Entry_S   : String := Integer'Image (Integer (Entry_Number));
+      Entry_S   : constant String := Integer'Image (Integer (Entry_Number));
       Trace_S   : String (1 .. 9 + Task_S'Length
                                  + Task2_S'Length + Entry_S'Length);
 
-      L0 : Integer := Task_S'Length;
-      L1 : Integer := Task_S'Length + Entry_S'Length;
+      L0 : constant Integer := Task_S'Length;
+      L1 : constant Integer := Task_S'Length + Entry_S'Length;
 
    begin
       if Parameters.Runtime_Traces then
@@ -183,11 +179,11 @@ package body System.Traces.Tasking is
    end Send_Trace_Info;
 
    procedure Send_Trace_Info (Id : Trace_T; Entry_Number : Entry_Index) is
-      Task_S  : String := SSL.Task_Name.all;
-      Entry_S : String := Integer'Image (Integer (Entry_Number));
+      Task_S  : constant String := SSL.Task_Name.all;
+      Entry_S : constant String := Integer'Image (Integer (Entry_Number));
       Trace_S : String (1 .. 6 + Task_S'Length + Entry_S'Length);
 
-      L0 : Integer := Task_S'Length;
+      L0 : constant Integer := Task_S'Length;
 
    begin
       if Parameters.Runtime_Traces then
@@ -212,7 +208,7 @@ package body System.Traces.Tasking is
                     (1 .. Task_Name2.Common.Task_Image_Len);
       Trace_S : String (1 .. 6 + Task_S'Length + Task2_S'Length);
 
-      L0 : Integer := Task2_S'Length;
+      L0 : constant Integer := Task2_S'Length;
 
    begin
       if Parameters.Runtime_Traces then
@@ -234,14 +230,15 @@ package body System.Traces.Tasking is
       Acceptor_S : constant String :=
                      Acceptor.Common.Task_Image
                        (1 .. Acceptor.Common.Task_Image_Len);
-      Entry_S    : String := Integer'Image (Integer (Entry_Number));
-      Timeout_S  : String := Duration'Image (Timeout);
+      Entry_S    : constant String := Integer'Image (Integer (Entry_Number));
+      Timeout_S  : constant String := Duration'Image (Timeout);
       Trace_S    : String (1 .. 12 + Task_S'Length + Acceptor_S'Length
                                    + Entry_S'Length + Timeout_S'Length);
 
-      L0 : Integer := Task_S'Length;
-      L1 : Integer := Task_S'Length + Acceptor_S'Length;
-      L2 : Integer := Task_S'Length + Acceptor_S'Length + Entry_S'Length;
+      L0 : constant Integer := Task_S'Length;
+      L1 : constant Integer := Task_S'Length + Acceptor_S'Length;
+      L2 : constant Integer :=
+             Task_S'Length + Acceptor_S'Length + Entry_S'Length;
 
    begin
       if Parameters.Runtime_Traces then
@@ -262,14 +259,14 @@ package body System.Traces.Tasking is
       Entry_Number : Entry_Index;
       Timeout      : Duration)
    is
-      Task_S    : String := SSL.Task_Name.all;
-      Entry_S   : String := Integer'Image (Integer (Entry_Number));
-      Timeout_S : String := Duration'Image (Timeout);
+      Task_S    : constant String := SSL.Task_Name.all;
+      Entry_S   : constant String := Integer'Image (Integer (Entry_Number));
+      Timeout_S : constant String := Duration'Image (Timeout);
       Trace_S   : String (1 .. 9 + Task_S'Length
                                  + Entry_S'Length + Timeout_S'Length);
 
-      L0 : Integer := Task_S'Length;
-      L1 : Integer := Task_S'Length + Entry_S'Length;
+      L0 : constant Integer := Task_S'Length;
+      L1 : constant Integer := Task_S'Length + Entry_S'Length;
 
    begin
       if Parameters.Runtime_Traces then
@@ -288,14 +285,14 @@ package body System.Traces.Tasking is
       Task_Name : Task_Id;
       Number    : Integer)
    is
-      Task_S    : String := SSL.Task_Name.all;
-      Number_S  : String := Integer'Image (Number);
-      Accepts_S : String := Extract_Accepts (Task_Name);
+      Task_S    : constant String := SSL.Task_Name.all;
+      Number_S  : constant String := Integer'Image (Number);
+      Accepts_S : constant String := Extract_Accepts (Task_Name);
       Trace_S   : String (1 .. 9 + Task_S'Length
                                  + Number_S'Length + Accepts_S'Length);
 
-      L0 : Integer := Task_S'Length;
-      L1 : Integer := Task_S'Length + Number_S'Length;
+      L0 : constant Integer := Task_S'Length;
+      L1 : constant Integer := Task_S'Length + Number_S'Length;
 
    begin
       if Parameters.Runtime_Traces then
@@ -315,16 +312,17 @@ package body System.Traces.Tasking is
       Number    : Integer;
       Timeout   : Duration)
    is
-      Task_S    : String := SSL.Task_Name.all;
-      Timeout_S : String := Duration'Image (Timeout);
-      Number_S  : String := Integer'Image (Number);
-      Accepts_S : String := Extract_Accepts (Task_Name);
+      Task_S    : constant String := SSL.Task_Name.all;
+      Timeout_S : constant String := Duration'Image (Timeout);
+      Number_S  : constant String := Integer'Image (Number);
+      Accepts_S : constant String := Extract_Accepts (Task_Name);
       Trace_S   : String (1 .. 12 + Task_S'Length + Timeout_S'Length
                                   + Number_S'Length + Accepts_S'Length);
 
-      L0 : Integer := Task_S'Length;
-      L1 : Integer := Task_S'Length + Timeout_S'Length;
-      L2 : Integer := Task_S'Length + Timeout_S'Length + Number_S'Length;
+      L0 : constant Integer := Task_S'Length;
+      L1 : constant Integer := Task_S'Length + Timeout_S'Length;
+      L2 : constant Integer :=
+             Task_S'Length + Timeout_S'Length + Number_S'Length;
 
    begin
       if Parameters.Runtime_Traces then

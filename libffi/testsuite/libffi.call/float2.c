@@ -4,7 +4,8 @@
    PR:		none.
    Originator:	From the original ffitest.c  */
 
-/* { dg-do run } */
+/* { dg-excess-errors "fails" { target x86_64-*-mingw* x86_64-*-cygwin* } } */
+/* { dg-do run { xfail x86_64-*-mingw* x86_64-*-cygwin* } } */
 
 #include "ffitest.h"
 #include "float.h"
@@ -48,9 +49,7 @@ int main (void)
 #endif
 
   /* These are not always the same!! Check for a reasonable delta */
-  /*@-realcompare@*/
   if (ld - ldblit(f) < LDBL_EPSILON)
-    /*@=realcompare@*/
     puts("long double return value tests ok!");
   else
     CHECK(0);

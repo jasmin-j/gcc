@@ -6,55 +6,48 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2001 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-pragma Polling (Off);
---  We must turn polling off for this unit, because otherwise we get
---  an infinite loop from the code within the Poll routine itself.
+pragma Compiler_Unit;
 
-with System.Machine_State_Operations; use System.Machine_State_Operations;
---  Used for Create_TSD, Destroy_TSD
+pragma Polling (Off);
+--  We must turn polling off for this unit, because otherwise we get an
+--  infinite loop from the code within the Poll routine itself.
 
 with System.Parameters;
---  Used for Sec_Stack_Ratio
 
+pragma Warnings (Off);
+--  Disable warnings since System.Secondary_Stack is currently not Preelaborate
 with System.Secondary_Stack;
+pragma Warnings (On);
 
 package body System.Soft_Links is
 
    package SST renames System.Secondary_Stack;
 
-   --  Allocate an exception stack for the main program to use.
-   --  We make sure that the stack has maximum alignment. Some systems require
-   --  this (e.g. Sun), and in any case it is a good idea for efficiency.
-
-   NT_Exc_Stack : array (0 .. 8192) of aliased Character;
-   for NT_Exc_Stack'Alignment use Standard'Maximum_Alignment;
-
    NT_TSD : TSD;
+   --  Note: we rely on the default initialization of NT_TSD
 
    --------------------
    -- Abort_Defer_NT --
@@ -83,6 +76,27 @@ package body System.Soft_Links is
       null;
    end Abort_Undefer_NT;
 
+   -----------------
+   -- Adafinal_NT --
+   -----------------
+
+   procedure Adafinal_NT is
+   begin
+      --  Handle normal task termination by the environment task, but only
+      --  for the normal task termination. In the case of Abnormal and
+      --  Unhandled_Exception they must have been handled before, and the
+      --  task termination soft link must have been changed so the task
+      --  termination routine is not executed twice.
+
+      Task_Termination_Handler.all (Ada.Exceptions.Null_Occurrence);
+
+      --  Finalize all library-level controlled objects if needed
+
+      if Finalize_Library_Objects /=  null then
+         Finalize_Library_Objects.all;
+      end if;
+   end Adafinal_NT;
+
    ---------------------------
    -- Check_Abort_Status_NT --
    ---------------------------
@@ -106,20 +120,13 @@ package body System.Soft_Links is
    ----------------
 
    procedure Create_TSD (New_TSD : in out TSD) is
-      use type Parameters.Size_Type;
-
-      SS_Ratio_Dynamic : constant Boolean :=
-                           Parameters.Sec_Stack_Ratio = Parameters.Dynamic;
-
+      use Parameters;
+      SS_Ratio_Dynamic : constant Boolean := Sec_Stack_Percentage = Dynamic;
    begin
       if SS_Ratio_Dynamic then
          SST.SS_Init
            (New_TSD.Sec_Stack_Addr, SST.Default_Secondary_Stack_Size);
       end if;
-
-      New_TSD.Machine_State_Addr :=
-        System.Address
-          (System.Machine_State_Operations.Allocate_Machine_State);
    end Create_TSD;
 
    -----------------------
@@ -138,8 +145,6 @@ package body System.Soft_Links is
    procedure Destroy_TSD (Old_TSD : in out TSD) is
    begin
       SST.SS_Free (Old_TSD.Sec_Stack_Addr);
-      System.Machine_State_Operations.Free_Machine_State
-        (Machine_State (Old_TSD.Machine_State_Addr));
    end Destroy_TSD;
 
    ---------------------
@@ -159,24 +164,6 @@ package body System.Soft_Links is
    begin
       return NT_TSD.Current_Excep'Access;
    end Get_Current_Excep_NT;
-
-   ---------------------------
-   -- Get_Exc_Stack_Addr_NT --
-   ---------------------------
-
-   function Get_Exc_Stack_Addr_NT return Address is
-   begin
-      return NT_TSD.Exc_Stack_Addr;
-   end Get_Exc_Stack_Addr_NT;
-
-   -----------------------------
-   -- Get_Exc_Stack_Addr_Soft --
-   -----------------------------
-
-   function Get_Exc_Stack_Addr_Soft return  Address is
-   begin
-      return Get_Exc_Stack_Addr.all;
-   end Get_Exc_Stack_Addr_Soft;
 
    ------------------------
    -- Get_GNAT_Exception --
@@ -205,24 +192,6 @@ package body System.Soft_Links is
       return Get_Jmpbuf_Address.all;
    end Get_Jmpbuf_Address_Soft;
 
-   -------------------------------
-   -- Get_Machine_State_Addr_NT --
-   -------------------------------
-
-   function Get_Machine_State_Addr_NT return  Address is
-   begin
-      return NT_TSD.Machine_State_Addr;
-   end Get_Machine_State_Addr_NT;
-
-   ---------------------------------
-   -- Get_Machine_State_Addr_Soft --
-   ---------------------------------
-
-   function Get_Machine_State_Addr_Soft return  Address is
-   begin
-      return Get_Machine_State_Addr.all;
-   end Get_Machine_State_Addr_Soft;
-
    ---------------------------
    -- Get_Sec_Stack_Addr_NT --
    ---------------------------
@@ -250,34 +219,19 @@ package body System.Soft_Links is
       return NT_TSD.Pri_Stack_Info'Access;
    end Get_Stack_Info_NT;
 
-   -------------------
-   -- Null_Adafinal --
-   -------------------
-
-   procedure Null_Adafinal is
-   begin
-      null;
-   end Null_Adafinal;
-
-   ---------------------------
-   -- Set_Exc_Stack_Addr_NT --
-   ---------------------------
-
-   procedure Set_Exc_Stack_Addr_NT (Self_ID : Address; Addr : Address) is
-      pragma Warnings (Off, Self_ID);
-
-   begin
-      NT_TSD.Exc_Stack_Addr := Addr;
-   end Set_Exc_Stack_Addr_NT;
-
    -----------------------------
-   -- Set_Exc_Stack_Addr_Soft --
+   -- Save_Library_Occurrence --
    -----------------------------
 
-   procedure Set_Exc_Stack_Addr_Soft (Self_ID : Address; Addr : Address) is
+   procedure Save_Library_Occurrence
+     (E : Ada.Exceptions.Exception_Occurrence)
+   is
    begin
-      Set_Exc_Stack_Addr (Self_ID, Addr);
-   end Set_Exc_Stack_Addr_Soft;
+      if not Library_Exception_Set then
+         Library_Exception_Set := True;
+         Ada.Exceptions.Save_Occurrence (Library_Exception, E);
+      end if;
+   end Save_Library_Occurrence;
 
    ---------------------------
    -- Set_Jmpbuf_Address_NT --
@@ -292,24 +246,6 @@ package body System.Soft_Links is
    begin
       Set_Jmpbuf_Address (Addr);
    end Set_Jmpbuf_Address_Soft;
-
-   -------------------------------
-   -- Set_Machine_State_Addr_NT --
-   -------------------------------
-
-   procedure Set_Machine_State_Addr_NT (Addr : Address) is
-   begin
-      NT_TSD.Machine_State_Addr := Addr;
-   end Set_Machine_State_Addr_NT;
-
-   ---------------------------------
-   -- Set_Machine_State_Addr_Soft --
-   ---------------------------------
-
-   procedure Set_Machine_State_Addr_Soft (Addr : Address) is
-   begin
-      Set_Machine_State_Addr (Addr);
-   end Set_Machine_State_Addr_Soft;
 
    ---------------------------
    -- Set_Sec_Stack_Addr_NT --
@@ -338,6 +274,25 @@ package body System.Soft_Links is
       null;
    end Task_Lock_NT;
 
+   ------------------
+   -- Task_Name_NT --
+   -------------------
+
+   function Task_Name_NT return String is
+   begin
+      return "main_task";
+   end Task_Name_NT;
+
+   -------------------------
+   -- Task_Termination_NT --
+   -------------------------
+
+   procedure Task_Termination_NT (Excep : EO) is
+      pragma Unreferenced (Excep);
+   begin
+      null;
+   end Task_Termination_NT;
+
    --------------------
    -- Task_Unlock_NT --
    --------------------
@@ -355,23 +310,5 @@ package body System.Soft_Links is
    begin
       Ada.Exceptions.Save_Occurrence (NT_TSD.Current_Excep, X);
    end Update_Exception_NT;
-
-   ------------------
-   -- Task_Name_NT --
-   -------------------
-
-   function Task_Name_NT return String is
-   begin
-      return "main_task";
-   end Task_Name_NT;
-
-   -------------------------
-   -- Package Elaboration --
-   -------------------------
-
-begin
-   NT_TSD.Exc_Stack_Addr := NT_Exc_Stack (8192)'Address;
-   Ada.Exceptions.Save_Occurrence
-     (NT_TSD.Current_Excep, Ada.Exceptions.Null_Occurrence);
 
 end System.Soft_Links;

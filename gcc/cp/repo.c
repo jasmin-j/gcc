@@ -1,13 +1,13 @@
 /* Code to maintain a C++ template repository.
-   Copyright (C) 1995, 1996, 1997, 1998, 2000, 2001, 2002, 2003, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 1995, 1996, 1997, 1998, 2000, 2001, 2002, 2003, 2004, 2005,
+   2006, 2007, 2008, 2009, 2010  Free Software Foundation, Inc.
    Contributed by Jason Merrill (jason@cygnus.com)
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* My strategy here is as follows:
 
@@ -35,17 +34,17 @@ Boston, MA 02111-1307, USA.  */
 #include "input.h"
 #include "obstack.h"
 #include "toplev.h"
-#include "diagnostic.h"
+#include "diagnostic-core.h"
+#include "flags.h"
 
-static char *extract_string (char **);
+static const char *extract_string (const char **);
 static const char *get_base_filename (const char *);
-static void open_repo_file (const char *);
+static FILE *open_repo_file (const char *);
 static char *afgets (FILE *);
-static void reopen_repo_file_for_write (void);
+static FILE *reopen_repo_file_for_write (void);
 
-static GTY(()) tree pending_repo;
+static GTY(()) VEC(tree,gc) *pending_repo;
 static char *repo_name;
-static FILE *repo_file;
 
 static const char *old_args, *old_dir, *old_main;
 
@@ -54,10 +53,10 @@ static bool temporary_obstack_initialized_p;
 
 /* Parse a reasonable subset of shell quoting syntax.  */
 
-static char *
-extract_string (char **pp)
+static const char *
+extract_string (const char **pp)
 {
-  char *p = *pp;
+  const char *p = *pp;
   int backquote = 0;
   int inside = 0;
 
@@ -84,22 +83,30 @@ extract_string (char **pp)
 
   obstack_1grow (&temporary_obstack, '\0');
   *pp = p;
-  return obstack_finish (&temporary_obstack);
+  return (char *) obstack_finish (&temporary_obstack);
 }
 
 static const char *
 get_base_filename (const char *filename)
 {
-  char *p = getenv ("COLLECT_GCC_OPTIONS");
-  char *output = NULL;
+  const char *p = getenv ("COLLECT_GCC_OPTIONS");
+  const char *output = NULL;
   int compiling = 0;
 
   while (p && *p)
     {
-      char *q = extract_string (&p);
+      const char *q = extract_string (&p);
 
       if (strcmp (q, "-o") == 0)
-	output = extract_string (&p);
+	{
+	  if (flag_compare_debug)
+	    /* Just in case aux_base_name was based on a name with two
+	       or more '.'s, add an arbitrary extension that will be
+	       stripped by the caller.  */
+	    output = concat (aux_base_name, ".o", NULL);
+	  else
+	    output = extract_string (&p);
+	}
       else if (strcmp (q, "-c") == 0)
 	compiling = 1;
     }
@@ -115,27 +122,27 @@ get_base_filename (const char *filename)
     }
 
   return lbasename (filename);
-}        
+}
 
-static void
+static FILE *
 open_repo_file (const char *filename)
 {
   const char *p;
   const char *s = get_base_filename (filename);
 
   if (s == NULL)
-    return;
+    return NULL;
 
   p = lbasename (s);
   p = strrchr (p, '.');
   if (! p)
     p = s + strlen (s);
 
-  repo_name = xmalloc (p - s + 5);
+  repo_name = XNEWVEC (char, p - s + 5);
   memcpy (repo_name, s, p - s);
   memcpy (repo_name + (p - s), ".rpo", 5);
 
-  repo_file = fopen (repo_name, "r");
+  return fopen (repo_name, "r");
 }
 
 static char *
@@ -147,13 +154,15 @@ afgets (FILE *stream)
   if (obstack_object_size (&temporary_obstack) == 0)
     return NULL;
   obstack_1grow (&temporary_obstack, '\0');
-  return obstack_finish (&temporary_obstack);
+  return (char *) obstack_finish (&temporary_obstack);
 }
 
 void
 init_repo (void)
 {
   char *buf;
+  const char *p;
+  FILE *repo_file;
 
   if (! flag_use_repository)
     return;
@@ -166,7 +175,7 @@ init_repo (void)
   if (!temporary_obstack_initialized_p)
     gcc_obstack_init (&temporary_obstack);
 
-  open_repo_file (main_input_filename);
+  repo_file = open_repo_file (main_input_filename);
 
   if (repo_file == 0)
     return;
@@ -202,18 +211,24 @@ init_repo (void)
       obstack_free (&temporary_obstack, buf);
     }
   fclose (repo_file);
+
+  if (old_args && !get_random_seed (true)
+      && (p = strstr (old_args, "'-frandom-seed=")))
+    set_random_seed (extract_string (&p) + strlen ("-frandom-seed="));
 }
 
-static void
+static FILE *
 reopen_repo_file_for_write (void)
 {
-  repo_file = fopen (repo_name, "w");
+  FILE *repo_file = fopen (repo_name, "w");
 
   if (repo_file == 0)
     {
-      error ("can't create repository information file %qs", repo_name);
+      error ("can%'t create repository information file %qs", repo_name);
       flag_use_repository = 0;
     }
+
+  return repo_file;
 }
 
 /* Emit any pending repos.  */
@@ -221,16 +236,18 @@ reopen_repo_file_for_write (void)
 void
 finish_repo (void)
 {
-  tree t;
+  tree val;
   char *dir, *args;
+  FILE *repo_file;
+  unsigned ix;
 
-  if (!flag_use_repository)
+  if (!flag_use_repository || flag_compare_debug)
     return;
 
-  if (errorcount || sorrycount)
-    goto out;
+  if (seen_error ())
+    return;
 
-  reopen_repo_file_for_write ();
+  repo_file = reopen_repo_file_for_write ();
   if (repo_file == 0)
     goto out;
 
@@ -239,11 +256,20 @@ finish_repo (void)
   fprintf (repo_file, "D %s\n", dir);
   args = getenv ("COLLECT_GCC_OPTIONS");
   if (args)
-    fprintf (repo_file, "A %s\n", args);
-
-  for (t = pending_repo; t; t = TREE_CHAIN (t))
     {
-      tree val = TREE_VALUE (t);
+      fprintf (repo_file, "A %s", args);
+      /* If -frandom-seed is not among the ARGS, then add the value
+	 that we chose.  That will ensure that the names of types from
+	 anonymous namespaces will get the same mangling when this
+	 file is recompiled.  */
+      if (!strstr (args, "'-frandom-seed="))
+	fprintf (repo_file, " '-frandom-seed=" HOST_WIDE_INT_PRINT_HEX_PURE "'", 
+		 get_random_seed (false));
+      fprintf (repo_file, "\n");
+    }
+
+  FOR_EACH_VEC_ELT_REVERSE (tree, pending_repo, ix, val)
+    {
       tree name = DECL_ASSEMBLER_NAME (val);
       char type = IDENTIFIER_REPO_CHOSEN (name) ? 'C' : 'O';
       fprintf (repo_file, "%c %s\n", type, IDENTIFIER_POINTER (name));
@@ -264,6 +290,7 @@ finish_repo (void)
 int
 repo_emit_p (tree decl)
 {
+  int ret = 0;
   gcc_assert (TREE_PUBLIC (decl));
   gcc_assert (TREE_CODE (decl) == FUNCTION_DECL
 	      || TREE_CODE (decl) == VAR_DECL);
@@ -285,10 +312,22 @@ repo_emit_p (tree decl)
       else if (DECL_TINFO_P (decl))
 	type = TREE_TYPE (DECL_NAME (decl));
       if (!DECL_TEMPLATE_INSTANTIATION (decl)
-	  && !CLASSTYPE_TEMPLATE_INSTANTIATION (type))
+	  && (!TYPE_LANG_SPECIFIC (type)
+	      || !CLASSTYPE_TEMPLATE_INSTANTIATION (type)))
 	return 2;
+      /* Const static data members initialized by constant expressions must
+	 be processed where needed so that their definitions are
+	 available.  Still record them into *.rpo files, so if they
+	 weren't actually emitted and collect2 requests them, they can
+	 be provided.  */
+      if (decl_maybe_constant_var_p (decl)
+	  && DECL_CLASS_SCOPE_P (decl))
+	ret = 2;
     }
   else if (!DECL_TEMPLATE_INSTANTIATION (decl))
+    return 2;
+
+  if (DECL_EXPLICIT_INSTANTIATION (decl))
     return 2;
 
   /* For constructors and destructors, the repository contains
@@ -314,17 +353,17 @@ repo_emit_p (tree decl)
   if (!DECL_REPO_AVAILABLE_P (decl))
     {
       DECL_REPO_AVAILABLE_P (decl) = 1;
-      pending_repo = tree_cons (NULL_TREE, decl, pending_repo);
+      VEC_safe_push (tree, gc, pending_repo, decl);
     }
 
-  return IDENTIFIER_REPO_CHOSEN (DECL_ASSEMBLER_NAME (decl));
+  return IDENTIFIER_REPO_CHOSEN (DECL_ASSEMBLER_NAME (decl)) ? 1 : ret;
 }
 
 /* Returns true iff the prelinker has explicitly marked CLASS_TYPE for
    export from this translation unit.  */
 
 bool
-repo_export_class_p (tree class_type)
+repo_export_class_p (const_tree class_type)
 {
   if (!flag_use_repository)
     return false;
@@ -332,7 +371,7 @@ repo_export_class_p (tree class_type)
     return false;
   /* If the virtual table has been assigned to this translation unit,
      export the class.  */
-  return (IDENTIFIER_REPO_CHOSEN 
+  return (IDENTIFIER_REPO_CHOSEN
 	  (DECL_ASSEMBLER_NAME (CLASSTYPE_VTABLES (class_type))));
 }
 

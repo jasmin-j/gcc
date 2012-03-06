@@ -9,7 +9,7 @@ template<class T>
   {}
 
 class Gtk_Base
-{ 
+{
 public:
   void expose();
   void show();
@@ -20,6 +20,6 @@ public:
 
 Gtk_Base::Gtk_Base()
 {
-  connect_to_method(this,&show);   // { dg-error "" } invalid pmf expression
-  connect_to_method(this,&expose); // { dg-error "" } invalid pmf expression
+  connect_to_method(this,&show);   // { dg-error "pointer to member" } invalid pmf expression
+  connect_to_method(this,&expose); // { dg-error "pointer to member" } invalid pmf expression
 }

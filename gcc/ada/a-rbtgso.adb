@@ -2,38 +2,82 @@
 --                                                                          --
 --                         GNAT LIBRARY COMPONENTS                          --
 --                                                                          --
---          ADA.CONTAINERS.RED_BLACK_TREES.GENERIC_SET_OPERATIONS           --
+--           ADA.CONTAINERS.RED_BLACK_TREES.GENERIC_SET_OPERATIONS          --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---             Copyright (C) 2004 Free Software Foundation, Inc.            --
---                                                                          --
--- This specification is derived from the Ada Reference Manual for use with --
--- GNAT. The copyright notice above, and the license provisions that follow --
--- apply solely to the  contents of the part following the private keyword. --
+--          Copyright (C) 2004-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- This unit was originally developed by Matthew J Heaney.                  --
 ------------------------------------------------------------------------------
 
+with System; use type System.Address;
+
 package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
+
+   -----------------------
+   -- Local Subprograms --
+   -----------------------
+
+   procedure Clear (Tree : in out Tree_Type);
+
+   function Copy (Source : Tree_Type) return Tree_Type;
+
+   -----------
+   -- Clear --
+   -----------
+
+   procedure Clear (Tree : in out Tree_Type) is
+      pragma Assert (Tree.Busy = 0);
+      pragma Assert (Tree.Lock = 0);
+
+      Root : Node_Access := Tree.Root;
+      pragma Warnings (Off, Root);
+
+   begin
+      Tree.Root := null;
+      Tree.First := null;
+      Tree.Last := null;
+      Tree.Length := 0;
+
+      Delete_Tree (Root);
+   end Clear;
+
+   ----------
+   -- Copy --
+   ----------
+
+   function Copy (Source : Tree_Type) return Tree_Type is
+      Target : Tree_Type;
+
+   begin
+      if Source.Length = 0 then
+         return Target;
+      end if;
+
+      Target.Root := Copy_Tree (Source.Root);
+      Target.First := Tree_Operations.Min (Target.Root);
+      Target.Last := Tree_Operations.Max (Target.Root);
+      Target.Length := Source.Length;
+
+      return Target;
+   end Copy;
 
    ----------------
    -- Difference --
@@ -44,19 +88,31 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
       Src : Node_Access := Source.First;
 
    begin
+      if Target'Address = Source'Address then
+         if Target.Busy > 0 then
+            raise Program_Error with
+              "attempt to tamper with cursors (container is busy)";
+         end if;
 
-      --  NOTE: must be done by client:
-      --      if Target'Address = Source'Address then
-      --         Clear (Target);
-      --         return;
-      --      end if;
+         Clear (Target);
+         return;
+      end if;
+
+      if Source.Length = 0 then
+         return;
+      end if;
+
+      if Target.Busy > 0 then
+         raise Program_Error with
+           "attempt to tamper with cursors (container is busy)";
+      end if;
 
       loop
-         if Tgt = Tree_Operations.Null_Node then
+         if Tgt = null then
             return;
          end if;
 
-         if Src = Tree_Operations.Null_Node then
+         if Src = null then
             return;
          end if;
 
@@ -81,29 +137,37 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
    end Difference;
 
    function Difference (Left, Right : Tree_Type) return Tree_Type is
-      Tree : Tree_Type := (Length => 0, others => Tree_Operations.Null_Node);
+      Tree : Tree_Type;
 
       L_Node : Node_Access := Left.First;
       R_Node : Node_Access := Right.First;
 
       Dst_Node : Node_Access;
+      pragma Warnings (Off, Dst_Node);
 
    begin
-      --  NOTE: must by done by client:
-      --      if Left'Address = Right'Address then
-      --         return Empty_Set;
-      --      end if;
+      if Left'Address = Right'Address then
+         return Tree;  -- Empty set
+      end if;
+
+      if Left.Length = 0 then
+         return Tree;  -- Empty set
+      end if;
+
+      if Right.Length = 0 then
+         return Copy (Left);
+      end if;
 
       loop
-         if L_Node = Tree_Operations.Null_Node then
+         if L_Node = null then
             return Tree;
          end if;
 
-         if R_Node = Tree_Operations.Null_Node then
-            while L_Node /= Tree_Operations.Null_Node loop
+         if R_Node = null then
+            while L_Node /= null loop
                Insert_With_Hint
                  (Dst_Tree => Tree,
-                  Dst_Hint => Tree_Operations.Null_Node,
+                  Dst_Hint => null,
                   Src_Node => L_Node,
                   Dst_Node => Dst_Node);
 
@@ -117,7 +181,7 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
          if Is_Less (L_Node, R_Node) then
             Insert_With_Hint
               (Dst_Tree => Tree,
-               Dst_Hint => Tree_Operations.Null_Node,
+               Dst_Hint => null,
                Src_Node => L_Node,
                Dst_Node => Dst_Node);
 
@@ -150,13 +214,22 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
       Src : Node_Access := Source.First;
 
    begin
-      --  NOTE: must be done by caller: ???
-      --      if Target'Address = Source'Address then
-      --         return;
-      --      end if;
+      if Target'Address = Source'Address then
+         return;
+      end if;
 
-      while Tgt /= Tree_Operations.Null_Node
-        and then Src /= Tree_Operations.Null_Node
+      if Target.Busy > 0 then
+         raise Program_Error with
+           "attempt to tamper with cursors (container is busy)";
+      end if;
+
+      if Source.Length = 0 then
+         Clear (Target);
+         return;
+      end if;
+
+      while Tgt /= null
+        and then Src /= null
       loop
          if Is_Less (Tgt, Src) then
             declare
@@ -175,28 +248,38 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
             Src := Tree_Operations.Next (Src);
          end if;
       end loop;
+
+      while Tgt /= null loop
+         declare
+            X : Node_Access := Tgt;
+         begin
+            Tgt := Tree_Operations.Next (Tgt);
+            Tree_Operations.Delete_Node_Sans_Free (Target, X);
+            Free (X);
+         end;
+      end loop;
    end Intersection;
 
    function Intersection (Left, Right : Tree_Type) return Tree_Type is
-      Tree : Tree_Type := (Length => 0, others => Tree_Operations.Null_Node);
+      Tree : Tree_Type;
 
       L_Node : Node_Access := Left.First;
       R_Node : Node_Access := Right.First;
 
       Dst_Node : Node_Access;
+      pragma Warnings (Off, Dst_Node);
 
    begin
-      --  NOTE: must be done by caller: ???
-      --      if Left'Address = Right'Address then
-      --         return Left;
-      --      end if;
+      if Left'Address = Right'Address then
+         return Copy (Left);
+      end if;
 
       loop
-         if L_Node = Tree_Operations.Null_Node then
+         if L_Node = null then
             return Tree;
          end if;
 
-         if R_Node = Tree_Operations.Null_Node then
+         if R_Node = null then
             return Tree;
          end if;
 
@@ -209,7 +292,7 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
          else
             Insert_With_Hint
               (Dst_Tree => Tree,
-               Dst_Hint => Tree_Operations.Null_Node,
+               Dst_Hint => null,
                Src_Node => L_Node,
                Dst_Node => Dst_Node);
 
@@ -233,10 +316,9 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
       Of_Set : Tree_Type) return Boolean
    is
    begin
-      --  NOTE: must by done by caller:
-      --      if Subset'Address = Of_Set'Address then
-      --         return True;
-      --      end if;
+      if Subset'Address = Of_Set'Address then
+         return True;
+      end if;
 
       if Subset.Length > Of_Set.Length then
          return False;
@@ -244,15 +326,15 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
 
       declare
          Subset_Node : Node_Access := Subset.First;
-         Set_Node : Node_Access := Of_Set.First;
+         Set_Node    : Node_Access := Of_Set.First;
 
       begin
          loop
-            if Set_Node = Tree_Operations.Null_Node then
-               return Subset_Node = Tree_Operations.Null_Node;
+            if Set_Node = null then
+               return Subset_Node = null;
             end if;
 
-            if Subset_Node = Tree_Operations.Null_Node then
+            if Subset_Node = null then
                return True;
             end if;
 
@@ -279,14 +361,13 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
       R_Node : Node_Access := Right.First;
 
    begin
-      --  NOTE: must be done by caller: ???
-      --      if Left'Address = Right'Address then
-      --         return Left.Tree.Length /= 0;
-      --      end if;
+      if Left'Address = Right'Address then
+         return Left.Length /= 0;
+      end if;
 
       loop
-         if L_Node = Tree_Operations.Null_Node
-           or else R_Node = Tree_Operations.Null_Node
+         if L_Node = null
+           or else R_Node = null
          then
             return False;
          end if;
@@ -315,20 +396,25 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
       Src : Node_Access := Source.First;
 
       New_Tgt_Node : Node_Access;
+      pragma Warnings (Off, New_Tgt_Node);
 
    begin
-      --  NOTE: must by done by client: ???
-      --      if Target'Address = Source'Address then
-      --         Clear (Target);
-      --         return;
-      --      end if;
+      if Target.Busy > 0 then
+         raise Program_Error with
+           "attempt to tamper with cursors (container is busy)";
+      end if;
+
+      if Target'Address = Source'Address then
+         Clear (Target);
+         return;
+      end if;
 
       loop
-         if Tgt = Tree_Operations.Null_Node then
-            while Src /= Tree_Operations.Null_Node loop
+         if Tgt = null then
+            while Src /= null loop
                Insert_With_Hint
                  (Dst_Tree => Target,
-                  Dst_Hint => Tree_Operations.Null_Node,
+                  Dst_Hint => null,
                   Src_Node => Src,
                   Dst_Node => New_Tgt_Node);
 
@@ -338,7 +424,7 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
             return;
          end if;
 
-         if Src = Tree_Operations.Null_Node then
+         if Src = null then
             return;
          end if;
 
@@ -369,25 +455,33 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
    end Symmetric_Difference;
 
    function Symmetric_Difference (Left, Right : Tree_Type) return Tree_Type is
-      Tree : Tree_Type := (Length => 0, others => Tree_Operations.Null_Node);
+      Tree : Tree_Type;
 
       L_Node : Node_Access := Left.First;
       R_Node : Node_Access := Right.First;
 
       Dst_Node : Node_Access;
+      pragma Warnings (Off, Dst_Node);
 
    begin
-      --  NOTE: must by done by caller ???
-      --      if Left'Address = Right'Address then
-      --         return Empty_Set;
-      --      end if;
+      if Left'Address = Right'Address then
+         return Tree;  -- Empty set
+      end if;
+
+      if Right.Length = 0 then
+         return Copy (Left);
+      end if;
+
+      if Left.Length = 0 then
+         return Copy (Right);
+      end if;
 
       loop
-         if L_Node = Tree_Operations.Null_Node then
-            while R_Node /= Tree_Operations.Null_Node loop
+         if L_Node = null then
+            while R_Node /= null loop
                Insert_With_Hint
                  (Dst_Tree => Tree,
-                  Dst_Hint => Tree_Operations.Null_Node,
+                  Dst_Hint => null,
                   Src_Node => R_Node,
                   Dst_Node => Dst_Node);
                R_Node := Tree_Operations.Next (R_Node);
@@ -396,11 +490,11 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
             return Tree;
          end if;
 
-         if R_Node = Tree_Operations.Null_Node then
-            while L_Node /= Tree_Operations.Null_Node loop
+         if R_Node = null then
+            while L_Node /= null loop
                Insert_With_Hint
                  (Dst_Tree => Tree,
-                  Dst_Hint => Tree_Operations.Null_Node,
+                  Dst_Hint => null,
                   Src_Node => L_Node,
                   Dst_Node => Dst_Node);
 
@@ -413,7 +507,7 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
          if Is_Less (L_Node, R_Node) then
             Insert_With_Hint
               (Dst_Tree => Tree,
-               Dst_Hint => Tree_Operations.Null_Node,
+               Dst_Hint => null,
                Src_Node => L_Node,
                Dst_Node => Dst_Node);
 
@@ -422,7 +516,7 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
          elsif Is_Less (R_Node, L_Node) then
             Insert_With_Hint
               (Dst_Tree => Tree,
-               Dst_Hint => Tree_Operations.Null_Node,
+               Dst_Hint => null,
                Src_Node => R_Node,
                Dst_Node => Dst_Node);
 
@@ -469,33 +563,35 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
    --  Start of processing for Union
 
    begin
-      --  NOTE: must be done by caller: ???
-      --      if Target'Address = Source'Address then
-      --         return;
-      --      end if;
+      if Target'Address = Source'Address then
+         return;
+      end if;
+
+      if Target.Busy > 0 then
+         raise Program_Error with
+           "attempt to tamper with cursors (container is busy)";
+      end if;
 
       Iterate (Source);
    end Union;
 
    function Union (Left, Right : Tree_Type) return Tree_Type is
-      Tree : Tree_Type;
-
    begin
-      --  NOTE: must be done by caller:
-      --      if Left'Address = Right'Address then
-      --         return Left;
-      --      end if;
+      if Left'Address = Right'Address then
+         return Copy (Left);
+      end if;
+
+      if Left.Length = 0 then
+         return Copy (Right);
+      end if;
+
+      if Right.Length = 0 then
+         return Copy (Left);
+      end if;
 
       declare
-         Root : constant Node_Access := Copy_Tree (Left.Root);
-      begin
-         Tree := (Root   => Root,
-                  First  => Tree_Operations.Min (Root),
-                  Last   => Tree_Operations.Max (Root),
-                  Length => Left.Length);
-      end;
+         Tree : Tree_Type := Copy (Left);
 
-      declare
          Hint : Node_Access;
 
          procedure Process (Node : Node_Access);
@@ -521,6 +617,7 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
 
       begin
          Iterate (Right);
+         return Tree;
 
       exception
          when others =>
@@ -528,7 +625,6 @@ package body Ada.Containers.Red_Black_Trees.Generic_Set_Operations is
             raise;
       end;
 
-      return Tree;
    end Union;
 
 end Ada.Containers.Red_Black_Trees.Generic_Set_Operations;

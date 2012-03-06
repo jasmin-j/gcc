@@ -1,15 +1,14 @@
 /* Check if bitfield ivars are correctly @encode'd when
    the NeXT runtime is used.  */
 /* Contributed by Ziemowit Laski <zlaski@apple.com>.  */
-/* { dg-options "-fnext-runtime -fsigned-char" } */
 /* { dg-do run { target *-*-darwin* } } */
+/* { dg-skip-if "" { *-*-* } { "-fgnu-runtime" } { "" } } */
+/* { dg-options "-fsigned-char" } */
 
 typedef struct objc_object { struct objc_class *class_pointer; } *id;
 
-extern "C" {
-  extern void abort(void);
-  extern int strcmp(const char *, const char *);
-}
+#include <stdlib.h>
+#include <string.h>
 
 #define CHECK_IF(expr) if(!(expr)) abort();
 

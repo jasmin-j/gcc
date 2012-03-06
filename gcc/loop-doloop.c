@@ -1,12 +1,13 @@
 /* Perform doloop optimizations
-   Copyright (C) 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008, 2010
+   Free Software Foundation, Inc.
    Based on code by Michael P. Hayes (m.hayes@elec.canterbury.ac.nz)
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,9 +16,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -28,7 +28,7 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 #include "expr.h"
 #include "hard-reg-set.h"
 #include "basic-block.h"
-#include "toplev.h"
+#include "diagnostic-core.h"
 #include "tm_p.h"
 #include "cfgloop.h"
 #include "output.h"
@@ -69,41 +69,116 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 /* Return the loop termination condition for PATTERN or zero
    if it is not a decrement and branch jump insn.  */
 
-static rtx
-doloop_condition_get (rtx pattern)
+rtx
+doloop_condition_get (rtx doloop_pat)
 {
   rtx cmp;
   rtx inc;
   rtx reg;
+  rtx inc_src;
   rtx condition;
+  rtx pattern;
+  rtx cc_reg = NULL_RTX;
+  rtx reg_orig = NULL_RTX;
 
-  /* The canonical doloop pattern we expect is:
+  /* The canonical doloop pattern we expect has one of the following
+     forms:
 
-     (parallel [(set (pc) (if_then_else (condition)
-                                        (label_ref (label))
-                                        (pc)))
-                (set (reg) (plus (reg) (const_int -1)))
-                (additional clobbers and uses)])
+     1)  (parallel [(set (pc) (if_then_else (condition)
+	  			            (label_ref (label))
+				            (pc)))
+	             (set (reg) (plus (reg) (const_int -1)))
+	             (additional clobbers and uses)])
 
-     Some machines (IA-64) make the decrement conditional on
-     the condition as well, so we don't bother verifying the
-     actual decrement.  In summary, the branch must be the
-     first entry of the parallel (also required by jump.c),
-     and the second entry of the parallel must be a set of
-     the loop counter register.  */
+     The branch must be the first entry of the parallel (also required
+     by jump.c), and the second entry of the parallel must be a set of
+     the loop counter register.  Some targets (IA-64) wrap the set of
+     the loop counter in an if_then_else too.
+
+     2)  (set (reg) (plus (reg) (const_int -1))
+         (set (pc) (if_then_else (reg != 0)
+	                         (label_ref (label))
+			         (pc))).  
+
+     Some targets (ARM) do the comparison before the branch, as in the
+     following form:
+
+     3) (parallel [(set (cc) (compare ((plus (reg) (const_int -1), 0)))
+                   (set (reg) (plus (reg) (const_int -1)))])
+        (set (pc) (if_then_else (cc == NE)
+                                (label_ref (label))
+                                (pc))) */
+
+  pattern = PATTERN (doloop_pat);
 
   if (GET_CODE (pattern) != PARALLEL)
-    return 0;
+    {
+      rtx cond;
+      rtx prev_insn = prev_nondebug_insn (doloop_pat);
+      rtx cmp_arg1, cmp_arg2;
+      rtx cmp_orig;
 
-  cmp = XVECEXP (pattern, 0, 0);
-  inc = XVECEXP (pattern, 0, 1);
+      /* In case the pattern is not PARALLEL we expect two forms
+	 of doloop which are cases 2) and 3) above: in case 2) the
+	 decrement immediately precedes the branch, while in case 3)
+	 the compare and decrement instructions immediately precede
+	 the branch.  */
+
+      if (prev_insn == NULL_RTX || !INSN_P (prev_insn))
+        return 0;
+
+      cmp = pattern;
+      if (GET_CODE (PATTERN (prev_insn)) == PARALLEL)
+        {
+	  /* The third case: the compare and decrement instructions
+	     immediately precede the branch.  */
+	  cmp_orig = XVECEXP (PATTERN (prev_insn), 0, 0);
+	  if (GET_CODE (cmp_orig) != SET)
+	    return 0;
+	  if (GET_CODE (SET_SRC (cmp_orig)) != COMPARE)
+	    return 0;
+	  cmp_arg1 = XEXP (SET_SRC (cmp_orig), 0);
+          cmp_arg2 = XEXP (SET_SRC (cmp_orig), 1);
+	  if (cmp_arg2 != const0_rtx 
+	      || GET_CODE (cmp_arg1) != PLUS)
+	    return 0;
+	  reg_orig = XEXP (cmp_arg1, 0);
+	  if (XEXP (cmp_arg1, 1) != GEN_INT (-1) 
+	      || !REG_P (reg_orig))
+	    return 0;
+	  cc_reg = SET_DEST (cmp_orig);
+	  
+	  inc = XVECEXP (PATTERN (prev_insn), 0, 1);
+	}
+      else
+        inc = PATTERN (prev_insn);
+      /* We expect the condition to be of the form (reg != 0)  */
+      cond = XEXP (SET_SRC (cmp), 0);
+      if (GET_CODE (cond) != NE || XEXP (cond, 1) != const0_rtx)
+        return 0;
+    }
+  else
+    {
+      cmp = XVECEXP (pattern, 0, 0);
+      inc = XVECEXP (pattern, 0, 1);
+    }
 
   /* Check for (set (reg) (something)).  */
-  if (GET_CODE (inc) != SET || ! REG_P (SET_DEST (inc)))
+  if (GET_CODE (inc) != SET)
+    return 0;
+  reg = SET_DEST (inc);
+  if (! REG_P (reg))
     return 0;
 
-  /* Extract loop counter register.  */
-  reg = SET_DEST (inc);
+  /* Check if something = (plus (reg) (const_int -1)).
+     On IA-64, this decrement is wrapped in an if_then_else.  */
+  inc_src = SET_SRC (inc);
+  if (GET_CODE (inc_src) == IF_THEN_ELSE)
+    inc_src = XEXP (inc_src, 1);
+  if (GET_CODE (inc_src) != PLUS
+      || XEXP (inc_src, 0) != reg
+      || XEXP (inc_src, 1) != constm1_rtx)
+    return 0;
 
   /* Check for (set (pc) (if_then_else (condition)
                                        (label_ref (label))
@@ -118,16 +193,60 @@ doloop_condition_get (rtx pattern)
   /* Extract loop termination condition.  */
   condition = XEXP (SET_SRC (cmp), 0);
 
-  if ((GET_CODE (condition) != GE && GET_CODE (condition) != NE)
-      || GET_CODE (XEXP (condition, 1)) != CONST_INT)
+  /* We expect a GE or NE comparison with 0 or 1.  */
+  if ((GET_CODE (condition) != GE
+       && GET_CODE (condition) != NE)
+      || (XEXP (condition, 1) != const0_rtx
+          && XEXP (condition, 1) != const1_rtx))
     return 0;
 
-  if (XEXP (condition, 0) == reg)
-    return condition;
+  if ((XEXP (condition, 0) == reg)
+      /* For the third case:  */  
+      || ((cc_reg != NULL_RTX)
+	  && (XEXP (condition, 0) == cc_reg)
+	  && (reg_orig == reg))
+      || (GET_CODE (XEXP (condition, 0)) == PLUS
+	  && XEXP (XEXP (condition, 0), 0) == reg))
+   {
+     if (GET_CODE (pattern) != PARALLEL)
+     /*  For the second form we expect:
 
-  if (GET_CODE (XEXP (condition, 0)) == PLUS
-      && XEXP (XEXP (condition, 0), 0) == reg)
+         (set (reg) (plus (reg) (const_int -1))
+         (set (pc) (if_then_else (reg != 0)
+                                 (label_ref (label))
+                                 (pc))).
+
+         is equivalent to the following:
+
+         (parallel [(set (pc) (if_then_else (reg != 1)
+                                            (label_ref (label))
+                                            (pc)))
+                     (set (reg) (plus (reg) (const_int -1)))
+                     (additional clobbers and uses)])
+
+        For the third form we expect:
+
+        (parallel [(set (cc) (compare ((plus (reg) (const_int -1)), 0))
+                   (set (reg) (plus (reg) (const_int -1)))])
+        (set (pc) (if_then_else (cc == NE)
+                                (label_ref (label))
+                                (pc))) 
+
+        which is equivalent to the following:
+
+        (parallel [(set (cc) (compare (reg,  1))
+                   (set (reg) (plus (reg) (const_int -1)))
+                   (set (pc) (if_then_else (NE == cc)
+                                           (label_ref (label))
+                                           (pc))))])
+
+        So we return the second form instead for the two cases.
+
+     */
+        condition = gen_rtx_fmt_ee (NE, VOIDmode, inc_src, const1_rtx);
+
     return condition;
+   }
 
   /* ??? If a machine uses a funny comparison, we could return a
      canonicalized form here.  */
@@ -190,12 +309,16 @@ doloop_valid_p (struct loop *loop, struct niter_desc *desc)
 	{
 	  /* Different targets have different necessities for low-overhead
 	     looping.  Call the back end for each instruction within the loop
-	     to let it decide whether the insn is valid.  */
-	  if (!targetm.insn_valid_within_doloop (insn))
-	  {
+	     to let it decide whether the insn prohibits a low-overhead loop.
+	     It will then return the cause for it to emit to the dump file.  */
+	  const char * invalid = targetm.invalid_within_doloop (insn);
+	  if (invalid)
+	    {
+	      if (dump_file)
+		fprintf (dump_file, "Doloop: %s\n", invalid);
 	      result = false;
 	      goto cleanup;
-	  }
+	    }
 	}
     }
   result = true;
@@ -206,15 +329,19 @@ cleanup:
   return result;
 }
 
-/* Adds test of COND jumping to DEST to the end of BB.  */
+/* Adds test of COND jumping to DEST on edge *E and set *E to the new fallthru
+   edge.  If the condition is always false, do not do anything.  If it is always
+   true, redirect E to DEST and return false.  In all other cases, true is
+   returned.  */
 
-static void
-add_test (rtx cond, basic_block bb, basic_block dest)
+static bool
+add_test (rtx cond, edge *e, basic_block dest)
 {
   rtx seq, jump, label;
   enum machine_mode mode;
   rtx op0 = XEXP (cond, 0), op1 = XEXP (cond, 1);
   enum rtx_code code = GET_CODE (cond);
+  basic_block bb;
 
   mode = GET_MODE (XEXP (cond, 0));
   if (mode == VOIDmode)
@@ -224,21 +351,43 @@ add_test (rtx cond, basic_block bb, basic_block dest)
   op0 = force_operand (op0, NULL_RTX);
   op1 = force_operand (op1, NULL_RTX);
   label = block_label (dest);
-  do_compare_rtx_and_jump (op0, op1, code, 0, mode, NULL_RTX, NULL_RTX, label);
+  do_compare_rtx_and_jump (op0, op1, code, 0, mode, NULL_RTX,
+			   NULL_RTX, label, -1);
 
   jump = get_last_insn ();
-  JUMP_LABEL (jump) = label;
-
-  /* The jump is supposed to handle an unlikely special case.  */
-  REG_NOTES (jump)
-	  = gen_rtx_EXPR_LIST (REG_BR_PROB,
-			       const0_rtx, REG_NOTES (jump));
-
-  LABEL_NUSES (label)++;
+  if (!jump || !JUMP_P (jump))
+    {
+      /* The condition is always false and the jump was optimized out.  */
+      end_sequence ();
+      return true;
+    }
 
   seq = get_insns ();
   end_sequence ();
-  emit_insn_after (seq, BB_END (bb));
+
+  /* There always is at least the jump insn in the sequence.  */
+  gcc_assert (seq != NULL_RTX);
+
+  bb = split_edge_and_insert (*e, seq);
+  *e = single_succ_edge (bb);
+
+  if (any_uncondjump_p (jump))
+    {
+      /* The condition is always true.  */
+      delete_insn (jump);
+      redirect_edge_and_branch_force (*e, dest);
+      return false;
+    }
+
+  JUMP_LABEL (jump) = label;
+
+  /* The jump is supposed to handle an unlikely special case.  */
+  add_reg_note (jump, REG_BR_PROB, const0_rtx);
+
+  LABEL_NUSES (label)++;
+
+  make_edge (bb, dest, (*e)->flags & ~EDGE_FALLTHRU);
+  return true;
 }
 
 /* Modify the loop to use the low-overhead looping insn where LOOP
@@ -256,10 +405,11 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
   rtx sequence;
   rtx jump_insn;
   rtx jump_label;
-  int nonneg = 0, irr;
+  int nonneg = 0;
   bool increment_count;
   basic_block loop_end = desc->out_edge->src;
   enum machine_mode mode;
+  rtx true_prob_val;
 
   jump_insn = BB_END (loop_end);
 
@@ -272,6 +422,10 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
 	fputs ("runtime", dump_file);
       fputs (" iterations).\n", dump_file);
     }
+
+  /* Get the probability of the original branch. If it exists we would
+     need to update REG_BR_PROB of the new jump_insn.  */
+  true_prob_val = find_reg_note (jump_insn, REG_BR_PROB, NULL_RTX);
 
   /* Discard original jump to continue loop.  The original compare
      result may still be live, so it cannot be discarded explicitly.  */
@@ -308,7 +462,7 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
 	 Note that the maximum value loaded is iterations_max - 1.  */
       if (desc->niter_max
 	  <= ((unsigned HOST_WIDEST_INT) 1
-	      << (GET_MODE_BITSIZE (mode) - 1)))
+	      << (GET_MODE_PRECISION (mode) - 1)))
 	nonneg = 1;
       break;
 
@@ -333,42 +487,59 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
       rtx ass = copy_rtx (desc->noloop_assumptions);
       basic_block preheader = loop_preheader_edge (loop)->src;
       basic_block set_zero
-	      = loop_split_edge_with (loop_preheader_edge (loop), NULL_RTX);
+	      = split_edge (loop_preheader_edge (loop));
       basic_block new_preheader
-	      = loop_split_edge_with (loop_preheader_edge (loop), NULL_RTX);
-      basic_block bb;
+	      = split_edge (loop_preheader_edge (loop));
       edge te;
-      gcov_type cnt;
 
       /* Expand the condition testing the assumptions and if it does not pass,
 	 reset the count register to 0.  */
-      add_test (XEXP (ass, 0), preheader, set_zero);
-      single_succ_edge (preheader)->flags &= ~EDGE_FALLTHRU;
-      cnt = single_succ_edge (preheader)->count;
-      single_succ_edge (preheader)->probability = 0;
-      single_succ_edge (preheader)->count = 0;
-      irr = single_succ_edge (preheader)->flags & EDGE_IRREDUCIBLE_LOOP;
-      te = make_edge (preheader, new_preheader, EDGE_FALLTHRU | irr);
-      te->probability = REG_BR_PROB_BASE;
-      te->count = cnt;
+      redirect_edge_and_branch_force (single_succ_edge (preheader), new_preheader);
       set_immediate_dominator (CDI_DOMINATORS, new_preheader, preheader);
 
       set_zero->count = 0;
       set_zero->frequency = 0;
 
-      for (ass = XEXP (ass, 1); ass; ass = XEXP (ass, 1))
+      te = single_succ_edge (preheader);
+      for (; ass; ass = XEXP (ass, 1))
+	if (!add_test (XEXP (ass, 0), &te, set_zero))
+	  break;
+
+      if (ass)
 	{
-	  bb = loop_split_edge_with (te, NULL_RTX);
-	  te = single_succ_edge (bb);
-	  add_test (XEXP (ass, 0), bb, set_zero);
-	  make_edge (bb, set_zero, irr);
+	  /* We reached a condition that is always true.  This is very hard to
+	     reproduce (such a loop does not roll, and thus it would most
+	     likely get optimized out by some of the preceding optimizations).
+	     In fact, I do not have any testcase for it.  However, it would
+	     also be very hard to show that it is impossible, so we must
+	     handle this case.  */
+	  set_zero->count = preheader->count;
+	  set_zero->frequency = preheader->frequency;
 	}
-  
-      start_sequence ();
-      convert_move (counter_reg, noloop, 0);
-      sequence = get_insns ();
-      end_sequence ();
-      emit_insn_after (sequence, BB_END (set_zero));
+
+      if (EDGE_COUNT (set_zero->preds) == 0)
+	{
+	  /* All the conditions were simplified to false, remove the
+	     unreachable set_zero block.  */
+	  delete_basic_block (set_zero);
+	}
+      else
+	{
+	  /* Reset the counter to zero in the set_zero block.  */
+	  start_sequence ();
+	  convert_move (counter_reg, noloop, 0);
+	  sequence = get_insns ();
+	  end_sequence ();
+	  emit_insn_after (sequence, BB_END (set_zero));
+
+	  set_immediate_dominator (CDI_DOMINATORS, set_zero,
+				   recompute_dominator (CDI_DOMINATORS,
+							set_zero));
+	}
+
+      set_immediate_dominator (CDI_DOMINATORS, new_preheader,
+			       recompute_dominator (CDI_DOMINATORS,
+						    new_preheader));
     }
 
   /* Some targets (eg, C4x) need to initialize special looping
@@ -379,7 +550,7 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
     unsigned level = get_loop_level (loop) + 1;
     init = gen_doloop_begin (counter_reg,
 			     desc->const_iter ? desc->niter_expr : const0_rtx,
-			     desc->niter_max,
+			     GEN_INT (desc->niter_max),
 			     GEN_INT (level));
     if (init)
       {
@@ -407,9 +578,14 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
   /* Add a REG_NONNEG note if the actual or estimated maximum number
      of iterations is non-negative.  */
   if (nonneg)
+    add_reg_note (jump_insn, REG_NONNEG, NULL_RTX);
+
+  /* Update the REG_BR_PROB note.  */
+  if (true_prob_val)
     {
-      REG_NOTES (jump_insn)
-	= gen_rtx_EXPR_LIST (REG_NONNEG, NULL_RTX, REG_NOTES (jump_insn));
+      /* Seems safer to use the branch probability.  */
+      add_reg_note (jump_insn, REG_BR_PROB,
+		    GEN_INT (desc->in_edge->probability));
     }
 }
 
@@ -428,6 +604,7 @@ doloop_optimize (struct loop *loop)
   rtx start_label;
   rtx condition;
   unsigned level, est_niter;
+  int max_cost;
   struct niter_desc *desc;
   unsigned word_mode_size;
   unsigned HOST_WIDE_INT word_mode_max;
@@ -468,6 +645,17 @@ doloop_optimize (struct loop *loop)
       return false;
     }
 
+  max_cost
+    = COSTS_N_INSNS (PARAM_VALUE (PARAM_MAX_ITERATIONS_COMPUTATION_COST));
+  if (set_src_cost (desc->niter_expr, optimize_loop_for_speed_p (loop))
+      > max_cost)
+    {
+      if (dump_file)
+	fprintf (dump_file,
+		 "Doloop: number of iterations too costly to compute.\n");
+      return false;
+    }
+
   count = copy_rtx (desc->niter_expr);
   iterations = desc->const_iter ? desc->niter_expr : const0_rtx;
   iterations_max = GEN_INT (desc->niter_max);
@@ -481,7 +669,7 @@ doloop_optimize (struct loop *loop)
   doloop_seq = gen_doloop_end (doloop_reg, iterations, iterations_max,
 			       GEN_INT (level), start_label);
 
-  word_mode_size = GET_MODE_BITSIZE (word_mode);
+  word_mode_size = GET_MODE_PRECISION (word_mode);
   word_mode_max
 	  = ((unsigned HOST_WIDE_INT) 1 << (word_mode_size - 1) << 1) - 1;
   if (! doloop_seq
@@ -489,10 +677,10 @@ doloop_optimize (struct loop *loop)
       /* Before trying mode different from the one in that # of iterations is
 	 computed, we must be sure that the number of iterations fits into
 	 the new mode.  */
-      && (word_mode_size >= GET_MODE_BITSIZE (mode)
+      && (word_mode_size >= GET_MODE_PRECISION (mode)
 	  || desc->niter_max <= word_mode_max))
     {
-      if (word_mode_size > GET_MODE_BITSIZE (mode))
+      if (word_mode_size > GET_MODE_PRECISION (mode))
 	{
 	  count = simplify_gen_unary (ZERO_EXTEND, word_mode,
 				      count, mode);
@@ -527,9 +715,7 @@ doloop_optimize (struct loop *loop)
     {
       while (NEXT_INSN (doloop_pat) != NULL_RTX)
 	doloop_pat = NEXT_INSN (doloop_pat);
-      if (JUMP_P (doloop_pat))
-	doloop_pat = PATTERN (doloop_pat);
-      else
+      if (!JUMP_P (doloop_pat))
 	doloop_pat = NULL_RTX;
     }
 
@@ -545,28 +731,23 @@ doloop_optimize (struct loop *loop)
   return true;
 }
 
-/* This is the main entry point.  Process all LOOPS using doloop_optimize.  */
+/* This is the main entry point.  Process all loops using doloop_optimize.  */
 
 void
-doloop_optimize_loops (struct loops *loops)
+doloop_optimize_loops (void)
 {
-  unsigned i;
+  loop_iterator li;
   struct loop *loop;
 
-  for (i = 1; i < loops->num; i++)
+  FOR_EACH_LOOP (li, loop, 0)
     {
-      loop = loops->parray[i];
-      if (!loop)
-	continue;
-
       doloop_optimize (loop);
     }
 
   iv_analysis_done ();
 
 #ifdef ENABLE_CHECKING
-  verify_dominators (CDI_DOMINATORS);
-  verify_loop_structure (loops);
+  verify_loop_structure ();
 #endif
 }
 #endif /* HAVE_doloop_end */

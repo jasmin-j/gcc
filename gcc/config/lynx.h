@@ -1,12 +1,12 @@
 /* Target independent definitions for LynxOS.
-   Copyright (C) 1993, 1994, 1995, 1996, 1999, 2000, 2002, 2003, 2004
-   Free Software Foundation, Inc.
+   Copyright (C) 1993, 1994, 1995, 1996, 1999, 2000, 2002, 2003, 2004,
+   2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* In this file we set up defaults that can be chosen by
    <target>/lynx.h files.  A target-specific lynx.h file can decide
@@ -68,7 +67,7 @@ Boston, MA 02111-1307, USA.  */
 # define CPP_OS_LYNX_SPEC \
 "%{mthreads: \
    %{mlegacy-threads: \
-     %eCannot use mthreads and mlegacy-threads together.}} \
+     %ecannot use mthreads and mlegacy-threads together}} \
  %{mthreads: -D_MULTITHREADED} \
  %{mlegacy-threads: -D_THREADS_POSIX4ad4} \
  -Asystem=lynx -Asystem=unix -D__Lynx__ -D__unix__"
@@ -93,7 +92,7 @@ Boston, MA 02111-1307, USA.  */
 #ifndef LINK_OS_LYNX_SPEC
 # define LINK_OS_LYNX_SPEC \
 "%{shared} %{static} \
- %{mshared: %{static: %eCannot use mshared and static together.}} \
+ %{mshared: %{static: %ecannot use mshared and static together}} \
  %{!mshared: %{!shared: %{!static: -static}}} \
  %{L*} \
  %{mthreads: \
@@ -173,6 +172,6 @@ Boston, MA 02111-1307, USA.  */
 # define NO_IMPLICIT_EXTERN_C
 #endif
 
-#ifndef TARGET_HAS_F_SETLKW
-# define TARGET_HAS_F_SETLKW
+#ifndef TARGET_POSIX_IO
+# define TARGET_POSIX_IO
 #endif

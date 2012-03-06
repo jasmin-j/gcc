@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2004 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -26,20 +25,18 @@
 
 with Einfo;    use Einfo;
 with Errout;   use Errout;
-with Sem_Util; use Sem_Util;
-with Ttypef;   use Ttypef;
 with Targparm; use Targparm;
 
 package body Eval_Fat is
 
    Radix : constant Int := 2;
-   --  This code is currently only correct for the radix 2 case. We use
-   --  the symbolic value Radix where possible to help in the unlikely
-   --  case of anyone ever having to adjust this code for another value,
-   --  and for documentation purposes.
+   --  This code is currently only correct for the radix 2 case. We use the
+   --  symbolic value Radix where possible to help in the unlikely case of
+   --  anyone ever having to adjust this code for another value, and for
+   --  documentation purposes.
 
-   --  Another assumption is that the range of the floating-point type
-   --  is symmetric around zero.
+   --  Another assumption is that the range of the floating-point type is
+   --  symmetric around zero.
 
    type Radix_Power_Table is array (Int range 1 .. 4) of Int;
 
@@ -52,30 +49,27 @@ package body Eval_Fat is
 
    procedure Decompose
      (RT       : R;
-      X        : in T;
+      X        : T;
       Fraction : out T;
       Exponent : out UI;
       Mode     : Rounding_Mode := Round);
-   --  Decomposes a non-zero floating-point number into fraction and
-   --  exponent parts. The fraction is in the interval 1.0 / Radix ..
-   --  T'Pred (1.0) and uses Rbase = Radix.
-   --  The result is rounded to a nearest machine number.
+   --  Decomposes a non-zero floating-point number into fraction and exponent
+   --  parts. The fraction is in the interval 1.0 / Radix .. T'Pred (1.0) and
+   --  uses Rbase = Radix. The result is rounded to a nearest machine number.
 
    procedure Decompose_Int
      (RT       : R;
-      X        : in T;
+      X        : T;
       Fraction : out UI;
       Exponent : out UI;
       Mode     : Rounding_Mode);
    --  This is similar to Decompose, except that the Fraction value returned
    --  is an integer representing the value Fraction * Scale, where Scale is
-   --  the value (Radix ** Machine_Mantissa (RT)). The value is obtained by
-   --  using biased rounding (halfway cases round away from zero), round to
-   --  even, a floor operation or a ceiling operation depending on the setting
-   --  of Mode (see corresponding descriptions in Urealp).
-
-   function Machine_Emin (RT : R) return Int;
-   --  Return value of the Machine_Emin attribute
+   --  the value (Machine_Radix_Value (RT) ** Machine_Mantissa_Value (RT)). The
+   --  value is obtained by using biased rounding (halfway cases round away
+   --  from zero), round to even, a floor operation or a ceiling operation
+   --  depending on the setting of Mode (see corresponding descriptions in
+   --  Urealp).
 
    --------------
    -- Adjacent --
@@ -115,13 +109,10 @@ package body Eval_Fat is
    function Compose (RT : R; Fraction : T; Exponent : UI) return T is
       Arg_Frac : T;
       Arg_Exp  : UI;
+      pragma Warnings (Off, Arg_Exp);
    begin
-      if UR_Is_Zero (Fraction) then
-         return Fraction;
-      else
-         Decompose (RT, Fraction, Arg_Frac, Arg_Exp);
-         return Scaling (RT, Arg_Frac, Exponent);
-      end if;
+      Decompose (RT, Fraction, Arg_Frac, Arg_Exp);
+      return Scaling (RT, Arg_Frac, Exponent);
    end Compose;
 
    ---------------
@@ -148,7 +139,7 @@ package body Eval_Fat is
 
    procedure Decompose
      (RT       : R;
-      X        : in T;
+      X        : T;
       Fraction : out T;
       Exponent : out UI;
       Mode     : Rounding_Mode := Round)
@@ -160,7 +151,7 @@ package body Eval_Fat is
 
       Fraction := UR_From_Components
        (Num      => Int_F,
-        Den      => UI_From_Int (Machine_Mantissa (RT)),
+        Den      => Machine_Mantissa_Value (RT),
         Rbase    => Radix,
         Negative => False);
 
@@ -175,14 +166,14 @@ package body Eval_Fat is
    -- Decompose_Int --
    -------------------
 
-   --  This procedure should be modified with care, as there are many
-   --  non-obvious details that may cause problems that are hard to
-   --  detect. The cases of positive and negative zeroes are also
-   --  special and should be verified separately.
+   --  This procedure should be modified with care, as there are many non-
+   --  obvious details that may cause problems that are hard to detect. For
+   --  zero arguments, Fraction and Exponent are set to zero. Note that sign
+   --  of zero cannot be preserved.
 
    procedure Decompose_Int
      (RT       : R;
-      X        : in T;
+      X        : T;
       Fraction : out UI;
       Exponent : out UI;
       Mode     : Rounding_Mode)
@@ -197,20 +188,26 @@ package body Eval_Fat is
       --  True iff Fraction is even
 
       Most_Significant_Digit : constant UI :=
-                                 Radix ** (Machine_Mantissa (RT) - 1);
+                                 Radix ** (Machine_Mantissa_Value (RT) - 1);
 
       Uintp_Mark : Uintp.Save_Mark;
       --  The code is divided into blocks that systematically release
       --  intermediate values (this routine generates lots of junk!)
 
    begin
+      if N = Uint_0 then
+         Fraction := Uint_0;
+         Exponent := Uint_0;
+         return;
+      end if;
+
       Calculate_D_And_Exponent_1 : begin
          Uintp_Mark := Mark;
          Exponent := Uint_0;
 
-         --  In cases where Base > 1, the actual denominator is
-         --  Base**D. For cases where Base is a power of Radix, use
-         --  the value 1 for the Denominator and adjust the exponent.
+         --  In cases where Base > 1, the actual denominator is Base**D. For
+         --  cases where Base is a power of Radix, use the value 1 for the
+         --  Denominator and adjust the exponent.
 
          --  Note: Exponent has different sign from D, because D is a divisor
 
@@ -230,13 +227,13 @@ package body Eval_Fat is
          Calculate_Exponent : begin
             Uintp_Mark := Mark;
 
-            --  For bases that are a multiple of the Radix, divide
-            --  the base by Radix and adjust the Exponent. This will
-            --  help because D will be much smaller and faster to process.
+            --  For bases that are a multiple of the Radix, divide the base by
+            --  Radix and adjust the Exponent. This will help because D will be
+            --  much smaller and faster to process.
 
-            --  This occurs for decimal bases on a machine with binary
-            --  floating-point for example. When calculating 1E40,
-            --  with Radix = 2, N will be 93 bits instead of 133.
+            --  This occurs for decimal bases on machines with binary floating-
+            --  point for example. When calculating 1E40, with Radix = 2, N
+            --  will be 93 bits instead of 133.
 
             --        N            E
             --      ------  * Radix
@@ -264,11 +261,10 @@ package body Eval_Fat is
             Release_And_Save (Uintp_Mark, Exponent);
          end Calculate_Exponent;
 
-         --  For remaining bases we must actually compute
-         --  the exponentiation.
+         --  For remaining bases we must actually compute the exponentiation
 
-         --  Because the exponentiation can be negative, and D must
-         --  be integer, the numerator is corrected instead.
+         --  Because the exponentiation can be negative, and D must be integer,
+         --  the numerator is corrected instead.
 
          Calculate_N_And_D : begin
             Uintp_Mark := Mark;
@@ -286,29 +282,25 @@ package body Eval_Fat is
          Base := 0;
       end if;
 
-      --  Now scale N and D so that N / D is a value in the
-      --  interval [1.0 / Radix, 1.0) and adjust Exponent accordingly,
-      --  so the value N / D * Radix ** Exponent remains unchanged.
+      --  Now scale N and D so that N / D is a value in the interval [1.0 /
+      --  Radix, 1.0) and adjust Exponent accordingly, so the value N / D *
+      --  Radix ** Exponent remains unchanged.
 
       --  Step 1 - Adjust N so N / D >= 1 / Radix, or N = 0
 
       --  N and D are positive, so N / D >= 1 / Radix implies N * Radix >= D.
-      --  This scaling is not possible for N is Uint_0 as there
-      --  is no way to scale Uint_0 so the first digit is non-zero.
+      --  As this scaling is not possible for N is Uint_0, zero is handled
+      --  explicitly at the start of this subprogram.
 
       Calculate_N_And_Exponent : begin
          Uintp_Mark := Mark;
 
          N_Times_Radix := N * Radix;
-
-         if N /= Uint_0 then
-            while not (N_Times_Radix >= D) loop
-               N := N_Times_Radix;
-               Exponent := Exponent - 1;
-
-               N_Times_Radix := N * Radix;
-            end loop;
-         end if;
+         while not (N_Times_Radix >= D) loop
+            N := N_Times_Radix;
+            Exponent := Exponent - 1;
+            N_Times_Radix := N * Radix;
+         end loop;
 
          Release_And_Save (Uintp_Mark, N, Exponent);
       end Calculate_N_And_Exponent;
@@ -322,8 +314,8 @@ package body Eval_Fat is
 
          while not (N < D) loop
 
-            --  As N / D >= 1, N / (D * Radix) will be at least 1 / Radix,
-            --  so the result of Step 1 stays valid
+            --  As N / D >= 1, N / (D * Radix) will be at least 1 / Radix, so
+            --  the result of Step 1 stays valid
 
             D := D * Radix;
             Exponent := Exponent + 1;
@@ -334,14 +326,14 @@ package body Eval_Fat is
 
       --  Here the value N / D is in the range [1.0 / Radix .. 1.0)
 
-      --  Now find the fraction by doing a very simple-minded
-      --  division until enough digits have been computed.
+      --  Now find the fraction by doing a very simple-minded division until
+      --  enough digits have been computed.
 
-      --  This division works for all radices, but is only efficient for
-      --  a binary radix. It is just like a manual division algorithm,
-      --  but instead of moving the denominator one digit right, we move
-      --  the numerator one digit left so the numerator and denominator
-      --  remain integral.
+      --  This division works for all radices, but is only efficient for a
+      --  binary radix. It is just like a manual division algorithm, but
+      --  instead of moving the denominator one digit right, we move the
+      --  numerator one digit left so the numerator and denominator remain
+      --  integral.
 
       Fraction := Uint_0;
       Even := True;
@@ -380,8 +372,8 @@ package body Eval_Fat is
             when Round_Even =>
 
                --  This rounding mode should not be used for static
-               --  expressions, but only for compile-time evaluation
-               --  of non-static expressions.
+               --  expressions, but only for compile-time evaluation of
+               --  non-static expressions.
 
                if (Even and then N * 2 > D)
                      or else
@@ -392,9 +384,9 @@ package body Eval_Fat is
 
             when Round   =>
 
-               --  Do not round to even as is done with IEEE arithmetic,
-               --  but instead round away from zero when the result is
-               --  exactly between two machine numbers. See RM 4.9(38).
+               --  Do not round to even as is done with IEEE arithmetic, but
+               --  instead round away from zero when the result is exactly
+               --  between two machine numbers. See RM 4.9(38).
 
                if N * 2 >= D then
                   Fraction := Fraction + 1;
@@ -411,15 +403,15 @@ package body Eval_Fat is
                end if;
          end case;
 
-         --  The result must be normalized to [1.0/Radix, 1.0),
-         --  so adjust if the result is 1.0 because of rounding.
+         --  The result must be normalized to [1.0/Radix, 1.0), so adjust if
+         --  the result is 1.0 because of rounding.
 
          if Fraction = Most_Significant_Digit * Radix then
             Fraction := Most_Significant_Digit;
             Exponent := Exponent + 1;
          end if;
 
-         --  Put back sign after applying the rounding.
+         --  Put back sign after applying the rounding
 
          if UR_Is_Negative (X) then
             Fraction := -Fraction;
@@ -436,13 +428,10 @@ package body Eval_Fat is
    function Exponent (RT : R; X : T) return UI is
       X_Frac : UI;
       X_Exp  : UI;
+      pragma Warnings (Off, X_Frac);
    begin
-      if UR_Is_Zero (X) then
-         return Uint_0;
-      else
-         Decompose_Int (RT, X, X_Frac, X_Exp, Round_Even);
-         return X_Exp;
-      end if;
+      Decompose_Int (RT, X, X_Frac, X_Exp, Round_Even);
+      return X_Exp;
    end Exponent;
 
    -----------
@@ -471,13 +460,10 @@ package body Eval_Fat is
    function Fraction (RT : R; X : T) return T is
       X_Frac : T;
       X_Exp  : UI;
+      pragma Warnings (Off, X_Exp);
    begin
-      if UR_Is_Zero (X) then
-         return X;
-      else
-         Decompose (RT, X, X_Frac, X_Exp);
-         return X_Frac;
-      end if;
+      Decompose (RT, X, X_Frac, X_Exp);
+      return X_Frac;
    end Fraction;
 
    ------------------
@@ -485,7 +471,7 @@ package body Eval_Fat is
    ------------------
 
    function Leading_Part (RT : R; X : T; Radix_Digits : UI) return T is
-      RD : constant UI := UI_Min (Radix_Digits, Machine_Mantissa (RT));
+      RD : constant UI := UI_Min (Radix_Digits, Machine_Mantissa_Value (RT));
       L  : UI;
       Y  : T;
    begin
@@ -506,187 +492,77 @@ package body Eval_Fat is
    is
       X_Frac : T;
       X_Exp  : UI;
-      Emin   : constant UI := UI_From_Int (Machine_Emin (RT));
+      Emin   : constant UI := Machine_Emin_Value (RT);
 
    begin
-      if UR_Is_Zero (X) then
-         return X;
+      Decompose (RT, X, X_Frac, X_Exp, Mode);
 
-      else
-         Decompose (RT, X, X_Frac, X_Exp, Mode);
+      --  Case of denormalized number or (gradual) underflow
 
-         --  Case of denormalized number or (gradual) underflow
+      --  A denormalized number is one with the minimum exponent Emin, but that
+      --  breaks the assumption that the first digit of the mantissa is a one.
+      --  This allows the first non-zero digit to be in any of the remaining
+      --  Mant - 1 spots. The gap between subsequent denormalized numbers is
+      --  the same as for the smallest normalized numbers. However, the number
+      --  of significant digits left decreases as a result of the mantissa now
+      --  having leading seros.
 
-         --  A denormalized number is one with the minimum exponent Emin, but
-         --  that breaks the assumption that the first digit of the mantissa
-         --  is a one. This allows the first non-zero digit to be in any
-         --  of the remaining Mant - 1 spots. The gap between subsequent
-         --  denormalized numbers is the same as for the smallest normalized
-         --  numbers. However, the number of significant digits left decreases
-         --  as a result of the mantissa now having leading seros.
+      if X_Exp < Emin then
+         declare
+            Emin_Den : constant UI := Machine_Emin_Value (RT)
+                                        - Machine_Mantissa_Value (RT) + Uint_1;
+         begin
+            if X_Exp < Emin_Den or not Denorm_On_Target then
+               if UR_Is_Negative (X) then
+                  Error_Msg_N
+                    ("floating-point value underflows to -0.0?", Enode);
+                  return Ureal_M_0;
 
-         if X_Exp < Emin then
-            declare
-               Emin_Den : constant UI :=
-                            UI_From_Int
-                              (Machine_Emin (RT) - Machine_Mantissa (RT) + 1);
-            begin
-               if X_Exp < Emin_Den or not Denorm_On_Target then
-                  if UR_Is_Negative (X) then
-                     Error_Msg_N
-                       ("floating-point value underflows to -0.0?", Enode);
-                     return Ureal_M_0;
-
-                  else
-                     Error_Msg_N
-                       ("floating-point value underflows to 0.0?", Enode);
-                     return Ureal_0;
-                  end if;
-
-               elsif Denorm_On_Target then
-
-                  --  Emin - Mant <= X_Exp < Emin, so result is denormal.
-                  --  Handle gradual underflow by first computing the
-                  --  number of significant bits still available for the
-                  --  mantissa and then truncating the fraction to this
-                  --  number of bits.
-
-                  --  If this value is different from the original
-                  --  fraction, precision is lost due to gradual underflow.
-
-                  --  We probably should round here and prevent double
-                  --  rounding as a result of first rounding to a model
-                  --  number and then to a machine number. However, this
-                  --  is an extremely rare case that is not worth the extra
-                  --  complexity. In any case, a warning is issued in cases
-                  --  where gradual underflow occurs.
-
-                  declare
-                     Denorm_Sig_Bits : constant UI := X_Exp - Emin_Den + 1;
-
-                     X_Frac_Denorm   : constant T := UR_From_Components
-                       (UR_Trunc (Scaling (RT, abs X_Frac, Denorm_Sig_Bits)),
-                        Denorm_Sig_Bits,
-                        Radix,
-                        UR_Is_Negative (X));
-
-                  begin
-                     if X_Frac_Denorm /= X_Frac then
-                        Error_Msg_N
-                          ("gradual underflow causes loss of precision?",
-                           Enode);
-                        X_Frac := X_Frac_Denorm;
-                     end if;
-                  end;
+               else
+                  Error_Msg_N
+                    ("floating-point value underflows to 0.0?", Enode);
+                  return Ureal_0;
                end if;
-            end;
-         end if;
 
-         return Scaling (RT, X_Frac, X_Exp);
+            elsif Denorm_On_Target then
+
+               --  Emin - Mant <= X_Exp < Emin, so result is denormal. Handle
+               --  gradual underflow by first computing the number of
+               --  significant bits still available for the mantissa and
+               --  then truncating the fraction to this number of bits.
+
+               --  If this value is different from the original fraction,
+               --  precision is lost due to gradual underflow.
+
+               --  We probably should round here and prevent double rounding as
+               --  a result of first rounding to a model number and then to a
+               --  machine number. However, this is an extremely rare case that
+               --  is not worth the extra complexity. In any case, a warning is
+               --  issued in cases where gradual underflow occurs.
+
+               declare
+                  Denorm_Sig_Bits : constant UI := X_Exp - Emin_Den + 1;
+
+                  X_Frac_Denorm   : constant T := UR_From_Components
+                    (UR_Trunc (Scaling (RT, abs X_Frac, Denorm_Sig_Bits)),
+                     Denorm_Sig_Bits,
+                     Radix,
+                     UR_Is_Negative (X));
+
+               begin
+                  if X_Frac_Denorm /= X_Frac then
+                     Error_Msg_N
+                       ("gradual underflow causes loss of precision?",
+                        Enode);
+                     X_Frac := X_Frac_Denorm;
+                  end if;
+               end;
+            end if;
+         end;
       end if;
+
+      return Scaling (RT, X_Frac, X_Exp);
    end Machine;
-
-   ------------------
-   -- Machine_Emin --
-   ------------------
-
-   function Machine_Emin (RT : R) return Int is
-      Digs : constant UI := Digits_Value (RT);
-      Emin : Int;
-
-   begin
-      if Vax_Float (RT) then
-         if Digs = VAXFF_Digits then
-            Emin := VAXFF_Machine_Emin;
-
-         elsif Digs = VAXDF_Digits then
-            Emin := VAXDF_Machine_Emin;
-
-         else
-            pragma Assert (Digs = VAXGF_Digits);
-            Emin := VAXGF_Machine_Emin;
-         end if;
-
-      elsif Is_AAMP_Float (RT) then
-         if Digs = AAMPS_Digits then
-            Emin := AAMPS_Machine_Emin;
-
-         else
-            pragma Assert (Digs = AAMPL_Digits);
-            Emin := AAMPL_Machine_Emin;
-         end if;
-
-      else
-         if Digs = IEEES_Digits then
-            Emin := IEEES_Machine_Emin;
-
-         elsif Digs = IEEEL_Digits then
-            Emin := IEEEL_Machine_Emin;
-
-         else
-            pragma Assert (Digs = IEEEX_Digits);
-            Emin := IEEEX_Machine_Emin;
-         end if;
-      end if;
-
-      return Emin;
-   end Machine_Emin;
-
-   ----------------------
-   -- Machine_Mantissa --
-   ----------------------
-
-   function Machine_Mantissa (RT : R) return Nat is
-      Digs : constant UI := Digits_Value (RT);
-      Mant : Nat;
-
-   begin
-      if Vax_Float (RT) then
-         if Digs = VAXFF_Digits then
-            Mant := VAXFF_Machine_Mantissa;
-
-         elsif Digs = VAXDF_Digits then
-            Mant := VAXDF_Machine_Mantissa;
-
-         else
-            pragma Assert (Digs = VAXGF_Digits);
-            Mant := VAXGF_Machine_Mantissa;
-         end if;
-
-      elsif Is_AAMP_Float (RT) then
-         if Digs = AAMPS_Digits then
-            Mant := AAMPS_Machine_Mantissa;
-
-         else
-            pragma Assert (Digs = AAMPL_Digits);
-            Mant := AAMPL_Machine_Mantissa;
-         end if;
-
-      else
-         if Digs = IEEES_Digits then
-            Mant := IEEES_Machine_Mantissa;
-
-         elsif Digs = IEEEL_Digits then
-            Mant := IEEEL_Machine_Mantissa;
-
-         else
-            pragma Assert (Digs = IEEEX_Digits);
-            Mant := IEEEX_Machine_Mantissa;
-         end if;
-      end if;
-
-      return Mant;
-   end Machine_Mantissa;
-
-   -------------------
-   -- Machine_Radix --
-   -------------------
-
-   function Machine_Radix (RT : R) return Nat is
-      pragma Warnings (Off, RT);
-   begin
-      return Radix;
-   end Machine_Radix;
 
    -----------
    -- Model --
@@ -726,6 +602,8 @@ package body Eval_Fat is
       P_Exp    : UI;
       K        : UI;
       P_Even   : Boolean;
+
+      pragma Warnings (Off, Arg_Frac);
 
    begin
       if UR_Is_Positive (X) then
@@ -833,8 +711,8 @@ package body Eval_Fat is
    ----------
 
    function Succ (RT : R; X : T) return T is
-      Emin     : constant UI := UI_From_Int (Machine_Emin (RT));
-      Mantissa : constant UI := UI_From_Int (Machine_Mantissa (RT));
+      Emin     : constant UI := Machine_Emin_Value (RT);
+      Mantissa : constant UI := Machine_Mantissa_Value (RT);
       Exp      : UI := UI_Max (Emin, Exponent (RT, X));
       Frac     : T;
       New_Frac : T;
@@ -844,8 +722,8 @@ package body Eval_Fat is
          Exp := Emin;
       end if;
 
-      --  Set exponent such that the radix point will be directly
-      --  following the mantissa after scaling
+      --  Set exponent such that the radix point will be directly following the
+      --  mantissa after scaling.
 
       if Denorm_On_Target or Exp /= Emin then
          Exp := Exp - Mantissa;

@@ -5,6 +5,7 @@
    figure out branch to lab is too far.  */
 /* { dg-do link { target fpic } } */
 /* { dg-options "-g1 -fpic" } */
+/* { dg-require-effective-target int32plus } */
 
 #define A(n) \
   case n##1: return n##1 * 131 + 63;	\

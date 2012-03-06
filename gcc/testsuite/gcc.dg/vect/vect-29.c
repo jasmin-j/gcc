@@ -8,11 +8,13 @@
 
 /* unaligned load.  */
 
+int ia[N];
+int ib[N+OFF];
+
+__attribute__ ((noinline))
 int main1 (int off)
 {
   int i;
-  int ia[N];
-  int ib[N+OFF];
 
   for (i = 0; i < N+OFF; i++)
     {
@@ -43,7 +45,12 @@ int main (void)
   return 0;
 }
 
-/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" { xfail vect_no_align } } } */
+/* For targets that don't support misaligned loads we version for the load.
+   (The store is aligned).  */
+
+/* The initialization induction loop (with aligned access) is also vectorized.  */
+/* { dg-final { scan-tree-dump-times "vectorized 2 loops" 1 "vect" } } */
 /* { dg-final { scan-tree-dump-times "Vectorizing an unaligned access" 1 "vect" { xfail vect_no_align } } } */
 /* { dg-final { scan-tree-dump-times "Alignment of access forced using peeling" 0 "vect" } } */
+/* { dg-final { scan-tree-dump-times "Alignment of access forced using versioning." 1 "vect" {target vect_no_align } } } */
 /* { dg-final { cleanup-tree-dump "vect" } } */

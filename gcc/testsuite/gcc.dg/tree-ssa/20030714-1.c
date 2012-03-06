@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-O1 -fdump-tree-dom3" } */
+/* { dg-options "-O1 -fdump-tree-dom2" } */
    
 struct rtx_def;
 typedef struct rtx_def *rtx;
@@ -14,6 +14,7 @@ struct rtx_def
   enum rtx_code code:16;
   unsigned frame_related:1;
 };
+
 static rtx
 find_base_value (src)
      rtx src;
@@ -32,14 +33,14 @@ find_base_value (src)
     find_base_value (src_1);
 }
 
-
-/* There should be six IF conditionals.  */
-/* { dg-final { scan-tree-dump-times "if " 6 "dom3"} } */
+rtx
+find_base_value_wrapper (src)
+     rtx src;
+{
+  return find_base_value (src);
+}
 
 /* There should be no casts to short unsigned int.  */
-/* { dg-final { scan-tree-dump-times "\\(short unsigned int\\)" 0 "dom3"} } */
+/* { dg-final { scan-tree-dump-times "\\(short unsigned int\\)" 0 "dom2"} } */
 
-/* There should be three loads of ->code.  */
-/* { dg-final { scan-tree-dump-times "->code" 3 "dom3"} } */
-
-/* { dg-final { cleanup-tree-dump "dom3" } } */
+/* { dg-final { cleanup-tree-dump "dom2" } } */

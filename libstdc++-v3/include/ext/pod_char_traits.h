@@ -1,11 +1,12 @@
 // POD character, std::char_traits specialization -*- C++ -*-
 
-// Copyright (C) 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
+// Copyright (C) 2002, 2003, 2004, 2005, 2007, 2009, 2010, 2011
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -13,19 +14,14 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 
-// You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// Under Section 7 of GPL version 3, you are granted additional
+// permissions described in the GCC Runtime Library Exception, version
+// 3.1, as published by the Free Software Foundation.
 
-// As a special exception, you may use this file as part of a free software
-// library without restriction.  Specifically, if other files instantiate
-// templates or use macros or inline functions from this file, or you compile
-// this file and link it with other files to produce an executable, this
-// file does not by itself cause the resulting executable to be covered by
-// the GNU General Public License.  This exception does not however
-// invalidate any other reasons why the executable file might be covered by
-// the GNU General Public License.
+// You should have received a copy of the GNU General Public License and
+// a copy of the GCC Runtime Library Exception along with this program;
+// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+// <http://www.gnu.org/licenses/>.
 
 /** @file ext/pod_char_traits.h
  *  This file is a GNU extension to the Standard C++ Library.
@@ -37,16 +33,20 @@
 #ifndef _POD_CHAR_TRAITS_H
 #define _POD_CHAR_TRAITS_H 1
 
+#pragma GCC system_header
+
 #include <string>
 
-namespace __gnu_cxx
+namespace __gnu_cxx _GLIBCXX_VISIBILITY(default)
 {
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+
   // POD character abstraction.
   // NB: The char_type parameter is a subset of int_type, as to allow
   // int_type to properly hold the full range of char_type values as
   // well as EOF.
   /// @brief A POD class that serves as a character abstraction class.
-  template<typename V, typename I, typename S = mbstate_t>
+  template<typename V, typename I, typename S = std::mbstate_t>
     struct character
     {
       typedef V				value_type;
@@ -83,10 +83,14 @@ namespace __gnu_cxx
     inline bool
     operator<(const character<V, I, S>& lhs, const character<V, I, S>& rhs)
     { return lhs.value < rhs.value; }
-} // namespace __gnu_cxx
 
-namespace std
+_GLIBCXX_END_NAMESPACE_VERSION
+} // namespace
+
+namespace std _GLIBCXX_VISIBILITY(default)
 {
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+
   /// char_traits<__gnu_cxx::character> specialization.
   template<typename V, typename I, typename S>
     struct char_traits<__gnu_cxx::character<V, I, S> >
@@ -139,8 +143,8 @@ namespace std
       static char_type*
       move(char_type* __s1, const char_type* __s2, size_t __n)
       { 
-	return static_cast<char_type*>(std::memmove(__s1, __s2, 
-						    __n * sizeof(char_type))); 
+	return static_cast<char_type*>
+	  (__builtin_memmove(__s1, __s2, __n * sizeof(char_type)));
       }
 
       static char_type*
@@ -180,6 +184,8 @@ namespace std
       not_eof(const int_type& __c)
       { return eq_int_type(__c, eof()) ? int_type() : __c; }
     };
-}
+
+_GLIBCXX_END_NAMESPACE_VERSION
+} // namespace
 
 #endif

@@ -1,8 +1,10 @@
 ! { dg-do run }
+! { dg-options "-std=legacy" }
+!
 ! pr17143
 ! does not print 2*63 correctly
        character*25 l
-       integer*8 i
+       integer(kind=8) i
        data i /1/
        do j = 1,63
           i = i * 2

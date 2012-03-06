@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 2004-2010, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived for use with GNAT from AI-00248,  which is --
 -- expected to be a part of a future expected revised Ada Reference Manual. --
@@ -15,21 +15,19 @@
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -77,9 +75,6 @@ with Ada.Strings.Unbounded;
 
 package Ada.Directories is
 
-   pragma Ada_05;
-   --  To be removed later ???
-
    -----------------------------------
    -- Directory and File Operations --
    -----------------------------------
@@ -109,6 +104,8 @@ package Ada.Directories is
    --  identification of a directory. The exception Use_Error is propagated if
    --  the external environment does not support the creation of a directory
    --  with the given name (in the absence of Name_Error) and form.
+   --
+   --  The Form parameter is ignored
 
    procedure Delete_Directory (Directory : String);
    --  Deletes an existing empty directory with name Directory. The exception
@@ -134,6 +131,8 @@ package Ada.Directories is
    --  The exception Use_Error is propagated if the external environment does
    --  not support the creation of any directories with the given name (in the
    --  absence of Name_Error) and form.
+   --
+   --  The Form parameter is ignored
 
    procedure Delete_Tree (Directory : String);
    --  Deletes an existing directory with name Directory. The directory and
@@ -165,21 +164,72 @@ package Ada.Directories is
      (Source_Name   : String;
       Target_Name   : String;
       Form          : String := "");
-   --  Copies the contents of the existing external file with Source_Name
-   --  to Target_Name. The resulting external file is a duplicate of the source
-   --  external file. The Form can be used to give system-dependent
+   --  Copies the contents of the existing external file with Source_Name to
+   --  Target_Name. The resulting external file is a duplicate of the source
+   --  external file. The Form argument can be used to give system-dependent
    --  characteristics of the resulting external file; the interpretation of
    --  the Form parameter is implementation-defined. Exception Name_Error is
    --  propagated if the string given as Source_Name does not identify an
    --  existing external ordinary or special file or if the string given as
-   --  Target_Name does not allow the identification of an external file.
-   --  The exception Use_Error is propagated if the external environment does
-   --  not support the creating of the file with the name given by Target_Name
-   --  and form given by Form, or copying of the file with the name given by
+   --  Target_Name does not allow the identification of an external file. The
+   --  exception Use_Error is propagated if the external environment does not
+   --  support the creating of the file with the name given by Target_Name and
+   --  form given by Form, or copying of the file with the name given by
    --  Source_Name (in the absence of Name_Error).
+   --
+   --  Interpretation of the Form parameter:
+   --
+   --    The Form parameter is case-insensitive
+   --
+   --    Two fields are recognized in the Form parameter:
+   --      preserve=<value>
+   --      mode=<value>
+   --
+   --      <value> starts immediately after the character '=' and ends with the
+   --      character immediately preceding the next comma (',') or with the
+   --      last character of the parameter.
+   --
+   --      The allowed values for preserve= are:
+   --
+   --        no_attributes:  Do not try to preserve any file attributes. This
+   --                        is the default if no preserve= is found in Form.
+   --
+   --        all_attributes: Try to preserve all file attributes (timestamps,
+   --                        access rights).
+   --
+   --        timestamps:     Preserve the timestamp of the copied file, but not
+   --                        the other file attributes.
+   --
+   --      The allowed values for mode= are:
+   --
+   --        copy:           Only copy if the destination file does not already
+   --                        exist. If it already exists, Copy_File will fail.
+   --
+   --        overwrite:      Copy the file in all cases. Overwrite an already
+   --                        existing destination file. This is the default if
+   --                        no mode= is found in Form.
+   --
+   --        append:         Append the original file to the destination file.
+   --                        If the destination file does not exist, the
+   --                        destination file is a copy of the source file.
+   --                        When mode=append, the field preserve=, if it
+   --                        exists, is not taken into account.
+   --
+   --    If the Form parameter includes one or both of the fields and the value
+   --    or values are incorrect, Copy_File fails with Use_Error.
+   --
+   --    Examples of correct Forms:
+   --       Form => "preserve=no_attributes,mode=overwrite" (the default)
+   --       Form => "mode=append"
+   --       Form => "mode=copy,preserve=all_attributes"
+   --
+   --    Examples of incorrect Forms:
+   --       Form => "preserve=junk"
+   --       Form => "mode=internal,preserve=timestamps"
 
-
-   --  File and directory name operations:
+   ----------------------------------------
+   -- File and directory name operations --
+   ----------------------------------------
 
    function Full_Name (Name : String) return String;
    --  Returns the full name corresponding to the file name specified by Name.
@@ -231,15 +281,16 @@ package Ada.Directories is
    --  Name is not a possible simple name (if Extension is null) or base name
    --  (if Extension is non-null).
 
-
-   --  File and directory queries:
+   --------------------------------
+   -- File and directory queries --
+   --------------------------------
 
    type File_Kind is (Directory, Ordinary_File, Special_File);
    --  The type File_Kind represents the kind of file represented by an
    --  external file or directory.
 
    type File_Size is range 0 .. Long_Long_Integer'Last;
-   --  The type File_Size represents the size of an external file.
+   --  The type File_Size represents the size of an external file
 
    function Exists (Name : String) return Boolean;
    --  Returns True if external file represented by Name exists, and False
@@ -318,9 +369,9 @@ package Ada.Directories is
    procedure End_Search (Search : in out Search_Type);
    --  Ends the search represented by Search. After a successful call on
    --  End_Search, the object Search will have no entries available. Note
-   --  that is is not necessary to call End_Search if the call to Start_Search
+   --  that it is not necessary to call End_Search if the call to Start_Search
    --  was unsuccessful and raised an exception (but it is harmless to make
-   --  the call in this case)>
+   --  the call in this case).
 
    function More_Entries (Search : Search_Type) return Boolean;
    --  Returns True if more entries are available to be returned by a call
@@ -337,6 +388,24 @@ package Ada.Directories is
    --  another program). The exception Use_Error is propagated if the external
    --  environment does not support continued searching of the directory
    --  represented by Search.
+
+   procedure Search
+     (Directory : String;
+      Pattern   : String;
+      Filter    : Filter_Type := (others => True);
+      Process   : not null access procedure
+                                    (Directory_Entry : Directory_Entry_Type));
+   --  Searches in the directory named by Directory for entries matching
+   --  Pattern. The subprogram designated by Process is called with each
+   --  matching entry in turn. Pattern represents a pattern for matching file
+   --  names. If Pattern is null, all items in the directory are matched;
+   --  otherwise, the interpretation of Pattern is implementation-defined.
+   --  Only items that match Filter will be returned. The exception Name_Error
+   --  is propagated if the string given by Directory does not identify
+   --  an existing directory, or if Pattern does not allow the identification
+   --  of any possible external file or directory. The exception Use_Error is
+   --  propagated if the external environment does not support the searching
+   --  of the directory with the given name (in the absence of Name_Error).
 
    -------------------------------------
    -- Operations on Directory Entries --
@@ -403,19 +472,16 @@ private
 
    --  Search_Type need to be a controlled type, because it includes component
    --  of type Dir_Type (in GNAT.Directory_Operations) that need to be closed
-   --  (if opened) during finalization.
-   --  The component need to be an access value, because Search_Data is not
-   --  fully defined in the spec.
+   --  (if opened) during finalization. The component need to be an access
+   --  value, because Search_Data is not fully defined in the spec.
 
    type Search_Type is new Ada.Finalization.Controlled with record
       Value : Search_Ptr;
    end record;
 
    procedure Finalize (Search : in out Search_Type);
-   --  Close the directory, if opened, and deallocate Value.
+   --  Close the directory, if opened, and deallocate Value
 
    procedure End_Search (Search : in out Search_Type) renames Finalize;
 
 end Ada.Directories;
-
-

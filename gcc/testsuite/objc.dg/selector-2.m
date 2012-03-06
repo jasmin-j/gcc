@@ -2,7 +2,7 @@
 /* { dg-options "-Wselector" } */
 /* { dg-do compile } */
 
-#include <objc/Object.h>
+#include <objc/objc.h>
 
 @interface Foo
 @end
@@ -14,4 +14,3 @@
 }
 @end
 /* { dg-warning "creating selector for nonexistent method .b1ar." "" { target *-*-* } 0 } */
-

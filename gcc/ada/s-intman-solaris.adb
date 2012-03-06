@@ -1,53 +1,41 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --           S Y S T E M . I N T E R R U P T _ M A N A G E M E N T          --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---          Copyright (C) 1992-2002 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This is a Solaris version of this package.
+--  This is a Solaris version of this package
 
---  PLEASE DO NOT add any dependences on other packages.
---  This package is designed to work with or without tasking support.
+--  Make a careful study of all signals available under the OS, to see which
+--  need to be reserved, kept always unmasked, or kept always unmasked.
 
---  Make a careful study of all signals available under the OS,
---  to see which need to be reserved, kept always unmasked,
---  or kept always unmasked.
-
---  Be on the lookout for special signals that
---  may be used by the thread library.
-
-with Interfaces.C;
---  used for int
-
-with System.OS_Interface;
---  used for various Constants, Signal and types
+--  Be on the lookout for special signals that may be used by the thread
+--  library.
 
 package body System.Interrupt_Management is
 
@@ -63,14 +51,29 @@ package body System.Interrupt_Management is
    pragma Import
      (C, Unreserve_All_Interrupts, "__gl_unreserve_all_interrupts");
 
+   function State (Int : Interrupt_ID) return Character;
+   pragma Import (C, State, "__gnat_get_interrupt_state");
+   --  Get interrupt state.  Defined in init.c
+   --  The input argument is the interrupt number,
+   --  and the result is one of the following:
+
+   User    : constant Character := 'u';
+   Runtime : constant Character := 'r';
+   Default : constant Character := 's';
+   --    'n'   this interrupt not set by any Interrupt_State pragma
+   --    'u'   Interrupt_State pragma set state to User
+   --    'r'   Interrupt_State pragma set state to Runtime
+   --    's'   Interrupt_State pragma set state to System (use "default"
+   --           system handler)
+
    ----------------------
    -- Notify_Exception --
    ----------------------
 
-   --  This function identifies the Ada exception to be raised using
-   --  the information when the system received a synchronous signal.
-   --  Since this function is machine and OS dependent, different code
-   --  has to be provided for different target.
+   --  This function identifies the Ada exception to be raised using the
+   --  information when the system received a synchronous signal. Since this
+   --  function is machine and OS dependent, different code has to be provided
+   --  for different target.
 
    procedure Notify_Exception
      (signo   : Signal;
@@ -86,79 +89,50 @@ package body System.Interrupt_Management is
       info    : access siginfo_t;
       context : access ucontext_t)
    is
-      pragma Warnings (Off, context);
+      pragma Unreferenced (info);
 
    begin
-      --  Check that treatment of exception propagation here
-      --  is consistent with treatment of the abort signal in
-      --  System.Task_Primitives.Operations.
+      --  Perform the necessary context adjustments prior to a raise
+      --  from a signal handler.
+
+      Adjust_Context_For_Raise (signo, context.all'Address);
+
+      --  Check that treatment of exception propagation here is consistent with
+      --  treatment of the abort signal in System.Task_Primitives.Operations.
 
       case signo is
          when SIGFPE =>
-            case info.si_code is
-               when  FPE_INTDIV |
-                     FPE_INTOVF |
-                     FPE_FLTDIV |
-                     FPE_FLTOVF |
-                     FPE_FLTUND |
-                     FPE_FLTRES |
-                     FPE_FLTINV |
-                     FPE_FLTSUB =>
-
-                  raise Constraint_Error;
-
-               when others =>
-                  pragma Assert (False);
-                  null;
-            end case;
-
-         when SIGILL | SIGSEGV | SIGBUS  =>
+            raise Constraint_Error;
+         when SIGILL =>
+            raise Program_Error;
+         when SIGSEGV =>
             raise Storage_Error;
-
+         when SIGBUS =>
+            raise Storage_Error;
          when others =>
-            pragma Assert (False);
             null;
       end case;
    end Notify_Exception;
 
-   ---------------------------
-   -- Initialize_Interrupts --
-   ---------------------------
+   ----------------
+   -- Initialize --
+   ----------------
 
-   --  Nothing needs to be done on this platform.
+   Initialized : Boolean := False;
 
-   procedure Initialize_Interrupts is
-   begin
-      null;
-   end Initialize_Interrupts;
-
-----------------------------
--- Package Initialization --
-----------------------------
-
-begin
-   declare
+   procedure Initialize is
       act     : aliased struct_sigaction;
       old_act : aliased struct_sigaction;
       mask    : aliased sigset_t;
       Result  : Interfaces.C.int;
 
-      function State (Int : Interrupt_ID) return Character;
-      pragma Import (C, State, "__gnat_get_interrupt_state");
-      --  Get interrupt state.  Defined in a-init.c
-      --  The input argument is the interrupt number,
-      --  and the result is one of the following:
-      --
-      User    : constant Character := 'u';
-      Runtime : constant Character := 'r';
-      Default : constant Character := 's';
-      --    'n'   this interrupt not set by any Interrupt_State pragma
-      --    'u'   Interrupt_State pragma set state to User
-      --    'r'   Interrupt_State pragma set state to Runtime
-      --    's'   Interrupt_State pragma set state to System (use "default"
-      --           system handler)
-
    begin
+      if Initialized then
+         return;
+      end if;
+
+      Initialized := True;
+
       --  Need to call pthread_init very early because it is doing signal
       --  initializations.
 
@@ -185,9 +159,8 @@ begin
       Result := sigemptyset (mask'Access);
       pragma Assert (Result = 0);
 
-      --  ??? For the same reason explained above, we can't mask these
-      --  signals because otherwise we won't be able to catch more than
-      --  one signal.
+      --  ??? For the same reason explained above, we can't mask these signals
+      --  because otherwise we won't be able to catch more than one signal.
 
       act.sa_mask := mask;
 
@@ -253,11 +226,12 @@ begin
          Reserve (SIGINT) := False;
       end if;
 
-      --  We do not have Signal 0 in reality. We just use this value
-      --  to identify not existing signals (see s-intnam.ads). Therefore,
-      --  Signal 0 should not be used in all signal related operations hence
-      --  mark it as reserved.
+      --  We do not have Signal 0 in reality. We just use this value to
+      --  identify not existing signals (see s-intnam.ads). Therefore, Signal 0
+      --  should not be used in all signal related operations hence mark it as
+      --  reserved.
 
       Reserve (0) := True;
-   end;
+   end Initialize;
+
 end System.Interrupt_Management;

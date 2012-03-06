@@ -5,10 +5,6 @@
 
 #define N 64
 
-int
-main1 ()
-{
-  int i;
   int ia[N];
   int ib[N]= 
     {1,1,0,0,1,0,1,0,
@@ -72,6 +68,10 @@ main1 ()
      1,1,0,0,1,0,1,0,
      1,1,0,0,1,0,1,0};
 
+__attribute__ ((noinline)) int
+main1 ()
+{
+  int i;
   /* Check ints.  */
 
   for (i = 0; i < N; i++)
@@ -82,7 +82,7 @@ main1 ()
   /* check results:  */
   for (i = 0; i <N; i++)
     {
-      if (ia[i] != ib[i] & ic[i])
+      if (ia[i] != (ib[i] & ic[i]))
         abort ();
     }
 
@@ -96,7 +96,7 @@ main1 ()
   /* check results:  */
   for (i = 0; i <N; i++)
     {
-      if (ca[i] != cb[i] & cc[i])
+      if (ca[i] != (cb[i] & cc[i]))
         abort ();
     }
 
@@ -110,7 +110,7 @@ main1 ()
   /* check results:  */
   for (i = 0; i <N; i++)
     {
-      if (sa[i] != sb[i] & sc[i])
+      if (sa[i] != (sb[i] & sc[i]))
         abort ();
     }
 

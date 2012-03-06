@@ -1,13 +1,14 @@
-// { dg-require-namedlocale "" }
+// { dg-require-namedlocale "en_HK" }
 
 // 2001-09-17 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003, 2004, 2005 Free Software Foundation
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2009, 2010
+// Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -16,9 +17,8 @@
 // GNU General Public License for more details.
 
 // You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// with this library; see the file COPYING3.  If not see
+// <http://www.gnu.org/licenses/>.
 
 // 22.2.5.3.1 time_put members
 
@@ -35,7 +35,7 @@ void test07()
   bool test __attribute__((unused)) = true;
 
   // create "C" time objects
-  tm time1 = { 0, 0, 12, 4, 3, 71, 0, 93, 0 };
+  const tm time1 = __gnu_test::test_tm(0, 0, 12, 4, 3, 71, 0, 93, 0);
   const char* date = "%A, the second of %B";
   const char* date_ex = "%Ex";
 
@@ -50,12 +50,12 @@ void test07()
   oss.imbue(loc_hk);
   const time_put<char>& tim_put = use_facet<time_put<char> >(oss.getloc()); 
 
-  iterator_type os_it09 = tim_put.put(oss.rdbuf(), oss, '*', &time1, 
-				      date, date + traits::length(date));
+  tim_put.put(oss.rdbuf(), oss, '*', &time1, 
+	      date, date + traits::length(date));
   string result9 = oss.str();
   VERIFY( result9 == "Sunday, the second of April");
-  iterator_type os_it10 = tim_put.put(oss.rdbuf(), oss, '*', &time1, 
-				      date_ex, date_ex + traits::length(date));
+  tim_put.put(oss.rdbuf(), oss, '*', &time1, 
+	      date_ex, date_ex + traits::length(date_ex));
   string result10 = oss.str();
   VERIFY( result10 != result9 );
 }

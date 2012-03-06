@@ -1,12 +1,13 @@
-/* Copyright (C) 2003 Free Software Foundation, Inc.
+/* Copyright (C) 2003, 2006, 2008, 2009, 2011 Free Software Foundation, Inc.
    Test builtin preprocessor assertions.
    By Kaveh Ghazi <ghazi@caip.rutgers.edu>.  */
 
 /* { dg-do preprocess } */
+/* { dg-options "-ansi -Wno-deprecated" } */
 
 /* Check for #system assertions.  */
 
-#if defined __gnu_linux__
+#if defined __linux__
 # if !#system(linux) || !#system(unix) || !#system(posix)
 #  error
 # endif
@@ -78,7 +79,8 @@
 # error
 #endif
 
-#if ( defined __unix__ && !defined __CYGWIN__ ) || defined _AIX
+#if ( defined __unix__ && !defined __CYGWIN__ ) || defined _AIX \
+    || defined __vxworks
 # if !#system(unix)
 #  error
 # endif
@@ -126,32 +128,8 @@
 # error
 #endif
 
-#if defined __BEOS__
-# if !#system(beos)
-#  error
-# endif
-#elif #system(beos)
-# error
-#endif
-
-#if defined __netware__
-# if !#system(netware)
-#  error
-# endif
-#elif #system(netware)
-# error
-#endif
-
 
 /* Check for #cpu and #machine assertions.  */
-
-#if defined __arc__
-# if !#cpu(arc) || !#machine(arc)
-#  error
-# endif
-#elif #cpu(arc) || #machine(arc)
-# error
-#endif
 
 #if defined __alpha__
 # if !#cpu(alpha) || !#machine(alpha) \
@@ -208,7 +186,7 @@
 # error
 #endif
 
-#if defined __h8300__ 
+#if defined __H8300__ 
 # if !#cpu(h8300) || !#machine(h8300) \
   || (defined __H8300__ && (!#cpu(h8300) || !#machine(h8300))) \
   || (defined __H8300H__ && (!#cpu(h8300h) || !#machine(h8300h))) \
@@ -251,14 +229,6 @@
 #  error
 # endif
 #elif #cpu(i386) || #machine(i386)
-# error
-#endif
-
-#if defined __i860__
-# if !#cpu(i860) || !#machine(i860)
-#  error
-# endif
-#elif #cpu(i860) || #machine(i860)
 # error
 #endif
 
@@ -319,14 +289,6 @@
 # error
 #endif
 
-#if defined __ns32k__
-# if !#cpu(ns32k) || !#machine(ns32k)
-#  error
-# endif
-#elif #cpu(ns32k) || #machine(ns32k)
-# error
-#endif
-
 #if defined __pdp11__
 # if !#cpu(pdp11) || !#machine(pdp11)
 #  error
@@ -335,7 +297,7 @@
 # error
 #endif
 
-#if defined __powerpc__
+#if defined __powerpc__ || defined __PPC__
 # if defined __powerpc64__
 #  if (#cpu(powerpc) || #machine(powerpc) \
        || !#cpu(powerpc64) || !#machine(powerpc64))

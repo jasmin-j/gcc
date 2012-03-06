@@ -1,30 +1,28 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                         GNAT RUNTIME COMPONENTS                          --
+--                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
--- A D A . W I D E _ W I D E _ T E X T _ I O . E N U M E R A T I O N _ A U X--
+--                  ADA.WIDE_WIDE_TEXT_IO.ENUMERATION_AUX                   --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -32,6 +30,7 @@
 ------------------------------------------------------------------------------
 
 with Ada.Wide_Wide_Text_IO.Generic_Aux; use Ada.Wide_Wide_Text_IO.Generic_Aux;
+with Ada.Characters.Conversions;        use Ada.Characters.Conversions;
 with Ada.Characters.Handling;           use Ada.Characters.Handling;
 with Interfaces.C_Streams;              use Interfaces.C_Streams;
 with System.WCh_Con;                    use System.WCh_Con;
@@ -46,10 +45,10 @@ package body Ada.Wide_Wide_Text_IO.Enumeration_Aux is
    -----------------------
 
    procedure Store_Char
-     (WC   : Wide_Wide_Character;
-      Buf  : out Wide_Wide_String;
-      Ptr  : in out Integer);
-   --  Store a single character in buffer, checking for overflow.
+     (WC  : Wide_Wide_Character;
+      Buf : out Wide_Wide_String;
+      Ptr : in out Integer);
+   --  Store a single character in buffer, checking for overflow
 
    --  These definitions replace the ones in Ada.Characters.Handling, which
    --  do not seem to work for some strange not understood reason ??? at
@@ -159,7 +158,7 @@ package body Ada.Wide_Wide_Text_IO.Enumeration_Aux is
    begin
       Check_On_One_Line (TFT (File), Actual_Width);
 
-      if Set = Lower_Case and then Item (1) /= ''' then
+      if Set = Lower_Case and then Item (Item'First) /= ''' then
          declare
             Iteml : Wide_Wide_String (Item'First .. Item'Last);
 
@@ -191,9 +190,9 @@ package body Ada.Wide_Wide_Text_IO.Enumeration_Aux is
    ----------
 
    procedure Puts
-     (To    : out Wide_Wide_String;
-      Item  : Wide_Wide_String;
-      Set   : Type_Set)
+     (To   : out Wide_Wide_String;
+      Item : Wide_Wide_String;
+      Set  : Type_Set)
    is
       Ptr : Natural;
 
@@ -205,7 +204,7 @@ package body Ada.Wide_Wide_Text_IO.Enumeration_Aux is
          Ptr := To'First;
          for J in Item'Range loop
             if Set = Lower_Case
-              and then Item (1) /= '''
+              and then Item (Item'First) /= '''
               and then Is_Character (Item (J))
             then
                To (Ptr) :=
@@ -325,9 +324,9 @@ package body Ada.Wide_Wide_Text_IO.Enumeration_Aux is
    ----------------
 
    procedure Store_Char
-     (WC   : Wide_Wide_Character;
-      Buf  : out Wide_Wide_String;
-      Ptr  : in out Integer)
+     (WC  : Wide_Wide_Character;
+      Buf : out Wide_Wide_String;
+      Ptr : in out Integer)
    is
    begin
       if Ptr = Buf'Last then

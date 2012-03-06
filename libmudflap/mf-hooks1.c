@@ -1,5 +1,5 @@
 /* Mudflap: narrow-pointer bounds-checking by tree rewriting.
-   Copyright (C) 2002, 2003, 2004 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2009, 2011 Free Software Foundation, Inc.
    Contributed by Frank Ch. Eigler <fche@redhat.com>
    and Graydon Hoare <graydon@redhat.com>
 
@@ -7,28 +7,22 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
-
-In addition to the permissions in the GNU General Public License, the
-Free Software Foundation gives you unlimited permission to link the
-compiled version of this file into combinations with other programs,
-and to distribute those combinations without any restriction coming
-from the use of this file.  (The General Public License restrictions
-do apply in other respects; for example, they cover modification of
-the file, and distribution when not linked into a combine
-executable.)
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or
 FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
-You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+Under Section 7 of GPL version 3, you are granted additional
+permissions described in the GCC Runtime Library Exception, version
+3.1, as published by the Free Software Foundation.
 
+You should have received a copy of the GNU General Public License and
+a copy of the GCC Runtime Library Exception along with this program;
+see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 
@@ -75,11 +69,26 @@ Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 
 
 #if PIC
+
+enum { BS = 4096, NB=10 };
+static char __mf_0fn_bufs[NB][BS];
+static unsigned __mf_0fn_bufs_used[NB];
+
+
 /* A special bootstrap variant. */
 void *
 __mf_0fn_malloc (size_t c)
 {
-  /* fprintf (stderr, "0fn malloc c=%lu\n", c); */
+  unsigned i;
+
+  for (i=0; i<NB; i++)
+    {
+      if (! __mf_0fn_bufs_used[i] && c < BS)
+	{
+	  __mf_0fn_bufs_used[i] = 1;
+	  return & __mf_0fn_bufs[i][0];
+	}
+    }
   return NULL;
 }
 #endif
@@ -96,7 +105,9 @@ WRAPPER(void *, malloc, size_t c)
   size_with_crumple_zones =
     CLAMPADD(c,CLAMPADD(__mf_opts.crumple_zone,
 			__mf_opts.crumple_zone));
+  BEGIN_MALLOC_PROTECT ();
   result = (char *) CALL_REAL (malloc, size_with_crumple_zones);
+  END_MALLOC_PROTECT ();
 
   if (LIKELY(result))
     {
@@ -114,21 +125,7 @@ WRAPPER(void *, malloc, size_t c)
 void *
 __mf_0fn_calloc (size_t c, size_t n)
 {
-  enum foo { BS = 4096, NB=10 };
-  static char bufs[NB][BS];
-  static unsigned bufs_used[NB];
-  unsigned i;
-
-  /* fprintf (stderr, "0fn calloc c=%lu n=%lu\n", c, n); */
-  for (i=0; i<NB; i++)
-    {
-      if (! bufs_used[i] && (c*n) < BS)
-	{
-	  bufs_used[i] = 1;
-	  return & bufs[i][0];
-	}
-    }
-  return NULL;
+  return __mf_0fn_malloc (c * n);
 }
 #endif
 
@@ -147,7 +144,9 @@ WRAPPER(void *, calloc, size_t c, size_t n)
     CLAMPADD((c * n), /* XXX: CLAMPMUL */
 	     CLAMPADD(__mf_opts.crumple_zone,
 		      __mf_opts.crumple_zone));
+  BEGIN_MALLOC_PROTECT ();
   result = (char *) CALL_REAL (malloc, size_with_crumple_zones);
+  END_MALLOC_PROTECT ();
 
   if (LIKELY(result))
     memset (result, 0, size_with_crumple_zones);
@@ -189,12 +188,14 @@ WRAPPER(void *, realloc, void *buf, size_t c)
   size_with_crumple_zones =
     CLAMPADD(c, CLAMPADD(__mf_opts.crumple_zone,
 			 __mf_opts.crumple_zone));
+  BEGIN_MALLOC_PROTECT ();
   result = (char *) CALL_REAL (realloc, base, size_with_crumple_zones);
+  END_MALLOC_PROTECT ();
 
   /* Ensure heap wiping doesn't occur during this peculiar
      unregister/reregister pair.  */
   LOCKTH ();
-  __mf_state = reentrant;
+  __mf_set_state (reentrant);
   saved_wipe_heap = __mf_opts.wipe_heap;
   __mf_opts.wipe_heap = 0;
 
@@ -212,7 +213,7 @@ WRAPPER(void *, realloc, void *buf, size_t c)
   /* Restore previous setting.  */
   __mf_opts.wipe_heap = saved_wipe_heap;
 
-  __mf_state = active;
+  __mf_set_state (active);
   UNLOCKTH ();
 
   return result;
@@ -241,6 +242,19 @@ WRAPPER(void, free, void *buf)
 
   if (UNLIKELY(buf == NULL))
     return;
+
+#if PIC
+  /* Check whether the given buffer might have come from a
+     __mf_0fn_malloc/calloc call that for whatever reason was not
+     redirected back to __mf_0fn_free.  If so, we just ignore the
+     call. */
+  if (UNLIKELY((uintptr_t) buf >= (uintptr_t) __mf_0fn_bufs &&
+               (uintptr_t) buf < ((uintptr_t) __mf_0fn_bufs + sizeof(__mf_0fn_bufs))))
+  {
+    VERBOSE_TRACE ("skipping free of boot (0fn) alloc buffer %p\n", buf);
+    return;
+  }
+#endif
 
   LOCKTH ();
   if (UNLIKELY(!freeq_initialized))
@@ -274,7 +288,9 @@ WRAPPER(void, free, void *buf)
 			     (void *) freeme,
 			     __mf_opts.crumple_zone);
 	    }
+	  BEGIN_MALLOC_PROTECT ();
 	  CALL_REAL (free, freeme);
+	  END_MALLOC_PROTECT ();
 	}
     }
   else
@@ -289,16 +305,27 @@ WRAPPER(void, free, void *buf)
 			 (void *) buf,
 			 __mf_opts.crumple_zone);
 	}
+      BEGIN_MALLOC_PROTECT ();
       CALL_REAL (free, base);
+      END_MALLOC_PROTECT ();
     }
 }
 
+
+/* We can only wrap mmap if the target supports it.  Likewise for munmap.
+   We assume we have both if we have mmap.  */
+#ifdef HAVE_MMAP
 
 #if PIC
 /* A special bootstrap variant. */
 void *
 __mf_0fn_mmap (void *start, size_t l, int prot, int f, int fd, off_t off)
 {
+#if defined(__FreeBSD__)
+  if (f == 0x1000 && fd == -1 && prot == 0 && off == 0)
+    return 0;
+#endif /* Ignore red zone allocation request for initial thread's stack. */
+
   return (void *) -1;
 }
 #endif
@@ -384,6 +411,62 @@ WRAPPER(int , munmap, void *start, size_t length)
     }
   return result;
 }
+#endif /* HAVE_MMAP */
+
+
+#ifdef HAVE_MMAP64
+#if PIC
+/* A special bootstrap variant. */
+void *
+__mf_0fn_mmap64 (void *start, size_t l, int prot, int f, int fd, off64_t off)
+{
+  return (void *) -1;
+}
+#endif
+
+
+#undef mmap
+WRAPPER(void *, mmap64,
+	void  *start,  size_t length, int prot,
+	int flags, int fd, off64_t offset)
+{
+  DECLARE(void *, mmap64, void *, size_t, int,
+			    int, int, off64_t);
+  void *result;
+  BEGIN_PROTECT (mmap64, start, length, prot, flags, fd, offset);
+
+  result = CALL_REAL (mmap64, start, length, prot,
+			flags, fd, offset);
+
+  /*
+  VERBOSE_TRACE ("mmap64 (%08lx, %08lx, ...) => %08lx\n",
+		 (uintptr_t) start, (uintptr_t) length,
+		 (uintptr_t) result);
+  */
+
+  if (result != (void *)-1)
+    {
+      /* Register each page as a heap object.  Why not register it all
+	 as a single segment?  That's so that a later munmap() call
+	 can unmap individual pages.  XXX: would __MF_TYPE_GUESS make
+	 this more automatic?  */
+      size_t ps = getpagesize ();
+      uintptr_t base = (uintptr_t) result;
+      uintptr_t offset;
+
+      for (offset=0; offset<length; offset+=ps)
+	{
+	  /* XXX: We could map PROT_NONE to __MF_TYPE_NOACCESS. */
+	  /* XXX: Unaccessed HEAP pages are reported as leaks.  Is this
+	     appropriate for unaccessed mmap pages? */
+	  __mf_register ((void *) CLAMPADD (base, offset), ps,
+			 __MF_TYPE_HEAP_I, "mmap64 page");
+	}
+    }
+
+  return result;
+}
+#endif /* HAVE_MMAP64 */
 
 
 /* This wrapper is a little different, as it's called indirectly from
@@ -422,8 +505,10 @@ __mf_wrap_alloca_indirect (size_t c)
     {
       struct alloca_tracking *next = alloca_history->next;
       __mf_unregister (alloca_history->ptr, 0, __MF_TYPE_HEAP);
+      BEGIN_MALLOC_PROTECT ();
       CALL_REAL (free, alloca_history->ptr);
       CALL_REAL (free, alloca_history);
+      END_MALLOC_PROTECT ();
       alloca_history = next;
     }
 
@@ -431,14 +516,20 @@ __mf_wrap_alloca_indirect (size_t c)
   result = NULL;
   if (LIKELY (c > 0)) /* alloca(0) causes no allocation.  */
     {
+      BEGIN_MALLOC_PROTECT ();
       track = (struct alloca_tracking *) CALL_REAL (malloc,
 						    sizeof (struct alloca_tracking));
+      END_MALLOC_PROTECT ();
       if (LIKELY (track != NULL))
 	{
+	  BEGIN_MALLOC_PROTECT ();
 	  result = CALL_REAL (malloc, c);
+	  END_MALLOC_PROTECT ();
 	  if (UNLIKELY (result == NULL))
 	    {
+	      BEGIN_MALLOC_PROTECT ();
 	      CALL_REAL (free, track);
+	      END_MALLOC_PROTECT ();
 	      /* Too bad.  XXX: What about errno?  */
 	    }
 	  else

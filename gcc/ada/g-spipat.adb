@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---           Copyright (C) 1998-2005, Ada Core Technologies, Inc.           --
+--                     Copyright (C) 1998-2011, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -36,16 +34,14 @@
 --  a direct translation, but the approach is followed closely. In particular,
 --  we use the one stack approach developed in the SPITBOL implementation.
 
-with Ada.Exceptions;            use Ada.Exceptions;
-with Ada.Strings.Maps;          use Ada.Strings.Maps;
 with Ada.Strings.Unbounded.Aux; use Ada.Strings.Unbounded.Aux;
 
 with GNAT.Debug_Utilities;      use GNAT.Debug_Utilities;
 
 with System;                    use System;
 
-with Unchecked_Conversion;
-with Unchecked_Deallocation;
+with Ada.Unchecked_Conversion;
+with Ada.Unchecked_Deallocation;
 
 package body GNAT.Spitbol.Patterns is
 
@@ -76,7 +72,7 @@ package body GNAT.Spitbol.Patterns is
    subtype String_Ptr is Ada.Strings.Unbounded.String_Access;
    subtype File_Ptr   is Ada.Text_IO.File_Access;
 
-   function To_Address is new Unchecked_Conversion (PE_Ptr, Address);
+   function To_Address is new Ada.Unchecked_Conversion (PE_Ptr, Address);
    --  Used only for debugging output purposes
 
    subtype AFC is Ada.Finalization.Controlled;
@@ -104,7 +100,7 @@ package body GNAT.Spitbol.Patterns is
    --      I             parameter(s)           I
    --      +------------------------------------+
 
-   --     Pcode is a code value indicating the type of the patterm node. This
+   --     Pcode is a code value indicating the type of the pattern node. This
    --     code is used both as the discriminant value for the record, and as
    --     the case index in the main match routine that branches to the proper
    --     match code for the given element.
@@ -115,7 +111,7 @@ package body GNAT.Spitbol.Patterns is
    --     Pthen is a pointer to the successor node, i.e the node to be matched
    --     if the attempt to match the node succeeds. If this is the last node
    --     of the pattern to be matched, then Pthen points to a dummy node
-   --     of kind PC_EOP (end of pattern), which initiales pattern exit.
+   --     of kind PC_EOP (end of pattern), which initializes pattern exit.
 
    --     The parameter or parameters are present for certain node types,
    --     and the type varies with the pattern code.
@@ -218,7 +214,7 @@ package body GNAT.Spitbol.Patterns is
    type PE (Pcode : Pattern_Code) is record
 
       Index : IndexT;
-      --  Serial index number of pattern element within pattern.
+      --  Serial index number of pattern element within pattern
 
       Pthen : PE_Ptr;
       --  Successor element, to be matched after this one
@@ -433,7 +429,7 @@ package body GNAT.Spitbol.Patterns is
    ---------------------------------------------------
 
    --  The serial index numbers for the pattern elements are assigned as
-   --  a pattern is consructed from its constituent elements. Note that there
+   --  a pattern is constructed from its constituent elements. Note that there
    --  is never any sharing of pattern elements between patterns (copies are
    --  always made), so the serial index numbers are unique to a particular
    --  pattern as referenced from the P field of a value of type Pattern.
@@ -451,7 +447,7 @@ package body GNAT.Spitbol.Patterns is
    --  pattern (e.g. copy and finalization processing). Once constructed
    --  patterns are strictly read only. This is necessary to allow sharing
    --  of patterns between tasks. This means that we cannot go marking the
-   --  pattern (e.g. with a visited bit). Instead we cosntuct a separate
+   --  pattern (e.g. with a visited bit). Instead we construct a separate
    --  vector that contains the necessary information indexed by the Index
    --  values in the pattern elements. For this purpose the only requirement
    --  is that they be uniquely assigned.
@@ -471,7 +467,7 @@ package body GNAT.Spitbol.Patterns is
 
    --  Third, as compound pattern structures are constructed, the way in which
    --  constituent parts of the pattern are constructed is stylized. This is
-   --  an automatic consequence of the way that these compounjd structures
+   --  an automatic consequence of the way that these compound structures
    --  are constructed, and basically what we are doing is simply documenting
    --  and specifying the natural result of the pattern construction. The
    --  section describing compound pattern structures gives details of the
@@ -590,7 +586,7 @@ package body GNAT.Spitbol.Patterns is
    --  stack is used to control the backtracking. Finally, it notes the
    --  way in which the Index numbers are assigned to the structure.
 
-   --  In all diagrams, solid lines (built witth minus signs or vertical
+   --  In all diagrams, solid lines (built with minus signs or vertical
    --  bars, represent successor pointers (Pthen fields) with > or V used
    --  to indicate the direction of the pointer. The initial node of the
    --  structure is in the upper left of the diagram. A dotted line is an
@@ -602,7 +598,7 @@ package body GNAT.Spitbol.Patterns is
       -------------------
 
       --  In the pattern structures listed in this section, a line that looks
-      --  lile ----> with nothing to the right indicates an end of pattern
+      --  like ----> with nothing to the right indicates an end of pattern
       --  (EOP) pointer that represents the end of the match.
 
       --  When a pattern concatenation (L & R) occurs, the resulting structure
@@ -611,7 +607,7 @@ package body GNAT.Spitbol.Patterns is
       --  occurs in constructing a pattern, and it means that the pattern
       --  matching circuitry does not have to keep track of the structure
       --  of a pattern with respect to concatenation, since the appropriate
-      --  succesor is always at hand.
+      --  successor is always at hand.
 
       --  Concatenation itself generates no additional possibilities for
       --  backtracking, but the constituent patterns of the concatenated
@@ -645,7 +641,7 @@ package body GNAT.Spitbol.Patterns is
       --  it stacks a pointer to the leading element of R on the history stack
       --  so that on subsequent failure, a match of R is attempted.
 
-      --  The A node is the higest numbered element in the pattern. The
+      --  The A node is the highest numbered element in the pattern. The
       --  original index numbers of R are unchanged, but the index numbers
       --  of the L pattern are adjusted up by the count of elements in R.
 
@@ -734,7 +730,7 @@ package body GNAT.Spitbol.Patterns is
       --  pointer to Y node, which is the PC_Arb_Y node that matches one
       --  extra character and restacks itself.
 
-      --  The PC_Arb_X node is numbered 2, and the PC_Arb_Y node is 1.
+      --  The PC_Arb_X node is numbered 2, and the PC_Arb_Y node is 1
 
       -------------------------
       -- Arbno (simple case) --
@@ -943,7 +939,7 @@ package body GNAT.Spitbol.Patterns is
       --  described below.
 
       --  It then stores a pointer to itself in the special entry node field.
-      --  This was otherwise unused, and is now used to retrive the address
+      --  This was otherwise unused, and is now used to retrieve the address
       --  of the variable to be assigned at the end of the pattern.
 
       --  After that the inner region is terminated in the usual manner,
@@ -1001,7 +997,7 @@ package body GNAT.Spitbol.Patterns is
       --  string, starting at the current cursor position. It then updates
       --  the cursor past this matched string, and stacks a pointer to itself
       --  with this updated cursor value on the history stack, to extend the
-      --  matched string on a subequent failure.
+      --  matched string on a subsequent failure.
 
       --  Since this is a single node it is numbered 1 (the reason we include
       --  it in the compound patterns section is that it backtracks).
@@ -1176,7 +1172,7 @@ package body GNAT.Spitbol.Patterns is
 
    --  The following pattern elements are referenced only from the pattern
    --  history stack. In each case the processing for the pattern element
-   --  results in pattern match abort, or futher failure, so there is no
+   --  results in pattern match abort, or further failure, so there is no
    --  need for a successor and no need for a node number
 
    CP_Assign    : aliased PE := (PC_Assign,    0, N);
@@ -1210,11 +1206,11 @@ package body GNAT.Spitbol.Patterns is
    --  understand a typical use of this function).
 
    function BreakX_Make (B : PE_Ptr) return Pattern;
-   --  Given a pattern element for a Break patternx, returns the
+   --  Given a pattern element for a Break pattern, returns the
    --  corresponding BreakX compound pattern structure.
 
    function Concat (L, R : PE_Ptr; Incr : Natural) return PE_Ptr;
-   --  Creates a pattern eelement that represents a concatenation of the
+   --  Creates a pattern element that represents a concatenation of the
    --  two given pattern elements (i.e. the pattern L followed by R).
    --  The result returned is always the same as L, but the pattern
    --  referenced by L is modified to have R as a successor. This
@@ -1239,7 +1235,7 @@ package body GNAT.Spitbol.Patterns is
 
    function Is_In (C : Character; Str : String) return Boolean;
    pragma Inline (Is_In);
-   --  Determines if the character C is in string Str.
+   --  Determines if the character C is in string Str
 
    procedure Logic_Error;
    --  Called to raise Program_Error with an appropriate message if an
@@ -1306,7 +1302,7 @@ package body GNAT.Spitbol.Patterns is
       Start   : out Natural;
       Stop    : out Natural);
    --  Identical in all respects to XMatch, except that trace information is
-   --  output on Standard_Ouput during execution of the match. This is the
+   --  output on Standard_Output during execution of the match. This is the
    --  version that is called if the original Match call has Debug => True.
 
    ---------
@@ -1357,7 +1353,6 @@ package body GNAT.Spitbol.Patterns is
       E   : constant PE_Ptr := new PE'(PC_R_Enter,    0, EOP);
       A   : constant PE_Ptr :=
               new PE'(PC_Assign_Imm, 0, EOP, Var'Unrestricted_Access);
-
    begin
       return (AFC with P.Stk + 3, Bracket (E, Pat, A));
    end "*";
@@ -1367,7 +1362,6 @@ package body GNAT.Spitbol.Patterns is
       E   : constant PE_Ptr := new PE'(PC_R_Enter,    0, EOP);
       A   : constant PE_Ptr :=
               new PE'(PC_Assign_Imm, 0, EOP, Var'Unrestricted_Access);
-
    begin
       return (AFC with 3, Bracket (E, Pat, A));
    end "*";
@@ -1377,7 +1371,6 @@ package body GNAT.Spitbol.Patterns is
       E   : constant PE_Ptr := new PE'(PC_R_Enter,    0, EOP);
       A   : constant PE_Ptr :=
               new PE'(PC_Assign_Imm, 0, EOP, Var'Unrestricted_Access);
-
    begin
       return (AFC with 3, Bracket (E, Pat, A));
    end "*";
@@ -1396,7 +1389,6 @@ package body GNAT.Spitbol.Patterns is
       Pat : constant PE_Ptr := Copy (P.P);
       E   : constant PE_Ptr := new PE'(PC_R_Enter,   0, EOP);
       W   : constant PE_Ptr := new PE'(PC_Write_Imm, 0, EOP, Fil);
-
    begin
       return (AFC with 3, Bracket (E, Pat, W));
    end "*";
@@ -1405,7 +1397,6 @@ package body GNAT.Spitbol.Patterns is
       Pat : constant PE_Ptr := S_To_PE (P);
       E   : constant PE_Ptr := new PE'(PC_R_Enter,   0, EOP);
       W   : constant PE_Ptr := new PE'(PC_Write_Imm, 0, EOP, Fil);
-
    begin
       return (AFC with 3, Bracket (E, Pat, W));
    end "*";
@@ -1414,7 +1405,6 @@ package body GNAT.Spitbol.Patterns is
       Pat : constant PE_Ptr := C_To_PE (P);
       E   : constant PE_Ptr := new PE'(PC_R_Enter,   0, EOP);
       W   : constant PE_Ptr := new PE'(PC_Write_Imm, 0, EOP, Fil);
-
    begin
       return (AFC with 3, Bracket (E, Pat, W));
    end "*";
@@ -1438,7 +1428,6 @@ package body GNAT.Spitbol.Patterns is
       E   : constant PE_Ptr := new PE'(PC_R_Enter,    0, EOP);
       A   : constant PE_Ptr :=
               new PE'(PC_Assign_OnM, 0, EOP, Var'Unrestricted_Access);
-
    begin
       return (AFC with P.Stk + 3, Bracket (E, Pat, A));
    end "**";
@@ -1448,7 +1437,6 @@ package body GNAT.Spitbol.Patterns is
       E   : constant PE_Ptr := new PE'(PC_R_Enter,    0, EOP);
       A   : constant PE_Ptr :=
               new PE'(PC_Assign_OnM, 0, EOP, Var'Unrestricted_Access);
-
    begin
       return (AFC with 3, Bracket (E, Pat, A));
    end "**";
@@ -1458,7 +1446,6 @@ package body GNAT.Spitbol.Patterns is
       E   : constant PE_Ptr := new PE'(PC_R_Enter,    0, EOP);
       A   : constant PE_Ptr :=
               new PE'(PC_Assign_OnM, 0, EOP, Var'Unrestricted_Access);
-
    begin
       return (AFC with 3, Bracket (E, Pat, A));
    end "**";
@@ -1477,7 +1464,6 @@ package body GNAT.Spitbol.Patterns is
       Pat : constant PE_Ptr := Copy (P.P);
       E   : constant PE_Ptr := new PE'(PC_R_Enter,   0, EOP);
       W   : constant PE_Ptr := new PE'(PC_Write_OnM, 0, EOP, Fil);
-
    begin
       return (AFC with P.Stk + 3, Bracket (E, Pat, W));
    end "**";
@@ -1486,7 +1472,6 @@ package body GNAT.Spitbol.Patterns is
       Pat : constant PE_Ptr := S_To_PE (P);
       E   : constant PE_Ptr := new PE'(PC_R_Enter,   0, EOP);
       W   : constant PE_Ptr := new PE'(PC_Write_OnM, 0, EOP, Fil);
-
    begin
       return (AFC with 3, Bracket (E, Pat, W));
    end "**";
@@ -1495,7 +1480,6 @@ package body GNAT.Spitbol.Patterns is
       Pat : constant PE_Ptr := C_To_PE (P);
       E   : constant PE_Ptr := new PE'(PC_R_Enter,   0, EOP);
       W   : constant PE_Ptr := new PE'(PC_Write_OnM, 0, EOP, Fil);
-
    begin
       return (AFC with 3, Bracket (E, Pat, W));
    end "**";
@@ -1604,7 +1588,7 @@ package body GNAT.Spitbol.Patterns is
          return new PE'(PC_Alt, R.Index + 1, EOP, R);
 
       --  If the left pattern is non-null, then build a reference vector
-      --  for its elements, and adjust their index values to acccomodate
+      --  for its elements, and adjust their index values to accommodate
       --  the right hand elements. Then add the alternation node.
 
       else
@@ -1647,7 +1631,7 @@ package body GNAT.Spitbol.Patterns is
       return (AFC with 0, new PE'(PC_Any_CS, 1, EOP, Str));
    end Any;
 
-   function Any (Str : access VString) return Pattern is
+   function Any (Str : not null access VString) return Pattern is
    begin
       return (AFC with 0, new PE'(PC_Any_VP, 1, EOP, VString_Ptr (Str)));
    end Any;
@@ -1670,12 +1654,11 @@ package body GNAT.Spitbol.Patterns is
    --    | Y |---->
    --    +---+
 
-   --  The PC_Arb_X element is numbered 2, and the PC_Arb_Y element is 1.
+   --  The PC_Arb_X element is numbered 2, and the PC_Arb_Y element is 1
 
    function Arb return Pattern is
       Y : constant PE_Ptr := new PE'(PC_Arb_Y, 1, EOP);
       X : constant PE_Ptr := new PE'(PC_Arb_X, 2, EOP, Y);
-
    begin
       return (AFC with 1, X);
    end Arb;
@@ -1688,7 +1671,6 @@ package body GNAT.Spitbol.Patterns is
    begin
       if P'Length = 0 then
          return (AFC with 0, EOP);
-
       else
          return (AFC with 0, Arbno_Simple (S_To_PE (P)));
       end if;
@@ -1734,7 +1716,6 @@ package body GNAT.Spitbol.Patterns is
          X   : constant PE_Ptr := new PE'(PC_Arbno_X, 0, EOP, E);
          Y   : constant PE_Ptr := new PE'(PC_Arbno_Y, 0, X,   P.Stk + 3);
          EPY : constant PE_Ptr := Bracket (E, Pat, Y);
-
       begin
          X.Alt := EPY;
          X.Index := EPY.Index + 1;
@@ -1766,7 +1747,6 @@ package body GNAT.Spitbol.Patterns is
 
    function Arbno_Simple (P : PE_Ptr) return PE_Ptr is
       S : constant PE_Ptr := new PE'(PC_Arbno_S, P.Index + 1, EOP, P);
-
    begin
       Set_Successor (P, S);
       return S;
@@ -1826,9 +1806,10 @@ package body GNAT.Spitbol.Patterns is
       return (AFC with 0, new PE'(PC_Break_CS, 1, EOP, Str));
    end Break;
 
-   function Break (Str : access VString) return Pattern is
+   function Break (Str : not null access VString) return Pattern is
    begin
-      return (AFC with 0, new PE'(PC_Break_VP, 1, EOP, VString_Ptr (Str)));
+      return (AFC with 0,
+              new PE'(PC_Break_VP, 1, EOP, Str.all'Unchecked_Access));
    end Break;
 
    function Break (Str : VString_Func) return Pattern is
@@ -1860,7 +1841,7 @@ package body GNAT.Spitbol.Patterns is
       return BreakX_Make (new PE'(PC_BreakX_CS, 3, N, Str));
    end BreakX;
 
-   function BreakX (Str : access VString) return Pattern is
+   function BreakX (Str : not null access VString) return Pattern is
    begin
       return BreakX_Make (new PE'(PC_BreakX_VP, 3, N, VString_Ptr (Str)));
    end BreakX;
@@ -1889,7 +1870,6 @@ package body GNAT.Spitbol.Patterns is
    function BreakX_Make (B : PE_Ptr) return Pattern is
       X : constant PE_Ptr := new PE'(PC_BreakX_X, 2, B);
       A : constant PE_Ptr := new PE'(PC_Alt,      1, EOP, X);
-
    begin
       B.Pthen := A;
       return (AFC with 2, B);
@@ -1904,6 +1884,10 @@ package body GNAT.Spitbol.Patterns is
       procedure Record_PE (E : PE_Ptr);
       --  Record given pattern element if not already recorded in RA,
       --  and also record any referenced pattern elements recursively.
+
+      ---------------
+      -- Record_PE --
+      ---------------
 
       procedure Record_PE (E : PE_Ptr) is
       begin
@@ -2028,7 +2012,7 @@ package body GNAT.Spitbol.Patterns is
             --  References to elements in P, indexed by Index field
 
             Copy : Ref_Array (1 .. P.Index);
-            --  Holds copies of elements of P, indexed by Index field.
+            --  Holds copies of elements of P, indexed by Index field
 
             E : PE_Ptr;
 
@@ -2090,7 +2074,11 @@ package body GNAT.Spitbol.Patterns is
       E : PE_Ptr;
 
       procedure Write_Node_Id (E : PE_Ptr);
-      --  Writes out a string identifying the given pattern element.
+      --  Writes out a string identifying the given pattern element
+
+      -------------------
+      -- Write_Node_Id --
+      -------------------
 
       procedure Write_Node_Id (E : PE_Ptr) is
       begin
@@ -2118,6 +2106,8 @@ package body GNAT.Spitbol.Patterns is
             end;
          end if;
       end Write_Node_Id;
+
+   --  Start of processing for Dump
 
    begin
       New_Line;
@@ -2314,7 +2304,6 @@ package body GNAT.Spitbol.Patterns is
       Pat : constant PE_Ptr := Copy (P.P);
       E   : constant PE_Ptr := new PE'(PC_R_Enter, 0, EOP);
       X   : constant PE_Ptr := new PE'(PC_Fence_X, 0, EOP);
-
    begin
       return (AFC with P.Stk + 1, Bracket (E, Pat, X));
    end Fence;
@@ -2325,8 +2314,8 @@ package body GNAT.Spitbol.Patterns is
 
    procedure Finalize (Object : in out Pattern) is
 
-      procedure Free is new Unchecked_Deallocation (PE, PE_Ptr);
-      procedure Free is new Unchecked_Deallocation (String, String_Ptr);
+      procedure Free is new Ada.Unchecked_Deallocation (PE, PE_Ptr);
+      procedure Free is new Ada.Unchecked_Deallocation (String, String_Ptr);
 
    begin
       --  Nothing to do if already freed
@@ -2403,7 +2392,6 @@ package body GNAT.Spitbol.Patterns is
 
       procedure Delete_Ampersand is
          L : constant Natural := Length (Result);
-
       begin
          if L > 2 then
             Delete (Result, L - 1, L);
@@ -2428,7 +2416,7 @@ package body GNAT.Spitbol.Patterns is
             when PC_Alt => Alt : declare
 
                Elmts_In_L : constant IndexT := E.Pthen.Index - E.Alt.Index;
-               --  Number of elements in left pattern of alternation.
+               --  Number of elements in left pattern of alternation
 
                Lowest_In_L : constant IndexT := E.Index - Elmts_In_L;
                --  Number of lowest index in elements of left pattern
@@ -2485,11 +2473,11 @@ package body GNAT.Spitbol.Patterns is
 
             when PC_Assign_Imm =>
                Delete_Ampersand;
-               Append (Result, "* " & Str_VP (Refs (E.Index - 1).VP));
+               Append (Result, "* " & Str_VP (Refs (E.Index).VP));
 
             when PC_Assign_OnM =>
                Delete_Ampersand;
-               Append (Result, "** " & Str_VP (Refs (E.Index - 1).VP));
+               Append (Result, "** " & Str_VP (Refs (E.Index).VP));
 
             when PC_Any_CH =>
                Append (Result, "Any ('" & E.Char & "')");
@@ -2780,7 +2768,7 @@ package body GNAT.Spitbol.Patterns is
       return (AFC with 0, new PE'(PC_Len_NF, 1, EOP, Count));
    end Len;
 
-   function Len (Count : access Natural) return Pattern is
+   function Len (Count : not null access Natural) return Pattern is
    begin
       return (AFC with 0, new PE'(PC_Len_NP, 1, EOP, Natural_Ptr (Count)));
    end Len;
@@ -2791,9 +2779,8 @@ package body GNAT.Spitbol.Patterns is
 
    procedure Logic_Error is
    begin
-      Raise_Exception
-        (Program_Error'Identity,
-         "Internal logic error in GNAT.Spitbol.Patterns");
+      raise Program_Error with
+         "Internal logic error in GNAT.Spitbol.Patterns";
    end Logic_Error;
 
    -----------
@@ -2804,10 +2791,11 @@ package body GNAT.Spitbol.Patterns is
      (Subject : VString;
       Pat     : Pattern) return Boolean
    is
+      S     : Big_String_Access;
+      L     : Natural;
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
-      L     : Natural;
+      pragma Unreferenced (Stop);
 
    begin
       Get_String (Subject, S, L);
@@ -2826,6 +2814,8 @@ package body GNAT.Spitbol.Patterns is
       Pat     : Pattern) return Boolean
    is
       Start, Stop : Natural;
+      pragma Unreferenced (Stop);
+
       subtype String1 is String (1 .. Subject'Length);
 
    begin
@@ -2845,7 +2835,7 @@ package body GNAT.Spitbol.Patterns is
    is
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
+      S     : Big_String_Access;
       L     : Natural;
 
    begin
@@ -2874,7 +2864,7 @@ package body GNAT.Spitbol.Patterns is
    is
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
+      S     : Big_String_Access;
       L     : Natural;
 
    begin
@@ -2899,10 +2889,12 @@ package body GNAT.Spitbol.Patterns is
      (Subject : VString;
       Pat     : Pattern)
    is
+      S : Big_String_Access;
+      L : Natural;
+
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
-      L     : Natural;
+      pragma Unreferenced (Start, Stop);
 
    begin
       Get_String (Subject, S, L);
@@ -2919,7 +2911,10 @@ package body GNAT.Spitbol.Patterns is
       Pat     : Pattern)
    is
       Start, Stop : Natural;
+      pragma Unreferenced (Start, Stop);
+
       subtype String1 is String (1 .. Subject'Length);
+
    begin
       if Debug_Mode then
          XMatchD (String1 (Subject), Pat.P, Pat.Stk, Start, Stop);
@@ -2935,7 +2930,7 @@ package body GNAT.Spitbol.Patterns is
    is
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
+      S     : Big_String_Access;
       L     : Natural;
 
    begin
@@ -2960,7 +2955,7 @@ package body GNAT.Spitbol.Patterns is
    is
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
+      S     : Big_String_Access;
       L     : Natural;
 
    begin
@@ -2982,7 +2977,7 @@ package body GNAT.Spitbol.Patterns is
       Pat     : PString) return Boolean
    is
       Pat_Len : constant Natural := Pat'Length;
-      S       : String_Access;
+      S       : Big_String_Access;
       L       : Natural;
 
    begin
@@ -3040,7 +3035,7 @@ package body GNAT.Spitbol.Patterns is
    is
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
+      S     : Big_String_Access;
       L     : Natural;
 
    begin
@@ -3069,7 +3064,7 @@ package body GNAT.Spitbol.Patterns is
    is
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
+      S     : Big_String_Access;
       L     : Natural;
 
    begin
@@ -3094,10 +3089,12 @@ package body GNAT.Spitbol.Patterns is
      (Subject : VString;
       Pat     : PString)
    is
+      S : Big_String_Access;
+      L : Natural;
+
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
-      L     : Natural;
+      pragma Unreferenced (Start, Stop);
 
    begin
       Get_String (Subject, S, L);
@@ -3114,6 +3111,8 @@ package body GNAT.Spitbol.Patterns is
       Pat     : PString)
    is
       Start, Stop : Natural;
+      pragma Unreferenced (Start, Stop);
+
       subtype String1 is String (1 .. Subject'Length);
 
    begin
@@ -3131,7 +3130,7 @@ package body GNAT.Spitbol.Patterns is
    is
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
+      S     : Big_String_Access;
       L     : Natural;
 
    begin
@@ -3156,7 +3155,7 @@ package body GNAT.Spitbol.Patterns is
    is
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
+      S     : Big_String_Access;
       L     : Natural;
 
    begin
@@ -3180,7 +3179,7 @@ package body GNAT.Spitbol.Patterns is
    is
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
+      S     : Big_String_Access;
       L     : Natural;
 
    begin
@@ -3211,7 +3210,7 @@ package body GNAT.Spitbol.Patterns is
    is
       Start : Natural;
       Stop  : Natural;
-      S     : String_Access;
+      S     : Big_String_Access;
       L     : Natural;
 
    begin
@@ -3267,7 +3266,7 @@ package body GNAT.Spitbol.Patterns is
       return (AFC with 0, new PE'(PC_NotAny_CS, 1, EOP, Str));
    end NotAny;
 
-   function NotAny (Str : access VString) return Pattern is
+   function NotAny (Str : not null access VString) return Pattern is
    begin
       return (AFC with 0, new PE'(PC_NotAny_VP, 1, EOP, VString_Ptr (Str)));
    end NotAny;
@@ -3301,7 +3300,7 @@ package body GNAT.Spitbol.Patterns is
       return (AFC with 0, new PE'(PC_NSpan_CS, 1, EOP, Str));
    end NSpan;
 
-   function NSpan (Str : access VString) return Pattern is
+   function NSpan (Str : not null access VString) return Pattern is
    begin
       return (AFC with 0, new PE'(PC_NSpan_VP, 1, EOP, VString_Ptr (Str)));
    end NSpan;
@@ -3325,7 +3324,7 @@ package body GNAT.Spitbol.Patterns is
       return (AFC with 0, new PE'(PC_Pos_NF, 1, EOP, Count));
    end Pos;
 
-   function Pos (Count : access Natural) return Pattern is
+   function Pos (Count : not null access Natural) return Pattern is
    begin
       return (AFC with 0, new PE'(PC_Pos_NP, 1, EOP, Natural_Ptr (Count)));
    end Pos;
@@ -3360,7 +3359,7 @@ package body GNAT.Spitbol.Patterns is
      (Result  : in out Match_Result;
       Replace : VString)
    is
-      S : String_Access;
+      S : Big_String_Access;
       L : Natural;
 
    begin
@@ -3395,7 +3394,7 @@ package body GNAT.Spitbol.Patterns is
       return (AFC with 0, new PE'(PC_RPos_NF, 1, EOP, Count));
    end Rpos;
 
-   function Rpos (Count : access Natural) return Pattern is
+   function Rpos (Count : not null access Natural) return Pattern is
    begin
       return (AFC with 0, new PE'(PC_RPos_NP, 1, EOP, Natural_Ptr (Count)));
    end Rpos;
@@ -3414,7 +3413,7 @@ package body GNAT.Spitbol.Patterns is
       return (AFC with 0, new PE'(PC_RTab_NF, 1, EOP, Count));
    end Rtab;
 
-   function Rtab (Count : access Natural) return Pattern is
+   function Rtab (Count : not null access Natural) return Pattern is
    begin
       return (AFC with 0, new PE'(PC_RTab_NP, 1, EOP, Natural_Ptr (Count)));
    end Rtab;
@@ -3432,7 +3431,7 @@ package body GNAT.Spitbol.Patterns is
             return new PE'(PC_Null,     1, EOP);
 
          when 1 =>
-            return new PE'(PC_Char,     1, EOP, Str (1));
+            return new PE'(PC_Char,     1, EOP, Str (Str'First));
 
          when 2 =>
             return new PE'(PC_String_2, 1, EOP, Str);
@@ -3501,7 +3500,7 @@ package body GNAT.Spitbol.Patterns is
    -- Setcur --
    ------------
 
-   function Setcur (Var : access Natural) return Pattern is
+   function Setcur (Var : not null access Natural) return Pattern is
    begin
       return (AFC with 0, new PE'(PC_Setcur, 1, EOP, Natural_Ptr (Var)));
    end Setcur;
@@ -3530,7 +3529,7 @@ package body GNAT.Spitbol.Patterns is
       return (AFC with 0, new PE'(PC_Span_CS, 1, EOP, Str));
    end Span;
 
-   function Span (Str : access VString) return Pattern is
+   function Span (Str : not null access VString) return Pattern is
    begin
       return (AFC with 0, new PE'(PC_Span_VP, 1, EOP, VString_Ptr (Str)));
    end Span;
@@ -3545,7 +3544,7 @@ package body GNAT.Spitbol.Patterns is
    ------------
 
    function Str_BF (A : Boolean_Func) return String is
-      function To_A is new Unchecked_Conversion (Boolean_Func, Address);
+      function To_A is new Ada.Unchecked_Conversion (Boolean_Func, Address);
    begin
       return "BF(" & Image (To_A (A)) & ')';
    end Str_BF;
@@ -3564,7 +3563,7 @@ package body GNAT.Spitbol.Patterns is
    ------------
 
    function Str_NF (A : Natural_Func) return String is
-      function To_A is new Unchecked_Conversion (Natural_Func, Address);
+      function To_A is new Ada.Unchecked_Conversion (Natural_Func, Address);
    begin
       return "NF(" & Image (To_A (A)) & ')';
    end Str_NF;
@@ -3592,7 +3591,7 @@ package body GNAT.Spitbol.Patterns is
    ------------
 
    function Str_VF (A : VString_Func) return String is
-      function To_A is new Unchecked_Conversion (VString_Func, Address);
+      function To_A is new Ada.Unchecked_Conversion (VString_Func, Address);
    begin
       return "VF(" & Image (To_A (A)) & ')';
    end Str_VF;
@@ -3629,7 +3628,7 @@ package body GNAT.Spitbol.Patterns is
       return (AFC with 0, new PE'(PC_Tab_NF, 1, EOP, Count));
    end Tab;
 
-   function Tab (Count : access Natural) return Pattern is
+   function Tab (Count : not null access Natural) return Pattern is
    begin
       return (AFC with 0, new PE'(PC_Tab_NP, 1, EOP, Natural_Ptr (Count)));
    end Tab;
@@ -3640,9 +3639,8 @@ package body GNAT.Spitbol.Patterns is
 
    procedure Uninitialized_Pattern is
    begin
-      Raise_Exception
-        (Program_Error'Identity,
-         "uninitialized value of type GNAT.Spitbol.Patterns.Pattern");
+      raise Program_Error with
+         "uninitialized value of type GNAT.Spitbol.Patterns.Pattern";
    end Uninitialized_Pattern;
 
    ------------
@@ -3679,7 +3677,7 @@ package body GNAT.Spitbol.Patterns is
       --  failure and popping a "real" cursor value from the stack.
 
       PE_Unanchored : aliased PE := (PC_Unanchored, 0, Pat_P);
-      --  Dummy pattern element used in the unanchored case.
+      --  Dummy pattern element used in the unanchored case
 
       Stack : Stack_Type;
       --  The pattern matching failure stack for this call to Match
@@ -3706,14 +3704,14 @@ package body GNAT.Spitbol.Patterns is
 
       procedure Pop_Region;
       pragma Inline (Pop_Region);
-      --  Used at the end of processing of an inner region. if the inner
+      --  Used at the end of processing of an inner region. If the inner
       --  region left no stack entries, then all trace of it is removed.
       --  Otherwise a PC_Restore_Region entry is pushed to ensure proper
       --  handling of alternatives in the inner region.
 
       procedure Push (Node : PE_Ptr);
       pragma Inline (Push);
-      --  Make entry in pattern matching stack with current cursor valeu
+      --  Make entry in pattern matching stack with current cursor value
 
       procedure Push_Region;
       pragma Inline (Push_Region);
@@ -3853,7 +3851,8 @@ package body GNAT.Spitbol.Patterns is
 
                   begin
                      if Node_OnM.Pcode = PC_Assign_OnM then
-                        Set_String (Node_OnM.VP.all, Subject (Start .. Stop));
+                        Set_Unbounded_String
+                          (Node_OnM.VP.all, Subject (Start .. Stop));
 
                      elsif Node_OnM.Pcode = PC_Write_OnM then
                         Put_Line (Node_OnM.FP.all, Subject (Start .. Stop));
@@ -3954,7 +3953,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Any_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -3974,7 +3973,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Any_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -4061,10 +4060,10 @@ package body GNAT.Spitbol.Patterns is
          when PC_Assign =>
             goto Fail;
 
-         --  Assign immediate. This node performs the actual assignment.
+         --  Assign immediate. This node performs the actual assignment
 
          when PC_Assign_Imm =>
-            Set_String
+            Set_Unbounded_String
               (Node.VP.all,
                Subject (Stack (Stack_Base - 1).Cursor + 1 .. Cursor));
             Pop_Region;
@@ -4141,7 +4140,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Break_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -4162,7 +4161,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Break_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -4209,7 +4208,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_BreakX_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -4230,7 +4229,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_BreakX_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -4328,7 +4327,6 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Len_NF => declare
             N : constant Natural := Node.NF.all;
-
          begin
             if Cursor + N > Length then
                goto Fail;
@@ -4376,7 +4374,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_NotAny_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -4397,7 +4395,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_NotAny_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -4440,7 +4438,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_NSpan_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -4459,7 +4457,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_NSpan_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -4492,7 +4490,6 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Pos_NF => declare
             N : constant Natural := Node.NF.all;
-
          begin
             if Cursor = N then
                goto Succeed;
@@ -4581,7 +4578,6 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_RPos_NF => declare
             N : constant Natural := Node.NF.all;
-
          begin
             if Length - Cursor = N then
                goto Succeed;
@@ -4613,7 +4609,6 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_RTab_NF => declare
             N : constant Natural := Node.NF.all;
-
          begin
             if Length - Cursor >= N then
                Cursor := Length - N;
@@ -4642,9 +4637,10 @@ package body GNAT.Spitbol.Patterns is
          --  Span (one character case)
 
          when PC_Span_CH => declare
-            P : Natural := Cursor;
+            P : Natural;
 
          begin
+            P := Cursor;
             while P < Length
               and then Subject (P + 1) = Node.Char
             loop
@@ -4662,9 +4658,10 @@ package body GNAT.Spitbol.Patterns is
          --  Span (character set case)
 
          when PC_Span_CS => declare
-            P : Natural := Cursor;
+            P : Natural;
 
          begin
+            P := Cursor;
             while P < Length
               and then Is_In (Subject (P + 1), Node.CS)
             loop
@@ -4683,7 +4680,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Span_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
             P : Natural;
 
@@ -4709,7 +4706,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Span_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
             P : Natural;
 
@@ -4795,7 +4792,6 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_String => declare
             Len : constant Natural := Node.Str'Length;
-
          begin
             if (Length - Cursor) >= Len
               and then Node.Str.all = Subject (Cursor + 1 .. Cursor + Len)
@@ -4811,7 +4807,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_String_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -4831,7 +4827,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_String_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -4867,7 +4863,6 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Tab_NF => declare
             N : constant Natural := Node.NF.all;
-
          begin
             if Cursor <= N then
                Cursor := N;
@@ -4976,7 +4971,7 @@ package body GNAT.Spitbol.Patterns is
       --  failure and popping a "real" cursor value from the stack.
 
       PE_Unanchored : aliased PE := (PC_Unanchored, 0, Pat_P);
-      --  Dummy pattern element used in the unanchored case.
+      --  Dummy pattern element used in the unanchored case
 
       Region_Level : Natural := 0;
       --  Keeps track of recursive region level. This is used only for
@@ -5006,7 +5001,7 @@ package body GNAT.Spitbol.Patterns is
       --  successful match.
 
       procedure Dout (Str : String);
-      --  Output string to standard error with bars indicating region level.
+      --  Output string to standard error with bars indicating region level
 
       procedure Dout (Str : String; A : Character);
       --  Calls Dout with the string S ('A')
@@ -5025,14 +5020,14 @@ package body GNAT.Spitbol.Patterns is
 
       procedure Pop_Region;
       pragma Inline (Pop_Region);
-      --  Used at the end of processing of an inner region. if the inner
+      --  Used at the end of processing of an inner region. If the inner
       --  region left no stack entries, then all trace of it is removed.
       --  Otherwise a PC_Restore_Region entry is pushed to ensure proper
       --  handling of alternatives in the inner region.
 
       procedure Push (Node : PE_Ptr);
       pragma Inline (Push);
-      --  Make entry in pattern matching stack with current cursor valeu
+      --  Make entry in pattern matching stack with current cursor value
 
       procedure Push_Region;
       pragma Inline (Push_Region);
@@ -5234,7 +5229,8 @@ package body GNAT.Spitbol.Patterns is
 
                   begin
                      if Node_OnM.Pcode = PC_Assign_OnM then
-                        Set_String (Node_OnM.VP.all, Subject (Start .. Stop));
+                        Set_Unbounded_String
+                          (Node_OnM.VP.all, Subject (Start .. Stop));
                         Dout
                           (Img (Stack (S).Node) &
                            "deferred assignment of " &
@@ -5357,7 +5353,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Any_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -5379,7 +5375,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Any_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -5477,13 +5473,13 @@ package body GNAT.Spitbol.Patterns is
             Dout (Img (Node) & "deferred assign/write cancelled");
             goto Fail;
 
-         --  Assign immediate. This node performs the actual assignment.
+         --  Assign immediate. This node performs the actual assignment
 
          when PC_Assign_Imm =>
             Dout
               (Img (Node) & "executing immediate assignment of " &
                Image (Subject (Stack (Stack_Base - 1).Cursor + 1 .. Cursor)));
-            Set_String
+            Set_Unbounded_String
               (Node.VP.all,
                Subject (Stack (Stack_Base - 1).Cursor + 1 .. Cursor));
             Pop_Region;
@@ -5566,7 +5562,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Break_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -5588,7 +5584,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Break_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -5640,7 +5636,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_BreakX_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -5662,7 +5658,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_BreakX_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -5829,7 +5825,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_NotAny_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -5851,7 +5847,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_NotAny_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -5899,7 +5895,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_NSpan_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -5919,7 +5915,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_NSpan_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -6175,7 +6171,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Span_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
             P : Natural;
 
@@ -6202,7 +6198,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_Span_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
             P : Natural;
 
@@ -6317,7 +6313,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_String_VF => declare
             U : constant VString := Node.VF.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin
@@ -6338,7 +6334,7 @@ package body GNAT.Spitbol.Patterns is
 
          when PC_String_VP => declare
             U : constant VString := Node.VP.all;
-            S : String_Access;
+            S : Big_String_Access;
             L : Natural;
 
          begin

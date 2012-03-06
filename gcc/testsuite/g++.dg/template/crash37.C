@@ -20,7 +20,7 @@ struct definition
 {
  definition()
  {
-   bla(coperator_stack::push3<helper>); // { dg-error "" } 
+   bla(coperator_stack::push3<helper>); // { dg-error "pointer to member" }
  }
 };
 

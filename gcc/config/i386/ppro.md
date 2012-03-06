@@ -1,11 +1,11 @@
 ;; Scheduling for the Intel P6 family of processors
-;; Copyright (C) 2004, 2005 Free Software Foundation, Inc.
+;; Copyright (C) 2004, 2005, 2007, 2008, 2010 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
 ;; GCC is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation; either version 2, or (at your option)
+;; the Free Software Foundation; either version 3, or (at your option)
 ;; any later version.
 ;;
 ;; GCC is distributed in the hope that it will be useful,
@@ -14,9 +14,8 @@
 ;; GNU General Public License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License
-;; along with GCC; see the file COPYING.  If not, write to
-;; the Free Software Foundation, 59 Temple Place - Suite 330,
-;; Boston, MA 02111-1307, USA.  */
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.  */
 
 ;; The P6 family includes the Pentium Pro, Pentium II, Pentium III, Celeron
 ;; and Xeon lines of CPUs.  The DFA scheduler description in this file is
@@ -60,8 +59,7 @@
 ;;   This isn't necessary right now because we assume for every
 ;;   instruction that it never blocks a decoder.
 ;; - Figure out where the p0 and p1 reservations come from.  These
-;;   appear not to be in the manual (e.g. why is cld "(p0+p1)*2"
-;;   better than "(p0|p1)*4" ???)
+;;   appear not to be in the manual
 ;; - Lots more because I'm sure this is still far from optimal :-)
 
 ;; The ppro_idiv and ppro_fdiv automata are used to model issue
@@ -80,7 +78,7 @@
 ;;    but still in only one cycle.
 ;;  - a complex (microcode) instruction can also only be decoded by
 ;;    decoder 0, and this takes an unspecified number of cycles.
-;;    
+;;
 ;; The goal is to schedule such that we have a few-one-one uops sequence
 ;; in each cycle, to decode as many instructions per cycle as possible.
 (define_cpu_unit "decoder0" "ppro_decoder")
@@ -196,10 +194,6 @@
 				   (eq_attr "type" "ishift,ishift1,rotate,rotate1")))
 			 "decoder0,p2+p0,p4+p3")
 
-(define_insn_reservation "ppro_cld" 2
-			 (and (eq_attr "cpu" "pentiumpro")
-			      (eq_attr "type" "cld"))
-			 "decoder0,(p0+p1)*2")
 
 ;; The P6 has a sophisticated branch prediction mechanism to minimize
 ;; latencies due to branching.  In particular, it has a fast way to
@@ -737,7 +731,7 @@
 (define_insn_reservation "ppro_insn" 1
 			 (and (eq_attr "cpu" "pentiumpro")
 			      (and (eq_attr "memory" "none,unknown")
-				   (eq_attr "type" "alu,alu1,negnot,incdec,icmp,test,setcc,icmov,push,pop,fxch,sseiadd,sseishft,sseimul,mmx,mmxadd,mmxcmp")))
+				   (eq_attr "type" "alu,alu1,negnot,incdec,icmp,test,setcc,icmov,push,pop,fxch,sseiadd,sseishft,sseishft1,sseimul,mmx,mmxadd,mmxcmp")))
 			 "decodern,(p0|p1)")
 
 ;; read-modify and register-memory instructions have 2 or three uops,
@@ -745,13 +739,13 @@
 (define_insn_reservation "ppro_insn_load" 3
 			 (and (eq_attr "cpu" "pentiumpro")
 			      (and (eq_attr "memory" "load")
-				   (eq_attr "type" "alu,alu1,negnot,incdec,icmp,test,setcc,icmov,push,pop,fxch,sseiadd,sseishft,sseimul,mmx,mmxadd,mmxcmp")))
+				   (eq_attr "type" "alu,alu1,negnot,incdec,icmp,test,setcc,icmov,push,pop,fxch,sseiadd,sseishft,sseishft1,sseimul,mmx,mmxadd,mmxcmp")))
 			 "decoder0,p2+(p0|p1)")
 
 (define_insn_reservation "ppro_insn_store" 1
 			 (and (eq_attr "cpu" "pentiumpro")
 			      (and (eq_attr "memory" "store")
-				   (eq_attr "type" "alu,alu1,negnot,incdec,icmp,test,setcc,icmov,push,pop,fxch,sseiadd,sseishft,sseimul,mmx,mmxadd,mmxcmp")))
+				   (eq_attr "type" "alu,alu1,negnot,incdec,icmp,test,setcc,icmov,push,pop,fxch,sseiadd,sseishft,sseishft1,sseimul,mmx,mmxadd,mmxcmp")))
 			 "decoder0,(p0|p1),p4+p3")
 
 ;; read-modify-store instructions produce 4 uops so they have to be
@@ -759,6 +753,6 @@
 (define_insn_reservation "ppro_insn_both" 4
 			 (and (eq_attr "cpu" "pentiumpro")
 			      (and (eq_attr "memory" "both")
-				   (eq_attr "type" "alu,alu1,negnot,incdec,icmp,test,setcc,icmov,push,pop,fxch,sseiadd,sseishft,sseimul,mmx,mmxadd,mmxcmp")))
+				   (eq_attr "type" "alu,alu1,negnot,incdec,icmp,test,setcc,icmov,push,pop,fxch,sseiadd,sseishft,sseishft1,sseimul,mmx,mmxadd,mmxcmp")))
 			 "decoder0,p2+(p0|p1),p4+p3")
 

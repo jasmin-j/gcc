@@ -1,4 +1,6 @@
 c { dg-do compile }
+c { dg-options "-std=legacy" }
+c
 * Resent-From: Craig Burley <burley@gnu.org>
 * Resent-To: craig@jcb-sc.com
 * X-Delivered: at request of burley on mescaline.gnu.org
@@ -24,7 +26,7 @@ c { dg-do compile }
 * -------------------------------------------
         PROGRAM WAP
 
-        integer*2  ios
+        integer(kind=8)  ios
         character*80  name
 
         name = 'blah'
@@ -34,7 +36,7 @@ c { dg-do compile }
       END
 * -------------------------------------------
 * 
-* The problem seems to be caused by the "integer*2 ios" declaration.
+* The problem seems to be caused by the "integer(kind=2) ios" declaration.
 * So far I solved it by simply using a plain integer instead.
 * 
 * I'm running gcc on a Linux system compiled/installed

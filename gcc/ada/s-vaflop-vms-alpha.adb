@@ -6,41 +6,34 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1997-2000 Free Software Foundation, Inc.          --
+--          Copyright (C) 1997-2011, Free Software Foundation, Inc.         --
 --                       (Version for Alpha OpenVMS)                        --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with System.IO;           use System.IO;
+with System.IO;
 with System.Machine_Code; use System.Machine_Code;
 
 package body System.Vax_Float_Operations is
-
-   --  Ensure this gets compiled with -O to avoid extra (and possibly
-   --  improper) memory stores.
-
-   pragma Optimize (Time);
 
    --  Declare the functions that do the conversions between floating-point
    --  formats.  Call the operands IEEE float so they get passed in
@@ -58,14 +51,16 @@ package body System.Vax_Float_Operations is
    --  we define variables of the corresponding IEEE type so that they are
    --  passed and kept in the proper register class.
 
+   Debug_String_Buffer : String (1 .. 32);
+   --  Buffer used by all Debug_String_x routines for returning result
+
    ------------
    -- D_To_G --
    ------------
 
    function D_To_G (X : D) return G is
       A, B : T;
-      C : G;
-
+      C    : G;
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", A), D'Asm_Input ("m", X));
       Asm ("cvtdg %1,%0", T'Asm_Output ("=f", B), T'Asm_Input ("f", A));
@@ -80,7 +75,6 @@ package body System.Vax_Float_Operations is
    function F_To_G (X : F) return G is
       A : T;
       B : G;
-
    begin
       Asm ("ldf %0,%1", T'Asm_Output ("=f", A), F'Asm_Input ("m", X));
       Asm ("stg %1,%0", G'Asm_Output ("=m", B), T'Asm_Input ("f", A));
@@ -98,6 +92,7 @@ package body System.Vax_Float_Operations is
    begin
       --  Because converting to a wider FP format is a no-op, we say
       --  A is 64-bit even though we are loading 32 bits into it.
+
       Asm ("ldf %0,%1", T'Asm_Output ("=f", A), F'Asm_Input ("m", X));
 
       B := S (Cvt_G_T (A));
@@ -110,8 +105,7 @@ package body System.Vax_Float_Operations is
 
    function G_To_D (X : G) return D is
       A, B : T;
-      C : D;
-
+      C    : D;
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", A), G'Asm_Input ("m", X));
       Asm ("cvtgd %1,%0", T'Asm_Output ("=f", B), T'Asm_Input ("f", A));
@@ -127,7 +121,6 @@ package body System.Vax_Float_Operations is
       A : T;
       B : S;
       C : F;
-
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", A), G'Asm_Input ("m", X));
       Asm ("cvtgf %1,%0", S'Asm_Output ("=f", B), T'Asm_Input ("f", A));
@@ -142,7 +135,6 @@ package body System.Vax_Float_Operations is
    function G_To_Q (X : G) return Q is
       A : T;
       B : Q;
-
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", A), G'Asm_Input ("m", X));
       Asm ("cvtgq %1,%0", Q'Asm_Output ("=f", B), T'Asm_Input ("f", A));
@@ -155,7 +147,6 @@ package body System.Vax_Float_Operations is
 
    function G_To_T (X : G) return T is
       A, B : T;
-
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", A), G'Asm_Input ("m", X));
       B := Cvt_G_T (A);
@@ -178,7 +169,6 @@ package body System.Vax_Float_Operations is
    function Q_To_F (X : Q) return F is
       A : S;
       B : F;
-
    begin
       Asm ("cvtqf %1,%0", S'Asm_Output ("=f", A), Q'Asm_Input ("f", X));
       Asm ("stf %1,%0", F'Asm_Output ("=m", B), S'Asm_Input ("f", A));
@@ -192,7 +182,6 @@ package body System.Vax_Float_Operations is
    function Q_To_G (X : Q) return G is
       A : T;
       B : G;
-
    begin
       Asm ("cvtqg %1,%0", T'Asm_Output ("=f", A), Q'Asm_Input ("f", X));
       Asm ("stg %1,%0", G'Asm_Output ("=m", B), T'Asm_Input ("f", A));
@@ -206,7 +195,6 @@ package body System.Vax_Float_Operations is
    function S_To_F (X : S) return F is
       A : S;
       B : F;
-
    begin
       A := Cvt_T_F (T (X));
       Asm ("stf %1,%0", F'Asm_Output ("=m", B), S'Asm_Input ("f", A));
@@ -229,7 +217,6 @@ package body System.Vax_Float_Operations is
    function T_To_G (X : T) return G is
       A : T;
       B : G;
-
    begin
       A := Cvt_T_G (X);
       Asm ("stg %1,%0", G'Asm_Output ("=m", B), T'Asm_Input ("f", A));
@@ -242,8 +229,7 @@ package body System.Vax_Float_Operations is
 
    function Abs_F (X : F) return F is
       A, B : S;
-      C : F;
-
+      C    : F;
    begin
       Asm ("ldf %0,%1", S'Asm_Output ("=f", A), F'Asm_Input ("m", X));
       Asm ("cpys $f31,%1,%0", S'Asm_Output ("=f", B), S'Asm_Input ("f", A));
@@ -257,8 +243,7 @@ package body System.Vax_Float_Operations is
 
    function Abs_G (X : G) return G is
       A, B : T;
-      C : G;
-
+      C    : G;
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", A), G'Asm_Input ("m", X));
       Asm ("cpys $f31,%1,%0", T'Asm_Output ("=f", B), T'Asm_Input ("f", A));
@@ -272,8 +257,7 @@ package body System.Vax_Float_Operations is
 
    function Add_F (X, Y : F) return F is
       X1, Y1, R : S;
-      R1 : F;
-
+      R1        : F;
    begin
       Asm ("ldf %0,%1", S'Asm_Output ("=f", X1), F'Asm_Input ("m", X));
       Asm ("ldf %0,%1", S'Asm_Output ("=f", Y1), F'Asm_Input ("m", Y));
@@ -289,8 +273,7 @@ package body System.Vax_Float_Operations is
 
    function Add_G (X, Y : G) return G is
       X1, Y1, R : T;
-      R1 : G;
-
+      R1        : G;
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", X1), G'Asm_Input ("m", X));
       Asm ("ldg %0,%1", T'Asm_Output ("=f", Y1), G'Asm_Input ("m", Y));
@@ -306,7 +289,7 @@ package body System.Vax_Float_Operations is
 
    procedure Debug_Output_D (Arg : D) is
    begin
-      Put (D'Image (Arg));
+      System.IO.Put (D'Image (Arg));
    end Debug_Output_D;
 
    --------------------
@@ -315,7 +298,7 @@ package body System.Vax_Float_Operations is
 
    procedure Debug_Output_F (Arg : F) is
    begin
-      Put (F'Image (Arg));
+      System.IO.Put (F'Image (Arg));
    end Debug_Output_F;
 
    --------------------
@@ -324,20 +307,16 @@ package body System.Vax_Float_Operations is
 
    procedure Debug_Output_G (Arg : G) is
    begin
-      Put (G'Image (Arg));
+      System.IO.Put (G'Image (Arg));
    end Debug_Output_G;
 
    --------------------
    -- Debug_String_D --
    --------------------
 
-   Debug_String_Buffer : String (1 .. 32);
-   --  Buffer used by all Debug_String_x routines for returning result
-
    function Debug_String_D (Arg : D) return System.Address is
-      Image_String : constant String := D'Image (Arg) & ASCII.NUL;
+      Image_String : constant String  := D'Image (Arg) & ASCII.NUL;
       Image_Size   : constant Integer := Image_String'Length;
-
    begin
       Debug_String_Buffer (1 .. Image_Size) := Image_String;
       return Debug_String_Buffer (1)'Address;
@@ -348,9 +327,8 @@ package body System.Vax_Float_Operations is
    --------------------
 
    function Debug_String_F (Arg : F) return System.Address is
-      Image_String : constant String := F'Image (Arg) & ASCII.NUL;
+      Image_String : constant String  := F'Image (Arg) & ASCII.NUL;
       Image_Size   : constant Integer := Image_String'Length;
-
    begin
       Debug_String_Buffer (1 .. Image_Size) := Image_String;
       return Debug_String_Buffer (1)'Address;
@@ -361,9 +339,8 @@ package body System.Vax_Float_Operations is
    --------------------
 
    function Debug_String_G (Arg : G) return System.Address is
-      Image_String : constant String := G'Image (Arg) & ASCII.NUL;
+      Image_String : constant String  := G'Image (Arg) & ASCII.NUL;
       Image_Size   : constant Integer := Image_String'Length;
-
    begin
       Debug_String_Buffer (1 .. Image_Size) := Image_String;
       return Debug_String_Buffer (1)'Address;
@@ -375,8 +352,7 @@ package body System.Vax_Float_Operations is
 
    function Div_F (X, Y : F) return F is
       X1, Y1, R : S;
-
-      R1 : F;
+      R1        : F;
    begin
       Asm ("ldf %0,%1", S'Asm_Output ("=f", X1), F'Asm_Input ("m", X));
       Asm ("ldf %0,%1", S'Asm_Output ("=f", Y1), F'Asm_Input ("m", Y));
@@ -392,8 +368,7 @@ package body System.Vax_Float_Operations is
 
    function Div_G (X, Y : G) return G is
       X1, Y1, R : T;
-      R1 : G;
-
+      R1        : G;
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", X1), G'Asm_Input ("m", X));
       Asm ("ldg %0,%1", T'Asm_Output ("=f", Y1), G'Asm_Input ("m", Y));
@@ -409,7 +384,6 @@ package body System.Vax_Float_Operations is
 
    function Eq_F (X, Y : F) return Boolean is
       X1, Y1, R : S;
-
    begin
       Asm ("ldf %0,%1", S'Asm_Output ("=f", X1), F'Asm_Input ("m", X));
       Asm ("ldf %0,%1", S'Asm_Output ("=f", Y1), F'Asm_Input ("m", Y));
@@ -424,7 +398,6 @@ package body System.Vax_Float_Operations is
 
    function Eq_G (X, Y : G) return Boolean is
       X1, Y1, R : T;
-
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", X1), G'Asm_Input ("m", X));
       Asm ("ldg %0,%1", T'Asm_Output ("=f", Y1), G'Asm_Input ("m", Y));
@@ -439,7 +412,6 @@ package body System.Vax_Float_Operations is
 
    function Le_F (X, Y : F) return Boolean is
       X1, Y1, R : S;
-
    begin
       Asm ("ldf %0,%1", S'Asm_Output ("=f", X1), F'Asm_Input ("m", X));
       Asm ("ldf %0,%1", S'Asm_Output ("=f", Y1), F'Asm_Input ("m", Y));
@@ -454,7 +426,6 @@ package body System.Vax_Float_Operations is
 
    function Le_G (X, Y : G) return Boolean is
       X1, Y1, R : T;
-
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", X1), G'Asm_Input ("m", X));
       Asm ("ldg %0,%1", T'Asm_Output ("=f", Y1), G'Asm_Input ("m", Y));
@@ -469,7 +440,6 @@ package body System.Vax_Float_Operations is
 
    function Lt_F (X, Y : F) return Boolean is
       X1, Y1, R : S;
-
    begin
       Asm ("ldf %0,%1", S'Asm_Output ("=f", X1), F'Asm_Input ("m", X));
       Asm ("ldf %0,%1", S'Asm_Output ("=f", Y1), F'Asm_Input ("m", Y));
@@ -484,7 +454,6 @@ package body System.Vax_Float_Operations is
 
    function Lt_G (X, Y : G) return Boolean is
       X1, Y1, R : T;
-
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", X1), G'Asm_Input ("m", X));
       Asm ("ldg %0,%1", T'Asm_Output ("=f", Y1), G'Asm_Input ("m", Y));
@@ -499,8 +468,7 @@ package body System.Vax_Float_Operations is
 
    function Mul_F (X, Y : F) return F is
       X1, Y1, R : S;
-      R1 : F;
-
+      R1        : F;
    begin
       Asm ("ldf %0,%1", S'Asm_Output ("=f", X1), F'Asm_Input ("m", X));
       Asm ("ldf %0,%1", S'Asm_Output ("=f", Y1), F'Asm_Input ("m", Y));
@@ -516,8 +484,7 @@ package body System.Vax_Float_Operations is
 
    function Mul_G (X, Y : G) return G is
       X1, Y1, R : T;
-      R1 : G;
-
+      R1        : G;
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", X1), G'Asm_Input ("m", X));
       Asm ("ldg %0,%1", T'Asm_Output ("=f", Y1), G'Asm_Input ("m", Y));
@@ -527,17 +494,44 @@ package body System.Vax_Float_Operations is
       return R1;
    end Mul_G;
 
+   ----------
+   -- Ne_F --
+   ----------
+
+   function Ne_F (X, Y : F) return Boolean is
+      X1, Y1, R : S;
+   begin
+      Asm ("ldf %0,%1", S'Asm_Output ("=f", X1), F'Asm_Input ("m", X));
+      Asm ("ldf %0,%1", S'Asm_Output ("=f", Y1), F'Asm_Input ("m", Y));
+      Asm ("cmpgeq %1,%2,%0", S'Asm_Output ("=f", R),
+           (S'Asm_Input ("f", X1), S'Asm_Input ("f", Y1)));
+      return R = 0.0;
+   end Ne_F;
+
+   ----------
+   -- Ne_G --
+   ----------
+
+   function Ne_G (X, Y : G) return Boolean is
+      X1, Y1, R : T;
+   begin
+      Asm ("ldg %0,%1", T'Asm_Output ("=f", X1), G'Asm_Input ("m", X));
+      Asm ("ldg %0,%1", T'Asm_Output ("=f", Y1), G'Asm_Input ("m", Y));
+      Asm ("cmpgeq %1,%2,%0", T'Asm_Output ("=f", R),
+           (T'Asm_Input ("f", X1), T'Asm_Input ("f", Y1)));
+      return R = 0.0;
+   end Ne_G;
+
    -----------
    -- Neg_F --
    -----------
 
    function Neg_F (X : F) return F is
       A, B : S;
-      C : F;
-
+      C    : F;
    begin
       Asm ("ldf %0,%1", S'Asm_Output ("=f", A), F'Asm_Input ("m", X));
-      Asm ("cpysn %1,%1,%0", S'Asm_Output ("=f", B), S'Asm_Input ("f", A));
+      Asm ("subf $f31,%1,%0", S'Asm_Output ("=f", B), S'Asm_Input ("f", A));
       Asm ("stf %1,%0", F'Asm_Output ("=m", C), S'Asm_Input ("f", B));
       return C;
    end Neg_F;
@@ -548,11 +542,10 @@ package body System.Vax_Float_Operations is
 
    function Neg_G (X : G) return G is
       A, B : T;
-      C : G;
-
+      C    : G;
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", A), G'Asm_Input ("m", X));
-      Asm ("cpysn %1,%1,%0", T'Asm_Output ("=f", B), T'Asm_Input ("f", A));
+      Asm ("subg $f31,%1,%0", T'Asm_Output ("=f", B), T'Asm_Input ("f", A));
       Asm ("stg %1,%0", G'Asm_Output ("=m", C), T'Asm_Input ("f", B));
       return C;
    end Neg_G;
@@ -563,7 +556,7 @@ package body System.Vax_Float_Operations is
 
    procedure pd (Arg : D) is
    begin
-      Put_Line (D'Image (Arg));
+      System.IO.Put_Line (D'Image (Arg));
    end pd;
 
    --------
@@ -572,7 +565,7 @@ package body System.Vax_Float_Operations is
 
    procedure pf (Arg : F) is
    begin
-      Put_Line (F'Image (Arg));
+      System.IO.Put_Line (F'Image (Arg));
    end pf;
 
    --------
@@ -581,8 +574,51 @@ package body System.Vax_Float_Operations is
 
    procedure pg (Arg : G) is
    begin
-      Put_Line (G'Image (Arg));
+      System.IO.Put_Line (G'Image (Arg));
    end pg;
+
+   --------------
+   -- Return_D --
+   --------------
+
+   function Return_D (X : D) return D is
+      R : D;
+   begin
+      --  The return value is already in $f0 so we need to trick the compiler
+      --  into thinking that we're moving X to $f0.
+      Asm ("cvtdg $f0,$f0", Inputs => D'Asm_Input ("g", X), Clobber => "$f0",
+        Volatile => True);
+      Asm ("stg $f0,%0", D'Asm_Output ("=m", R), Volatile => True);
+      return R;
+   end Return_D;
+
+   --------------
+   -- Return_F --
+   --------------
+
+   function Return_F (X : F) return F is
+      R : F;
+   begin
+      --  The return value is already in $f0 so we need to trick the compiler
+      --  into thinking that we're moving X to $f0.
+      Asm ("stf $f0,%0", F'Asm_Output ("=m", R), F'Asm_Input ("g", X),
+        Clobber => "$f0", Volatile => True);
+      return R;
+   end Return_F;
+
+   --------------
+   -- Return_G --
+   --------------
+
+   function Return_G (X : G) return G is
+      R : G;
+   begin
+      --  The return value is already in $f0 so we need to trick the compiler
+      --  into thinking that we're moving X to $f0.
+      Asm ("stg $f0,%0", G'Asm_Output ("=m", R), G'Asm_Input ("g", X),
+        Clobber => "$f0", Volatile => True);
+      return R;
+   end Return_G;
 
    -----------
    -- Sub_F --
@@ -590,7 +626,7 @@ package body System.Vax_Float_Operations is
 
    function Sub_F (X, Y : F) return F is
       X1, Y1, R : S;
-      R1 : F;
+      R1        : F;
 
    begin
       Asm ("ldf %0,%1", S'Asm_Output ("=f", X1), F'Asm_Input ("m", X));
@@ -607,8 +643,7 @@ package body System.Vax_Float_Operations is
 
    function Sub_G (X, Y : G) return G is
       X1, Y1, R : T;
-      R1 : G;
-
+      R1        : G;
    begin
       Asm ("ldg %0,%1", T'Asm_Output ("=f", X1), G'Asm_Input ("m", X));
       Asm ("ldg %0,%1", T'Asm_Output ("=f", Y1), G'Asm_Input ("m", Y));
@@ -617,5 +652,44 @@ package body System.Vax_Float_Operations is
       Asm ("stg %1,%0", G'Asm_Output ("=m", R1), T'Asm_Input ("f", R));
       return R1;
    end Sub_G;
+
+   -------------
+   -- Valid_D --
+   -------------
+
+   --  For now, convert to IEEE and do Valid test on result. This is not quite
+   --  accurate, but is good enough in practice.
+
+   function Valid_D (Arg : D) return Boolean is
+      Val : constant T := G_To_T (D_To_G (Arg));
+   begin
+      return Val'Valid;
+   end Valid_D;
+
+   -------------
+   -- Valid_F --
+   -------------
+
+   --  For now, convert to IEEE and do Valid test on result. This is not quite
+   --  accurate, but is good enough in practice.
+
+   function Valid_F (Arg : F) return Boolean is
+      Val : constant S := F_To_S (Arg);
+   begin
+      return Val'Valid;
+   end Valid_F;
+
+   -------------
+   -- Valid_G --
+   -------------
+
+   --  For now, convert to IEEE and do Valid test on result. This is not quite
+   --  accurate, but is good enough in practice.
+
+   function Valid_G (Arg : G) return Boolean is
+      Val : constant T := G_To_T (Arg);
+   begin
+      return Val'Valid;
+   end Valid_G;
 
 end System.Vax_Float_Operations;

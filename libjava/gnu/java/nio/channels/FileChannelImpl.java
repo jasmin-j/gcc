@@ -1,5 +1,5 @@
 /* FileChannelImpl.java -- 
-   Copyright (C) 2002, 2004, 2005  Free Software Foundation, Inc.
+   Copyright (C) 2002, 2004, 2005, 2006  Free Software Foundation, Inc.
 
 This file is part of GNU Classpath.
 
@@ -15,8 +15,8 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with GNU Classpath; see the file COPYING.  If not, write to the
-Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-02111-1307 USA.
+Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+02110-1301 USA.
 
 Linking this library statically or dynamically with other modules is
 making a combined work based on this library.  Thus, the terms and
@@ -103,7 +103,16 @@ public final class FileChannelImpl extends FileChannel
   }
 
   /* Open a file.  MODE is a combination of the above mode flags. */
-  public FileChannelImpl (File file, int mode) throws FileNotFoundException
+  /* This is a static factory method, so that VM implementors can decide
+   * substitute subclasses of FileChannelImpl. */
+  public static FileChannelImpl create(File file, int mode)
+    throws FileNotFoundException
+  {
+    return new FileChannelImpl(file, mode);
+  }
+
+  /* Open a file.  MODE is a combination of the above mode flags. */
+  private FileChannelImpl (File file, int mode) throws FileNotFoundException
   {
     final String path = file.getPath();
     fd = open (path, mode);
@@ -523,5 +532,13 @@ public final class FileChannelImpl extends FileChannel
       implTruncate (size);
 
     return this;
+  }
+
+  /**
+   * @return The native file descriptor.
+   */
+  public int getNativeFD()
+  {
+    return fd;
   }
 }

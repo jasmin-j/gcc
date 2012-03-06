@@ -1,12 +1,12 @@
 /* Machine description patterns for PowerPC running Darwin (Mac OS X).
-   Copyright (C) 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2010, 2011 Free Software Foundation, Inc.
    Contributed by Apple Computer Inc.
 
 This file is part of GCC.
 
 GNU CC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GNU CC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU CC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.  */
 
 (define_insn "adddi3_high"
   [(set (match_operand:DI 0 "gpc_reg_operand" "=b")
@@ -31,7 +30,7 @@ Boston, MA 02111-1307, USA.  */
   [(set (match_operand:DF 0 "gpc_reg_operand" "=f,!r")
         (mem:DF (lo_sum:SI (match_operand:SI 1 "gpc_reg_operand" "b,b")
                            (match_operand 2 "" ""))))]
-  "TARGET_MACHO && TARGET_HARD_FLOAT && TARGET_FPRS && ! TARGET_64BIT"
+  "TARGET_MACHO && TARGET_HARD_FLOAT && TARGET_FPRS && !TARGET_64BIT"
   "*
 {
   switch (which_alternative)
@@ -40,27 +39,15 @@ Boston, MA 02111-1307, USA.  */
 	return \"lfd %0,lo16(%2)(%1)\";
       case 1:
 	{
-	  rtx operands2[4];
-	  operands2[0] = operands[0];
-	  operands2[1] = operands[1];
-	  operands2[2] = operands[2];
 	  if (TARGET_POWERPC64 && TARGET_32BIT)
 	    /* Note, old assemblers didn't support relocation here.  */
 	    return \"ld %0,lo16(%2)(%1)\";
 	  else
-	  {
-	    operands2[3] = gen_rtx_REG (SImode, RS6000_PIC_OFFSET_TABLE_REGNUM);
-	    output_asm_insn (\"{l|lwz} %0,lo16(%2)(%1)\", operands);
-#if TARGET_MACHO
-	    if (MACHO_DYNAMIC_NO_PIC_P)
-	      output_asm_insn (\"{liu|lis} %L0,ha16(%2+4)\", operands);
-	    else
-	    /* We cannot rely on ha16(low half)==ha16(high half), alas,
-	       although in practice it almost always is.  */
-	    output_asm_insn (\"{cau|addis} %L0,%3,ha16(%2+4)\", operands2);
-#endif
-	    return (\"{l|lwz} %L0,lo16(%2+4)(%L0)\");
-	  }
+	    {
+	      output_asm_insn (\"{cal|la} %0,lo16(%2)(%1)\", operands);
+	      output_asm_insn (\"{l|lwz} %L0,4(%0)\", operands);
+	      return (\"{l|lwz} %0,0(%0)\");
+	    }
 	}
       default:
 	gcc_unreachable ();
@@ -154,11 +141,13 @@ Boston, MA 02111-1307, USA.  */
 
 ;; 64-bit MachO load/store support
 (define_insn "movdi_low"
-  [(set (match_operand:DI 0 "gpc_reg_operand" "=r")
-        (mem:DI (lo_sum:DI (match_operand:DI 1 "gpc_reg_operand" "b")
+  [(set (match_operand:DI 0 "gpc_reg_operand" "=r,*!d")
+        (mem:DI (lo_sum:DI (match_operand:DI 1 "gpc_reg_operand" "b,b")
                            (match_operand 2 "" ""))))]
   "TARGET_MACHO && TARGET_64BIT"
-  "{l|ld} %0,lo16(%2)(%1)"
+  "@
+   {l|ld} %0,lo16(%2)(%1)
+   lfd %0,lo16(%2)(%1)"
   [(set_attr "type" "load")
    (set_attr "length" "4")])
 
@@ -172,11 +161,13 @@ Boston, MA 02111-1307, USA.  */
    (set_attr "length" "4")])
 
 (define_insn "movdi_low_st"
-  [(set (mem:DI (lo_sum:DI (match_operand:DI 1 "gpc_reg_operand" "b")
+  [(set (mem:DI (lo_sum:DI (match_operand:DI 1 "gpc_reg_operand" "b,b")
                            (match_operand 2 "" "")))
-	(match_operand:DI 0 "gpc_reg_operand" "r"))]
+	(match_operand:DI 0 "gpc_reg_operand" "r,*!d"))]
   "TARGET_MACHO && TARGET_64BIT"
-  "{st|std} %0,lo16(%2)(%1)"
+  "@
+   {st|std} %0,lo16(%2)(%1)
+   stfd %0,lo16(%2)(%1)"
   [(set_attr "type" "store")
    (set_attr "length" "4")])
 
@@ -251,33 +242,34 @@ Boston, MA 02111-1307, USA.  */
   "")
 
 (define_expand "load_macho_picbase"
-  [(set (match_operand 0 "" "")
-        (unspec [(match_operand 1 "" "")]
+  [(set (reg:SI 65)
+        (unspec [(match_operand 0 "" "")]
                    UNSPEC_LD_MPIC))]
   "(DEFAULT_ABI == ABI_DARWIN) && flag_pic"
 {
   if (TARGET_32BIT)
-    emit_insn (gen_load_macho_picbase_si (operands[0], operands[1]));
+    emit_insn (gen_load_macho_picbase_si (operands[0]));
   else
-    emit_insn (gen_load_macho_picbase_di (operands[0], operands[1]));
+    emit_insn (gen_load_macho_picbase_di (operands[0]));
 
   DONE;
 })
 
 (define_insn "load_macho_picbase_si"
-  [(set (match_operand:SI 0 "register_operand" "=l")
-	(unspec:SI [(match_operand:SI 1 "immediate_operand" "s")]
-		   UNSPEC_LD_MPIC))]
+  [(set (reg:SI 65)
+	(unspec:SI [(match_operand:SI 0 "immediate_operand" "s")
+		    (pc)] UNSPEC_LD_MPIC))]
   "(DEFAULT_ABI == ABI_DARWIN) && flag_pic"
-  "bcl 20,31,%1\\n%1:"
+  "bcl 20,31,%0\\n%0:"
   [(set_attr "type" "branch")
    (set_attr "length" "4")])
 
 (define_insn "load_macho_picbase_di"
-  [(set (match_operand:DI 0 "register_operand" "=l")
-	(unspec:DI [(match_operand:DI 1 "immediate_operand" "s")] UNSPEC_LD_MPIC))]
+  [(set (reg:DI 65)
+	(unspec:DI [(match_operand:DI 0 "immediate_operand" "s")
+		    (pc)] UNSPEC_LD_MPIC))]
   "(DEFAULT_ABI == ABI_DARWIN) && flag_pic && TARGET_64BIT"
-  "bcl 20,31,%1\\n%1:"
+  "bcl 20,31,%0\\n%0:"
   [(set_attr "type" "branch")
    (set_attr "length" "4")])
 
@@ -323,7 +315,7 @@ Boston, MA 02111-1307, USA.  */
   [(call (mem:SI (match_operand:DI 0 "register_operand" "c,*l,c,*l"))
 	 (match_operand 1 "" "g,g,g,g"))
    (use (match_operand:SI 2 "immediate_operand" "O,O,n,n"))
-   (clobber (match_scratch:SI 3 "=l,l,l,l"))]
+   (clobber (reg:SI 65))]
   "DEFAULT_ABI == ABI_DARWIN && TARGET_64BIT"
 {
   return "b%T0l";
@@ -335,7 +327,7 @@ Boston, MA 02111-1307, USA.  */
   [(call (mem:SI (match_operand:DI 0 "symbol_ref_operand" "s,s"))
 	 (match_operand 1 "" "g,g"))
    (use (match_operand:SI 2 "immediate_operand" "O,n"))
-   (clobber (match_scratch:SI 3 "=l,l"))]
+   (clobber (reg:SI 65))]
   "(DEFAULT_ABI == ABI_DARWIN)
    && (INTVAL (operands[2]) & CALL_LONG) == 0"
 {
@@ -353,7 +345,7 @@ Boston, MA 02111-1307, USA.  */
 	(call (mem:SI (match_operand:DI 1 "register_operand" "c,*l,c,*l"))
 	      (match_operand 2 "" "g,g,g,g")))
    (use (match_operand:SI 3 "immediate_operand" "O,O,n,n"))
-   (clobber (match_scratch:SI 4 "=l,l,l,l"))]
+   (clobber (reg:SI 65))]
   "DEFAULT_ABI == ABI_DARWIN"
 {
   return "b%T1l";
@@ -366,7 +358,7 @@ Boston, MA 02111-1307, USA.  */
 	(call (mem:SI (match_operand:DI 1 "symbol_ref_operand" "s,s"))
 	      (match_operand 2 "" "g,g")))
    (use (match_operand:SI 3 "immediate_operand" "O,n"))
-   (clobber (match_scratch:SI 4 "=l,l"))]
+   (clobber (reg:SI 65))]
   "(DEFAULT_ABI == ABI_DARWIN)
    && (INTVAL (operands[3]) & CALL_LONG) == 0"
 {
@@ -378,74 +370,3 @@ Boston, MA 02111-1307, USA.  */
 }
   [(set_attr "type" "branch,branch")
    (set_attr "length" "4,8")])
-
-(define_insn "*sibcall_nonlocal_darwin64"
-  [(call (mem:SI (match_operand:DI 0 "symbol_ref_operand" "s,s"))
-	 (match_operand 1 "" ""))
-   (use (match_operand 2 "immediate_operand" "O,n"))
-   (use (match_operand:SI 3 "register_operand" "l,l"))
-   (return)]
-  "(DEFAULT_ABI == ABI_DARWIN)
-   && (INTVAL (operands[2]) & CALL_LONG) == 0"
-{
-  return "b %z0";
-}
-  [(set_attr "type" "branch,branch")
-   (set_attr "length" "4,8")])
-
-(define_insn "*sibcall_value_nonlocal_darwin64"
-  [(set (match_operand 0 "" "")
-	(call (mem:SI (match_operand:DI 1 "symbol_ref_operand" "s,s"))
-	      (match_operand 2 "" "")))
-   (use (match_operand:SI 3 "immediate_operand" "O,n"))
-   (use (match_operand:SI 4 "register_operand" "l,l"))
-   (return)]
-  "(DEFAULT_ABI == ABI_DARWIN)
-   && (INTVAL (operands[3]) & CALL_LONG) == 0"
-  "*
-{
-  return \"b %z1\";
-}"
-  [(set_attr "type" "branch,branch")
-   (set_attr "length" "4,8")])
-
-
-(define_insn "*sibcall_symbolic_64"
-  [(call (mem:SI (match_operand:DI 0 "call_operand" "s,c")) ; 64
-	 (match_operand 1 "" ""))
-   (use (match_operand 2 "" ""))
-   (use (match_operand:SI 3 "register_operand" "l,l"))
-   (return)]
-  "TARGET_64BIT && DEFAULT_ABI == ABI_DARWIN"
-  "*
-{
-  switch (which_alternative)
-    {
-      case 0:  return \"b %z0\";
-      case 1:  return \"b%T0\";
-      default:  gcc_unreachable ();
-    }
-}"
-  [(set_attr "type" "branch")
-   (set_attr "length" "4")])
-
-(define_insn "*sibcall_value_symbolic_64"
-  [(set (match_operand 0 "" "")
-	(call (mem:SI (match_operand:DI 1 "call_operand" "s,c"))
-	      (match_operand 2 "" "")))
-   (use (match_operand:SI 3 "" ""))
-   (use (match_operand:SI 4 "register_operand" "l,l"))
-   (return)]
-  "TARGET_64BIT && DEFAULT_ABI == ABI_DARWIN"
-  "*
-{
-  switch (which_alternative)
-    {
-      case 0:  return \"b %z1\";
-      case 1:  return \"b%T1\";
-      default:  gcc_unreachable ();
-    }
-}"
-  [(set_attr "type" "branch")
-   (set_attr "length" "4")])
-

@@ -1,5 +1,6 @@
 /* -----------------------------------------------------------------------
-   sysv.h - Copyright (c) 1998 Geoffrey Keating
+   sysv.S - Copyright (c) 1998 Geoffrey Keating
+   Copyright (C) 2007 Free Software Foundation, Inc
 
    PowerPC Assembly glue.
 
@@ -14,13 +15,14 @@
    The above copyright notice and this permission notice shall be included
    in all copies or substantial portions of the Software.
 
-   THE SOFTWARE IS PROVIDED ``AS IS'', WITHOUT WARRANTY OF ANY KIND, EXPRESS
-   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-   IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR
-   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-   ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-   OTHER DEALINGS IN THE SOFTWARE.
+   THE SOFTWARE IS PROVIDED ``AS IS'', WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+   NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+   HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+   WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+   DEALINGS IN THE SOFTWARE.
    ----------------------------------------------------------------------- */
 
 #define LIBFFI_ASM
@@ -60,7 +62,7 @@ ENTRY(ffi_call_SYSV)
 
 	/* Call ffi_prep_args_SYSV.  */
 	mr	%r4,%r1
-	bl	JUMPTARGET(ffi_prep_args_SYSV)
+	bl	ffi_prep_args_SYSV@local
 
 	/* Now do the call.  */
 	/* Set up cr1 with bits 4-7 of the flags.  */
@@ -81,6 +83,7 @@ ENTRY(ffi_call_SYSV)
 	nop
 1:
 
+#ifndef __NO_FPRS__
 	/* Load all the FP registers.  */
 	bf-	6,2f
 	lfd	%f1,-16-(8*4)-(8*8)(%r28)
@@ -92,18 +95,26 @@ ENTRY(ffi_call_SYSV)
 	lfd	%f6,-16-(8*4)-(3*8)(%r28)
 	lfd	%f7,-16-(8*4)-(2*8)(%r28)
 	lfd	%f8,-16-(8*4)-(1*8)(%r28)
+#endif
 2:
 
 	/* Make the call.  */
 	bctrl
 
 	/* Now, deal with the return value.  */
-	mtcrf	0x01,%r31
+	mtcrf	0x01,%r31 /* cr7  */
+	bt-	31,L(small_struct_return_value)
 	bt-	30,L(done_return_value)
+#ifndef __NO_FPRS__
 	bt-	29,L(fp_return_value)
+#endif
 	stw	%r3,0(%r30)
 	bf+	28,L(done_return_value)
 	stw	%r4,4(%r30)
+	mtcrf	0x02,%r31 /* cr6  */
+	bf	27,L(done_return_value)
+	stw     %r5,8(%r30)
+	stw	%r6,12(%r30)
 	/* Fall through...  */
 
 L(done_return_value):
@@ -117,13 +128,29 @@ L(done_return_value):
 	lwz	%r1,0(%r1)
 	blr
 
+#ifndef __NO_FPRS__
 L(fp_return_value):
 	bf	28,L(float_return_value)
 	stfd	%f1,0(%r30)
+	mtcrf   0x02,%r31 /* cr6  */
+	bf	27,L(done_return_value)
+	stfd	%f2,8(%r30)
 	b	L(done_return_value)
 L(float_return_value):
 	stfs	%f1,0(%r30)
 	b	L(done_return_value)
+#endif
+
+L(small_struct_return_value):
+	/*
+	 * The C code always allocates a properly-aligned 8-byte bounce
+	 * buffer to make this assembly code very simple.  Just write out
+	 * r3 and r4 to the buffer to allow the C code to handle the rest.
+	 */
+	stw %r3, 0(%r30)
+	stw %r4, 4(%r30)
+	b L(done_return_value)
+
 .LFE1:
 END(ffi_call_SYSV)
 
@@ -169,9 +196,9 @@ END(ffi_call_SYSV)
       .uleb128  0x08
       .byte     0x4      /*  DW_CFA_advance_loc4 */
       .4byte    .LCFI5-.LCFI0
-      .byte     0x2f     /*  DW_CFA_GNU_negative_offset_extended */
+      .byte     0x11     /*  DW_CFA_offset_extended_sf */
       .uleb128  0x41
-      .uleb128  0x1
+      .sleb128  -1
       .byte     0x9f     /*  DW_CFA_offset, column 0x1f */
       .uleb128  0x1
       .byte     0x9e     /*  DW_CFA_offset, column 0x1e */
@@ -186,4 +213,8 @@ END(ffi_call_SYSV)
       .uleb128  0x1c
       .align 2
 .LEFDE1:
+#endif
+
+#if defined __ELF__ && defined __linux__
+	.section	.note.GNU-stack,"",@progbits
 #endif

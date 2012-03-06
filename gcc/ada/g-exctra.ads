@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---            Copyright (C) 2000-2003 Ada Core Technologies, Inc.           --
+--                     Copyright (C) 2000-2010, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -34,20 +32,21 @@
 --  This package provides an interface allowing to control *automatic* output
 --  to standard error upon exception occurrences (as opposed to explicit
 --  generation of traceback information using GNAT.Traceback).
---
+
 --  This output includes the basic information associated with the exception
 --  (name, message) as well as a backtrace of the call chain at the point
 --  where the exception occurred. This backtrace is only output if the call
 --  chain information is available, depending if the binder switch dedicated
 --  to that purpose has been used or not.
---
+
 --  The default backtrace is in the form of absolute code locations which may
 --  be converted to corresponding source locations using the addr2line utility
 --  or from within GDB. Please refer to GNAT.Traceback for information about
---  what is necessary to be able to exploit thisg possibility.
---
+--  what is necessary to be able to exploit this possibility.
+
 --  The backtrace output can also be customized by way of a "decorator" which
 --  may return any string output in association with a provided call chain.
+--  The decorator replaces the default backtrace mentioned above.
 
 with GNAT.Traceback; use GNAT.Traceback;
 
@@ -72,7 +71,7 @@ package GNAT.Exception_Traces is
    --  traces identified by the above trace kind values.
 
    procedure Trace_On (Kind : Trace_Kind);
-   --  Activate the traces denoted by Kind.
+   --  Activate the traces denoted by Kind
 
    procedure Trace_Off;
    --  Stop the tracing requested by the last call to Trace_On.
@@ -89,5 +88,9 @@ package GNAT.Exception_Traces is
    --  Set the decorator to be used for future automatic outputs. Restore
    --  the default behavior (output of raw addresses) if the provided
    --  access value is null.
+   --
+   --  Note: GNAT.Traceback.Symbolic.Symbolic_Traceback may be used as the
+   --  Decorator, to get a symbolic traceback. This will cause a significant
+   --  cpu and memory overhead.
 
 end GNAT.Exception_Traces;

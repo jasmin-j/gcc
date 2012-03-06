@@ -1,30 +1,28 @@
 ------------------------------------------------------------------------------
 --                                                                          --
---                GNU ADA RUN-TIME LIBRARY (GNARL) COMPONENTS               --
+--                 GNAT RUN-TIME LIBRARY (GNARL) COMPONENTS                 --
 --                                                                          --
 --     S Y S T E M . T A S K _ P R I M I T I V E S . O P E R A T I O N S    --
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---         Copyright (C) 1992-2004, Free Software Foundation, Inc.          --
+--         Copyright (C) 1992-2011, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
@@ -33,19 +31,12 @@
 
 --  This is a no tasking version of this package
 
---  This package contains all the GNULL primitives that interface directly
---  with the underlying OS.
+--  This package contains all the GNULL primitives that interface directly with
+--  the underlying OS.
 
 pragma Polling (Off);
---  Turn off polling, we do not want ATC polling to take place during
---  tasking operations. It causes infinite loops and other problems.
-
-with System.Tasking;
---  used for Ada_Task_Control_Block
---           Task_Id
-
-with System.Error_Reporting;
---  used for Shutdown
+--  Turn off polling, we do not want ATC polling to take place during tasking
+--  operations. It causes infinite loops and other problems.
 
 package body System.Task_Primitives.Operations is
 
@@ -55,8 +46,12 @@ package body System.Task_Primitives.Operations is
    pragma Warnings (Off);
    --  Turn off warnings since so many unreferenced parameters
 
-   No_Tasking : Boolean;
-   --  Comment required here ???
+   ----------------------------------
+   -- ATCB allocation/deallocation --
+   ----------------------------------
+
+   package body ATCB_Allocation is separate;
+   --  The body of this package is shared across several targets
 
    ----------------
    -- Abort_Task --
@@ -71,8 +66,6 @@ package body System.Task_Primitives.Operations is
    -- Check_Exit --
    ----------------
 
-   --  Dummy version
-
    function Check_Exit (Self_ID : ST.Task_Id) return Boolean is
    begin
       return True;
@@ -86,6 +79,24 @@ package body System.Task_Primitives.Operations is
    begin
       return True;
    end Check_No_Locks;
+
+   -------------------
+   -- Continue_Task --
+   -------------------
+
+   function Continue_Task (T : ST.Task_Id) return Boolean is
+   begin
+      return False;
+   end Continue_Task;
+
+   -------------------
+   -- Current_State --
+   -------------------
+
+   function Current_State (S : Suspension_Object) return Boolean is
+   begin
+      return False;
+   end Current_State;
 
    ----------------------
    -- Environment_Task --
@@ -129,16 +140,25 @@ package body System.Task_Primitives.Operations is
       null;
    end Exit_Task;
 
+   --------------
+   -- Finalize --
+   --------------
+
+   procedure Finalize (S : in out Suspension_Object) is
+   begin
+      null;
+   end Finalize;
+
    -------------------
    -- Finalize_Lock --
    -------------------
 
-   procedure Finalize_Lock (L : access Lock) is
+   procedure Finalize_Lock (L : not null access Lock) is
    begin
       null;
    end Finalize_Lock;
 
-   procedure Finalize_Lock (L : access RTS_Lock) is
+   procedure Finalize_Lock (L : not null access RTS_Lock) is
    begin
       null;
    end Finalize_Lock;
@@ -175,6 +195,12 @@ package body System.Task_Primitives.Operations is
    ----------------
 
    procedure Initialize (Environment_Task : Task_Id) is
+      No_Tasking : Boolean;
+   begin
+      raise Program_Error with "tasking not implemented on this configuration";
+   end Initialize;
+
+   procedure Initialize (S : in out Suspension_Object) is
    begin
       null;
    end Initialize;
@@ -185,13 +211,14 @@ package body System.Task_Primitives.Operations is
 
    procedure Initialize_Lock
      (Prio : System.Any_Priority;
-      L    : access Lock)
+      L    : not null access Lock)
    is
    begin
       null;
    end Initialize_Lock;
 
-   procedure Initialize_Lock (L : access RTS_Lock; Level : Lock_Level) is
+   procedure Initialize_Lock
+     (L : not null access RTS_Lock; Level : Lock_Level) is
    begin
       null;
    end Initialize_Lock;
@@ -232,20 +259,14 @@ package body System.Task_Primitives.Operations is
       return 0.0;
    end Monotonic_Clock;
 
-   --------------
-   -- New_ATCB --
-   --------------
-
-   function New_ATCB (Entry_Num : Task_Entry_Index) return Task_Id is
-   begin
-      return new Ada_Task_Control_Block (Entry_Num);
-   end New_ATCB;
-
    ---------------
    -- Read_Lock --
    ---------------
 
-   procedure Read_Lock (L : access Lock; Ceiling_Violation : out Boolean) is
+   procedure Read_Lock
+     (L                 : not null access Lock;
+      Ceiling_Violation : out Boolean)
+   is
    begin
       Ceiling_Violation := False;
    end Read_Lock;
@@ -289,6 +310,27 @@ package body System.Task_Primitives.Operations is
       return Null_Task;
    end Self;
 
+   -----------------
+   -- Set_Ceiling --
+   -----------------
+
+   procedure Set_Ceiling
+     (L    : not null access Lock;
+      Prio : System.Any_Priority)
+   is
+   begin
+      null;
+   end Set_Ceiling;
+
+   ---------------
+   -- Set_False --
+   ---------------
+
+   procedure Set_False (S : in out Suspension_Object) is
+   begin
+      null;
+   end Set_False;
+
    ------------------
    -- Set_Priority --
    ------------------
@@ -302,11 +344,29 @@ package body System.Task_Primitives.Operations is
       null;
    end Set_Priority;
 
+   -----------------------
+   -- Set_Task_Affinity --
+   -----------------------
+
+   procedure Set_Task_Affinity (T : ST.Task_Id) is
+   begin
+      null;
+   end Set_Task_Affinity;
+
+   --------------
+   -- Set_True --
+   --------------
+
+   procedure Set_True (S : in out Suspension_Object) is
+   begin
+      null;
+   end Set_True;
+
    -----------
    -- Sleep --
    -----------
 
-   procedure Sleep (Self_ID : Task_Id; Reason  : System.Tasking.Task_States) is
+   procedure Sleep (Self_ID : Task_Id; Reason : System.Tasking.Task_States) is
    begin
       null;
    end Sleep;
@@ -331,6 +391,34 @@ package body System.Task_Primitives.Operations is
    begin
       return False;
    end Suspend_Task;
+
+   --------------------
+   -- Stop_All_Tasks --
+   --------------------
+
+   procedure Stop_All_Tasks is
+   begin
+      null;
+   end Stop_All_Tasks;
+
+   ---------------
+   -- Stop_Task --
+   ---------------
+
+   function Stop_Task (T : ST.Task_Id) return Boolean is
+      pragma Unreferenced (T);
+   begin
+      return False;
+   end Stop_Task;
+
+   ------------------------
+   -- Suspend_Until_True --
+   ------------------------
+
+   procedure Suspend_Until_True (S : in out Suspension_Object) is
+   begin
+      null;
+   end Suspend_Until_True;
 
    -----------------
    -- Timed_Delay --
@@ -366,12 +454,15 @@ package body System.Task_Primitives.Operations is
    -- Unlock --
    ------------
 
-   procedure Unlock (L : access Lock) is
+   procedure Unlock (L : not null access Lock) is
    begin
       null;
    end Unlock;
 
-   procedure Unlock (L : access RTS_Lock; Global_Lock : Boolean := False) is
+   procedure Unlock
+     (L           : not null access RTS_Lock;
+      Global_Lock : Boolean := False)
+   is
    begin
       null;
    end Unlock;
@@ -402,13 +493,16 @@ package body System.Task_Primitives.Operations is
    -- Write_Lock --
    ----------------
 
-   procedure Write_Lock (L : access Lock; Ceiling_Violation : out Boolean) is
+   procedure Write_Lock
+     (L                 : not null access Lock;
+      Ceiling_Violation : out Boolean)
+   is
    begin
       Ceiling_Violation := False;
    end Write_Lock;
 
    procedure Write_Lock
-     (L           : access RTS_Lock;
+     (L           : not null access RTS_Lock;
       Global_Lock : Boolean := False)
    is
    begin
@@ -429,11 +523,4 @@ package body System.Task_Primitives.Operations is
       null;
    end Yield;
 
-begin
-   --  Can't raise an exception because target independent packages try to
-   --  do an Abort_Defer, which gets a memory fault.
-
-   No_Tasking :=
-     System.Error_Reporting.Shutdown
-       ("Tasking not implemented on this configuration");
 end System.Task_Primitives.Operations;

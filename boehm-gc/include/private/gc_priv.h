@@ -262,17 +262,6 @@ typedef char * ptr_t;	/* A generic pointer to which we can add	*/
 /*                               */
 /*********************************/
 
-#ifdef SAVE_CALL_CHAIN
-
-/* Fill in the pc and argument information for up to NFRAMES of my	*/
-/* callers.  Ignore my frame and my callers frame.			*/
-struct callinfo;
-void GC_save_callers GC_PROTO((struct callinfo info[NFRAMES]));
-  
-void GC_print_callers GC_PROTO((struct callinfo info[NFRAMES]));
-
-#endif
-
 #ifdef NEED_CALLINFO
     struct callinfo {
 	word ci_pc;  	/* Caller, not callee, pc	*/
@@ -284,6 +273,16 @@ void GC_print_callers GC_PROTO((struct callinfo info[NFRAMES]));
 	    word ci_dummy;
 #	endif
     };
+#endif
+
+#ifdef SAVE_CALL_CHAIN
+
+/* Fill in the pc and argument information for up to NFRAMES of my	*/
+/* callers.  Ignore my frame and my callers frame.			*/
+void GC_save_callers GC_PROTO((struct callinfo info[NFRAMES]));
+  
+void GC_print_callers GC_PROTO((struct callinfo info[NFRAMES]));
+
 #endif
 
 
@@ -469,6 +468,57 @@ extern GC_warn_proc GC_current_warn_proc;
 #   define GETENV(name) 0
 #endif
 
+#if defined(DARWIN)
+#      if defined(POWERPC)
+#              if CPP_WORDSZ == 32
+#                define GC_THREAD_STATE_T ppc_thread_state_t
+#		 define GC_MACH_THREAD_STATE PPC_THREAD_STATE
+#		 define GC_MACH_THREAD_STATE_COUNT PPC_THREAD_STATE_COUNT
+#                define GC_MACH_HEADER mach_header
+#                define GC_MACH_SECTION section
+#                define GC_GETSECTBYNAME getsectbynamefromheader
+#              else
+#                define GC_THREAD_STATE_T ppc_thread_state64_t
+#		 define GC_MACH_THREAD_STATE PPC_THREAD_STATE64
+#		 define GC_MACH_THREAD_STATE_COUNT PPC_THREAD_STATE64_COUNT
+#                define GC_MACH_HEADER mach_header_64
+#                define GC_MACH_SECTION section_64
+#                define GC_GETSECTBYNAME getsectbynamefromheader_64
+#              endif
+#      elif defined(I386) || defined(X86_64)
+#              if CPP_WORDSZ == 32
+#                define GC_THREAD_STATE_T x86_thread_state32_t
+#                define GC_MACH_THREAD_STATE x86_THREAD_STATE32
+#                define GC_MACH_THREAD_STATE_COUNT x86_THREAD_STATE32_COUNT
+#                define GC_MACH_HEADER mach_header
+#                define GC_MACH_SECTION section
+#                define GC_GETSECTBYNAME getsectbynamefromheader
+#              else
+#                define GC_THREAD_STATE_T x86_thread_state64_t
+#                define GC_MACH_THREAD_STATE x86_THREAD_STATE64
+#                define GC_MACH_THREAD_STATE_COUNT x86_THREAD_STATE64_COUNT
+#                define GC_MACH_HEADER mach_header_64
+#                define GC_MACH_SECTION section_64
+#                define GC_GETSECTBYNAME getsectbynamefromheader_64
+#              endif
+#      else
+#              error define GC_THREAD_STATE_T
+#              define GC_MACH_THREAD_STATE MACHINE_THREAD_STATE
+#              define GC_MACH_THREAD_STATE_COUNT MACHINE_THREAD_STATE_COUNT
+#      endif
+/* Try to work out the right way to access thread state structure members.
+   The structure has changed its definition in different Darwin versions.
+   This now defaults to the (older) names without __, thus hopefully,
+   not breaking any existing Makefile.direct builds.  */
+#      if defined (HAS_PPC_THREAD_STATE___R0) \
+	 || defined (HAS_PPC_THREAD_STATE64___R0) \
+	 || defined (HAS_X86_THREAD_STATE32___EAX) \
+	 || defined (HAS_X86_THREAD_STATE64___RAX)
+#        define THREAD_FLD(x) __ ## x
+#      else
+#        define THREAD_FLD(x) x
+#      endif
+#endif
 /*********************************/
 /*                               */
 /* Word-size-dependent defines   */
@@ -760,17 +810,9 @@ struct hblk {
 # ifdef LARGE_CONFIG
 #   define MAX_ROOT_SETS 4096
 # else
-#   ifdef PCR
-#     define MAX_ROOT_SETS 1024
-#   else
-#     if defined(MSWIN32) || defined(MSWINCE)
-#	define MAX_ROOT_SETS 1024
-	    /* Under NT, we add only written pages, which can result 	*/
-	    /* in many small root sets.					*/
-#     else
-#       define MAX_ROOT_SETS 256
-#     endif
-#   endif
+    /* GCJ LOCAL: MAX_ROOT_SETS increased to permit more shared */
+    /* libraries to be loaded.                                  */ 
+#   define MAX_ROOT_SETS 1024
 # endif
 
 # define MAX_EXCLUSIONS (MAX_ROOT_SETS/4)
@@ -791,14 +833,14 @@ struct exclusion {
 struct roots {
 	ptr_t r_start;
 	ptr_t r_end;
-#	if !defined(MSWIN32) && !defined(MSWINCE)
+#	if !defined(MSWIN32) && !defined(MSWINCE) && !defined(CYGWIN32)
 	  struct roots * r_next;
 #	endif
 	GC_bool r_tmp;
 	  	/* Delete before registering new dynamic libraries */
 };
 
-#if !defined(MSWIN32) && !defined(MSWINCE)
+#if !defined(MSWIN32) && !defined(MSWINCE) && !defined(CYGWIN32)
     /* Size of hash table index to roots.	*/
 #   define LOG_RT_SIZE 6
 #   define RT_SIZE (1 << LOG_RT_SIZE) /* Power of 2, may be != MAX_ROOT_SETS */
@@ -982,7 +1024,7 @@ struct _GC_arrays {
   struct HeapSect {
       ptr_t hs_start; word hs_bytes;
   } _heap_sects[MAX_HEAP_SECTS];
-# if defined(MSWIN32) || defined(MSWINCE)
+# if defined(MSWIN32) || defined(MSWINCE) || defined(CYGWIN32)
     ptr_t _heap_bases[MAX_HEAP_SECTS];
     		/* Start address of memory regions obtained from kernel. */
 # endif
@@ -991,7 +1033,7 @@ struct _GC_arrays {
     		/* Commited lengths of memory regions obtained from kernel. */
 # endif
   struct roots _static_roots[MAX_ROOT_SETS];
-# if !defined(MSWIN32) && !defined(MSWINCE)
+# if !defined(MSWIN32) && !defined(MSWINCE) && !defined(CYGWIN32)
     struct roots * _root_index[RT_SIZE];
 # endif
   struct exclusion _excl_table[MAX_EXCLUSIONS];
@@ -1049,7 +1091,7 @@ GC_API GC_FAR struct _GC_arrays GC_arrays;
 # ifdef USE_MUNMAP
 #   define GC_unmapped_bytes GC_arrays._unmapped_bytes
 # endif
-# if defined(MSWIN32) || defined(MSWINCE)
+# if defined(MSWIN32) || defined(MSWINCE) || defined (CYGWIN32)
 #   define GC_heap_bases GC_arrays._heap_bases
 # endif
 # ifdef MSWINCE
@@ -1145,7 +1187,7 @@ extern word GC_n_heap_sects;	/* Number of separately added heap	*/
 
 extern word GC_page_size;
 
-# if defined(MSWIN32) || defined(MSWINCE)
+# if defined(MSWIN32) || defined(MSWINCE) || defined(CYGWIN32)
   struct _SYSTEM_INFO;
   extern struct _SYSTEM_INFO GC_sysinfo;
   extern word GC_n_heap_bases;	/* See GC_heap_bases.	*/
@@ -1437,7 +1479,7 @@ void GC_remove_roots_inner GC_PROTO((char * b, char * e));
 GC_bool GC_is_static_root GC_PROTO((ptr_t p));
   		/* Is the address p in one of the registered static	*/
   		/* root sections?					*/
-# if defined(MSWIN32) || defined(_WIN32_WCE_EMULATION)
+# if defined(MSWIN32) || defined(_WIN32_WCE_EMULATION) || defined(CYGWIN32)
 GC_bool GC_is_tmp_root GC_PROTO((ptr_t p));
 		/* Is the address p in one of the temporary static	*/
 		/* root sections?					*/

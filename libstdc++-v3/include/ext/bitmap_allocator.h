@@ -1,11 +1,12 @@
 // Bitmap Allocator. -*- C++ -*-
 
-// Copyright (C) 2004, 2005 Free Software Foundation, Inc.
+// Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -13,19 +14,14 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 
-// You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// Under Section 7 of GPL version 3, you are granted additional
+// permissions described in the GCC Runtime Library Exception, version
+// 3.1, as published by the Free Software Foundation.
 
-// As a special exception, you may use this file as part of a free software
-// library without restriction.  Specifically, if other files instantiate
-// templates or use macros or inline functions from this file, or you compile
-// this file and link it with other files to produce an executable, this
-// file does not by itself cause the resulting executable to be covered by
-// the GNU General Public License.  This exception does not however
-// invalidate any other reasons why the executable file might be covered by
-// the GNU General Public License.
+// You should have received a copy of the GNU General Public License and
+// a copy of the GCC Runtime Library Exception along with this program;
+// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+// <http://www.gnu.org/licenses/>.
 
 /** @file ext/bitmap_allocator.h
  *  This file is a GNU extension to the Standard C++ Library.
@@ -34,183 +30,27 @@
 #ifndef _BITMAP_ALLOCATOR_H
 #define _BITMAP_ALLOCATOR_H 1
 
-// For std::size_t, and ptrdiff_t.
-#include <cstddef>
-
-// For __throw_bad_alloc().
-#include <bits/functexcept.h>
-
-// For std::pair.
-#include <utility>
-
-// For greater_equal, and less_equal.
-#include <functional>
-
-// For operator new.
-#include <new>
-
-// For __gthread_mutex_t, __gthread_mutex_lock and __gthread_mutex_unlock.
-#include <bits/gthr.h>
-
-// Define this to enable error checking withing the allocator
-// itself(to debug the allocator itself).
-//#define _BALLOC_SANITY_CHECK
+#include <utility> // For std::pair.
+#include <bits/functexcept.h> // For __throw_bad_alloc().
+#include <functional> // For greater_equal, and less_equal.
+#include <new> // For operator new.
+#include <debug/debug.h> // _GLIBCXX_DEBUG_ASSERT
+#include <ext/concurrence.h>
+#include <bits/move.h>
 
 /** @brief The constant in the expression below is the alignment
  * required in bytes.
  */
 #define _BALLOC_ALIGN_BYTES 8
 
-#if defined _BALLOC_SANITY_CHECK
-#include <cassert>
-#define _BALLOC_ASSERT(_EXPR) assert(_EXPR)
-#else
-#define _BALLOC_ASSERT(_EXPR)
-#endif
-
-
-namespace __gnu_cxx
+namespace __gnu_cxx _GLIBCXX_VISIBILITY(default)
 {
-#if defined __GTHREADS
-  namespace
+  using std::size_t;
+  using std::ptrdiff_t;
+
+  namespace __detail
   {
-    /** @brief  If true, then the application being compiled will be
-     *  using threads, so use mutexes as a synchronization primitive,
-     *  else do no use any synchronization primitives.
-     */
-    bool const __threads_enabled = __gthread_active_p();
-  }
-#endif
-
-#if defined __GTHREADS
-  /** @class  _Mutex bitmap_allocator.h bitmap_allocator.h
-   *
-   *  @brief  _Mutex is an OO-Wrapper for __gthread_mutex_t. 
-   *
-   *  It does not allow you to copy or assign an already initialized
-   *  mutex. This is used merely as a convenience for the locking
-   *  classes.
-   */
-  class _Mutex 
-  {
-    __gthread_mutex_t _M_mut;
-
-    // Prevent Copying and assignment.
-    _Mutex(_Mutex const&);
-    _Mutex& operator=(_Mutex const&);
-
-  public:
-    _Mutex()
-    {
-      if (__threads_enabled)
-	{
-#if !defined __GTHREAD_MUTEX_INIT
-	  __GTHREAD_MUTEX_INIT_FUNCTION(&_M_mut);
-#else
-	  __gthread_mutex_t __mtemp = __GTHREAD_MUTEX_INIT;
-	  _M_mut = __mtemp;
-#endif
-	}
-    }
-
-    ~_Mutex()
-    {
-      // Gthreads does not define a Mutex Destruction Function.
-    }
-
-    __gthread_mutex_t*
-    _M_get() { return &_M_mut; }
-  };
-
-  /** @class  _Lock bitmap_allocator.h bitmap_allocator.h
-   *
-   *  @brief  _Lock is a simple manual locking class which allows you to
-   *  manually lock and unlock a mutex associated with the lock. 
-   *
-   *  There is no automatic locking or unlocking happening without the
-   *  programmer's explicit instructions. This class unlocks the mutex
-   *  ONLY if it has not been locked. However, this check does not
-   *  apply for locking, and wayward use may cause dead-locks.
-   */
-  class _Lock 
-  {
-    _Mutex* _M_pmt;
-    bool _M_locked;
-
-    // Prevent Copying and assignment.
-    _Lock(_Lock const&);
-    _Lock& operator=(_Lock const&);
-
-  public:
-    _Lock(_Mutex* __mptr)
-    : _M_pmt(__mptr), _M_locked(false)
-    { }
-
-    void
-    _M_lock()
-    {
-      if (__threads_enabled)
-	{
-	  _M_locked = true;
-	  __gthread_mutex_lock(_M_pmt->_M_get());
-	}
-    }
-
-    void
-    _M_unlock()
-    {
-      if (__threads_enabled)
-	{
-	  if (__builtin_expect(_M_locked, true))
-	    {
-	      __gthread_mutex_unlock(_M_pmt->_M_get());
-	      _M_locked = false;
-	    }
-	}
-    }
-    
-    ~_Lock() { }
-  };
-
-  /** @class  _Auto_Lock bitmap_allocator.h bitmap_allocator.h
-   *
-   *  @brief  _Auto_Lock locks the associated mutex on construction, and
-   *  unlocks on destruction.
-   *
-   *  There are no checks performed, and this class follows the RAII
-   *  principle.
-   */
-  class _Auto_Lock 
-  {
-    _Mutex* _M_pmt;
-    // Prevent Copying and assignment.
-    _Auto_Lock(_Auto_Lock const&);
-    _Auto_Lock& operator=(_Auto_Lock const&);
-
-    void
-    _M_lock()
-    {
-      if (__threads_enabled)
-	__gthread_mutex_lock(_M_pmt->_M_get());
-    }
-
-    void
-    _M_unlock()
-    {
-      if (__threads_enabled)
-	__gthread_mutex_unlock(_M_pmt->_M_get());
-    }
-
-  public:
-    _Auto_Lock(_Mutex* __mptr) : _M_pmt(__mptr)
-    { this->_M_lock(); }
-
-    ~_Auto_Lock() { this->_M_unlock(); }
-  };
-#endif 
-
-  namespace balloc
-  {
+  _GLIBCXX_BEGIN_NAMESPACE_VERSION
     /** @class  __mini_vector bitmap_allocator.h bitmap_allocator.h
      *
      *  @brief  __mini_vector<> is a stripped down version of the
@@ -219,7 +59,6 @@ namespace __gnu_cxx
      *  It is to be used only for built-in types or PODs. Notable
      *  differences are:
      * 
-     *  @detail
      *  1. Not all accessor functions are present.
      *  2. Used ONLY for PODs.
      *  3. No Allocator template argument. Uses ::operator new() to get
@@ -238,8 +77,8 @@ namespace __gnu_cxx
 	typedef _Tp* pointer;
 	typedef _Tp& reference;
 	typedef const _Tp& const_reference;
-	typedef std::size_t size_type;
-	typedef std::ptrdiff_t difference_type;
+	typedef size_t size_type;
+	typedef ptrdiff_t difference_type;
 	typedef pointer iterator;
 
       private:
@@ -264,20 +103,8 @@ namespace __gnu_cxx
 	// insert(iterator, const_reference), erase(iterator),
 	// begin(), end(), back(), operator[].
 
-	__mini_vector() : _M_start(0), _M_finish(0), 
-			  _M_end_of_storage(0)
-	{ }
-
-#if 0
-	~__mini_vector()
-	{
-	  if (this->_M_start)
-	    {
-	      this->deallocate(this->_M_start, this->_M_end_of_storage 
-			       - this->_M_start);
-	    }
-	}
-#endif
+	__mini_vector()
+        : _M_start(0), _M_finish(0), _M_end_of_storage(0) { }
 
 	size_type
 	size() const throw()
@@ -396,13 +223,13 @@ namespace __gnu_cxx
       struct __mv_iter_traits<_Tp*>
       {
 	typedef _Tp value_type;
-	typedef std::ptrdiff_t difference_type;
+	typedef ptrdiff_t difference_type;
       };
 
     enum 
       { 
-	bits_per_byte = 8, 
-	bits_per_block = sizeof(size_t) * bits_per_byte 
+	bits_per_byte = 8,
+	bits_per_block = sizeof(size_t) * size_t(bits_per_byte) 
       };
 
     template<typename _ForwardIterator, typename _Tp, typename _Compare>
@@ -410,8 +237,6 @@ namespace __gnu_cxx
       __lower_bound(_ForwardIterator __first, _ForwardIterator __last,
 		    const _Tp& __val, _Compare __comp)
       {
-	typedef typename __mv_iter_traits<_ForwardIterator>::value_type
-	  _ValueType;
 	typedef typename __mv_iter_traits<_ForwardIterator>::difference_type
 	  _DistanceType;
 
@@ -436,15 +261,6 @@ namespace __gnu_cxx
 	return __first;
       }
 
-    template<typename _InputIterator, typename _Predicate>
-      inline _InputIterator
-      __find_if(_InputIterator __first, _InputIterator __last, _Predicate __p)
-      {
-	while (__first != __last && !__p(*__first))
-	  ++__first;
-	return __first;
-      }
-
     /** @brief The number of Blocks pointed to by the address pair
      *  passed to the function.
      */
@@ -459,7 +275,7 @@ namespace __gnu_cxx
     template<typename _AddrPair>
       inline size_t
       __num_bitmaps(_AddrPair __ap)
-      { return __num_blocks(__ap) / bits_per_block; }
+      { return __num_blocks(__ap) / size_t(bits_per_block); }
 
     // _Tp should be a pointer type.
     template<typename _Tp>
@@ -517,7 +333,7 @@ namespace __gnu_cxx
       : public std::unary_function<typename std::pair<_Tp, _Tp>, bool>
       {
 	typedef typename std::pair<_Tp, _Tp> _Block_pair;
-	typedef typename balloc::__mini_vector<_Block_pair> _BPVector;
+	typedef typename __detail::__mini_vector<_Block_pair> _BPVector;
 	typedef typename _BPVector::difference_type _Counter_type;
 
 	size_t* _M_pbitmap;
@@ -533,19 +349,17 @@ namespace __gnu_cxx
 	  // Set the _rover to the last physical location bitmap,
 	  // which is the bitmap which belongs to the first free
 	  // block. Thus, the bitmaps are in exact reverse order of
-	  // the actual memory layout. So, we count down the bimaps,
+	  // the actual memory layout. So, we count down the bitmaps,
 	  // which is the same as moving up the memory.
 
 	  // If the used count stored at the start of the Bit Map headers
 	  // is equal to the number of Objects that the current Block can
 	  // store, then there is definitely no space for another single
 	  // object, so just return false.
-	  _Counter_type __diff = 
-	    __gnu_cxx::balloc::__num_bitmaps(__bp);
+	  _Counter_type __diff = __detail::__num_bitmaps(__bp);
 
 	  if (*(reinterpret_cast<size_t*>
-		(__bp.first) - (__diff + 1))
-	      == __gnu_cxx::balloc::__num_blocks(__bp))
+		(__bp.first) - (__diff + 1)) == __detail::__num_blocks(__bp))
 	    return false;
 
 	  size_t* __rover = reinterpret_cast<size_t*>(__bp.first) - 1;
@@ -562,7 +376,6 @@ namespace __gnu_cxx
 	    }
 	  return false;
 	}
-
     
 	size_t*
 	_M_get() const throw()
@@ -570,9 +383,8 @@ namespace __gnu_cxx
 
 	_Counter_type
 	_M_offset() const throw()
-	{ return _M_data_offset * bits_per_block; }
+	{ return _M_data_offset * size_t(bits_per_block); }
       };
-
 
     /** @class  _Bitmap_counter bitmap_allocator.h bitmap_allocator.h
      *
@@ -584,11 +396,11 @@ namespace __gnu_cxx
     template<typename _Tp>
       class _Bitmap_counter
       {
-	typedef typename balloc::__mini_vector<typename std::pair<_Tp, _Tp> > 
-	_BPVector;
+	typedef typename
+	__detail::__mini_vector<typename std::pair<_Tp, _Tp> > _BPVector;
 	typedef typename _BPVector::size_type _Index_type;
 	typedef _Tp pointer;
-    
+
 	_BPVector& _M_vbp;
 	size_t* _M_curr_bmap;
 	size_t* _M_last_bmap_in_block;
@@ -615,12 +427,12 @@ namespace __gnu_cxx
 	  _M_curr_bmap = reinterpret_cast<size_t*>
 	    (_M_vbp[_M_curr_index].first) - 1;
 	  
-	  _BALLOC_ASSERT(__index <= (long)_M_vbp.size() - 1);
+	  _GLIBCXX_DEBUG_ASSERT(__index <= (long)_M_vbp.size() - 1);
 	
 	  _M_last_bmap_in_block = _M_curr_bmap
 	    - ((_M_vbp[_M_curr_index].second 
 		- _M_vbp[_M_curr_index].first + 1) 
-	       / bits_per_block - 1);
+	       / size_t(bits_per_block) - 1);
 	}
     
 	// Dangerous Function! Use with extreme care. Pass to this
@@ -660,7 +472,7 @@ namespace __gnu_cxx
 	_Index_type
 	_M_offset() const throw()
 	{
-	  return bits_per_block
+	  return size_t(bits_per_block)
 	    * ((reinterpret_cast<size_t*>(this->_M_base()) 
 		- _M_curr_bmap) - 1);
 	}
@@ -690,7 +502,11 @@ namespace __gnu_cxx
       size_t __mask = 1 << __pos;
       *__pbmap |= __mask;
     }
-  } // namespace balloc
+
+  _GLIBCXX_END_NAMESPACE_VERSION
+  } // namespace __detail
+
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   /** @brief  Generic Version of the bsf instruction.
    */
@@ -705,10 +521,13 @@ namespace __gnu_cxx
    */
   class free_list
   {
-    typedef size_t* value_type;
-    typedef balloc::__mini_vector<value_type> vector_type;
-    typedef vector_type::iterator iterator;
+  public:
+    typedef size_t* 				value_type;
+    typedef __detail::__mini_vector<value_type> vector_type;
+    typedef vector_type::iterator 		iterator;
+    typedef __mutex				__mutex_type;
 
+  private:
     struct _LT_pointer_compare
     {
       bool
@@ -718,11 +537,11 @@ namespace __gnu_cxx
     };
 
 #if defined __GTHREADS
-    _Mutex*
+    __mutex_type&
     _M_get_mutex()
     {
-      static _Mutex _S_mutex;
-      return &_S_mutex;
+      static __mutex_type _S_mutex;
+      return _S_mutex;
     }
 #endif
 
@@ -738,7 +557,7 @@ namespace __gnu_cxx
      *  @param  __addr The pointer to the memory block to be
      *  validated.
      *
-     *  @detail  Validates the memory block passed to this function and
+     *  Validates the memory block passed to this function and
      *  appropriately performs the action of managing the free list of
      *  blocks by adding this block to the free list or deleting this
      *  or larger blocks from the free list.
@@ -763,14 +582,14 @@ namespace __gnu_cxx
 	  else
 	    {
 	      // Deallocate the last block in the list of free lists,
-	      // and insert the new one in it's correct position.
+	      // and insert the new one in its correct position.
 	      ::operator delete(static_cast<void*>(__free_list.back()));
 	      __free_list.pop_back();
 	    }
 	}
 	  
       // Just add the block to the list of free lists unconditionally.
-      iterator __temp = __gnu_cxx::balloc::__lower_bound
+      iterator __temp = __detail::__lower_bound
 	(__free_list.begin(), __free_list.end(), 
 	 *__addr, _LT_pointer_compare());
 
@@ -813,7 +632,7 @@ namespace __gnu_cxx
     _M_insert(size_t* __addr) throw()
     {
 #if defined __GTHREADS
-      _Auto_Lock __bfl_lock(_M_get_mutex());
+      __scoped_lock __bfl_lock(_M_get_mutex());
 #endif
       // Call _M_validate to decide what should be done with
       // this particular free list.
@@ -861,17 +680,23 @@ namespace __gnu_cxx
 	};
     };
 
+  /**
+   * @brief Bitmap Allocator, primary template.
+   * @ingroup allocators
+   */
   template<typename _Tp>
     class bitmap_allocator : private free_list
     {
     public:
-      typedef std::size_t    size_type;
-      typedef std::ptrdiff_t difference_type;
-      typedef _Tp*        pointer;
-      typedef const _Tp*  const_pointer;
-      typedef _Tp&        reference;
-      typedef const _Tp&  const_reference;
-      typedef _Tp         value_type;
+      typedef size_t    		size_type;
+      typedef ptrdiff_t 		difference_type;
+      typedef _Tp*        		pointer;
+      typedef const _Tp*  		const_pointer;
+      typedef _Tp&        		reference;
+      typedef const _Tp&  		const_reference;
+      typedef _Tp         		value_type;
+      typedef free_list::__mutex_type 	__mutex_type;
+
       template<typename _Tp1>
         struct rebind
 	{
@@ -898,25 +723,29 @@ namespace __gnu_cxx
 
       typedef typename std::pair<_Alloc_block*, _Alloc_block*> _Block_pair;
 
-      typedef typename 
-      balloc::__mini_vector<_Block_pair> _BPVector;
+      typedef typename __detail::__mini_vector<_Block_pair> _BPVector;
+      typedef typename _BPVector::iterator _BPiter;
 
-#if defined _BALLOC_SANITY_CHECK
+      template<typename _Predicate>
+        static _BPiter
+        _S_find(_Predicate __p)
+        {
+	  _BPiter __first = _S_mem_blocks.begin();
+	  while (__first != _S_mem_blocks.end() && !__p(*__first))
+	    ++__first;
+	  return __first;
+	}
+
+#if defined _GLIBCXX_DEBUG
       // Complexity: O(lg(N)). Where, N is the number of block of size
       // sizeof(value_type).
       void 
       _S_check_for_free_blocks() throw()
       {
-	typedef typename 
-	  __gnu_cxx::balloc::_Ffit_finder<_Alloc_block*> _FFF;
-	_FFF __fff;
-	typedef typename _BPVector::iterator _BPiter;
-	_BPiter __bpi = 
-	  __gnu_cxx::balloc::__find_if
-	  (_S_mem_blocks.begin(), _S_mem_blocks.end(), 
-	   __gnu_cxx::balloc::_Functor_Ref<_FFF>(__fff));
+	typedef typename __detail::_Ffit_finder<_Alloc_block*> _FFF;
+	_BPiter __bpi = _S_find(_FFF());
 
-	_BALLOC_ASSERT(__bpi == _S_mem_blocks.end());
+	_GLIBCXX_DEBUG_ASSERT(__bpi == _S_mem_blocks.end());
       }
 #endif
 
@@ -925,7 +754,7 @@ namespace __gnu_cxx
        *
        *  @throw  std::bad_alloc. If memory can not be allocated.
        *
-       *  @detail  Complexity: O(1), but internally depends upon the
+       *  Complexity: O(1), but internally depends upon the
        *  complexity of the function free_list::_M_get. The part where
        *  the bitmap headers are written has complexity: O(X),where X
        *  is the number of blocks of size sizeof(value_type) within
@@ -934,18 +763,18 @@ namespace __gnu_cxx
       void 
       _S_refill_pool() throw(std::bad_alloc)
       {
-#if defined _BALLOC_SANITY_CHECK
+#if defined _GLIBCXX_DEBUG
 	_S_check_for_free_blocks();
 #endif
 
-	const size_t __num_bitmaps = _S_block_size / balloc::bits_per_block;
+	const size_t __num_bitmaps = (_S_block_size
+				      / size_t(__detail::bits_per_block));
 	const size_t __size_to_allocate = sizeof(size_t) 
 	  + _S_block_size * sizeof(_Alloc_block) 
 	  + __num_bitmaps * sizeof(size_t);
 
-	size_t* __temp = 
-	  reinterpret_cast<size_t*>
-	  (this->_M_get(__size_to_allocate));
+	size_t* __temp =
+	  reinterpret_cast<size_t*>(this->_M_get(__size_to_allocate));
 	*__temp = 0;
 	++__temp;
 
@@ -960,23 +789,18 @@ namespace __gnu_cxx
 	// Fill the Vector with this information.
 	_S_mem_blocks.push_back(__bp);
 
-	size_t __bit_mask = 0; // 0 Indicates all Allocated.
-	__bit_mask = ~__bit_mask; // 1 Indicates all Free.
-
 	for (size_t __i = 0; __i < __num_bitmaps; ++__i)
-	  __temp[__i] = __bit_mask;
+	  __temp[__i] = ~static_cast<size_t>(0); // 1 Indicates all Free.
 
 	_S_block_size *= 2;
       }
 
-
       static _BPVector _S_mem_blocks;
       static size_t _S_block_size;
-      static __gnu_cxx::balloc::
-      _Bitmap_counter<_Alloc_block*> _S_last_request;
+      static __detail::_Bitmap_counter<_Alloc_block*> _S_last_request;
       static typename _BPVector::size_type _S_last_dealloc_index;
 #if defined __GTHREADS
-      static _Mutex _S_mut;
+      static __mutex_type _S_mut;
 #endif
 
     public:
@@ -986,7 +810,7 @@ namespace __gnu_cxx
        *
        *  @throw  std::bad_alloc. If memory can not be allocated.
        *
-       *  @detail  Complexity: Worst case complexity is O(N), but that
+       *  Complexity: Worst case complexity is O(N), but that
        *  is hardly ever hit. If and when this particular case is
        *  encountered, the next few cases are guaranteed to have a
        *  worst case complexity of O(1)!  That's why this function
@@ -998,7 +822,7 @@ namespace __gnu_cxx
       _M_allocate_single_object() throw(std::bad_alloc)
       {
 #if defined __GTHREADS
-	_Auto_Lock __bit_lock(&_S_mut);
+	__scoped_lock __bit_lock(_S_mut);
 #endif
 
 	// The algorithm is something like this: The last_request
@@ -1016,21 +840,14 @@ namespace __gnu_cxx
 	// dereference if tinkered with.
 	while (_S_last_request._M_finished() == false
 	       && (*(_S_last_request._M_get()) == 0))
-	  {
-	    _S_last_request.operator++();
-	  }
+	  _S_last_request.operator++();
 
 	if (__builtin_expect(_S_last_request._M_finished() == true, false))
 	  {
 	    // Fall Back to First Fit algorithm.
-	    typedef typename 
-	      __gnu_cxx::balloc::_Ffit_finder<_Alloc_block*> _FFF;
+	    typedef typename __detail::_Ffit_finder<_Alloc_block*> _FFF;
 	    _FFF __fff;
-	    typedef typename _BPVector::iterator _BPiter;
-	    _BPiter __bpi = 
-	      __gnu_cxx::balloc::__find_if
-	      (_S_mem_blocks.begin(), _S_mem_blocks.end(), 
-	       __gnu_cxx::balloc::_Functor_Ref<_FFF>(__fff));
+	    _BPiter __bpi = _S_find(__detail::_Functor_Ref<_FFF>(__fff));
 
 	    if (__bpi != _S_mem_blocks.end())
 	      {
@@ -1038,7 +855,7 @@ namespace __gnu_cxx
 		// the right as 0, meaning Allocated. This bit is obtained
 		// by calling _M_get() on __fff.
 		size_t __nz_bit = _Bit_scan_forward(*__fff._M_get());
-		balloc::__bit_allocate(__fff._M_get(), __nz_bit);
+		__detail::__bit_allocate(__fff._M_get(), __nz_bit);
 
 		_S_last_request._M_reset(__bpi - _S_mem_blocks.begin());
 
@@ -1047,8 +864,7 @@ namespace __gnu_cxx
 		  (__bpi->first + __fff._M_offset() + __nz_bit);
 		size_t* __puse_count = 
 		  reinterpret_cast<size_t*>
-		  (__bpi->first) 
-		  - (__gnu_cxx::balloc::__num_bitmaps(*__bpi) + 1);
+		  (__bpi->first) - (__detail::__num_bitmaps(*__bpi) + 1);
 		
 		++(*__puse_count);
 		return __ret;
@@ -1070,14 +886,14 @@ namespace __gnu_cxx
 	// _S_last_request holds a pointer to a valid bit map, that
 	// points to a free block in memory.
 	size_t __nz_bit = _Bit_scan_forward(*_S_last_request._M_get());
-	balloc::__bit_allocate(_S_last_request._M_get(), __nz_bit);
+	__detail::__bit_allocate(_S_last_request._M_get(), __nz_bit);
 
 	pointer __ret = reinterpret_cast<pointer>
 	  (_S_last_request._M_base() + _S_last_request._M_offset() + __nz_bit);
 
 	size_t* __puse_count = reinterpret_cast<size_t*>
 	  (_S_mem_blocks[_S_last_request._M_where()].first)
-	  - (__gnu_cxx::balloc::
+	  - (__detail::
 	     __num_bitmaps(_S_mem_blocks[_S_last_request._M_where()]) + 1);
 
 	++(*__puse_count);
@@ -1087,7 +903,7 @@ namespace __gnu_cxx
       /** @brief  Deallocates memory that belongs to a single object of
        *  size sizeof(_Tp).
        *
-       *  @detail  Complexity: O(lg(N)), but the worst case is not hit
+       *  Complexity: O(lg(N)), but the worst case is not hit
        *  often!  This is because containers usually deallocate memory
        *  close to each other and this case is handled in O(1) time by
        *  the deallocate function.
@@ -1096,7 +912,7 @@ namespace __gnu_cxx
       _M_deallocate_single_object(pointer __p) throw()
       {
 #if defined __GTHREADS
-	_Auto_Lock __bit_lock(&_S_mut);
+	__scoped_lock __bit_lock(_S_mut);
 #endif
 	_Alloc_block* __real_p = reinterpret_cast<_Alloc_block*>(__p);
 
@@ -1106,14 +922,13 @@ namespace __gnu_cxx
 	_Difference_type __diff;
 	long __displacement;
 
-	_BALLOC_ASSERT(_S_last_dealloc_index >= 0);
+	_GLIBCXX_DEBUG_ASSERT(_S_last_dealloc_index >= 0);
 
-	
-	if (__gnu_cxx::balloc::_Inclusive_between<_Alloc_block*>
-	    (__real_p)
-	    (_S_mem_blocks[_S_last_dealloc_index]))
+	__detail::_Inclusive_between<_Alloc_block*> __ibt(__real_p);
+	if (__ibt(_S_mem_blocks[_S_last_dealloc_index]))
 	  {
-	    _BALLOC_ASSERT(_S_last_dealloc_index <= _S_mem_blocks.size() - 1);
+	    _GLIBCXX_DEBUG_ASSERT(_S_last_dealloc_index
+				  <= _S_mem_blocks.size() - 1);
 
 	    // Initial Assumption was correct!
 	    __diff = _S_last_dealloc_index;
@@ -1121,14 +936,9 @@ namespace __gnu_cxx
 	  }
 	else
 	  {
-	    _Iterator _iter = 
-	      __gnu_cxx::balloc::
-	      __find_if(_S_mem_blocks.begin(), 
-			_S_mem_blocks.end(), 
-			__gnu_cxx::balloc::
-			_Inclusive_between<_Alloc_block*>(__real_p));
+	    _Iterator _iter = _S_find(__ibt);
 
-	    _BALLOC_ASSERT(_iter != _S_mem_blocks.end());
+	    _GLIBCXX_DEBUG_ASSERT(_iter != _S_mem_blocks.end());
 
 	    __diff = _iter - _S_mem_blocks.begin();
 	    __displacement = __real_p - _S_mem_blocks[__diff].first;
@@ -1136,18 +946,19 @@ namespace __gnu_cxx
 	  }
 
 	// Get the position of the iterator that has been found.
-	const size_t __rotate = __displacement % balloc::bits_per_block;
+	const size_t __rotate = (__displacement
+				 % size_t(__detail::bits_per_block));
 	size_t* __bitmapC = 
 	  reinterpret_cast<size_t*>
 	  (_S_mem_blocks[__diff].first) - 1;
-	__bitmapC -= (__displacement / balloc::bits_per_block);
+	__bitmapC -= (__displacement / size_t(__detail::bits_per_block));
       
-	balloc::__bit_free(__bitmapC, __rotate);
+	__detail::__bit_free(__bitmapC, __rotate);
 	size_t* __puse_count = reinterpret_cast<size_t*>
 	  (_S_mem_blocks[__diff].first)
-	  - (__gnu_cxx::balloc::__num_bitmaps(_S_mem_blocks[__diff]) + 1);
+	  - (__detail::__num_bitmaps(_S_mem_blocks[__diff]) + 1);
 	
-	_BALLOC_ASSERT(*__puse_count != 0);
+	_GLIBCXX_DEBUG_ASSERT(*__puse_count != 0);
 
 	--(*__puse_count);
 
@@ -1177,29 +988,29 @@ namespace __gnu_cxx
 	    if (_S_last_dealloc_index >= _S_mem_blocks.size())
 	      {
 		_S_last_dealloc_index =(__diff != -1 ? __diff : 0);
-		_BALLOC_ASSERT(_S_last_dealloc_index >= 0);
+		_GLIBCXX_DEBUG_ASSERT(_S_last_dealloc_index >= 0);
 	      }
 	  }
       }
 
     public:
-      bitmap_allocator() throw()
+      bitmap_allocator() _GLIBCXX_USE_NOEXCEPT
       { }
 
-      bitmap_allocator(const bitmap_allocator&)
+      bitmap_allocator(const bitmap_allocator&) _GLIBCXX_USE_NOEXCEPT
       { }
 
       template<typename _Tp1>
-        bitmap_allocator(const bitmap_allocator<_Tp1>&) throw()
+        bitmap_allocator(const bitmap_allocator<_Tp1>&) _GLIBCXX_USE_NOEXCEPT
         { }
 
-      ~bitmap_allocator() throw()
+      ~bitmap_allocator() _GLIBCXX_USE_NOEXCEPT
       { }
 
       pointer 
       allocate(size_type __n)
       {
-	if (__builtin_expect(__n > this->max_size(), false))
+	if (__n > this->max_size())
 	  std::__throw_bad_alloc();
 
 	if (__builtin_expect(__n == 1, true))
@@ -1228,24 +1039,36 @@ namespace __gnu_cxx
       }
 
       pointer 
-      address(reference __r) const
-      { return &__r; }
+      address(reference __r) const _GLIBCXX_NOEXCEPT
+      { return std::__addressof(__r); }
 
       const_pointer 
-      address(const_reference __r) const
-      { return &__r; }
+      address(const_reference __r) const _GLIBCXX_NOEXCEPT
+      { return std::__addressof(__r); }
 
       size_type 
-      max_size() const throw()
+      max_size() const _GLIBCXX_USE_NOEXCEPT
       { return size_type(-1) / sizeof(value_type); }
 
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      template<typename _Up, typename... _Args>
+        void
+        construct(_Up* __p, _Args&&... __args)
+	{ ::new((void *)__p) _Up(std::forward<_Args>(__args)...); }
+
+      template<typename _Up>
+        void 
+        destroy(_Up* __p)
+        { __p->~_Up(); }
+#else
       void 
       construct(pointer __p, const_reference __data)
-      { ::new(__p) value_type(__data); }
+      { ::new((void *)__p) value_type(__data); }
 
       void 
       destroy(pointer __p)
       { __p->~value_type(); }
+#endif
     };
 
   template<typename _Tp1, typename _Tp2>
@@ -1267,26 +1090,25 @@ namespace __gnu_cxx
 
   template<typename _Tp>
     size_t bitmap_allocator<_Tp>::_S_block_size = 
-    2 * balloc::bits_per_block;
+    2 * size_t(__detail::bits_per_block);
 
   template<typename _Tp>
-    typename __gnu_cxx::bitmap_allocator<_Tp>::_BPVector::size_type 
+    typename bitmap_allocator<_Tp>::_BPVector::size_type 
     bitmap_allocator<_Tp>::_S_last_dealloc_index = 0;
 
   template<typename _Tp>
-    __gnu_cxx::balloc::_Bitmap_counter 
-  <typename bitmap_allocator<_Tp>::_Alloc_block*>
+    __detail::_Bitmap_counter
+      <typename bitmap_allocator<_Tp>::_Alloc_block*>
     bitmap_allocator<_Tp>::_S_last_request(_S_mem_blocks);
 
 #if defined __GTHREADS
   template<typename _Tp>
-    __gnu_cxx::_Mutex
+    typename bitmap_allocator<_Tp>::__mutex_type
     bitmap_allocator<_Tp>::_S_mut;
 #endif
 
-
-}
+_GLIBCXX_END_NAMESPACE_VERSION
+} // namespace __gnu_cxx
 
 #endif 
 
-//  LocalWords:  namespace GTHREADS bool const gthread endif Mutex mutex

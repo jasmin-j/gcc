@@ -1,9 +1,10 @@
-c { dg-do run { xfail mips-sgi-irix6* } } PR 16292
+c { dg-do run }
+c { dg-xfail-run-if "PR target/16292" { mips-sgi-irix6* } { -O0 } }
       program cabs_1
       complex      z0
       real         r0
-      complex*16   z1
-      real*8       r1
+      complex(kind=8)   z1
+      real(kind=8)       r1
 
       z0 = cmplx(3.,4.)
       r0 = cabs(z0)

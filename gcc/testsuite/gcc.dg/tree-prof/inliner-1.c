@@ -1,4 +1,4 @@
-/* { dg-options "-O2 -fdump-tree-optimized -fdump-tree-all" } */
+/* { dg-options "-O2 -fdump-tree-optimized" } */
 int a;
 int b[100];
 void abort (void);
@@ -23,10 +23,14 @@ hot_function ()
 
 main ()
 {
-  if (a)
-    cold_function ();
-  else
-    hot_function ();
+  int i;
+  for (i = 0; i < 100; i++)
+    {
+      if (a)
+        cold_function ();
+      else
+        hot_function ();
+    }
   return 0;
 }
 
@@ -35,3 +39,4 @@ main ()
    declaration or other apperances of the string in dump.  */
 /* { dg-final-use { scan-tree-dump "cold_function ..;" "optimized"} } */
 /* { dg-final-use { scan-tree-dump-not "hot_function ..;" "optimized"} } */
+/* { dg-final-use { cleanup-tree-dump "optimized" } } */

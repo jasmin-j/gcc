@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -34,15 +32,19 @@
 pragma Style_Checks (All_Checks);
 --  Subprograms not all in alpha order
 
+with Atree;    use Atree;
 with Debug;    use Debug;
-with Namet;    use Namet;
 with Opt;      use Opt;
 with Output;   use Output;
+with Scans;    use Scans;
 with Tree_IO;  use Tree_IO;
-with System;   use System;
 with Widechar; use Widechar;
 
+with GNAT.Byte_Order_Mark; use GNAT.Byte_Order_Mark;
+
+with System;         use System;
 with System.Memory;
+with System.WCh_Con; use System.WCh_Con;
 
 with Unchecked_Conversion;
 with Unchecked_Deallocation;
@@ -53,6 +55,7 @@ package body Sinput is
    --  Make control characters visible
 
    First_Time_Around : Boolean := True;
+   --  This needs a comment ???
 
    --  Routines to support conversion between types Lines_Table_Ptr,
    --  Logical_Lines_Table_Ptr and System.Address.
@@ -86,7 +89,7 @@ package body Sinput is
       LL : Physical_Line_Number;
 
    begin
-      --  Reallocate the lines tables if necessary.
+      --  Reallocate the lines tables if necessary
 
       --  Note: the reason we do not use the normal Table package
       --  mechanism is that we have several of these tables. We could
@@ -222,8 +225,6 @@ package body Sinput is
       Ptr : Source_Ptr;
 
    begin
-      Name_Len := 0;
-
       --  Loop through instantiations
 
       Ptr := Loc;
@@ -231,8 +232,7 @@ package body Sinput is
          Get_Name_String_And_Append
            (Reference_Name (Get_Source_File_Index (Ptr)));
          Add_Char_To_Name_Buffer (':');
-         Add_Nat_To_Name_Buffer
-           (Nat (Get_Logical_Line_Number (Ptr)));
+         Add_Nat_To_Name_Buffer (Nat (Get_Logical_Line_Number (Ptr)));
 
          Ptr := Instantiation_Location (Ptr);
          exit when Ptr = No_Location;
@@ -242,6 +242,55 @@ package body Sinput is
       Name_Buffer (Name_Len + 1) := NUL;
       return;
    end Build_Location_String;
+
+   function Build_Location_String (Loc : Source_Ptr) return String is
+   begin
+      Name_Len := 0;
+      Build_Location_String (Loc);
+      return Name_Buffer (1 .. Name_Len);
+   end Build_Location_String;
+
+   -------------------
+   -- Check_For_BOM --
+   -------------------
+
+   procedure Check_For_BOM is
+      BOM : BOM_Kind;
+      Len : Natural;
+      Tst : String (1 .. 5);
+
+   begin
+      for J in 1 .. 5 loop
+         Tst (J) := Source (Scan_Ptr + Source_Ptr (J) - 1);
+      end loop;
+
+      Read_BOM (Tst, Len, BOM, False);
+
+      case BOM is
+         when UTF8_All =>
+            Scan_Ptr := Scan_Ptr + Source_Ptr (Len);
+            Wide_Character_Encoding_Method := WCEM_UTF8;
+            Upper_Half_Encoding := True;
+
+         when UTF16_LE | UTF16_BE =>
+            Set_Standard_Error;
+            Write_Line ("UTF-16 encoding format not recognized");
+            Set_Standard_Output;
+            raise Unrecoverable_Error;
+
+         when UTF32_LE | UTF32_BE =>
+            Set_Standard_Error;
+            Write_Line ("UTF-32 encoding format not recognized");
+            Set_Standard_Output;
+            raise Unrecoverable_Error;
+
+         when Unknown =>
+            null;
+
+         when others =>
+            raise Program_Error;
+      end case;
+   end Check_For_BOM;
 
    -----------------------
    -- Get_Column_Number --
@@ -288,8 +337,7 @@ package body Sinput is
    -----------------------------
 
    function Get_Logical_Line_Number
-     (P    : Source_Ptr)
-      return Logical_Line_Number
+     (P : Source_Ptr) return Logical_Line_Number
    is
       SFR : Source_File_Record
               renames Source_File.Table (Get_Source_File_Index (P));
@@ -304,13 +352,25 @@ package body Sinput is
       end if;
    end Get_Logical_Line_Number;
 
+   ---------------------------------
+   -- Get_Logical_Line_Number_Img --
+   ---------------------------------
+
+   function Get_Logical_Line_Number_Img
+     (P : Source_Ptr) return String
+   is
+   begin
+      Name_Len := 0;
+      Add_Nat_To_Name_Buffer (Nat (Get_Logical_Line_Number (P)));
+      return Name_Buffer (1 .. Name_Len);
+   end Get_Logical_Line_Number_Img;
+
    ------------------------------
    -- Get_Physical_Line_Number --
    ------------------------------
 
    function Get_Physical_Line_Number
-     (P    : Source_Ptr)
-      return Physical_Line_Number
+     (P : Source_Ptr) return Physical_Line_Number
    is
       Sfile : Source_File_Index;
       Table : Lines_Table_Ptr;
@@ -367,22 +427,22 @@ package body Sinput is
    Source_Cache_First : Source_Ptr := 1;
    Source_Cache_Last  : Source_Ptr := 0;
    --  Records the First and Last subscript values for the most recently
-   --  referenced entry in the source table, to optimize the common case
-   --  of repeated references to the same entry. The initial values force
-   --  an initial search to set the cache value.
+   --  referenced entry in the source table, to optimize the common case of
+   --  repeated references to the same entry. The initial values force an
+   --  initial search to set the cache value.
 
    Source_Cache_Index : Source_File_Index := No_Source_File;
    --  Contains the index of the entry corresponding to Source_Cache
 
-   function Get_Source_File_Index
-     (S    : Source_Ptr)
-      return Source_File_Index
-   is
+   function Get_Source_File_Index (S : Source_Ptr) return Source_File_Index is
    begin
       if S in Source_Cache_First .. Source_Cache_Last then
          return Source_Cache_Index;
 
       else
+         pragma Assert (Source_File_Index_Table (Int (S) / Chunk_Size)
+                          /=
+                        No_Source_File);
          for J in Source_File_Index_Table (Int (S) / Chunk_Size)
                                                     .. Source_File.Last
          loop
@@ -474,7 +534,6 @@ package body Sinput is
 
    begin
       S := P;
-
       while S > Sfirst
         and then Src (S - 1) /= CR
         and then Src (S - 1) /= LF
@@ -486,9 +545,8 @@ package body Sinput is
    end Line_Start;
 
    function Line_Start
-     (L    : Physical_Line_Number;
-      S    : Source_File_Index)
-      return Source_Ptr
+     (L : Physical_Line_Number;
+      S : Source_File_Index) return Source_Ptr
    is
    begin
       return Source_File.Table (S).Lines_Table (L);
@@ -557,8 +615,7 @@ package body Sinput is
 
    function Physical_To_Logical
      (Line : Physical_Line_Number;
-      S    : Source_File_Index)
-      return Logical_Line_Number
+      S    : Source_File_Index) return Logical_Line_Number
    is
       SFR : Source_File_Record renames Source_File.Table (S);
 
@@ -575,8 +632,8 @@ package body Sinput is
    --------------------------------
 
    procedure Register_Source_Ref_Pragma
-     (File_Name          : Name_Id;
-      Stripped_File_Name : Name_Id;
+     (File_Name          : File_Name_Type;
+      Stripped_File_Name : File_Name_Type;
       Mapped_Line        : Nat;
       Line_After_Pragma  : Physical_Line_Number)
    is
@@ -587,7 +644,7 @@ package body Sinput is
       ML : Logical_Line_Number;
 
    begin
-      if File_Name /= No_Name then
+      if File_Name /= No_File then
          SFR.Reference_Name := Stripped_File_Name;
          SFR.Full_Ref_Name  := File_Name;
 
@@ -652,7 +709,7 @@ package body Sinput is
       Chr : constant Character := Source (P);
 
    begin
-      if  Chr = CR then
+      if Chr = CR then
          if Source (P + 1) = LF then
             P := P + 2;
          else
@@ -660,11 +717,7 @@ package body Sinput is
          end if;
 
       elsif Chr = LF then
-         if Source (P) = CR then
-            P := P + 2;
-         else
-            P := P + 1;
-         end if;
+         P := P + 1;
 
       elsif Chr = FF or else Chr = VT then
          P := P + 1;
@@ -702,6 +755,44 @@ package body Sinput is
       end;
    end Skip_Line_Terminators;
 
+   ----------------
+   -- Sloc_Range --
+   ----------------
+
+   procedure Sloc_Range (N : Node_Id; Min, Max : out Source_Ptr) is
+
+      function Process (N : Node_Id) return Traverse_Result;
+      --  Process function for traversing the node tree
+
+      procedure Traverse is new Traverse_Proc (Process);
+
+      -------------
+      -- Process --
+      -------------
+
+      function Process (N : Node_Id) return Traverse_Result is
+      begin
+         if Sloc (N) < Min then
+            if Sloc (N) > No_Location then
+               Min := Sloc (N);
+            end if;
+         elsif Sloc (N) > Max then
+            if Sloc (N) > No_Location then
+               Max := Sloc (N);
+            end if;
+         end if;
+
+         return OK;
+      end Process;
+
+   --  Start of processing for Sloc_Range
+
+   begin
+      Min := Sloc (N);
+      Max := Sloc (N);
+      Traverse (N);
+   end Sloc_Range;
+
    -------------------
    -- Source_Offset --
    -------------------
@@ -710,7 +801,6 @@ package body Sinput is
       Sindex : constant Source_File_Index := Get_Source_File_Index (S);
       Sfirst : constant Source_Ptr :=
                  Source_File.Table (Sindex).Source_First;
-
    begin
       return Nat (S - Sfirst);
    end Source_Offset;
@@ -766,6 +856,10 @@ package body Sinput is
                   null;
 
                else
+                  --  Free the buffer, we use Free here, because we used malloc
+                  --  or realloc directly to allocate the tables. That is
+                  --  because we were playing the big array trick.
+
                   --  We have to recreate a proper pointer to the actual array
                   --  from the zero origin pointer stored in the source table.
 
@@ -773,10 +867,6 @@ package body Sinput is
                     To_Source_Buffer_Ptr
                       (S.Source_Text (S.Source_First)'Address);
                   Free_Ptr (Tmp1);
-
-                  --  Note: we are using free here, because we used malloc
-                  --  or realloc directly to allocate the tables. That is
-                  --  because we were playing the big array trick.
 
                   if S.Lines_Table /= null then
                      Memory.Free (To_Address (S.Lines_Table));
@@ -812,7 +902,7 @@ package body Sinput is
          begin
             --  For the instantiation case, we do not read in any data. Instead
             --  we share the data for the generic template entry. Since the
-            --  template always occurs first, we can safetly refer to its data.
+            --  template always occurs first, we can safely refer to its data.
 
             if S.Instantiation /= No_Location then
                declare
@@ -1132,7 +1222,6 @@ package body Sinput is
       else
          return Source_File.Table (S).Source_Last;
       end if;
-
    end Source_Last;
 
    function Source_Text (S : SFI) return Source_Buffer_Ptr is
@@ -1142,7 +1231,6 @@ package body Sinput is
       else
          return Source_File.Table (S).Source_Text;
       end if;
-
    end Source_Text;
 
    function Template (S : SFI) return SFI is
@@ -1154,6 +1242,11 @@ package body Sinput is
    begin
       return Source_File.Table (S).Time_Stamp;
    end Time_Stamp;
+
+   function Unit (S : SFI) return Unit_Number_Type is
+   begin
+      return Source_File.Table (S).Unit;
+   end Unit;
 
    ------------------------------------------
    -- Set Procedures for Source File Table --
@@ -1174,6 +1267,11 @@ package body Sinput is
       Source_File.Table (S).License := L;
    end Set_License;
 
+   procedure Set_Unit (S : SFI; U : Unit_Number_Type) is
+   begin
+      Source_File.Table (S).Unit := U;
+   end Set_Unit;
+
    ----------------------
    -- Trim_Lines_Table --
    ----------------------
@@ -1191,6 +1289,16 @@ package body Sinput is
             (Max * (Lines_Table_Type'Component_Size / System.Storage_Unit))));
       Source_File.Table (S).Lines_Table_Max := Physical_Line_Number (Max);
    end Trim_Lines_Table;
+
+   ------------
+   -- Unlock --
+   ------------
+
+   procedure Unlock is
+   begin
+      Source_File.Locked := False;
+      Source_File.Release;
+   end Unlock;
 
    --------
    -- wl --

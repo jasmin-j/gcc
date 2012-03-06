@@ -1,9 +1,9 @@
-// Copyright (C) 2004 Free Software Foundation
+// Copyright (C) 2004, 2005, 2006, 2009, 2010 Free Software Foundation
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -12,9 +12,8 @@
 // GNU General Public License for more details.
 
 // You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// with this library; see the file COPYING3.  If not see
+// <http://www.gnu.org/licenses/>.
 
 // 27.6.1.2.3 basic_istream::operator>>
 
@@ -39,7 +38,7 @@ void test01()
   std::wstringbuf isbuf_04(str_02, std::ios_base::in);
   std::wstringbuf isbuf_05(str_02, std::ios_base::in | std::ios_base::out);
 
-  std::wistream is_00(NULL);
+  std::wistream is_00(0);
   std::wistream is_01(&isbuf_01);
   std::wistream is_02(&isbuf_02);
   std::wistream is_03(&isbuf_03);
@@ -122,9 +121,9 @@ void test01()
   state1 = is_04.rdstate();
   is_04 >> &isbuf_03;   
   state2 = is_04.rdstate();
-  VERIFY( state1 == state2 );
+  VERIFY( state1 != state2 );
   VERIFY( !static_cast<bool>(state2 & statefail) );
-  VERIFY( state2 != stateeof );
+  VERIFY( state2 == stateeof );
   strtmp = isbuf_03.str();
   VERIFY( strtmp == str_02 ); // as only an "in" buffer
   VERIFY( isbuf_03.sgetc() == L'a' );

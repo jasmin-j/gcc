@@ -1,7 +1,7 @@
 /* Test diagnostics for options used on their own without
-   -Wformat.  -Wmissing-format-attribute.  */
-/* Origin: Joseph Myers <joseph@codesourcery.com> */
+   -Wformat.  -Wformat-contains-nul.  */
+/* Origin: Bruce Korb <bkorb@gnu.org> */
 /* { dg-do compile } */
-/* { dg-options "-Wmissing-format-attribute" } */
+/* { dg-options "-Wformat-contains-nul" } */
 
-/* { dg-warning "warning: -Wmissing-format-attribute ignored without -Wformat" "ignored" { target *-*-* } 0 } */
+/* { dg-warning "-Wformat-contains-nul ignored without -Wformat" "ignored" { target *-*-* } 0 } */

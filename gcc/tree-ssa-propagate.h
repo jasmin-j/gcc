@@ -1,13 +1,14 @@
 /* Data structures and function declarations for the SSA value propagation
    engine.
-   Copyright (C) 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,16 +17,27 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef _TREE_SSA_PROPAGATE_H
 #define _TREE_SSA_PROPAGATE_H 1
 
-/* Use the TREE_VISITED bitflag to mark statements and PHI nodes that
-   have been deemed varying and should not be simulated again.  */
-#define DONT_SIMULATE_AGAIN(T)	TREE_VISITED (T)
+/* If SIM_P is true, statement S will be simulated again.  */
+
+static inline void
+prop_set_simulate_again (gimple s, bool visit_p)
+{
+  gimple_set_visited (s, visit_p);
+}
+
+/* Return true if statement T should be simulated again.  */
+
+static inline bool
+prop_simulate_again_p (gimple s)
+{
+  return gimple_visited_p (s);
+}
 
 /* Lattice values used for propagation purposes.  Specific instances
    of a propagation engine must return these values from the statement
@@ -50,43 +62,20 @@ enum ssa_prop_result {
 };
 
 
-struct prop_value_d {
-    /* Lattice value.  Each propagator is free to define its own
-       lattice and this field is only meaningful while propagating.
-       It will not be used by substitute_and_fold.  */
-    unsigned lattice_val;
-
-    /* Propagated value.  */
-    tree value;
-
-    /* If this value is held in an SSA name for a non-register
-       variable, this field holds the actual memory reference
-       associated with this value.  This field is taken from 
-       the LHS of the assignment that generated the associated SSA
-       name.  However, in the case of PHI nodes, this field is copied
-       from the PHI arguments (assuming that all the arguments have
-       the same memory reference).  See replace_vuses_in for a more
-       detailed description.  */
-    tree mem_ref;
-};
-
-typedef struct prop_value_d prop_value_t;
-
-
 /* Call-back functions used by the value propagation engine.  */
-typedef enum ssa_prop_result (*ssa_prop_visit_stmt_fn) (tree, edge *, tree *);
-typedef enum ssa_prop_result (*ssa_prop_visit_phi_fn) (tree);
+typedef enum ssa_prop_result (*ssa_prop_visit_stmt_fn) (gimple, edge *, tree *);
+typedef enum ssa_prop_result (*ssa_prop_visit_phi_fn) (gimple);
+typedef bool (*ssa_prop_fold_stmt_fn) (gimple_stmt_iterator *gsi);
+typedef tree (*ssa_prop_get_value_fn) (tree);
 
 
 /* In tree-ssa-propagate.c  */
 void ssa_propagate (ssa_prop_visit_stmt_fn, ssa_prop_visit_phi_fn);
-tree get_rhs (tree);
-bool set_rhs (tree *, tree);
-tree first_vdef (tree);
-bool stmt_makes_single_load (tree);
-bool stmt_makes_single_store (tree);
-prop_value_t *get_value_loaded_by (tree, prop_value_t *);
-bool replace_uses_in (tree, bool *, prop_value_t *);
-void substitute_and_fold (prop_value_t *);
+bool valid_gimple_rhs_p (tree);
+void move_ssa_defining_stmt_for_defs (gimple, gimple);
+bool update_gimple_call (gimple_stmt_iterator *, tree, int, ...);
+bool update_call_from_tree (gimple_stmt_iterator *, tree);
+bool stmt_makes_single_store (gimple);
+bool substitute_and_fold (ssa_prop_get_value_fn, ssa_prop_fold_stmt_fn, bool);
 
 #endif /* _TREE_SSA_PROPAGATE_H  */

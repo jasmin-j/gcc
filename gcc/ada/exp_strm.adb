@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -26,11 +25,13 @@
 
 with Atree;    use Atree;
 with Einfo;    use Einfo;
-with Exp_Tss;  use Exp_Tss;
+with Elists;   use Elists;
+with Exp_Util; use Exp_Util;
 with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Nmake;    use Nmake;
 with Rtsfind;  use Rtsfind;
+with Sem_Aux;  use Sem_Aux;
 with Sem_Util; use Sem_Util;
 with Sinfo;    use Sinfo;
 with Snames;   use Snames;
@@ -81,11 +82,12 @@ package body Exp_Strm is
    --  The parameter Fnam is the name of the constructed function.
 
    function Has_Stream_Standard_Rep (U_Type : Entity_Id) return Boolean;
-   --  This function is used to test U_Type, which is a type
-   --  Returns True if U_Type has a standard representation for stream
-   --  purposes, i.e. there is no non-standard enumeration representation
-   --  clause, and the size of the first subtype is the same as the size
-   --  of the root type.
+   --  This function is used to test the type U_Type, to determine if it has
+   --  a standard representation from a streaming point of view. Standard means
+   --  that it has a standard representation (e.g. no enumeration rep clause),
+   --  and the size of the root type is the same as the streaming size (which
+   --  is defined as value specified by a Stream_Size clause if present, or
+   --  the Esize of U_Type if not).
 
    function Make_Stream_Subprogram_Name
      (Loc : Source_Ptr;
@@ -145,7 +147,9 @@ package body Exp_Strm is
       Decls  : List_Id;
       Ranges : List_Id;
       Stms   : List_Id;
+      Rstmt  : Node_Id;
       Indx   : Node_Id;
+      Odecl  : Node_Id;
 
    begin
       Decls := New_List;
@@ -163,10 +167,10 @@ package body Exp_Strm is
              Object_Definition   => New_Occurrence_Of (Etype (Indx), Loc),
              Expression =>
                Make_Attribute_Reference (Loc,
-                 Prefix =>
+                 Prefix         =>
                    New_Occurrence_Of (Stream_Base_Type (Etype (Indx)), Loc),
                  Attribute_Name => Name_Input,
-                 Expressions => New_List (Make_Identifier (Loc, Name_S)))));
+                 Expressions    => New_List (Make_Identifier (Loc, Name_S)))));
 
          Append_To (Decls,
            Make_Object_Declaration (Loc,
@@ -176,10 +180,10 @@ package body Exp_Strm is
                    New_Occurrence_Of (Stream_Base_Type (Etype (Indx)), Loc),
              Expression =>
                Make_Attribute_Reference (Loc,
-                 Prefix =>
+                 Prefix         =>
                    New_Occurrence_Of (Stream_Base_Type (Etype (Indx)), Loc),
                  Attribute_Name => Name_Input,
-                 Expressions => New_List (Make_Identifier (Loc, Name_S)))));
+                 Expressions    => New_List (Make_Identifier (Loc, Name_S)))));
 
          Append_To (Ranges,
            Make_Range (Loc,
@@ -189,38 +193,40 @@ package body Exp_Strm is
          Next_Index (Indx);
       end loop;
 
-      --  If the first subtype is constrained, use it directly. Otherwise
-      --  build a subtype indication with the proper bounds.
+      --  If the type is constrained, use it directly. Otherwise build a
+      --  subtype indication with the proper bounds.
 
-      if Is_Constrained (Stream_Base_Type (Typ)) then
-         Append_To (Decls,
+      if Is_Constrained (Typ) then
+         Odecl :=
            Make_Object_Declaration (Loc,
              Defining_Identifier => Make_Defining_Identifier (Loc, Name_V),
-             Object_Definition =>
-               New_Occurrence_Of (Stream_Base_Type (Typ), Loc)));
+             Object_Definition   => New_Occurrence_Of (Typ, Loc));
+
       else
-         Append_To (Decls,
+         Odecl :=
            Make_Object_Declaration (Loc,
              Defining_Identifier => Make_Defining_Identifier (Loc, Name_V),
-             Object_Definition =>
+             Object_Definition   =>
                Make_Subtype_Indication (Loc,
                  Subtype_Mark =>
                    New_Occurrence_Of (Stream_Base_Type (Typ), Loc),
-                 Constraint =>
-                   Make_Index_Or_Discriminant_Constraint (Loc,
-                     Constraints => Ranges))));
+                 Constraint   =>
+                   Make_Index_Or_Discriminant_Constraint (Loc, Ranges)));
       end if;
 
-      Stms := New_List (
-         Make_Attribute_Reference (Loc,
-           Prefix => New_Occurrence_Of (Typ, Loc),
-           Attribute_Name => Name_Read,
-           Expressions => New_List (
-             Make_Identifier (Loc, Name_S),
-             Make_Identifier (Loc, Name_V))),
+      Rstmt :=
+        Make_Attribute_Reference (Loc,
+          Prefix         => New_Occurrence_Of (Typ, Loc),
+          Attribute_Name => Name_Read,
+          Expressions    => New_List (
+            Make_Identifier (Loc, Name_S),
+            Make_Identifier (Loc, Name_V)));
 
-         Make_Return_Statement (Loc,
-           Expression => Make_Identifier (Loc, Name_V)));
+      Stms := New_List (
+         Make_Extended_Return_Statement (Loc,
+           Return_Object_Declarations => New_List (Odecl),
+           Handled_Statement_Sequence =>
+             Make_Handled_Sequence_Of_Statements (Loc, New_List (Rstmt))));
 
       Fnam :=
         Make_Defining_Identifier (Loc,
@@ -251,28 +257,28 @@ package body Exp_Strm is
       for J in 1 .. Number_Dimensions (Typ) loop
          Append_To (Stms,
            Make_Attribute_Reference (Loc,
-             Prefix =>
+             Prefix         =>
                New_Occurrence_Of (Stream_Base_Type (Etype (Indx)), Loc),
              Attribute_Name => Name_Write,
-             Expressions => New_List (
+             Expressions    => New_List (
                Make_Identifier (Loc, Name_S),
                Make_Attribute_Reference (Loc,
-                 Prefix => Make_Identifier (Loc, Name_V),
+                 Prefix         => Make_Identifier (Loc, Name_V),
                  Attribute_Name => Name_First,
-                 Expressions => New_List (
+                 Expressions    => New_List (
                    Make_Integer_Literal (Loc, J))))));
 
          Append_To (Stms,
            Make_Attribute_Reference (Loc,
-             Prefix =>
+             Prefix         =>
                New_Occurrence_Of (Stream_Base_Type (Etype (Indx)), Loc),
              Attribute_Name => Name_Write,
-             Expressions => New_List (
+             Expressions    => New_List (
                Make_Identifier (Loc, Name_S),
                Make_Attribute_Reference (Loc,
-                 Prefix => Make_Identifier (Loc, Name_V),
+                 Prefix         => Make_Identifier (Loc, Name_V),
                  Attribute_Name => Name_Last,
-                 Expressions => New_List (
+                 Expressions    => New_List (
                    Make_Integer_Literal (Loc, J))))));
 
          Next_Index (Indx);
@@ -282,7 +288,7 @@ package body Exp_Strm is
 
       Append_To (Stms,
         Make_Attribute_Reference (Loc,
-          Prefix => New_Occurrence_Of (Typ, Loc),
+          Prefix         => New_Occurrence_Of (Typ, Loc),
           Attribute_Name => Name_Write,
           Expressions => New_List (
             Make_Identifier (Loc, Name_S),
@@ -366,14 +372,14 @@ package body Exp_Strm is
           Expressions => New_List (
             Make_Identifier (Loc, Name_S),
             Make_Indexed_Component (Loc,
-              Prefix => Make_Identifier (Loc, Name_V),
+              Prefix      => Make_Identifier (Loc, Name_V),
               Expressions => Exl)));
 
       --  The corresponding stream attribute for the component type of the
       --  array may be user-defined, and be frozen after the type for which
       --  we are generating the stream subprogram. In that case, freeze the
       --  stream attribute of the component type, whose declaration could not
-      --  generate any additional freezing actions in any case. See 5509-003.
+      --  generate any additional freezing actions in any case.
 
       if Nam = Name_Read then
          RW := TSS (Base_Type (Ctyp), TSS_Stream_Read);
@@ -404,7 +410,7 @@ package body Exp_Strm is
 
                      Discrete_Subtype_Definition =>
                        Make_Attribute_Reference (Loc,
-                         Prefix => Make_Identifier (Loc, Name_V),
+                         Prefix         => Make_Identifier (Loc, Name_V),
                          Attribute_Name => Name_Range,
 
                          Expressions => New_List (
@@ -449,19 +455,11 @@ package body Exp_Strm is
       FST     : constant Entity_Id  := First_Subtype (U_Type);
       Strm    : constant Node_Id    := First (Expressions (N));
       Targ    : constant Node_Id    := Next (Strm);
-      P_Size  : Uint;
+      P_Size  : constant Uint       := Get_Stream_Size (FST);
       Res     : Node_Id;
       Lib_RE  : RE_Id;
 
    begin
-      --  Compute the size of the stream element. This is either the size of
-      --  the first subtype or if given the size of the Stream_Size attribute.
-
-      if Is_Elementary_Type (FST) and then Has_Stream_Size_Clause (FST) then
-         P_Size := Static_Integer (Expression (Stream_Size_Clause (FST)));
-      else
-         P_Size := Esize (FST);
-      end if;
 
       --  Check first for Boolean and Character. These are enumeration types,
       --  but we treat them specially, since they may require special handling
@@ -492,13 +490,37 @@ package body Exp_Strm is
       --  Floating point types
 
       elsif Is_Floating_Point_Type (U_Type) then
-         if P_Size <= Standard_Short_Float_Size then
+
+         --  Question: should we use P_Size or Rt_Type to distinguish between
+         --  possible floating point types? If a non-standard size or a stream
+         --  size is specified, then we should certainly use the size. But if
+         --  we have two types the same (notably Short_Float_Size = Float_Size
+         --  which is close to universally true, and Long_Long_Float_Size =
+         --  Long_Float_Size, true on most targets except the x86), then we
+         --  would really rather use the root type, so that if people want to
+         --  fiddle with System.Stream_Attributes to get inter-target portable
+         --  streams, they get the size they expect. Consider in particular the
+         --  case of a stream written on an x86, with 96-bit Long_Long_Float
+         --  being read into a non-x86 target with 64 bit Long_Long_Float. A
+         --  special version of System.Stream_Attributes can deal with this
+         --  provided the proper type is always used.
+
+         --  To deal with these two requirements we add the special checks
+         --  on equal sizes and use the root type to distinguish.
+
+         if P_Size <= Standard_Short_Float_Size
+           and then (Standard_Short_Float_Size /= Standard_Float_Size
+                     or else Rt_Type = Standard_Short_Float)
+         then
             Lib_RE := RE_I_SF;
 
          elsif P_Size <= Standard_Float_Size then
             Lib_RE := RE_I_F;
 
-         elsif P_Size <= Standard_Long_Float_Size then
+         elsif P_Size <= Standard_Long_Float_Size
+           and then (Standard_Long_Float_Size /= Standard_Long_Long_Float_Size
+                       or else Rt_Type = Standard_Long_Float)
+         then
             Lib_RE := RE_I_LF;
 
          else
@@ -530,6 +552,10 @@ package body Exp_Strm is
       --  then the representation is unsigned
 
       elsif not Is_Unsigned_Type (FST)
+
+        --  The following set of tests gets repeated many times, we should
+        --  have an abstraction defined ???
+
         and then
           (Is_Fixed_Point_Type (U_Type)
              or else
@@ -537,6 +563,7 @@ package body Exp_Strm is
              or else
            (Is_Signed_Integer_Type (U_Type)
               and then not Has_Biased_Representation (FST)))
+
       then
          if P_Size <= Standard_Short_Short_Integer_Size then
             Lib_RE := RE_I_SSI;
@@ -592,21 +619,27 @@ package body Exp_Strm is
 
       --  Call the function, and do an unchecked conversion of the result
       --  to the actual type of the prefix. If the target is a discriminant,
-      --  set target type to force a constraint check (13.13.2 (35)).
+      --  and we are in the body of the default implementation of a 'Read
+      --  attribute, set target type to force a constraint check (13.13.2(35)).
+      --  If the type of the discriminant is currently private, add another
+      --  unchecked conversion from the full view.
 
-      if Nkind (Targ) = N_Selected_Component
-        and then Present (Entity (Selector_Name (Targ)))
-        and then Ekind (Entity (Selector_Name (Targ)))
-          = E_Discriminant
+      if Nkind (Targ) = N_Identifier
+        and then Is_Internal_Name (Chars (Targ))
+        and then Is_TSS (Scope (Entity (Targ)), TSS_Stream_Read)
       then
          Res :=
-           Unchecked_Convert_To (Base_Type (P_Type),
+           Unchecked_Convert_To (Base_Type (U_Type),
              Make_Function_Call (Loc,
                Name => New_Occurrence_Of (RTE (Lib_RE), Loc),
                Parameter_Associations => New_List (
                  Relocate_Node (Strm))));
 
          Set_Do_Range_Check (Res);
+         if Base_Type (P_Type) /= Base_Type (U_Type) then
+            Res := Unchecked_Convert_To (Base_Type (P_Type), Res);
+         end if;
+
          return Res;
 
       else
@@ -636,10 +669,11 @@ package body Exp_Strm is
       Libent  : Entity_Id;
 
    begin
+
       --  Compute the size of the stream element. This is either the size of
       --  the first subtype or if given the size of the Stream_Size attribute.
 
-      if Is_Elementary_Type (FST) and then Has_Stream_Size_Clause (FST) then
+      if Has_Stream_Size_Clause (FST) then
          P_Size := Static_Integer (Expression (Stream_Size_Clause (FST)));
       else
          P_Size := Esize (FST);
@@ -676,12 +710,39 @@ package body Exp_Strm is
       --  Floating point types
 
       elsif Is_Floating_Point_Type (U_Type) then
-         if P_Size <= Standard_Short_Float_Size then
+
+         --  Question: should we use P_Size or Rt_Type to distinguish between
+         --  possible floating point types? If a non-standard size or a stream
+         --  size is specified, then we should certainly use the size. But if
+         --  we have two types the same (notably Short_Float_Size = Float_Size
+         --  which is close to universally true, and Long_Long_Float_Size =
+         --  Long_Float_Size, true on most targets except the x86), then we
+         --  would really rather use the root type, so that if people want to
+         --  fiddle with System.Stream_Attributes to get inter-target portable
+         --  streams, they get the size they expect. Consider in particular the
+         --  case of a stream written on an x86, with 96-bit Long_Long_Float
+         --  being read into a non-x86 target with 64 bit Long_Long_Float. A
+         --  special version of System.Stream_Attributes can deal with this
+         --  provided the proper type is always used.
+
+         --  To deal with these two requirements we add the special checks
+         --  on equal sizes and use the root type to distinguish.
+
+         if P_Size <= Standard_Short_Float_Size
+           and then (Standard_Short_Float_Size /= Standard_Float_Size
+                      or else Rt_Type = Standard_Short_Float)
+         then
             Lib_RE := RE_W_SF;
+
          elsif P_Size <= Standard_Float_Size then
             Lib_RE := RE_W_F;
-         elsif P_Size <= Standard_Long_Float_Size then
+
+         elsif P_Size <= Standard_Long_Float_Size
+           and then (Standard_Long_Float_Size /= Standard_Long_Long_Float_Size
+                      or else Rt_Type = Standard_Long_Float)
+         then
             Lib_RE := RE_W_LF;
+
          else
             Lib_RE := RE_W_LLF;
          end if;
@@ -707,6 +768,8 @@ package body Exp_Strm is
 
       --     type W is range -1 .. +254;
       --     for W'Size use 8;
+
+      --  forcing a biased and unsigned representation
 
       elsif not Is_Unsigned_Type (FST)
         and then
@@ -786,96 +849,46 @@ package body Exp_Strm is
       Decl : out Node_Id;
       Pnam : out Entity_Id)
    is
-      Stms : List_Id;
+      Out_Formal : Node_Id;
+      --  Expression denoting the out formal parameter
+
+      Dcls : constant List_Id := New_List;
+      --  Declarations for the 'Read body
+
+      Stms : constant List_Id := New_List;
       --  Statements for the 'Read body
 
+      Disc : Entity_Id;
+      --  Entity of the discriminant being processed
+
+      Tmp_For_Disc : Entity_Id;
+      --  Temporary object used to read the value of Disc
+
+      Tmps_For_Discs : constant List_Id := New_List;
+      --  List of object declarations for temporaries holding the read values
+      --  for the discriminants.
+
+      Cstr : constant List_Id := New_List;
+      --  List of constraints to be applied on temporary record
+
+      Discriminant_Checks : constant List_Id := New_List;
+      --  List of discriminant checks to be performed if the actual object
+      --  is constrained.
+
       Tmp : constant Entity_Id := Make_Defining_Identifier (Loc, Name_V);
-      --  Temporary, must hide formal (assignments to components of the
+      --  Temporary record must hide formal (assignments to components of the
       --  record are always generated with V as the identifier for the record).
 
-      Cstr : List_Id;
-      --  List of constraints to be applied on temporary
-
-      Disc     : Entity_Id;
-      Disc_Ref : Node_Id;
-      Block    : Node_Id;
+      Constrained_Stms : List_Id := New_List;
+      --  Statements within the block where we have the constrained temporary
 
    begin
-      Stms := New_List;
-      Cstr := New_List;
-      Disc := First_Discriminant (Typ);
-
       --  A mutable type cannot be a tagged type, so we generate a new name
       --  for the stream procedure.
 
       Pnam :=
         Make_Defining_Identifier (Loc,
           Chars => Make_TSS_Name_Local (Typ, TSS_Stream_Read));
-
-      --  Generate Reads for the discriminants of the type. The discriminants
-      --  need to be read before the rest of the components, so that
-      --  variants are initialized correctly.
-
-      while Present (Disc) loop
-         Disc_Ref :=
-           Make_Selected_Component (Loc,
-             Prefix        => Make_Selected_Component (Loc,
-                                Prefix => New_Occurrence_Of (Pnam, Loc),
-                                Selector_Name =>
-                                  Make_Identifier (Loc, Name_V)),
-             Selector_Name => New_Occurrence_Of (Disc, Loc));
-
-         Set_Assignment_OK (Disc_Ref);
-
-         Append_To (Stms,
-           Make_Attribute_Reference (Loc,
-             Prefix => New_Occurrence_Of (Etype (Disc), Loc),
-               Attribute_Name => Name_Read,
-               Expressions => New_List (
-                 Make_Identifier (Loc, Name_S),
-                 Disc_Ref)));
-
-         Append_To (Cstr,
-           Make_Discriminant_Association (Loc,
-             Selector_Names => New_List (New_Occurrence_Of (Disc, Loc)),
-             Expression     => New_Copy_Tree (Disc_Ref)));
-         Next_Discriminant (Disc);
-      end loop;
-
-      --  Generate reads for the components of the record (including
-      --  those that depend on discriminants).
-
-      Build_Record_Read_Write_Procedure (Loc, Typ, Decl, Pnam, Name_Read);
-
-      --  If Typ has controlled components (i.e. if it is classwide
-      --  or Has_Controlled), or components constrained using the discriminants
-      --  of Typ, then we need to ensure that all component assignments
-      --  are performed on an object that has been appropriately constrained
-      --  prior to being initialized. To this effect, we wrap the component
-      --  assignments in a block where V is a constrained temporary.
-
-      Block :=
-        Make_Block_Statement (Loc,
-          Declarations => New_List (
-           Make_Object_Declaration (Loc,
-             Defining_Identifier => Tmp,
-             Object_Definition   =>
-               Make_Subtype_Indication (Loc,
-                 Subtype_Mark => New_Occurrence_Of (Typ, Loc),
-                 Constraint =>
-                   Make_Index_Or_Discriminant_Constraint (Loc,
-                     Constraints => Cstr)))),
-          Handled_Statement_Sequence =>
-            Handled_Statement_Sequence (Decl));
-
-      Append_To (Stms, Block);
-
-      Append_To (Statements (Handled_Statement_Sequence (Block)),
-        Make_Assignment_Statement (Loc,
-          Name => Make_Selected_Component (Loc,
-                    Prefix => New_Occurrence_Of (Pnam, Loc),
-                    Selector_Name => Make_Identifier (Loc, Name_V)),
-          Expression => Make_Identifier (Loc, Name_V)));
 
       if Is_Unchecked_Union (Typ) then
 
@@ -884,15 +897,118 @@ package body Exp_Strm is
 
          --  This should generate a warning ???
 
-         Stms :=
-           New_List (
-             Make_Raise_Program_Error (Loc,
-               Reason => PE_Unchecked_Union_Restriction));
+         Append_To (Stms,
+           Make_Raise_Program_Error (Loc,
+             Reason => PE_Unchecked_Union_Restriction));
+
+         Build_Stream_Procedure (Loc, Typ, Decl, Pnam, Stms, Outp => True);
+         return;
       end if;
 
+      Disc := First_Discriminant (Typ);
+
+      Out_Formal :=
+        Make_Selected_Component (Loc,
+          Prefix        => New_Occurrence_Of (Pnam, Loc),
+          Selector_Name => Make_Identifier (Loc, Name_V));
+
+      --  Generate Reads for the discriminants of the type. The discriminants
+      --  need to be read before the rest of the components, so that variants
+      --  are initialized correctly. The discriminants must be read into temp
+      --  variables so an incomplete Read (interrupted by an exception, for
+      --  example) does not alter the passed object.
+
+      while Present (Disc) loop
+         Tmp_For_Disc := Make_Defining_Identifier (Loc,
+                           New_External_Name (Chars (Disc), "D"));
+
+         Append_To (Tmps_For_Discs,
+           Make_Object_Declaration (Loc,
+             Defining_Identifier => Tmp_For_Disc,
+             Object_Definition   => New_Occurrence_Of (Etype (Disc), Loc)));
+         Set_No_Initialization (Last (Tmps_For_Discs));
+
+         Append_To (Stms,
+           Make_Attribute_Reference (Loc,
+             Prefix         => New_Occurrence_Of (Etype (Disc), Loc),
+             Attribute_Name => Name_Read,
+             Expressions    => New_List (
+               Make_Identifier (Loc, Name_S),
+               New_Occurrence_Of (Tmp_For_Disc, Loc))));
+
+         Append_To (Cstr,
+           Make_Discriminant_Association (Loc,
+             Selector_Names => New_List (New_Occurrence_Of (Disc, Loc)),
+             Expression     => New_Occurrence_Of (Tmp_For_Disc, Loc)));
+
+         Append_To (Discriminant_Checks,
+           Make_Raise_Constraint_Error (Loc,
+             Condition =>
+               Make_Op_Ne (Loc,
+                 Left_Opnd  => New_Occurrence_Of (Tmp_For_Disc, Loc),
+                 Right_Opnd =>
+                   Make_Selected_Component (Loc,
+                     Prefix        => New_Copy_Tree (Out_Formal),
+                     Selector_Name => New_Occurrence_Of (Disc, Loc))),
+             Reason => CE_Discriminant_Check_Failed));
+         Next_Discriminant (Disc);
+      end loop;
+
+      --  Generate reads for the components of the record (including those
+      --  that depend on discriminants).
+
+      Build_Record_Read_Write_Procedure (Loc, Typ, Decl, Pnam, Name_Read);
+
+      --  Save original statement sequence for component assignments, and
+      --  replace it with Stms.
+
+      Constrained_Stms := Statements (Handled_Statement_Sequence (Decl));
       Set_Handled_Statement_Sequence (Decl,
         Make_Handled_Sequence_Of_Statements (Loc,
           Statements => Stms));
+
+      --  If Typ has controlled components (i.e. if it is classwide
+      --  or Has_Controlled), or components constrained using the discriminants
+      --  of Typ, then we need to ensure that all component assignments
+      --  are performed on an object that has been appropriately constrained
+      --  prior to being initialized. To this effect, we wrap the component
+      --  assignments in a block where V is a constrained temporary.
+
+      Append_To (Dcls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier => Tmp,
+          Object_Definition   =>
+            Make_Subtype_Indication (Loc,
+              Subtype_Mark => New_Occurrence_Of (Typ, Loc),
+              Constraint =>
+                Make_Index_Or_Discriminant_Constraint (Loc,
+                  Constraints => Cstr))));
+
+      --  AI05-023-1: Insert discriminant check prior to initialization of the
+      --  constrained temporary.
+
+      Append_To (Stms,
+        Make_Implicit_If_Statement (Pnam,
+          Condition =>
+            Make_Attribute_Reference (Loc,
+              Prefix         => New_Copy_Tree (Out_Formal),
+              Attribute_Name => Name_Constrained),
+          Then_Statements => Discriminant_Checks));
+
+      --  Now insert back original component assignments, wrapped in a block
+      --  in which V is the constrained temporary.
+
+      Append_To (Stms,
+        Make_Block_Statement (Loc,
+          Declarations               => Dcls,
+          Handled_Statement_Sequence => Parent (Constrained_Stms)));
+
+      Append_To (Constrained_Stms,
+        Make_Assignment_Statement (Loc,
+          Name       => Out_Formal,
+          Expression => Make_Identifier (Loc, Name_V)));
+
+      Set_Declarations (Decl, Tmps_For_Discs);
    end Build_Mutable_Record_Read_Procedure;
 
    ------------------------------------------
@@ -907,24 +1023,34 @@ package body Exp_Strm is
    is
       Stms  : List_Id;
       Disc  : Entity_Id;
+      D_Ref : Node_Id;
 
    begin
       Stms := New_List;
       Disc := First_Discriminant (Typ);
 
       --  Generate Writes for the discriminants of the type
+      --  If the type is an unchecked union, use the default values of
+      --  the discriminants, because they are not stored.
 
       while Present (Disc) loop
+         if Is_Unchecked_Union (Typ) then
+            D_Ref :=
+               New_Copy_Tree (Discriminant_Default_Value (Disc));
+         else
+            D_Ref :=
+              Make_Selected_Component (Loc,
+                Prefix        => Make_Identifier (Loc, Name_V),
+                Selector_Name => New_Occurrence_Of (Disc, Loc));
+         end if;
 
          Append_To (Stms,
            Make_Attribute_Reference (Loc,
              Prefix => New_Occurrence_Of (Etype (Disc), Loc),
                Attribute_Name => Name_Write,
-               Expressions => New_List (
+               Expressions    => New_List (
                  Make_Identifier (Loc, Name_S),
-                 Make_Selected_Component (Loc,
-                   Prefix => Make_Identifier (Loc, Name_V),
-                   Selector_Name => New_Occurrence_Of (Disc, Loc)))));
+                 D_Ref)));
 
          Next_Discriminant (Disc);
       end loop;
@@ -939,15 +1065,6 @@ package body Exp_Strm is
 
       --  Write the discriminants before the rest of the components, so
       --  that discriminant values are properly set of variants, etc.
-      --  If this is an unchecked union, the stream procedure is erroneous
-      --  because there are no discriminants to write.
-
-      if Is_Unchecked_Union (Typ) then
-         Stms :=
-           New_List (
-             Make_Raise_Program_Error (Loc,
-               Reason => PE_Unchecked_Union_Restriction));
-      end if;
 
       if Is_Non_Empty_List (
         Statements (Handled_Statement_Sequence (Decl)))
@@ -990,13 +1107,16 @@ package body Exp_Strm is
       Decl : out Node_Id;
       Fnam : out Entity_Id)
    is
-      Cn     : Name_Id;
-      J      : Pos;
-      Decls  : List_Id;
-      Constr : List_Id;
-      Stms   : List_Id;
-      Discr  : Entity_Id;
-      Odef   : Node_Id;
+      B_Typ      : constant Entity_Id := Base_Type (Typ);
+      Cn         : Name_Id;
+      Constr     : List_Id;
+      Decls      : List_Id;
+      Discr      : Entity_Id;
+      Discr_Elmt : Elmt_Id            := No_Elmt;
+      J          : Pos;
+      Obj_Decl   : Node_Id;
+      Odef       : Node_Id;
+      Stms       : List_Id;
 
    begin
       Decls  := New_List;
@@ -1004,18 +1124,35 @@ package body Exp_Strm is
 
       J := 1;
 
-      if Has_Discriminants (Typ) then
-         Discr := First_Discriminant (Typ);
+      if Has_Discriminants (B_Typ) then
+         Discr := First_Discriminant (B_Typ);
+
+         --  If the prefix subtype is constrained, then retrieve the first
+         --  element of its constraint.
+
+         if Is_Constrained (Typ) then
+            Discr_Elmt := First_Elmt (Discriminant_Constraint (Typ));
+         end if;
 
          while Present (Discr) loop
             Cn := New_External_Name ('C', J);
 
-            Append_To (Decls,
+            Decl :=
               Make_Object_Declaration (Loc,
                 Defining_Identifier => Make_Defining_Identifier (Loc, Cn),
                 Object_Definition =>
-                 New_Occurrence_Of (Etype (Discr), Loc)));
+                  New_Occurrence_Of (Etype (Discr), Loc));
 
+            --  If this is an access discriminant, do not perform default
+            --  initialization. The discriminant is about to get its value
+            --  from Read, and if the type is null excluding we do not want
+            --  spurious warnings on an initial null value.
+
+            if Is_Access_Type (Etype (Discr)) then
+               Set_No_Initialization (Decl);
+            end if;
+
+            Append_To (Decls, Decl);
             Append_To (Decls,
               Make_Attribute_Reference (Loc,
                 Prefix => New_Occurrence_Of (Etype (Discr), Loc),
@@ -1026,13 +1163,30 @@ package body Exp_Strm is
 
             Append_To (Constr, Make_Identifier (Loc, Cn));
 
+            --  If the prefix subtype imposes a discriminant constraint, then
+            --  check that each discriminant value equals the value read.
+
+            if Present (Discr_Elmt) then
+               Append_To (Decls,
+                 Make_Raise_Constraint_Error (Loc,
+                   Condition => Make_Op_Ne (Loc,
+                                  Left_Opnd  =>
+                                    New_Reference_To
+                                      (Defining_Identifier (Decl), Loc),
+                                  Right_Opnd =>
+                                    New_Copy_Tree (Node (Discr_Elmt))),
+                   Reason    => CE_Discriminant_Check_Failed));
+
+               Next_Elmt (Discr_Elmt);
+            end if;
+
             Next_Discriminant (Discr);
             J := J + 1;
          end loop;
 
          Odef :=
            Make_Subtype_Indication (Loc,
-             Subtype_Mark => New_Occurrence_Of (Typ, Loc),
+             Subtype_Mark => New_Occurrence_Of (B_Typ, Loc),
              Constraint =>
                Make_Index_Or_Discriminant_Constraint (Loc,
                  Constraints => Constr));
@@ -1040,28 +1194,43 @@ package body Exp_Strm is
       --  If no discriminants, then just use the type with no constraint
 
       else
-         Odef := New_Occurrence_Of (Typ, Loc);
+         Odef := New_Occurrence_Of (B_Typ, Loc);
       end if;
 
-      Append_To (Decls,
+      --  Create an extended return statement encapsulating the result object
+      --  and 'Read call, which is needed in general for proper handling of
+      --  build-in-place results (such as when the result type is inherently
+      --  limited).
+
+      Obj_Decl :=
         Make_Object_Declaration (Loc,
           Defining_Identifier => Make_Defining_Identifier (Loc, Name_V),
-          Object_Definition => Odef));
+          Object_Definition => Odef);
+
+      --  If the type is an access type, do not perform default initialization.
+      --  The object is about to get its value from Read, and if the type is
+      --  null excluding we do not want spurious warnings on an initial null.
+
+      if Is_Access_Type (B_Typ) then
+         Set_No_Initialization (Obj_Decl);
+      end if;
 
       Stms := New_List (
-         Make_Attribute_Reference (Loc,
-           Prefix => New_Occurrence_Of (Typ, Loc),
-           Attribute_Name => Name_Read,
-           Expressions => New_List (
-             Make_Identifier (Loc, Name_S),
-             Make_Identifier (Loc, Name_V))),
+        Make_Extended_Return_Statement (Loc,
+          Return_Object_Declarations => New_List (Obj_Decl),
+          Handled_Statement_Sequence =>
+            Make_Handled_Sequence_Of_Statements (Loc,
+              Statements => New_List (
+                Make_Attribute_Reference (Loc,
+                  Prefix         => New_Occurrence_Of (B_Typ, Loc),
+                  Attribute_Name => Name_Read,
+                  Expressions    => New_List (
+                    Make_Identifier (Loc, Name_S),
+                    Make_Identifier (Loc, Name_V)))))));
 
-         Make_Return_Statement (Loc,
-           Expression => Make_Identifier (Loc, Name_V)));
+      Fnam := Make_Stream_Subprogram_Name (Loc, B_Typ, TSS_Stream_Input);
 
-      Fnam := Make_Stream_Subprogram_Name (Loc, Typ, TSS_Stream_Input);
-
-      Build_Stream_Function (Loc, Typ, Decl, Fnam, Decls, Stms);
+      Build_Stream_Function (Loc, B_Typ, Decl, Fnam, Decls, Stms);
    end Build_Record_Or_Elementary_Input_Function;
 
    -------------------------------------------------
@@ -1074,8 +1243,9 @@ package body Exp_Strm is
       Decl : out Node_Id;
       Pnam : out Entity_Id)
    is
-      Stms : List_Id;
-      Disc : Entity_Id;
+      Stms     : List_Id;
+      Disc     : Entity_Id;
+      Disc_Ref : Node_Id;
 
    begin
       Stms := New_List;
@@ -1087,6 +1257,21 @@ package body Exp_Strm is
          Disc := First_Discriminant (Typ);
 
          while Present (Disc) loop
+
+            --  If the type is an unchecked union, it must have default
+            --  discriminants (this is checked earlier), and those defaults
+            --  are written out to the stream.
+
+            if Is_Unchecked_Union (Typ) then
+               Disc_Ref := New_Copy_Tree (Discriminant_Default_Value (Disc));
+
+            else
+               Disc_Ref :=
+                 Make_Selected_Component (Loc,
+                   Prefix        => Make_Identifier (Loc, Name_V),
+                   Selector_Name => New_Occurrence_Of (Disc, Loc));
+            end if;
+
             Append_To (Stms,
               Make_Attribute_Reference (Loc,
                 Prefix =>
@@ -1094,9 +1279,7 @@ package body Exp_Strm is
                 Attribute_Name => Name_Write,
                 Expressions => New_List (
                   Make_Identifier (Loc, Name_S),
-                  Make_Selected_Component (Loc,
-                    Prefix => Make_Identifier (Loc, Name_V),
-                    Selector_Name => New_Occurrence_Of (Disc, Loc)))));
+                  Disc_Ref)));
 
             Next_Discriminant (Disc);
          end loop;
@@ -1203,25 +1386,18 @@ package body Exp_Strm is
          V      : Node_Id;
          DC     : Node_Id;
          DCH    : List_Id;
+         D_Ref  : Node_Id;
 
       begin
          Result := Make_Field_Attributes (CI);
 
-         --  If a component is an unchecked union, there is no discriminant
-         --  and we cannot generate a read/write procedure for it.
-
          if Present (VP) then
-            if Is_Unchecked_Union (Scope (Entity (Name (VP)))) then
-               return New_List (
-                 Make_Raise_Program_Error (Sloc (VP),
-                   Reason => PE_Unchecked_Union_Restriction));
-            end if;
+            Alts := New_List;
 
             V := First_Non_Pragma (Variants (VP));
-            Alts := New_List;
             while Present (V) loop
-
                DCH := New_List;
+
                DC := First (Discrete_Choices (V));
                while Present (DC) loop
                   Append_To (DCH, New_Copy_Tree (DC));
@@ -1240,15 +1416,27 @@ package body Exp_Strm is
             --  of for the selector, since there are cases in which we make a
             --  reference to a hidden discriminant that is not visible.
 
+            --  If the enclosing record is an unchecked_union, we use the
+            --  default expressions for the discriminant (it must exist)
+            --  because we cannot generate a reference to it, given that
+            --  it is not stored.
+
+            if Is_Unchecked_Union (Scope (Entity (Name (VP)))) then
+               D_Ref :=
+                 New_Copy_Tree
+                   (Discriminant_Default_Value (Entity (Name (VP))));
+            else
+               D_Ref :=
+                  Make_Selected_Component (Loc,
+                    Prefix        => Make_Identifier (Loc, Name_V),
+                    Selector_Name =>
+                      New_Occurrence_Of (Entity (Name (VP)), Loc));
+            end if;
+
             Append_To (Result,
               Make_Case_Statement (Loc,
-                Expression =>
-                  Make_Selected_Component (Loc,
-                    Prefix => Make_Identifier (Loc, Name_V),
-                    Selector_Name =>
-                      New_Occurrence_Of (Entity (Name (VP)), Loc)),
+                Expression => D_Ref,
                 Alternatives => Alts));
-
          end if;
 
          return Result;
@@ -1276,8 +1464,8 @@ package body Exp_Strm is
            and then No (Find_Inherited_TSS (Field_Typ, TSS_Names (Nam)))
          then
             --  The declaration is illegal per 13.13.2(9/1), and this is
-            --  enforced in Exp_Ch3.Check_Stream_Attributes. Keep the
-            --  caller happy by returning a null statement.
+            --  enforced in Exp_Ch3.Check_Stream_Attributes. Keep the caller
+            --  happy by returning a null statement.
 
             return Make_Null_Statement (Loc);
          end if;
@@ -1285,12 +1473,12 @@ package body Exp_Strm is
          return
            Make_Attribute_Reference (Loc,
              Prefix =>
-               New_Occurrence_Of (Stream_Base_Type (Etype (C)), Loc),
+               New_Occurrence_Of (Field_Typ, Loc),
              Attribute_Name => Nam,
              Expressions => New_List (
                Make_Identifier (Loc, Name_S),
                Make_Selected_Component (Loc,
-                 Prefix => Make_Identifier (Loc, Name_V),
+                 Prefix        => Make_Identifier (Loc, Name_V),
                  Selector_Name => New_Occurrence_Of (C, Loc))));
       end Make_Field_Attribute;
 
@@ -1311,12 +1499,15 @@ package body Exp_Strm is
             --  Loop through components, skipping all internal components,
             --  which are not part of the value (e.g. _Tag), except that we
             --  don't skip the _Parent, since we do want to process that
-            --  recursively.
+            --  recursively. If _Parent is an interface type, being abstract
+            --  with no components there is no need to handle it.
 
             while Present (Item) loop
                if Nkind (Item) = N_Component_Declaration
                  and then
-                   (Chars (Defining_Identifier (Item)) = Name_uParent
+                   ((Chars (Defining_Identifier (Item)) = Name_uParent
+                       and then not Is_Interface
+                                      (Etype (Defining_Identifier (Item))))
                      or else
                     not Is_Internal_Name (Chars (Defining_Identifier (Item))))
                then
@@ -1400,11 +1591,15 @@ package body Exp_Strm is
       Profile : List_Id;
 
    begin
+      --  (Ada 2005: AI-441): Set the null-excluding attribute because it has
+      --  no semantic meaning in Ada 95 but it is a requirement in Ada 2005.
+
       Profile := New_List (
         Make_Parameter_Specification (Loc,
           Defining_Identifier => Make_Defining_Identifier (Loc, Name_S),
           Parameter_Type      =>
           Make_Access_Definition (Loc,
+             Null_Exclusion_Present => True,
              Subtype_Mark => New_Reference_To (
                Class_Wide_Type (RTE (RE_Root_Stream_Type)), Loc))));
 
@@ -1436,6 +1631,9 @@ package body Exp_Strm is
    begin
       --  Construct function specification
 
+      --  (Ada 2005: AI-441): Set the null-excluding attribute because it has
+      --  no semantic meaning in Ada 95 but it is a requirement in Ada 2005.
+
       Spec :=
         Make_Function_Specification (Loc,
           Defining_Unit_Name => Fnam,
@@ -1445,10 +1643,11 @@ package body Exp_Strm is
               Defining_Identifier => Make_Defining_Identifier (Loc, Name_S),
               Parameter_Type =>
                 Make_Access_Definition (Loc,
+                  Null_Exclusion_Present => True,
                   Subtype_Mark => New_Reference_To (
                     Class_Wide_Type (RTE (RE_Root_Stream_Type)), Loc)))),
 
-          Subtype_Mark => New_Occurrence_Of (Typ, Loc));
+          Result_Definition => New_Occurrence_Of (Typ, Loc));
 
       Decl :=
         Make_Subprogram_Body (Loc,
@@ -1476,6 +1675,9 @@ package body Exp_Strm is
    begin
       --  Construct procedure specification
 
+      --  (Ada 2005: AI-441): Set the null-excluding attribute because it has
+      --  no semantic meaning in Ada 95 but it is a requirement in Ada 2005.
+
       Spec :=
         Make_Procedure_Specification (Loc,
           Defining_Unit_Name => Pnam,
@@ -1485,6 +1687,7 @@ package body Exp_Strm is
               Defining_Identifier => Make_Defining_Identifier (Loc, Name_S),
               Parameter_Type =>
                 Make_Access_Definition (Loc,
+                  Null_Exclusion_Present => True,
                   Subtype_Mark => New_Reference_To (
                     Class_Wide_Type (RTE (RE_Root_Stream_Type)), Loc))),
 
@@ -1507,13 +1710,20 @@ package body Exp_Strm is
    -----------------------------
 
    function Has_Stream_Standard_Rep (U_Type : Entity_Id) return Boolean is
+      Siz : Uint;
+
    begin
       if Has_Non_Standard_Rep (U_Type) then
          return False;
-      else
-         return
-           Esize (First_Subtype (U_Type)) = Esize (Root_Type (U_Type));
       end if;
+
+      if Has_Stream_Size_Clause (U_Type) then
+         Siz := Static_Integer (Expression (Stream_Size_Clause (U_Type)));
+      else
+         Siz := Esize (First_Subtype (U_Type));
+      end if;
+
+      return Siz = Esize (Root_Type (U_Type));
    end Has_Stream_Standard_Rep;
 
    ---------------------------------

@@ -1,12 +1,12 @@
 // The  -*- C++ -*- type traits classes for internal use in libstdc++
 
-// Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005
+// Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2009, 2010
 // Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -14,26 +14,21 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 
-// You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// Under Section 7 of GPL version 3, you are granted additional
+// permissions described in the GCC Runtime Library Exception, version
+// 3.1, as published by the Free Software Foundation.
 
-// As a special exception, you may use this file as part of a free software
-// library without restriction.  Specifically, if other files instantiate
-// templates or use macros or inline functions from this file, or you compile
-// this file and link it with other files to produce an executable, this
-// file does not by itself cause the resulting executable to be covered by
-// the GNU General Public License.  This exception does not however
-// invalidate any other reasons why the executable file might be covered by
-// the GNU General Public License.
+// You should have received a copy of the GNU General Public License and
+// a copy of the GCC Runtime Library Exception along with this program;
+// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+// <http://www.gnu.org/licenses/>.
+
+/** @file bits/cpp_type_traits.h
+ *  This is an internal header file, included by other library headers.
+ *  Do not attempt to use it directly. @headername{ext/type_traits}
+ */
 
 // Written by Gabriel Dos Reis <dosreis@cmla.ens-cachan.fr>
-
-/** @file cpp_type_traits.h
- *  This is an internal header file, included by other library headers.
- *  You should not attempt to use it directly.
- */
 
 #ifndef _CPP_TYPE_TRAITS_H
 #define _CPP_TYPE_TRAITS_H 1
@@ -70,31 +65,24 @@
 // removed.
 //
 
-// NB: g++ can not compile these if declared within the class
-// __is_pod itself.
-namespace __gnu_internal
-{
-  typedef char __one;
-  typedef char __two[2];
-
-  template<typename _Tp>
-  __one __test_type(int _Tp::*);
-  template<typename _Tp>
-  __two& __test_type(...);
-} // namespace __gnu_internal
-
 // Forward declaration hack, should really include this from somewhere.
-namespace __gnu_cxx
+namespace __gnu_cxx _GLIBCXX_VISIBILITY(default)
 {
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+
   template<typename _Iterator, typename _Container>
     class __normal_iterator;
-} // namespace __gnu_cxx
 
-struct __true_type { };
-struct __false_type { };
+_GLIBCXX_END_NAMESPACE_VERSION
+} // namespace
 
-namespace std
+namespace std _GLIBCXX_VISIBILITY(default)
 {
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+
+  struct __true_type { };
+  struct __false_type { };
+
   template<bool>
     struct __truth_type
     { typedef __false_type __type; };
@@ -127,18 +115,6 @@ namespace std
       typedef __true_type __type;
     };
 
-  // Define a nested type if some predicate holds.
-  template<typename, bool>
-    struct __enable_if
-    { 
-    };
-
-  template<typename _Tp>
-    struct __enable_if<_Tp, true>
-    {
-      typedef _Tp __type;
-    };
-
   // Holds if the template-argument is a void type.
   template<typename _Tp>
     struct __is_void
@@ -165,8 +141,8 @@ namespace std
     };
 
   // Thirteen specializations (yes there are eleven standard integer
-  // types; 'long long' and 'unsigned long long' are supported as
-  // extensions)
+  // types; <em>long long</em> and <em>unsigned long long</em> are
+  // supported as extensions)
   template<>
     struct __is_integer<bool>
     {
@@ -203,6 +179,22 @@ namespace std
       typedef __true_type __type;
     };
 # endif
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+  template<>
+    struct __is_integer<char16_t>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+
+  template<>
+    struct __is_integer<char32_t>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+#endif
 
   template<>
     struct __is_integer<short>
@@ -352,18 +344,82 @@ namespace std
     { };
 
   //
-  // For the immediate use, the following is a good approximation
+  // For use in std::copy and std::find overloads for streambuf iterators.
   //
   template<typename _Tp>
-    struct __is_pod
+    struct __is_char
     {
-      enum
-	{
-	  __value = (sizeof(__gnu_internal::__test_type<_Tp>(0))
-		     != sizeof(__gnu_internal::__one))
-	};
+      enum { __value = 0 };
+      typedef __false_type __type;
     };
 
-} // namespace std
+  template<>
+    struct __is_char<char>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+
+#ifdef _GLIBCXX_USE_WCHAR_T
+  template<>
+    struct __is_char<wchar_t>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+#endif
+
+  template<typename _Tp>
+    struct __is_byte
+    {
+      enum { __value = 0 };
+      typedef __false_type __type;
+    };
+
+  template<>
+    struct __is_byte<char>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+
+  template<>
+    struct __is_byte<signed char>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+
+  template<>
+    struct __is_byte<unsigned char>
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+
+  //
+  // Move iterator type
+  //
+  template<typename _Tp>
+    struct __is_move_iterator
+    {
+      enum { __value = 0 };
+      typedef __false_type __type;
+    };
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+  template<typename _Iterator>
+    class move_iterator;
+
+  template<typename _Iterator>
+    struct __is_move_iterator< move_iterator<_Iterator> >
+    {
+      enum { __value = 1 };
+      typedef __true_type __type;
+    };
+#endif
+
+_GLIBCXX_END_NAMESPACE_VERSION
+} // namespace
 
 #endif //_CPP_TYPE_TRAITS_H

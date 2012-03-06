@@ -6,157 +6,116 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---             Copyright (C) 2004 Free Software Foundation, Inc.            --
---                                                                          --
--- This specification is derived from the Ada Reference Manual for use with --
--- GNAT. The copyright notice above, and the license provisions that follow --
--- apply solely to the  contents of the part following the private keyword. --
+--          Copyright (C) 2004-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
 --                                                                          --
--- This unit has originally being developed by Matthew J Heaney.            --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
+--                                                                          --
+-- This unit was originally developed by Matthew J Heaney.                  --
 ------------------------------------------------------------------------------
+
+--  This algorithm was adapted from GNAT.Heap_Sort_G (see g-hesorg.ad[sb])
+
+with System;
 
 procedure Ada.Containers.Generic_Constrained_Array_Sort
   (Container : in out Array_Type)
 is
-   function Is_Less (I, J : Index_Type) return Boolean;
-   pragma Inline (Is_Less);
+   type T is range System.Min_Int .. System.Max_Int;
 
-   procedure Swap (I, J : Index_Type);
-   pragma Inline (Swap);
+   function To_Index (J : T) return Index_Type;
+   pragma Inline (To_Index);
 
-   procedure Sort (First, Last : Index_Type'Base);
+   procedure Sift (S : T);
 
-   -------------
-   -- Is_Less --
-   -------------
+   A : Array_Type renames Container;
 
-   function Is_Less (I, J : Index_Type) return Boolean is
+   --------------
+   -- To_Index --
+   --------------
+
+   function To_Index (J : T) return Index_Type is
+      K : constant T'Base := Index_Type'Pos (A'First) + J - T'(1);
    begin
-      return Container (I) < Container (J);
-   end Is_Less;
+      return Index_Type'Val (K);
+   end To_Index;
+
+   Max  : T := A'Length;
+   Temp : Element_Type;
 
    ----------
-   -- Sort --
+   -- Sift --
    ----------
 
-   procedure Sort (First, Last : Index_Type'Base) is
-      Pivot, Lo, Mid, Hi : Index_Type;
+   procedure Sift (S : T) is
+      C   : T := S;
+      Son : T;
 
    begin
-      if Last <= First then
-         return;
-      end if;
+      loop
+         Son := 2 * C;
 
-      Lo := First;
-      Hi := Last;
+         exit when Son > Max;
 
-      if Last = Index_Type'Succ (First) then
-         if not Is_Less (Lo, Hi) then
-            Swap (Lo, Hi);
-         end if;
+         declare
+            Son_Index : Index_Type := To_Index (Son);
 
-         return;
-      end if;
-
-      Mid := Index_Type'Val
-               (Index_Type'Pos (Lo) +
-                (Index_Type'Pos (Hi) - Index_Type'Pos (Lo)) / 2);
-
-      --  We need to figure out which case we have:
-      --  x < y < z
-      --  x < z < y
-      --  z < x < y
-      --  y < x < z
-      --  y < z < x
-      --  z < y < x
-
-      if Is_Less (Lo, Mid) then
-         if Is_Less (Lo, Hi) then
-            if Is_Less (Mid, Hi) then
-               Swap (Lo, Mid);
-            else
-               Swap (Lo, Hi);
+         begin
+            if Son < Max then
+               if A (Son_Index) < A (Index_Type'Succ (Son_Index)) then
+                  Son := Son + 1;
+                  Son_Index := Index_Type'Succ (Son_Index);
+               end if;
             end if;
 
-         else
-            null;  --  lo is median
-         end if;
+            A (To_Index (C)) := A (Son_Index);  -- Move (Son, C);
+         end;
 
-      elsif Is_Less (Lo, Hi) then
-         null; --  lo is median
+         C := Son;
+      end loop;
 
-      elsif Is_Less (Mid, Hi) then
-         Swap (Lo, Hi);
-
-      else
-         Swap (Lo, Mid);
-      end if;
-
-      Pivot := Lo;
-
-      Outer : loop
-         loop
-            exit Outer when not (Pivot < Hi);
-
-            if Is_Less (Hi, Pivot) then
-               Swap (Hi, Pivot);
-               Pivot := Hi;
-               Lo := Index_Type'Succ (Lo);
-               exit;
+      while C /= S loop
+         declare
+            Father : constant T := C / 2;
+         begin
+            if A (To_Index (Father)) < Temp then           -- Lt (Father, 0)
+               A (To_Index (C)) := A (To_Index (Father));  -- Move (Father, C)
+               C := Father;
             else
-               Hi := Index_Type'Pred (Hi);
-            end if;
-         end loop;
-
-         loop
-            exit Outer when not (Lo < Pivot);
-
-            if Is_Less (Lo, Pivot) then
-               Lo := Index_Type'Succ (Lo);
-            else
-               Swap (Lo, Pivot);
-               Pivot := Lo;
-               Hi := Index_Type'Pred (Hi);
                exit;
             end if;
-         end loop;
-      end loop Outer;
+         end;
+      end loop;
 
-      Sort (First, Index_Type'Pred (Pivot));
-      Sort (Index_Type'Succ (Pivot), Last);
-   end Sort;
-
-   ----------
-   -- Swap --
-   ----------
-
-   procedure Swap (I, J : Index_Type) is
-      EI : constant Element_Type := Container (I);
-   begin
-      Container (I) := Container (J);
-      Container (J) := EI;
-   end Swap;
+      A (To_Index (C)) := Temp; -- Move (0, C);
+   end Sift;
 
 --  Start of processing for Generic_Constrained_Array_Sort
 
 begin
-   Sort (Container'First, Container'Last);
+   for J in reverse 1 .. Max / 2 loop
+      Temp := Container (To_Index (J)); --  Move (J, 0);
+      Sift (J);
+   end loop;
+
+   while Max > 1 loop
+      Temp := A (To_Index (Max));         --  Move (Max, 0);
+      A (To_Index (Max)) := A (A'First);  --  Move (1, Max);
+
+      Max := Max - 1;
+      Sift (1);
+   end loop;
 end Ada.Containers.Generic_Constrained_Array_Sort;

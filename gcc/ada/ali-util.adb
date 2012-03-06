@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2005 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -26,8 +25,6 @@
 
 with Debug;   use Debug;
 with Binderr; use Binderr;
-with Lib;     use Lib;
-with Namet;   use Namet;
 with Opt;     use Opt;
 with Output;  use Output;
 with Osint;   use Osint;
@@ -53,8 +50,6 @@ package body ALI.Util is
 
    procedure Error_Msg_SP (Msg : String);
 
-   procedure Obsolescent_Check (S : Source_Ptr);
-
    --  Instantiation of Styleg, needed to instantiate Scng
 
    package Style is new Styleg
@@ -64,8 +59,7 @@ package body ALI.Util is
    --  Get_File_Checksum).
 
    package Scanner is new Scng
-     (Post_Scan, Error_Msg, Error_Msg_S, Error_Msg_SC, Error_Msg_SP,
-      Obsolescent_Check, Style);
+     (Post_Scan, Error_Msg, Error_Msg_S, Error_Msg_SC, Error_Msg_SP, Style);
 
    type Header_Num is range 0 .. 1_000;
 
@@ -134,14 +128,15 @@ package body ALI.Util is
    -- Get_File_Checksum --
    -----------------------
 
-   function Get_File_Checksum (Fname : Name_Id) return Word is
-      Full_Name    : Name_Id;
+   function Get_File_Checksum (Fname : File_Name_Type) return Word is
+      Full_Name    : File_Name_Type;
       Source_Index : Source_File_Index;
+
    begin
       Full_Name := Find_File (Fname, Osint.Source);
 
       --  If we cannot find the file, then return an impossible checksum,
-      --  impossible becaues checksums have the high order bit zero, so
+      --  impossible because checksums have the high order bit zero, so
       --  that checksums do not match.
 
       if Full_Name = No_File then
@@ -154,15 +149,16 @@ package body ALI.Util is
          return Checksum_Error;
       end if;
 
-      Scanner.Initialize_Scanner (Types.No_Unit, Source_Index);
+      Scanner.Initialize_Scanner (Source_Index);
 
       --  Make sure that the project language reserved words are not
       --  recognized as reserved words, but as identifiers. The byte info for
       --  those names have been set if we are in gnatmake.
 
-      Set_Name_Table_Byte (Name_Project,  0);
-      Set_Name_Table_Byte (Name_Extends,  0);
-      Set_Name_Table_Byte (Name_External, 0);
+      Set_Name_Table_Byte (Name_Project,          0);
+      Set_Name_Table_Byte (Name_Extends,          0);
+      Set_Name_Table_Byte (Name_External,         0);
+      Set_Name_Table_Byte (Name_External_As_List, 0);
 
       --  Scan the complete file to compute its checksum
 
@@ -203,16 +199,6 @@ package body ALI.Util is
       Interfaces.Reset;
    end Initialize_ALI_Source;
 
-   -----------------------
-   -- Obsolescent_Check --
-   -----------------------
-
-   procedure Obsolescent_Check (S : Source_Ptr) is
-      pragma Warnings (Off, S);
-   begin
-      null;
-   end Obsolescent_Check;
-
    ---------------
    -- Post_Scan --
    ---------------
@@ -222,11 +208,14 @@ package body ALI.Util is
       null;
    end Post_Scan;
 
-   --------------
-   -- Read_ALI --
-   --------------
+   ----------------------
+   -- Read_Withed_ALIs --
+   ----------------------
 
-   procedure Read_ALI (Id : ALI_Id) is
+   procedure Read_Withed_ALIs
+     (Id            : ALI_Id;
+      Ignore_Errors : Boolean := False)
+   is
       Afile  : File_Name_Type;
       Text   : Text_Buffer_Ptr;
       Idread : ALI_Id;
@@ -248,66 +237,68 @@ package body ALI.Util is
             then
                Text := Read_Library_Info (Afile);
 
-               --  Return with an error if source cannot be found and if this
-               --  is not a library generic (now we can, but does not have to
-               --  compile library generics)
+               --  Unless Ignore_Errors is true, return with an error if source
+               --  cannot be found. We used to skip this check when we did not
+               --  compile library generics separately, but we now always do,
+               --  so there is no special case here anymore.
 
                if Text = null then
-                  if Generic_Separately_Compiled (Withs.Table (W).Sfile) then
-                     Error_Msg_Name_1 := Afile;
-                     Error_Msg_Name_2 := Withs.Table (W).Sfile;
-                     Error_Msg ("% not found, % must be compiled");
+
+                  if not Ignore_Errors then
+                     Error_Msg_File_1 := Afile;
+                     Error_Msg_File_2 := Withs.Table (W).Sfile;
+                     Error_Msg ("{ not found, { must be compiled");
                      Set_Name_Table_Info (Afile, Int (No_Unit_Id));
                      return;
-
-                  else
-                     goto Skip_Library_Generics;
                   end if;
-               end if;
-
-               --  Enter in ALIs table
-
-               Idread :=
-                 Scan_ALI
-                   (F         => Afile,
-                    T         => Text,
-                    Ignore_ED => Force_RM_Elaboration_Order,
-                    Err       => False);
-
-               Free (Text);
-
-               if ALIs.Table (Idread).Compile_Errors then
-                  Error_Msg_Name_1 := Withs.Table (W).Sfile;
-                  Error_Msg ("% had errors, must be fixed, and recompiled");
-                  Set_Name_Table_Info (Afile, Int (No_Unit_Id));
-
-               elsif ALIs.Table (Idread).No_Object then
-                  Error_Msg_Name_1 := Withs.Table (W).Sfile;
-                  Error_Msg ("% must be recompiled");
-                  Set_Name_Table_Info (Afile, Int (No_Unit_Id));
-               end if;
-
-               --  If the Unit is an Interface to a Stand-Alone Library,
-               --  set the Interface flag in the Withs table, so that its
-               --  dependant are not considered for elaboration order.
-
-               if ALIs.Table (Idread).SAL_Interface then
-                  Withs.Table (W).SAL_Interface  := True;
-                  Interface_Library_Unit := True;
-
-                  --  Set the entry in the Interfaces hash table, so that other
-                  --  units that import this unit will set the flag in their
-                  --  entry in the Withs table.
-
-                  Interfaces.Set (Afile, True);
 
                else
-                  --  Otherwise, recurse to get new dependents
+                  --  Enter in ALIs table
 
-                  Read_ALI (Idread);
+                  Idread :=
+                    Scan_ALI
+                      (F         => Afile,
+                       T         => Text,
+                       Ignore_ED => False,
+                       Err       => False);
+
+                  Free (Text);
+
+                  if ALIs.Table (Idread).Compile_Errors
+                    and then not Ignore_Errors
+                  then
+                     Error_Msg_File_1 := Withs.Table (W).Sfile;
+                     Error_Msg ("{ had errors, must be fixed, and recompiled");
+                     Set_Name_Table_Info (Afile, Int (No_Unit_Id));
+
+                  elsif ALIs.Table (Idread).No_Object
+                    and then not Ignore_Errors
+                  then
+                     Error_Msg_File_1 := Withs.Table (W).Sfile;
+                     Error_Msg ("{ must be recompiled");
+                     Set_Name_Table_Info (Afile, Int (No_Unit_Id));
+                  end if;
+
+                  --  If the Unit is an Interface to a Stand-Alone Library,
+                  --  set the Interface flag in the Withs table, so that its
+                  --  dependant are not considered for elaboration order.
+
+                  if ALIs.Table (Idread).SAL_Interface then
+                     Withs.Table (W).SAL_Interface := True;
+                     Interface_Library_Unit := True;
+
+                     --  Set the entry in the Interfaces hash table, so that
+                     --  other units that import this unit will set the flag
+                     --  in their entry in the Withs table.
+
+                     Interfaces.Set (Afile, True);
+
+                  else
+                     --  Otherwise, recurse to get new dependents
+
+                     Read_Withed_ALIs (Idread);
+                  end if;
                end if;
-
-               <<Skip_Library_Generics>> null;
 
             --  If the ALI file has already been processed and is an interface,
             --  set the flag in the entry of the Withs table.
@@ -317,7 +308,7 @@ package body ALI.Util is
             end if;
          end loop;
       end loop;
-   end Read_ALI;
+   end Read_Withed_ALIs;
 
    ----------------------
    -- Set_Source_Table --
@@ -334,7 +325,7 @@ package body ALI.Util is
       loop
          F := Sdep.Table (D).Sfile;
 
-         if F /= No_Name then
+         if F /= No_File then
 
             --  If this is the first time we are seeing this source file,
             --  then make a new entry in the source table.
@@ -375,8 +366,8 @@ package body ALI.Util is
                      --  In All_Sources mode, flag error of file not found
 
                      if Opt.All_Sources then
-                        Error_Msg_Name_1 := F;
-                        Error_Msg ("cannot locate %");
+                        Error_Msg_File_1 := F;
+                        Error_Msg ("cannot locate {");
                      end if;
                   end if;
 
@@ -467,8 +458,7 @@ package body ALI.Util is
 
    function Time_Stamp_Mismatch
      (A         : ALI_Id;
-      Read_Only : Boolean := False)
-      return      File_Name_Type
+      Read_Only : Boolean := False) return File_Name_Type
    is
       Src : Source_Id;
       --  Source file Id for the current Sdep entry
@@ -490,6 +480,14 @@ package body ALI.Util is
                  (Get_File_Checksum (Sdep.Table (D).Sfile),
                   Source.Table (Src).Checksum)
             then
+               if Verbose_Mode then
+                  Write_Str ("   ");
+                  Write_Str (Get_Name_String (Sdep.Table (D).Sfile));
+                  Write_Str (": up to date, different timestamps " &
+                             "but same checksum");
+                  Write_Eol;
+               end if;
+
                Sdep.Table (D).Stamp := Source.Table (Src).Stamp;
             end if;
 
@@ -499,9 +497,9 @@ package body ALI.Util is
             if not Source.Table (Src).Source_Found
               or else Sdep.Table (D).Stamp /= Source.Table (Src).Stamp
             then
-               --  If -t debug flag set, output time stamp found/expected
+               --  If -dt debug flag set, output time stamp found/expected
 
-               if Source.Table (Src).Source_Found and Debug_Flag_T then
+               if Source.Table (Src).Source_Found and then Debug_Flag_T then
                   Write_Str ("Source: """);
                   Get_Name_String (Sdep.Table (D).Sfile);
                   Write_Str (Name_Buffer (1 .. Name_Len));

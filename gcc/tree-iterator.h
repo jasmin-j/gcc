@@ -1,12 +1,12 @@
-/* Iterator routines for manipulating GENERIC and GIMPLE tree statements.
-   Copyright (C) 2003, 2004 Free Software Foundation, Inc.
+/* Iterator routines for manipulating GENERIC tree statement list.
+   Copyright (C) 2003, 2004, 2007, 2010 Free Software Foundation, Inc.
    Contributed by Andrew MacLeod  <amacleod@redhat.com>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 /* This file is dependent upon the implementation of tree's. It provides an
@@ -95,9 +94,9 @@ tsi_stmt (tree_stmt_iterator i)
 
 enum tsi_iterator_update
 {
-  TSI_NEW_STMT,		/* Leave the iterator at the same statement.  */
-  TSI_SAME_STMT,	/* Only valid when single statement is added, move
+  TSI_NEW_STMT,		/* Only valid when single statement is added, move
 			   iterator to it.  */
+  TSI_SAME_STMT,	/* Leave the iterator at the same statement.  */
   TSI_CHAIN_START,	/* Only valid when chain of statements is added, move
 			   iterator to the first statement in the chain.  */
   TSI_CHAIN_END,	/* Only valid when chain of statements is added, move
@@ -112,12 +111,11 @@ extern void tsi_link_before (tree_stmt_iterator *, tree,
 extern void tsi_link_after (tree_stmt_iterator *, tree,
 			    enum tsi_iterator_update);
 
-void tsi_delink (tree_stmt_iterator *);
+extern void tsi_delink (tree_stmt_iterator *);
 
-tree tsi_split_statement_list_after (const tree_stmt_iterator *);
-tree tsi_split_statement_list_before (tree_stmt_iterator *);
-
-void append_to_statement_list (tree, tree *);
-void append_to_statement_list_force (tree, tree *);
+extern tree alloc_stmt_list (void);
+extern void free_stmt_list (tree);
+extern void append_to_statement_list (tree, tree *);
+extern void append_to_statement_list_force (tree, tree *);
 
 #endif /* GCC_TREE_ITERATOR_H  */

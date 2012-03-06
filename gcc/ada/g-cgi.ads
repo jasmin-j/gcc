@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---           Copyright (C) 2000-2003 Ada Core Technologies, Inc.            --
+--                     Copyright (C) 2000-2010, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -68,7 +66,7 @@
 --        procedure New_Client is
 --           use GNAT;
 
---           procedure Add_Client_To_Database (Name : in String) is
+--           procedure Add_Client_To_Database (Name : String) is
 --           begin
 --              ...
 --           end Add_Client_To_Database;
@@ -78,7 +76,7 @@
 --           --  the HTML form) and that one of them is called "client_name".
 
 --           if CGI.Argument_Count = 2
---             and the CGI.Key_Exists ("client_name")
+--             and then CGI.Key_Exists ("client_name")
 --           then
 --              Add_Client_To_Database (CGI.Value ("client_name"));
 --           end if;
@@ -115,7 +113,7 @@ package GNAT.CGI is
    --  and will be raised when calling any services below (except for Ok).
 
    Parameter_Not_Found : exception;
-   --  This exception is raised when a specific parameter is not found.
+   --  This exception is raised when a specific parameter is not found
 
    Default_Header : constant String := "Content-type: text/html";
    --  This is the default header returned by Put_Header. If the CGI program
@@ -186,12 +184,11 @@ package GNAT.CGI is
    --  the exception Data_Error.
 
    function Method return Method_Type;
-   --  Returns the method used to call the CGI.
+   --  Returns the method used to call the CGI
 
    function Metavariable
      (Name     : Metavariable_Name;
-      Required : Boolean := False)
-      return     String;
+      Required : Boolean := False) return String;
    --  Returns parameter Name value. Returns the null string if Name
    --  environment variable is not defined or raises Data_Error if
    --  Required is set to True.
@@ -215,8 +212,7 @@ package GNAT.CGI is
 
    function Value
      (Key      : String;
-      Required : Boolean := False)
-      return     String;
+      Required : Boolean := False) return String;
    --  Returns the parameter value associated to the parameter named Key.
    --  If parameter does not exist, returns an empty string if Required
    --  is False and raises the exception Parameter_Not_Found otherwise.
@@ -227,7 +223,7 @@ package GNAT.CGI is
    --  (i.e. Position > Argument_Count)
 
    function Key_Exists (Key : String) return Boolean;
-   --  Returns True if the parameter named Key existx and False otherwise.
+   --  Returns True if the parameter named Key exists and False otherwise
 
    function Key (Position : Positive) return String;
    --  Returns the parameter key associated with the CGI parameter number

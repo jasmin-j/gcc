@@ -1,12 +1,13 @@
 // The template and inlines for the -*- C++ -*- internal _Array helper class.
 
-// Copyright (C) 1997, 1998, 1999, 2000, 2003, 2004, 2005
-//  Free Software Foundation, Inc.
+// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+// 2006, 2007, 2008, 2009, 2010, 2011
+// Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -14,26 +15,21 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 
-// You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
-// USA.
+// Under Section 7 of GPL version 3, you are granted additional
+// permissions described in the GCC Runtime Library Exception, version
+// 3.1, as published by the Free Software Foundation.
 
-// As a special exception, you may use this file as part of a free software
-// library without restriction.  Specifically, if other files instantiate
-// templates or use macros or inline functions from this file, or you compile
-// this file and link it with other files to produce an executable, this
-// file does not by itself cause the resulting executable to be covered by
-// the GNU General Public License.  This exception does not however
-// invalidate any other reasons why the executable file might be covered by
-// the GNU General Public License.
+// You should have received a copy of the GNU General Public License and
+// a copy of the GCC Runtime Library Exception along with this program;
+// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+// <http://www.gnu.org/licenses/>.
+
+/** @file bits/valarray_array.h
+ *  This is an internal header file, included by other library headers.
+ *  Do not attempt to use it directly. @headername{valarray}
+ */
 
 // Written by Gabriel Dos Reis <Gabriel.Dos-Reis@DPTMaths.ENS-Cachan.Fr>
-
-/** @file valarray_array.h
- *  This is an internal header file, included by other library headers.
- *  You should not attempt to use it directly.
- */
 
 #ifndef _VALARRAY_ARRAY_H
 #define _VALARRAY_ARRAY_H 1
@@ -43,11 +39,12 @@
 #include <bits/c++config.h>
 #include <bits/cpp_type_traits.h>
 #include <cstdlib>
-#include <cstring>
 #include <new>
 
-namespace std
+namespace std _GLIBCXX_VISIBILITY(default)
 {
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+
   //
   // Helper functions on raw pointers
   //
@@ -78,7 +75,7 @@ namespace std
       // Please note that this isn't exception safe.  But
       // valarrays aren't required to be exception safe.
       inline static void
-      _S_do_it(_Tp* __restrict__ __b, _Tp* __restrict__ __e)
+      _S_do_it(_Tp* __b, _Tp* __e)
       {
 	while (__b != __e)
 	  new(__b++) _Tp();
@@ -90,16 +87,15 @@ namespace std
     {
       // For fundamental types, it suffices to say 'memset()'
       inline static void
-      _S_do_it(_Tp* __restrict__ __b, _Tp* __restrict__ __e)
-      { std::memset(__b, 0, (__e - __b) * sizeof(_Tp)); }
+      _S_do_it(_Tp* __b, _Tp* __e)
+      { __builtin_memset(__b, 0, (__e - __b) * sizeof(_Tp)); }
     };
 
   template<typename _Tp>
     inline void
-    __valarray_default_construct(_Tp* __restrict__ __b, _Tp* __restrict__ __e)
+    __valarray_default_construct(_Tp* __b, _Tp* __e)
     {
-      _Array_default_ctor<_Tp, __is_fundamental<_Tp>::__value>::
-	_S_do_it(__b, __e);
+      _Array_default_ctor<_Tp, __is_scalar<_Tp>::__value>::_S_do_it(__b, __e);
     }
 
   // Turn a raw-memory into an array of _Tp filled with __t
@@ -111,7 +107,7 @@ namespace std
       // Please note that this isn't exception safe.  But
       // valarrays aren't required to be exception safe.
       inline static void
-      _S_do_it(_Tp* __restrict__ __b, _Tp* __restrict__ __e, const _Tp __t)
+      _S_do_it(_Tp* __b, _Tp* __e, const _Tp __t)
       {
 	while (__b != __e)
 	  new(__b++) _Tp(__t);
@@ -122,7 +118,7 @@ namespace std
     struct _Array_init_ctor<_Tp, true>
     {
       inline static void
-      _S_do_it(_Tp* __restrict__ __b, _Tp* __restrict__ __e,  const _Tp __t)
+      _S_do_it(_Tp* __b, _Tp* __e, const _Tp __t)
       {
 	while (__b != __e)
 	  *__b++ = __t;
@@ -131,11 +127,9 @@ namespace std
 
   template<typename _Tp>
     inline void
-    __valarray_fill_construct(_Tp* __restrict__ __b, _Tp* __restrict__ __e,
-			      const _Tp __t)
+    __valarray_fill_construct(_Tp* __b, _Tp* __e, const _Tp __t)
     {
-      _Array_init_ctor<_Tp, __is_fundamental<_Tp>::__value>::
-	_S_do_it(__b, __e, __t);
+      _Array_init_ctor<_Tp, __is_trivial(_Tp)>::_S_do_it(__b, __e, __t);
     }
 
   //
@@ -148,8 +142,7 @@ namespace std
       // Please note that this isn't exception safe.  But
       // valarrays aren't required to be exception safe.
       inline static void
-      _S_do_it(const _Tp* __restrict__ __b, const _Tp* __restrict__ __e,
-	       _Tp* __restrict__ __o)
+      _S_do_it(const _Tp* __b, const _Tp* __e, _Tp* __restrict__ __o)
       {
 	while (__b != __e)
 	  new(__o++) _Tp(*__b++);
@@ -160,19 +153,16 @@ namespace std
     struct _Array_copy_ctor<_Tp, true>
     {
       inline static void
-      _S_do_it(const _Tp* __restrict__ __b, const _Tp* __restrict__ __e,
-	       _Tp* __restrict__ __o)
-      { std::memcpy(__o, __b, (__e - __b)*sizeof(_Tp)); }
+      _S_do_it(const _Tp* __b, const _Tp* __e, _Tp* __restrict__ __o)
+      { __builtin_memcpy(__o, __b, (__e - __b) * sizeof(_Tp)); }
     };
 
   template<typename _Tp>
     inline void
-    __valarray_copy_construct(const _Tp* __restrict__ __b,
-			      const _Tp* __restrict__ __e,
+    __valarray_copy_construct(const _Tp* __b, const _Tp* __e,
 			      _Tp* __restrict__ __o)
     {
-      _Array_copy_ctor<_Tp, __is_fundamental<_Tp>::__value>::
-	_S_do_it(__b, __e, __o);
+      _Array_copy_ctor<_Tp, __is_trivial(_Tp)>::_S_do_it(__b, __e, __o);
     }
 
   // copy-construct raw array [__o, *) from strided array __a[<__n : __s>]
@@ -181,7 +171,7 @@ namespace std
     __valarray_copy_construct (const _Tp* __restrict__ __a, size_t __n,
 			       size_t __s, _Tp* __restrict__ __o)
     {
-      if (__is_fundamental<_Tp>::__value)
+      if (__is_trivial(_Tp))
 	while (__n--)
 	  {
 	    *__o++ = *__a;
@@ -202,7 +192,7 @@ namespace std
 			       const size_t* __restrict__ __i,
 			       _Tp* __restrict__ __o, size_t __n)
     {
-      if (__is_fundamental<_Tp>::__value)
+      if (__is_trivial(_Tp))
 	while (__n--)
 	  *__o++ = __a[*__i++];
       else
@@ -213,9 +203,9 @@ namespace std
   // Do the necessary cleanup when we're done with arrays.
   template<typename _Tp>
     inline void
-    __valarray_destroy_elements(_Tp* __restrict__ __b, _Tp* __restrict__ __e)
+    __valarray_destroy_elements(_Tp* __b, _Tp* __e)
     {
-      if (!__is_fundamental<_Tp>::__value)
+      if (!__is_trivial(_Tp))
 	while (__b != __e)
 	  {
 	    __b->~_Tp();
@@ -242,7 +232,7 @@ namespace std
 	*__a = __t;
     }
 
-  // fill indir   ect array __a[__i[<__n>]] with __i
+  // fill indirect array __a[__i[<__n>]] with __i
   template<typename _Tp>
     inline void
     __valarray_fill(_Tp* __restrict__ __a, const size_t* __restrict__ __i,
@@ -270,7 +260,7 @@ namespace std
     {
       inline static void
       _S_do_it(const _Tp* __restrict__ __a, size_t __n, _Tp* __restrict__ __b)
-      { std::memcpy (__b, __a, __n * sizeof (_Tp)); }
+      { __builtin_memcpy(__b, __a, __n * sizeof (_Tp)); }
     };
 
   // Copy a plain array __a[<__n>] into a play array __b[<>]
@@ -279,8 +269,7 @@ namespace std
     __valarray_copy(const _Tp* __restrict__ __a, size_t __n,
 		    _Tp* __restrict__ __b)
     {
-      _Array_copier<_Tp, __is_fundamental<_Tp>::__value>::
-	_S_do_it(__a, __n, __b);
+      _Array_copier<_Tp, __is_trivial(_Tp)>::_S_do_it(__a, __n, __b);
     }
 
   // Copy strided array __a[<__n : __s>] in plain __b[<__n>]
@@ -356,7 +345,7 @@ namespace std
   //
   template<typename _Tp>
     inline _Tp
-    __valarray_sum(const _Tp* __restrict__ __f, const _Tp* __restrict__ __l)
+    __valarray_sum(const _Tp* __f, const _Tp* __l)
     {
       _Tp __r = _Tp();
       while (__f != __l)
@@ -367,8 +356,7 @@ namespace std
   // Compute the product of all elements in range [__f, __l)
   template<typename _Tp>
     inline _Tp
-    __valarray_product(const _Tp* __restrict__ __f,
-		       const _Tp* __restrict__ __l)
+    __valarray_product(const _Tp* __f, const _Tp* __l)
     {
       _Tp __r = _Tp(1);
       while (__f != __l)
@@ -427,6 +415,22 @@ namespace std
       
       _Tp* const __restrict__ _M_data;
     };
+
+
+  // Copy-construct plain array __b[<__n>] from indexed array __a[__i[<__n>]]
+  template<typename _Tp>
+    inline void
+    __valarray_copy_construct(_Array<_Tp> __a, _Array<size_t> __i,
+			      _Array<_Tp> __b, size_t __n)
+    { std::__valarray_copy_construct(__a._M_data, __i._M_data,
+				     __b._M_data, __n); }
+
+  // Copy-construct plain array __b[<__n>] from strided array __a[<__n : __s>]
+  template<typename _Tp>
+    inline void
+    __valarray_copy_construct(_Array<_Tp> __a, size_t __n, size_t __s,
+			      _Array<_Tp> __b)
+    { std::__valarray_copy_construct(__a._M_data, __n, __s, __b._M_data); }
 
   template<typename _Tp>
     inline void
@@ -681,11 +685,11 @@ namespace std
    _DEFINE_ARRAY_FUNCTION(<<, __shift_left)
    _DEFINE_ARRAY_FUNCTION(>>, __shift_right)
 
-#undef _DEFINE_VALARRAY_FUNCTION
-} // namespace std
+#undef _DEFINE_ARRAY_FUNCTION
 
-#ifndef _GLIBCXX_EXPORT_TEMPLATE
+_GLIBCXX_END_NAMESPACE_VERSION
+} // namespace
+
 # include <bits/valarray_array.tcc>
-#endif
 
 #endif /* _ARRAY_H */

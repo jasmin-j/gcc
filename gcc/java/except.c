@@ -1,12 +1,12 @@
 /* Handle exceptions for GNU compiler for the Java(TM) language.
-   Copyright (C) 1997, 1998, 1999, 2000, 2002, 2003, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 1997, 1998, 1999, 2000, 2002, 2003, 2004, 2005,
+   2007, 2008, 2009, 2010 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.
 
 Java and all Java-based marks are trademarks or registered trademarks
 of Sun Microsystems, Inc. in the United States and other countries.
@@ -28,16 +27,15 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "coretypes.h"
 #include "tm.h"
 #include "tree.h"
-#include "real.h"
-#include "rtl.h"
 #include "java-tree.h"
 #include "javaop.h"
 #include "java-opcodes.h"
 #include "jcf.h"
-#include "function.h"
-#include "except.h"
 #include "java-except.h"
+#include "diagnostic-core.h"
 #include "toplev.h"
+#include "tree-iterator.h"
+
 
 static void expand_start_java_handler (struct eh_range *);
 static struct eh_range *find_handler_in_range (int, struct eh_range *,
@@ -211,7 +209,7 @@ split_range (struct eh_range *range, int pc)
     }
 
   /* Create a new range.  */
-  h = xmalloc (sizeof (struct eh_range));
+  h = XNEW (struct eh_range);
 
   h->start_pc = pc;
   h->end_pc = range->end_pc;
@@ -289,7 +287,7 @@ add_handler (int start_pc, int end_pc, tree handler, tree type)
     }
 
   /* Create the new range.  */
-  h = xmalloc (sizeof (struct eh_range));
+  h = XNEW (struct eh_range);
   first_child = &h->first_child;
 
   h->start_pc = start_pc;
@@ -383,7 +381,7 @@ prepare_eh_table_type (tree type)
     return NULL_TREE;
 
   if (TYPE_TO_RUNTIME_MAP (output_class) == NULL)
-    TYPE_TO_RUNTIME_MAP (output_class) = java_treetreehash_create (10, 1);
+    TYPE_TO_RUNTIME_MAP (output_class) = java_treetreehash_create (10);
   
   slot = java_treetreehash_new (TYPE_TO_RUNTIME_MAP (output_class), type);
   if (*slot != NULL)
@@ -392,9 +390,10 @@ prepare_eh_table_type (tree type)
   if (is_compiled_class (type) && !flag_indirect_dispatch)
     {
       name = IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (type)));
-      buf = alloca (strlen (name) + 5);
+      buf = (char *) alloca (strlen (name) + 5);
       sprintf (buf, "%s_ref", name);
-      decl = build_decl (VAR_DECL, get_identifier (buf), ptr_type_node);
+      decl = build_decl (input_location,
+			 VAR_DECL, get_identifier (buf), ptr_type_node);
       TREE_STATIC (decl) = 1;
       DECL_ARTIFICIAL (decl) = 1;
       DECL_IGNORED_P (decl) = 1;
@@ -409,9 +408,10 @@ prepare_eh_table_type (tree type)
     {
       utf8_ref = build_utf8_ref (DECL_NAME (TYPE_NAME (type)));
       name = IDENTIFIER_POINTER (DECL_NAME (TREE_OPERAND (utf8_ref, 0)));
-      buf = alloca (strlen (name) + 5);
+      buf = (char *) alloca (strlen (name) + 5);
       sprintf (buf, "%s_ref", name);
-      decl = build_decl (VAR_DECL, get_identifier (buf), utf8const_ptr_type);
+      decl = build_decl (input_location,
+			 VAR_DECL, get_identifier (buf), utf8const_ptr_type);
       TREE_STATIC (decl) = 1;
       DECL_ARTIFICIAL (decl) = 1;
       DECL_IGNORED_P (decl) = 1;
@@ -420,9 +420,9 @@ prepare_eh_table_type (tree type)
       layout_decl (decl, 0);
       pushdecl (decl);
       exp = build1 (ADDR_EXPR, build_pointer_type (utf8const_ptr_type), decl);
-      TYPE_CATCH_CLASSES (output_class) = 
-	tree_cons (NULL, make_catch_class_record (exp, utf8_ref), 
-		   TYPE_CATCH_CLASSES (output_class));
+      CONSTRUCTOR_APPEND_ELT (TYPE_CATCH_CLASSES (output_class),
+			      NULL_TREE,
+			      make_catch_class_record (exp, utf8_ref));
     }
 
   exp = convert (ptr_type_node, exp);
@@ -456,6 +456,26 @@ java_expand_catch_classes (tree this_class)
        expand_catch_class, NULL);
 }
 
+/* Build and push the variable that will hold the exception object
+   within this function.  */
+
+static tree
+build_exception_object_var (void)
+{
+  tree decl = DECL_FUNCTION_EXC_OBJ (current_function_decl);
+  if (decl == NULL)
+    {
+      decl = build_decl (DECL_SOURCE_LOCATION (current_function_decl),
+			 VAR_DECL, get_identifier ("#exc_obj"), ptr_type_node);
+      DECL_IGNORED_P (decl) = 1;
+      DECL_ARTIFICIAL (decl) = 1;
+
+      DECL_FUNCTION_EXC_OBJ (current_function_decl) = decl;
+      pushdecl_function_level (decl);
+    }
+  return decl;
+}
+
 /* Build a reference to the jthrowable object being carried in the
    exception header.  */
 
@@ -466,43 +486,64 @@ build_exception_object_ref (tree type)
 
   /* Java only passes object via pointer and doesn't require adjusting.
      The java object is immediately before the generic exception header.  */
-  obj = build0 (EXC_PTR_EXPR, build_pointer_type (type));
-  obj = build2 (MINUS_EXPR, TREE_TYPE (obj), obj,
-		TYPE_SIZE_UNIT (TREE_TYPE (obj)));
+  obj = build_exception_object_var ();
+  obj = fold_convert (build_pointer_type (type), obj);
+  obj = fold_build_pointer_plus (obj,
+		fold_build1 (NEGATE_EXPR, sizetype,
+			     TYPE_SIZE_UNIT (TREE_TYPE (obj))));
   obj = build1 (INDIRECT_REF, type, obj);
 
   return obj;
 }
 
-/* If there are any handlers for this range, isssue end of range,
+/* If there are any handlers for this range, issue end of range,
    and then all handler blocks */
 void
 expand_end_java_handler (struct eh_range *range)
 {  
   tree handler = range->handlers;
-
-  for ( ; handler != NULL_TREE; handler = TREE_CHAIN (handler))
+  if (handler)
     {
-      /* For bytecode we treat exceptions a little unusually.  A
-	 `finally' clause looks like an ordinary exception handler for
-	 Throwable.  The reason for this is that the bytecode has
-	 already expanded the finally logic, and we would have to do
-	 extra (and difficult) work to get this to look like a
-	 gcc-style finally clause.  */
-      tree type = TREE_PURPOSE (handler);
-      if (type == NULL)
-	type = throwable_type_node;
-      type = prepare_eh_table_type (type);
+      tree exc_obj = build_exception_object_var ();
+      tree catches = make_node (STATEMENT_LIST);
+      tree_stmt_iterator catches_i = tsi_last (catches);
+      tree *body;
 
-      {
-	tree catch_expr = build2 (CATCH_EXPR, void_type_node, type,
-				  build1 (GOTO_EXPR, void_type_node,
-					  TREE_VALUE (handler)));
-	tree try_catch_expr = build2 (TRY_CATCH_EXPR, void_type_node,
-				      *get_stmts (), catch_expr);	
-	*get_stmts () = try_catch_expr;
-      }
+      for (; handler; handler = TREE_CHAIN (handler))
+	{
+	  tree type, eh_type, x;
+	  tree stmts = make_node (STATEMENT_LIST);
+	  tree_stmt_iterator stmts_i = tsi_last (stmts);
+
+	  type = TREE_PURPOSE (handler);
+	  if (type == NULL)
+	    type = throwable_type_node;
+	  eh_type = prepare_eh_table_type (type);
+
+	  x = build_call_expr (builtin_decl_explicit (BUILT_IN_EH_POINTER),
+			       1, integer_zero_node);
+	  x = build2 (MODIFY_EXPR, void_type_node, exc_obj, x);
+	  tsi_link_after (&stmts_i, x, TSI_CONTINUE_LINKING);
+
+	  x = build1 (GOTO_EXPR, void_type_node, TREE_VALUE (handler));
+	  tsi_link_after (&stmts_i, x, TSI_CONTINUE_LINKING);
+
+	  x = build2 (CATCH_EXPR, void_type_node, eh_type, stmts);
+	  tsi_link_after (&catches_i, x, TSI_CONTINUE_LINKING);
+
+	  /* Throwable can match anything in Java, and therefore
+	     any subsequent handlers are unreachable.  */
+	  /* ??? If we're assured of no foreign language exceptions,
+	     we'd be better off using NULL as the exception type
+	     for the catch.  */
+	  if (type == throwable_type_node)
+	    break;
+	}
+
+      body = get_stmts ();
+      *body = build2 (TRY_CATCH_EXPR, void_type_node, *body, catches);
     }
+
 #if defined(DEBUG_JAVA_BINDING_LEVELS)
   indent ();
   fprintf (stderr, "expand end handler pc %d <-- %d\n",
@@ -524,6 +565,29 @@ check_start_handlers (struct eh_range *range, int pc)
 }
 
 
+/* Routine to see if exception handling is turned on.
+   DO_WARN is nonzero if we want to inform the user that exception
+   handling is turned off.
+
+   This is used to ensure that -fexceptions has been specified if the
+   compiler tries to use any exception-specific functions.  */
+
+static inline int
+doing_eh (void)
+{
+  if (! flag_exceptions)
+    {
+      static int warned = 0;
+      if (! warned)
+	{
+	  error ("exception handling disabled, use -fexceptions to enable");
+	  warned = 1;
+	}
+      return 0;
+    }
+  return 1;
+}
+
 static struct eh_range *current_range;
 
 /* Emit any start-of-try-range starting at start_pc and ending after
@@ -533,7 +597,7 @@ void
 maybe_start_try (int start_pc, int end_pc)
 {
   struct eh_range *range;
-  if (! doing_eh (1))
+  if (! doing_eh ())
     return;
 
   range = find_handler (start_pc);

@@ -1,16 +1,17 @@
 /* Tests for #pragma init and #pragma fini.  */
 
 /* { dg-do run { target *-*-solaris2.* } } */
+/* { dg-skip-if "no .pushsection/.popsection" { i?86-*-solaris2.8 && { ! gas } } } */
 
 extern void abort ();
 
-#pragma init		/* { dg-error "malformed" } */
-#pragma init ()		/* { dg-error "malformed" } */
-#pragma init init_func	/* { dg-error "malformed" } */
+#pragma init		/* { dg-warning "malformed" } */
+#pragma init ()		/* { dg-warning "malformed" } */
+#pragma init init_func	/* { dg-warning "malformed" } */
 
-#pragma fini		/* { dg-error "malformed" } */
-#pragma fini ()		/* { dg-error "malformed" } */
-#pragma fini fini_func	/* { dg-error "malformed" } */
+#pragma fini		/* { dg-warning "malformed" } */
+#pragma fini ()		/* { dg-warning "malformed" } */
+#pragma fini fini_func	/* { dg-warning "malformed" } */
 
 #pragma init (init_func, init_static_func)
 

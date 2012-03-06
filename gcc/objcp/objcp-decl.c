@@ -1,13 +1,13 @@
 /* Process the ObjC-specific declarations and variables for 
    the Objective-C++ compiler.
-   Copyright (C) 2005 Free Software Foundation, Inc.
+   Copyright (C) 2005, 2007, 2010 Free Software Foundation, Inc.
    Contributed by Ziemowit Laski  <zlaski@apple.com>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -16,36 +16,26 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
 #include "tree.h"
-#include "rtl.h"
-#include "expr.h"
 #include "cp-tree.h"
-#include "c-common.h"
-#include "flags.h"
-#include "input.h"
-#include "except.h"
-#include "output.h"
-#include "toplev.h"
-#include "cpplib.h"
-#include "debug.h"
-#include "target.h"
-#include "varray.h"
+#include "hashtab.h"
 
+#include "c-family/c-objc.h"
 #include "objc-act.h"
 #include "objcp-decl.h"
 
 /* Hacks to simulate start_struct() and finish_struct(). */
 
 tree 
-objcp_start_struct (enum tree_code code ATTRIBUTE_UNUSED, tree name)
+objcp_start_struct (location_t loc ATTRIBUTE_UNUSED,
+		    enum tree_code code ATTRIBUTE_UNUSED, tree name)
 {
   tree s;
   /* The idea here is to mimic the actions that the C++ parser takes when
@@ -59,11 +49,12 @@ objcp_start_struct (enum tree_code code ATTRIBUTE_UNUSED, tree name)
   CLASSTYPE_DECLARED_CLASS (s) = 0;  /* this is a 'struct', not a 'class'.  */
   xref_basetypes (s, NULL_TREE);     /* no base classes here!  */
 
-  return begin_class_definition (s);
+  return begin_class_definition (s, NULL_TREE);
 }
 
 tree 
-objcp_finish_struct (tree t, tree fieldlist, tree attributes)
+objcp_finish_struct (location_t loc ATTRIBUTE_UNUSED,
+		     tree t, tree fieldlist, tree attributes)
 {
   tree field, next_field;
 
@@ -74,6 +65,13 @@ objcp_finish_struct (tree t, tree fieldlist, tree attributes)
     finish_member_declaration (field);
   }
   t = finish_struct (t, attributes);
+
+  /* If we are inside an @interface and are generating the list of
+     ivars, we need to check for duplicate ivars.
+  */
+  if (fieldlist)
+    objc_detect_field_duplicates (true);
+
   pop_lang_context ();
 
   return t;
@@ -85,12 +83,6 @@ objcp_finish_function (void)
   /* The C++ flavor of 'finish_function' does not generate RTL -- one has
      to call 'expand_or_defer_fn' to do that.  */
   expand_or_defer_fn (finish_function (0));
-}
-
-tree
-objcp_lookup_name (tree name)
-{
-  return lookup_name (name, -1);
 }
 
 tree

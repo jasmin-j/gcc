@@ -1,7 +1,10 @@
-/* This does not assemble on m68hc11 because the function is larger
-   than 64K.  */
-/* { dg-do assemble { xfail m6811-*-* m6812-*-* } } */
-/* { dg-xfail-if "jump beyond 128K not supported" "xtensa-*-*" "-O0" "" } */
+/* { dg-do assemble } */
+/* { dg-skip-if "too much code for avr" { "avr-*-*" } { "*" } { "" } } */
+/* { dg-skip-if "too much code for pdp11" { "pdp11-*-*" } { "*" } { "" } } */
+/* { dg-xfail-if "jump beyond 128K not supported" { xtensa*-*-* } { "-O0" } { "" } } */
+/* { dg-xfail-if "PR36698" { spu-*-* } { "-O0" } { "" } } */
+/* { dg-skip-if "" { m32c-*-* } { "*" } { "" } } */
+/* { dg-timeout-factor 4.0 } */
 
 /* This testcase exposed two branch shortening bugs on powerpc.  */
 
@@ -18,6 +21,10 @@
 #define C1024(x,y) C256(x,y) C256(x+16,y) C256(x+32,y) C256(x+48,y)
 #define C4096(x,y) C1024(x,y) C1024(x,y+16) C1024(x,y+32) C1024(x,y+48)
 
+#ifdef __mips
+/* See PR 51931.  */
+__attribute__((nomips16))
+#endif
 unsigned foo(int x[64], int y[64])
 {
   C4096(x,y);

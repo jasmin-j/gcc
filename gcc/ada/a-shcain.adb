@@ -2,67 +2,40 @@
 --                                                                          --
 --                         GNAT LIBRARY COMPONENTS                          --
 --                                                                          --
---                    ADA.STRINGS.HASH_CASE_INSENSITIVE                     --
+--    A D A . S T R I N G S . H A S H _ C A S E _ I N S E N S I T I V E     --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---             Copyright (C) 2004 Free Software Foundation, Inc.            --
---                                                                          --
--- This specification is derived from the Ada Reference Manual for use with --
--- GNAT. The copyright notice above, and the license provisions that follow --
--- apply solely to the  contents of the part following the private keyword. --
+--          Copyright (C) 2004-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the Free Software Foundation,  59 Temple Place - Suite 330,  Boston, --
--- MA 02111-1307, USA.                                                      --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- This unit was originally developed by Matthew J Heaney.                  --
 ------------------------------------------------------------------------------
 
-with Ada.Characters.Handling;  use Ada.Characters.Handling;
-
---  Note: source of this algorithm: GNAT.HTable.Hash (g-htable.adb)
+with Ada.Characters.Handling; use Ada.Characters.Handling;
+with System.String_Hash;
 
 function Ada.Strings.Hash_Case_Insensitive
   (Key : String) return Containers.Hash_Type
 is
    use Ada.Containers;
-
-   Tmp : Hash_Type;
-
-   function Rotate_Left
-     (Value  : Hash_Type;
-      Amount : Natural) return Hash_Type;
-   pragma Import (Intrinsic, Rotate_Left);
-
+   function Hash is new System.String_Hash.Hash
+     (Character, String, Hash_Type);
 begin
-   Tmp := 0;
-   for J in Key'Range loop
-      Tmp := Rotate_Left (Tmp, 1) + Character'Pos (To_Lower (Key (J)));
-   end loop;
-
-   return Tmp;
+   return Hash (To_Lower (Key));
 end Ada.Strings.Hash_Case_Insensitive;
-
-
-
-
-
-
-
-
-
