@@ -11216,17 +11216,6 @@ ix86_epilogue_uses (int regno)
 	  && !MMX_REGNO_P (regno));
 }
 
-/* Return nonzero if register REGNO can be used as a scratch register
-   in peephole2.  */
-
-static bool
-ix86_hard_regno_scratch_ok (unsigned int regno ATTRIBUTE_UNUSED)
-{
-  /* If there are no caller-saved registers, we can't use any register
-     as a scratch register.  */
-  return !cfun->machine->no_caller_saved_registers;
-}
-
 /* Return TRUE if register REGNO is ever defined..  */
 
 static bool
@@ -11239,6 +11228,22 @@ ix86_reg_ever_defined_p (unsigned int regno)
       return true;
 
   return false;
+}
+
+/* Return nonzero if register REGNO can be used as a scratch register
+   in peephole2.  */
+
+static bool
+ix86_hard_regno_scratch_ok (unsigned int regno)
+{
+  /* If there are no caller-saved registers, we can't use any register
+     as a scratch register after epilogue and use REGNO as scratch
+     register only if it has been used before to avoid saving and
+     restoring it.  */
+  return (!cfun->machine->no_caller_saved_registers
+	  || (!epilogue_completed
+	      && df_regs_ever_live_p (regno)
+	      && ix86_reg_ever_defined_p (regno)));
 }
 
 /* Return TRUE if we need to save REGNO.  */
