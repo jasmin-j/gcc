@@ -983,7 +983,7 @@ if test x"$enable_hsa" = x1 ; then
 fi
 
 AC_ARG_WITH(multilib-list,
-[AS_HELP_STRING([--with-multilib-list], [select multilibs (AArch64, SH and x86-64 only)])],
+[AS_HELP_STRING([--with-multilib-list], [select multilibs (AArch64, ARM, SH and x86-64 only)])],
 :,
 with_multilib_list=default)
 
